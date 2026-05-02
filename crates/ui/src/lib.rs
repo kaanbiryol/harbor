@@ -8,8 +8,9 @@ use gpui::{
 use gpui_component::{Disableable, Sizable, button::Button};
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
-    PullRequest, PullRequestState, RepoId, ReviewDecision, WorkflowConclusion, WorkflowJob,
-    WorkflowRun, WorkflowStatus, WorkflowStep,
+    PullRequest, PullRequestReview, PullRequestReviewState, PullRequestState, RepoId,
+    ReviewComment, ReviewCommentPosition, ReviewDecision, ReviewSide, ReviewThread,
+    ReviewThreadState, WorkflowConclusion, WorkflowJob, WorkflowRun, WorkflowStatus, WorkflowStep,
 };
 use harbor_github::{GhCliTransport, GitHubClient};
 use harbor_logs::{LogChunk, LogLine, LogSeverity, parse_workflow_log};
@@ -77,17 +78,25 @@ pub fn bind_keys(cx: &mut App) {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PanelTab {
     Diff,
+    Review,
     Checks,
     Actions,
     Logs,
 }
 
 impl PanelTab {
-    const ALL: [Self; 4] = [Self::Diff, Self::Checks, Self::Actions, Self::Logs];
+    const ALL: [Self; 5] = [
+        Self::Diff,
+        Self::Review,
+        Self::Checks,
+        Self::Actions,
+        Self::Logs,
+    ];
 
     fn label(self) -> &'static str {
         match self {
             Self::Diff => "Diff",
+            Self::Review => "Review",
             Self::Checks => "Checks",
             Self::Actions => "Actions",
             Self::Logs => "Logs",
@@ -294,10 +303,13 @@ pub struct AppView {
     check_runs: Vec<CheckRun>,
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
+    pull_request_reviews: Vec<PullRequestReview>,
+    review_threads: Vec<ReviewThread>,
     log_chunk: Option<LogChunk>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_scroll: UniformListScrollHandle,
+    review_list_scroll: UniformListScrollHandle,
     log_list_scroll: UniformListScrollHandle,
     selected_pr: usize,
     active_file: usize,
@@ -310,6 +322,7 @@ pub struct AppView {
     is_loading_files: bool,
     is_loading_checks: bool,
     is_loading_workflows: bool,
+    is_loading_reviews: bool,
     is_loading_logs: bool,
     is_running_action: bool,
     is_running_pr_action: bool,
@@ -318,6 +331,7 @@ pub struct AppView {
     files_error: Option<String>,
     checks_error: Option<String>,
     workflows_error: Option<String>,
+    reviews_error: Option<String>,
     logs_error: Option<String>,
     action_error: Option<String>,
     pr_action_error: Option<String>,
@@ -338,6 +352,16 @@ impl AppView {
         } else {
             fake_files()
         };
+        let pull_request_reviews = if configured_repo.is_some() {
+            Vec::new()
+        } else {
+            fake_pull_request_reviews()
+        };
+        let review_threads = if configured_repo.is_some() {
+            Vec::new()
+        } else {
+            fake_review_threads()
+        };
         let diffs = parse_files(&files);
         let status = configured_repo
             .as_ref()
@@ -354,10 +378,13 @@ impl AppView {
             check_runs: Vec::new(),
             workflow_runs: Vec::new(),
             workflow_jobs: Vec::new(),
+            pull_request_reviews,
+            review_threads,
             log_chunk: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_scroll: UniformListScrollHandle::new(),
+            review_list_scroll: UniformListScrollHandle::new(),
             log_list_scroll: UniformListScrollHandle::new(),
             selected_pr: 0,
             active_file: 0,
@@ -370,6 +397,7 @@ impl AppView {
             is_loading_files: false,
             is_loading_checks: false,
             is_loading_workflows: false,
+            is_loading_reviews: false,
             is_loading_logs: false,
             is_running_action: false,
             is_running_pr_action: false,
@@ -378,6 +406,7 @@ impl AppView {
             files_error: None,
             checks_error: None,
             workflows_error: None,
+            reviews_error: None,
             logs_error: None,
             action_error: None,
             pr_action_error: None,
@@ -436,17 +465,24 @@ impl AppView {
         self.active_hunk = 0;
         self.workflow_jobs.clear();
         self.log_chunk = None;
+        self.pull_request_reviews.clear();
+        self.review_threads.clear();
+        self.reviews_error = None;
         self.logs_error = None;
         self.pr_action_error = None;
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.review_list_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Selected {}", self.selected_pr_label());
 
         if self.configured_repo.is_some() {
             self.load_selected_pull_request(cx);
         } else {
+            self.pull_request_reviews = fake_pull_request_reviews();
+            self.review_threads = fake_review_threads();
             cx.notify();
         }
     }
@@ -588,6 +624,7 @@ impl AppView {
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
+        self.reviews_error = None;
         self.logs_error = None;
         self.action_error = None;
         self.pr_action_error = None;
@@ -613,6 +650,8 @@ impl AppView {
                         view.check_runs.clear();
                         view.workflow_runs.clear();
                         view.workflow_jobs.clear();
+                        view.pull_request_reviews.clear();
+                        view.review_threads.clear();
                         view.log_chunk = None;
                         view.selected_pr = 0;
                         view.active_file = 0;
@@ -620,6 +659,8 @@ impl AppView {
                         view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                        view.review_list_scroll
+                            .scroll_to_item(0, ScrollStrategy::Top);
                         view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.load_error = None;
                         view.status =
@@ -633,6 +674,8 @@ impl AppView {
                         view.check_runs.clear();
                         view.workflow_runs.clear();
                         view.workflow_jobs.clear();
+                        view.pull_request_reviews.clear();
+                        view.review_threads.clear();
                         view.log_chunk = None;
                         view.selected_pr = 0;
                         view.active_file = 0;
@@ -640,10 +683,13 @@ impl AppView {
                         view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                        view.review_list_scroll
+                            .scroll_to_item(0, ScrollStrategy::Top);
                         view.is_loading_details = false;
                         view.is_loading_files = false;
                         view.is_loading_checks = false;
                         view.is_loading_workflows = false;
+                        view.is_loading_reviews = false;
                         view.is_loading_logs = false;
                         view.is_running_action = false;
                         view.is_running_pr_action = false;
@@ -674,10 +720,12 @@ impl AppView {
         self.is_loading_files = true;
         self.is_loading_checks = true;
         self.is_loading_workflows = true;
+        self.is_loading_reviews = true;
         self.details_error = None;
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
+        self.reviews_error = None;
         self.logs_error = None;
         self.action_error = None;
         self.pr_action_error = None;
@@ -686,11 +734,15 @@ impl AppView {
         self.check_runs.clear();
         self.workflow_runs.clear();
         self.workflow_jobs.clear();
+        self.pull_request_reviews.clear();
+        self.review_threads.clear();
         self.log_chunk = None;
         self.active_file = 0;
         self.active_hunk = 0;
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.review_list_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
         self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Loading PR #{number} details and changed files");
 
@@ -719,6 +771,10 @@ impl AppView {
                     .list_workflow_runs_for_head(&owner, &name, &head_sha)
                     .await
             };
+            let pull_request_reviews_result = client
+                .list_pull_request_reviews(&owner, &name, number)
+                .await;
+            let review_threads_result = client.list_review_threads(&owner, &name, number).await;
 
             _ = this.update(cx, move |view, cx| {
                 if view.selected_pull_request_number() != Some(number) {
@@ -729,6 +785,7 @@ impl AppView {
                 view.is_loading_files = false;
                 view.is_loading_checks = false;
                 view.is_loading_workflows = false;
+                view.is_loading_reviews = false;
 
                 match detail_result {
                     Ok(detail) => {
@@ -794,6 +851,43 @@ impl AppView {
                     }
                 }
 
+                let mut loaded_review_thread_count = None;
+
+                match pull_request_reviews_result {
+                    Ok(reviews) => {
+                        view.pull_request_reviews = reviews;
+                        view.reviews_error = None;
+                    }
+                    Err(error) => {
+                        view.pull_request_reviews.clear();
+                        view.reviews_error =
+                            Some(format!("Failed to load review history: {error}"));
+                    }
+                }
+
+                match review_threads_result {
+                    Ok(review_threads) => {
+                        let unresolved_count = review_threads
+                            .iter()
+                            .filter(|thread| thread.state == ReviewThreadState::Unresolved)
+                            .count();
+                        let thread_count = review_threads.len();
+                        view.review_threads = review_threads;
+                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                            selected.unresolved_threads = unresolved_count;
+                        }
+                        loaded_review_thread_count = Some(thread_count);
+                    }
+                    Err(error) => {
+                        view.review_threads.clear();
+                        let message = format!("Failed to load review threads: {error}");
+                        view.reviews_error = Some(match view.reviews_error.take() {
+                            Some(existing) => format!("{existing}; {message}"),
+                            None => message,
+                        });
+                    }
+                }
+
                 view.status = match (
                     view.details_error.as_ref(),
                     view.files_error.as_ref(),
@@ -813,6 +907,10 @@ impl AppView {
                     }
                     _ => format!("Loaded PR #{number}"),
                 };
+
+                if let Some(count) = loaded_review_thread_count {
+                    view.status = format!("{} and {count} review threads", view.status);
+                }
 
                 if view.active_tab == PanelTab::Logs
                     && view.logs_error.is_none()
@@ -1839,6 +1937,15 @@ impl AppView {
                             cx,
                         )
                         .into_any_element(),
+                        PanelTab::Review => render_review_panel(
+                            &self.pull_request_reviews,
+                            &self.review_threads,
+                            self.is_loading_reviews,
+                            self.reviews_error.as_deref(),
+                            self.review_list_scroll.clone(),
+                            cx,
+                        )
+                        .into_any_element(),
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             &self.check_runs,
@@ -2369,6 +2476,288 @@ fn render_line_number(line: Option<u32>) -> impl IntoElement {
         .text_right()
         .text_color(rgb(0x64748b))
         .child(line.map_or_else(String::new, |line| line.to_string()))
+}
+
+fn render_review_panel(
+    reviews: &[PullRequestReview],
+    threads: &[ReviewThread],
+    is_loading: bool,
+    error: Option<&str>,
+    scroll_handle: UniformListScrollHandle,
+    cx: &mut Context<AppView>,
+) -> impl IntoElement {
+    let (unresolved, resolved, outdated) = review_thread_counts(threads);
+
+    div()
+        .id("review-panel")
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h_0()
+        .gap_2()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .child("Review")
+                .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+                    "{} reviews  {} threads",
+                    reviews.len(),
+                    threads.len()
+                ))),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_3()
+                .text_xs()
+                .text_color(rgb(0x9aa4b2))
+                .child(format!("unresolved {unresolved}"))
+                .child(format!("resolved {resolved}"))
+                .child(format!("outdated {outdated}")),
+        )
+        .when(!reviews.is_empty(), |element| {
+            element
+                .child(
+                    div()
+                        .pt_1()
+                        .text_xs()
+                        .text_color(rgb(0x9aa4b2))
+                        .child("latest reviews"),
+                )
+                .children(reviews.iter().rev().take(3).map(render_pull_request_review))
+        })
+        .when(is_loading, |element| {
+            element.child(
+                div()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x242a31))
+                    .bg(rgb(0x0c0f12))
+                    .p_3()
+                    .text_color(rgb(0x9aa4b2))
+                    .child("Loading review threads..."),
+            )
+        })
+        .when_some(error.map(str::to_string), |element, error| {
+            element.child(
+                div()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x7f1d1d))
+                    .bg(rgb(0x2a1212))
+                    .p_3()
+                    .text_color(rgb(0xf87171))
+                    .child(error),
+            )
+        })
+        .when(
+            !is_loading && error.is_none() && threads.is_empty(),
+            |element| {
+                element.child(
+                    div()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(rgb(0x242a31))
+                        .bg(rgb(0x0c0f12))
+                        .p_3()
+                        .text_color(rgb(0x9aa4b2))
+                        .child("No review threads found for this pull request"),
+                )
+            },
+        )
+        .when(!threads.is_empty(), |element| {
+            element.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x242a31))
+                    .bg(rgb(0x0c0f12))
+                    .overflow_hidden()
+                    .child(
+                        uniform_list(
+                            "review-thread-list",
+                            threads.len(),
+                            cx.processor(|view, range: std::ops::Range<usize>, _window, _cx| {
+                                let mut rows = Vec::with_capacity(range.len());
+
+                                for index in range {
+                                    let Some(thread) = view.review_threads.get(index) else {
+                                        continue;
+                                    };
+                                    rows.push(render_review_thread_row(index, thread));
+                                }
+
+                                rows
+                            }),
+                        )
+                        .track_scroll(&scroll_handle)
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0(),
+                    ),
+            )
+        })
+}
+
+fn render_pull_request_review(review: &PullRequestReview) -> impl IntoElement {
+    let (label, color) = pull_request_review_state_label(review.state);
+
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .rounded_sm()
+        .border_1()
+        .border_color(rgb(0x242a31))
+        .bg(rgb(0x0c0f12))
+        .px_3()
+        .py_2()
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .child(format!("{} by {}", label, review.author))
+                .when_some(
+                    review.body.as_ref().map(|body| single_line(body)),
+                    |element, body| {
+                        element.child(
+                            div()
+                                .pt_1()
+                                .text_xs()
+                                .text_color(rgb(0x9aa4b2))
+                                .truncate()
+                                .child(body),
+                        )
+                    },
+                ),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(color)
+                .child(review_time_label(review)),
+        )
+}
+
+fn render_review_thread_row(index: usize, thread: &ReviewThread) -> AnyElement {
+    let (label, color) = review_thread_state_label(thread.state);
+    let latest_comment = thread.comments.last();
+    let location = review_thread_location(thread);
+    let preview = latest_comment
+        .map(|comment| single_line(&comment.body))
+        .unwrap_or_else(|| "No comments in this thread".to_string());
+
+    div()
+        .id(("review-thread-row", index))
+        .h(px(136.))
+        .flex()
+        .flex_col()
+        .justify_center()
+        .gap_2()
+        .px_3()
+        .py_2()
+        .border_1()
+        .border_color(rgb(0x20252b))
+        .hover(|style| style.bg(rgb(0x202a35)))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .child(thread.path.clone()),
+                )
+                .child(div().text_xs().text_color(color).child(label)),
+        )
+        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+            "{}  {} comments",
+            location,
+            thread.comments.len()
+        )))
+        .when_some(latest_comment, |element, comment| {
+            element.child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0x9aa4b2))
+                    .truncate()
+                    .child(format!("{}: {}", comment.author, preview)),
+            )
+        })
+        .into_any_element()
+}
+
+fn review_thread_counts(threads: &[ReviewThread]) -> (usize, usize, usize) {
+    let mut unresolved = 0;
+    let mut resolved = 0;
+    let mut outdated = 0;
+
+    for thread in threads {
+        match thread.state {
+            ReviewThreadState::Unresolved => unresolved += 1,
+            ReviewThreadState::Resolved => resolved += 1,
+            ReviewThreadState::Outdated => outdated += 1,
+        }
+    }
+
+    (unresolved, resolved, outdated)
+}
+
+fn review_thread_location(thread: &ReviewThread) -> String {
+    thread
+        .comments
+        .iter()
+        .find_map(|comment| comment.position.as_ref())
+        .and_then(|position| position.line.or(position.original_line))
+        .map_or_else(|| "file".to_string(), |line| format!("line {line}"))
+}
+
+fn single_line(value: &str) -> String {
+    value
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .unwrap_or("empty comment")
+        .to_string()
+}
+
+fn pull_request_review_state_label(state: PullRequestReviewState) -> (&'static str, gpui::Hsla) {
+    match state {
+        PullRequestReviewState::Pending => ("pending", rgb(0xfbbf24).into()),
+        PullRequestReviewState::Commented => ("commented", rgb(0x93c5fd).into()),
+        PullRequestReviewState::Approved => ("approved", rgb(0x34d399).into()),
+        PullRequestReviewState::ChangesRequested => ("changes requested", rgb(0xf87171).into()),
+        PullRequestReviewState::Dismissed => ("dismissed", rgb(0x9aa4b2).into()),
+    }
+}
+
+fn review_thread_state_label(state: ReviewThreadState) -> (&'static str, gpui::Hsla) {
+    match state {
+        ReviewThreadState::Unresolved => ("unresolved", rgb(0xfbbf24).into()),
+        ReviewThreadState::Resolved => ("resolved", rgb(0x34d399).into()),
+        ReviewThreadState::Outdated => ("outdated", rgb(0x9aa4b2).into()),
+    }
+}
+
+fn review_time_label(review: &PullRequestReview) -> String {
+    review
+        .submitted_at
+        .map(|submitted_at| submitted_at.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "not submitted".to_string())
 }
 
 fn render_checks_panel(
@@ -3065,14 +3454,98 @@ fn fake_files() -> Vec<DiffFile> {
     ]
 }
 
+fn fake_pull_request_reviews() -> Vec<PullRequestReview> {
+    vec![
+        PullRequestReview {
+            id: "review-1".to_string(),
+            author: "maria".to_string(),
+            state: PullRequestReviewState::ChangesRequested,
+            body: Some("A couple of small issues before this is ready.".to_string()),
+            submitted_at: Some(fake_time("2026-05-01T10:00:00Z")),
+        },
+        PullRequestReview {
+            id: "review-2".to_string(),
+            author: "alex".to_string(),
+            state: PullRequestReviewState::Commented,
+            body: Some("The scroll path feels much better now.".to_string()),
+            submitted_at: Some(fake_time("2026-05-01T11:30:00Z")),
+        },
+    ]
+}
+
+fn fake_review_threads() -> Vec<ReviewThread> {
+    vec![
+        ReviewThread {
+            id: "thread-1".to_string(),
+            path: "crates/ui/src/inbox.rs".to_string(),
+            state: ReviewThreadState::Unresolved,
+            comments: vec![
+                ReviewComment {
+                    id: "comment-1".to_string(),
+                    author: "maria".to_string(),
+                    body: "This row update still looks broader than it needs to be.".to_string(),
+                    created_at: fake_time("2026-05-01T10:00:00Z"),
+                    updated_at: None,
+                    position: Some(ReviewCommentPosition {
+                        path: "crates/ui/src/inbox.rs".to_string(),
+                        line: Some(42),
+                        original_line: Some(39),
+                        side: ReviewSide::Right,
+                    }),
+                },
+                ReviewComment {
+                    id: "comment-2".to_string(),
+                    author: "kaan".to_string(),
+                    body: "I will narrow the state update to the selected row.".to_string(),
+                    created_at: fake_time("2026-05-01T10:20:00Z"),
+                    updated_at: None,
+                    position: Some(ReviewCommentPosition {
+                        path: "crates/ui/src/inbox.rs".to_string(),
+                        line: Some(42),
+                        original_line: Some(39),
+                        side: ReviewSide::Right,
+                    }),
+                },
+            ],
+        },
+        ReviewThread {
+            id: "thread-2".to_string(),
+            path: "crates/logs/src/parser.rs".to_string(),
+            state: ReviewThreadState::Resolved,
+            comments: vec![ReviewComment {
+                id: "comment-3".to_string(),
+                author: "alex".to_string(),
+                body: "Resolved after the parser stopped cloning full log lines.".to_string(),
+                created_at: fake_time("2026-05-01T11:00:00Z"),
+                updated_at: None,
+                position: Some(ReviewCommentPosition {
+                    path: "crates/logs/src/parser.rs".to_string(),
+                    line: Some(17),
+                    original_line: Some(17),
+                    side: ReviewSide::Right,
+                }),
+            }],
+        },
+    ]
+}
+
+fn fake_time(value: &str) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|datetime| datetime.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|_| chrono::Utc::now())
+}
+
 #[cfg(test)]
 mod tests {
     use harbor_domain::{
         CheckConclusion, CheckRun, CheckStatus, ChecksSummary, MergeState, PullRequest,
-        PullRequestState, RepoId,
+        PullRequestState, RepoId, ReviewThread, ReviewThreadState,
     };
 
-    use super::{checks_summary_from_runs, merge_blocker, parse_repo_id, review_action_blocker};
+    use super::{
+        checks_summary_from_runs, merge_blocker, parse_repo_id, review_action_blocker,
+        review_thread_counts,
+    };
 
     #[test]
     fn parses_owner_and_repo() {
@@ -3138,6 +3611,18 @@ mod tests {
         assert_eq!(merge_blocker(&pull_request()), None);
     }
 
+    #[test]
+    fn counts_review_threads_by_state() {
+        let threads = vec![
+            review_thread(ReviewThreadState::Unresolved),
+            review_thread(ReviewThreadState::Resolved),
+            review_thread(ReviewThreadState::Outdated),
+            review_thread(ReviewThreadState::Unresolved),
+        ];
+
+        assert_eq!(review_thread_counts(&threads), (2, 1, 1));
+    }
+
     fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckRun {
         CheckRun {
             id: None,
@@ -3175,6 +3660,15 @@ mod tests {
                 skipped: 0,
             },
             unresolved_threads: 0,
+        }
+    }
+
+    fn review_thread(state: ReviewThreadState) -> ReviewThread {
+        ReviewThread {
+            id: "thread".to_string(),
+            path: "src/app.rs".to_string(),
+            state,
+            comments: Vec::new(),
         }
     }
 }

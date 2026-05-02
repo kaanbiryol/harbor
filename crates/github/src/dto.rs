@@ -1,7 +1,8 @@
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
-    PullRequest, PullRequestState, RepoId, WorkflowConclusion, WorkflowJob, WorkflowRun,
-    WorkflowStatus, WorkflowStep,
+    PullRequest, PullRequestReview, PullRequestReviewState, PullRequestState, RepoId,
+    ReviewComment, ReviewCommentPosition, ReviewSide, ReviewThread, ReviewThreadState,
+    WorkflowConclusion, WorkflowJob, WorkflowRun, WorkflowStatus, WorkflowStep,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -136,6 +137,85 @@ struct ApiWorkflowStep {
     completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ApiPullRequestReview {
+    id: u64,
+    state: String,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    submitted_at: Option<chrono::DateTime<chrono::Utc>>,
+    user: Option<ApiUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadsResponse {
+    data: Option<GraphQlReviewThreadsData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadsData {
+    repository: Option<GraphQlReviewThreadsRepository>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadsRepository {
+    #[serde(rename = "pullRequest")]
+    pull_request: Option<GraphQlReviewThreadsPullRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadsPullRequest {
+    #[serde(rename = "reviewThreads")]
+    review_threads: GraphQlNodes<GraphQlReviewThread>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(bound(deserialize = "T: Deserialize<'de>"))]
+struct GraphQlNodes<T> {
+    #[serde(default)]
+    nodes: Vec<Option<T>>,
+}
+
+impl<T> Default for GraphQlNodes<T> {
+    fn default() -> Self {
+        Self { nodes: Vec::new() }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThread {
+    id: String,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default, rename = "line")]
+    line: Option<u32>,
+    #[serde(default, rename = "originalLine")]
+    original_line: Option<u32>,
+    #[serde(default, rename = "isResolved")]
+    is_resolved: bool,
+    #[serde(default, rename = "isOutdated")]
+    is_outdated: bool,
+    comments: GraphQlNodes<GraphQlReviewComment>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewComment {
+    id: String,
+    body: String,
+    author: Option<ApiUser>,
+    #[serde(rename = "createdAt")]
+    created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default, rename = "updatedAt")]
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    line: Option<u32>,
+    #[serde(default, rename = "originalLine")]
+    original_line: Option<u32>,
+}
+
 pub fn pull_requests_from_value(repo: RepoId, value: Value) -> Result<Vec<PullRequest>> {
     let pulls: Vec<ApiPullRequest> =
         serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
@@ -190,6 +270,38 @@ pub fn workflow_jobs_from_value(value: Value) -> Result<Vec<WorkflowJob>> {
         .jobs
         .into_iter()
         .map(ApiWorkflowJob::into_domain)
+        .collect())
+}
+
+pub fn pull_request_reviews_from_value(value: Value) -> Result<Vec<PullRequestReview>> {
+    let reviews: Vec<ApiPullRequestReview> =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+
+    Ok(reviews
+        .into_iter()
+        .map(ApiPullRequestReview::into_domain)
+        .collect())
+}
+
+pub fn review_threads_from_graphql_value(value: Value) -> Result<Vec<ReviewThread>> {
+    let response: GraphQlReviewThreadsResponse =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let data = response
+        .data
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL response data".to_string()))?;
+    let repository = data
+        .repository
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL repository".to_string()))?;
+    let pull_request = repository
+        .pull_request
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL pull request".to_string()))?;
+
+    Ok(pull_request
+        .review_threads
+        .nodes
+        .into_iter()
+        .flatten()
+        .map(GraphQlReviewThread::into_domain)
         .collect())
 }
 
@@ -308,6 +420,89 @@ impl ApiWorkflowStep {
     }
 }
 
+impl ApiPullRequestReview {
+    fn into_domain(self) -> PullRequestReview {
+        PullRequestReview {
+            id: self.id.to_string(),
+            author: self
+                .user
+                .map(|user| user.login)
+                .unwrap_or_else(|| "ghost".to_string()),
+            state: map_pull_request_review_state(&self.state),
+            body: self.body.filter(|body| !body.is_empty()),
+            submitted_at: self.submitted_at,
+        }
+    }
+}
+
+impl GraphQlReviewThread {
+    fn into_domain(self) -> ReviewThread {
+        let fallback_path = self.path.unwrap_or_default();
+        let fallback_line = self.line;
+        let fallback_original_line = self.original_line;
+        let comments: Vec<ReviewComment> = self
+            .comments
+            .nodes
+            .into_iter()
+            .flatten()
+            .map(|comment| {
+                comment.into_domain(fallback_path.clone(), fallback_line, fallback_original_line)
+            })
+            .collect();
+        let path = if fallback_path.is_empty() {
+            comments
+                .iter()
+                .find_map(|comment| comment.position.as_ref())
+                .map(|position| position.path.clone())
+                .unwrap_or_else(|| "unknown".to_string())
+        } else {
+            fallback_path
+        };
+
+        ReviewThread {
+            id: self.id,
+            path,
+            state: map_review_thread_state(self.is_resolved, self.is_outdated),
+            comments,
+        }
+    }
+}
+
+impl GraphQlReviewComment {
+    fn into_domain(
+        self,
+        fallback_path: String,
+        fallback_line: Option<u32>,
+        fallback_original_line: Option<u32>,
+    ) -> ReviewComment {
+        let path = self.path.unwrap_or(fallback_path);
+        let line = self.line.or(fallback_line);
+        let original_line = self.original_line.or(fallback_original_line);
+        let position = if path.is_empty() && line.is_none() && original_line.is_none() {
+            None
+        } else {
+            Some(ReviewCommentPosition {
+                path,
+                line,
+                original_line,
+                side: ReviewSide::Right,
+            })
+        };
+
+        ReviewComment {
+            id: self.id,
+            author: self
+                .author
+                .map(|user| user.login)
+                .unwrap_or_else(|| "ghost".to_string()),
+            body: self.body,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            position,
+        }
+    }
+}
+
 fn map_pull_request_state(state: &str, merged: Option<bool>) -> PullRequestState {
     if merged.unwrap_or(false) {
         PullRequestState::Merged
@@ -315,6 +510,26 @@ fn map_pull_request_state(state: &str, merged: Option<bool>) -> PullRequestState
         PullRequestState::Closed
     } else {
         PullRequestState::Open
+    }
+}
+
+fn map_pull_request_review_state(state: &str) -> PullRequestReviewState {
+    match state.to_ascii_lowercase().as_str() {
+        "pending" => PullRequestReviewState::Pending,
+        "approved" => PullRequestReviewState::Approved,
+        "changes_requested" => PullRequestReviewState::ChangesRequested,
+        "dismissed" => PullRequestReviewState::Dismissed,
+        _ => PullRequestReviewState::Commented,
+    }
+}
+
+fn map_review_thread_state(is_resolved: bool, is_outdated: bool) -> ReviewThreadState {
+    if is_resolved {
+        ReviewThreadState::Resolved
+    } else if is_outdated {
+        ReviewThreadState::Outdated
+    } else {
+        ReviewThreadState::Unresolved
     }
 }
 
@@ -385,8 +600,8 @@ fn map_workflow_conclusion(conclusion: &str) -> Option<WorkflowConclusion> {
 #[cfg(test)]
 mod tests {
     use harbor_domain::{
-        CheckConclusion, CheckStatus, FileStatus, MergeState, PullRequestState, WorkflowConclusion,
-        WorkflowStatus,
+        CheckConclusion, CheckStatus, FileStatus, MergeState, PullRequestReviewState,
+        PullRequestState, ReviewThreadState, WorkflowConclusion, WorkflowStatus,
     };
     use serde_json::json;
 
@@ -597,5 +812,111 @@ mod tests {
             jobs[0].steps[1].conclusion,
             Some(WorkflowConclusion::Failure)
         );
+    }
+
+    #[test]
+    fn maps_pull_request_reviews() {
+        let value = json!([
+            {
+                "id": 401,
+                "state": "APPROVED",
+                "body": "ship it",
+                "submitted_at": "2026-05-01T11:00:00Z",
+                "user": { "login": "octocat" }
+            },
+            {
+                "id": 402,
+                "state": "CHANGES_REQUESTED",
+                "body": "",
+                "submitted_at": null,
+                "user": null
+            }
+        ]);
+
+        let reviews = pull_request_reviews_from_value(value).unwrap();
+
+        assert_eq!(reviews.len(), 2);
+        assert_eq!(reviews[0].id, "401");
+        assert_eq!(reviews[0].author, "octocat");
+        assert_eq!(reviews[0].state, PullRequestReviewState::Approved);
+        assert_eq!(reviews[0].body.as_deref(), Some("ship it"));
+        assert_eq!(reviews[1].author, "ghost");
+        assert_eq!(reviews[1].state, PullRequestReviewState::ChangesRequested);
+        assert_eq!(reviews[1].body, None);
+    }
+
+    #[test]
+    fn maps_review_threads_from_graphql() {
+        let value = json!({
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [
+                                {
+                                    "id": "thread-1",
+                                    "path": "src/app.rs",
+                                    "line": 42,
+                                    "originalLine": 40,
+                                    "isResolved": false,
+                                    "isOutdated": false,
+                                    "comments": {
+                                        "nodes": [
+                                            {
+                                                "id": "comment-1",
+                                                "body": "This can be cheaper.",
+                                                "author": { "login": "reviewer" },
+                                                "createdAt": "2026-05-01T10:00:00Z",
+                                                "updatedAt": "2026-05-01T10:05:00Z",
+                                                "path": "src/app.rs",
+                                                "line": 42,
+                                                "originalLine": 40
+                                            },
+                                            {
+                                                "id": "comment-2",
+                                                "body": "Updated.",
+                                                "author": null,
+                                                "createdAt": "2026-05-01T10:10:00Z",
+                                                "updatedAt": null,
+                                                "path": null,
+                                                "line": null,
+                                                "originalLine": null
+                                            }
+                                        ]
+                                    }
+                                },
+                                {
+                                    "id": "thread-2",
+                                    "path": "src/old.rs",
+                                    "line": null,
+                                    "originalLine": 9,
+                                    "isResolved": false,
+                                    "isOutdated": true,
+                                    "comments": { "nodes": [] }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        });
+
+        let threads = review_threads_from_graphql_value(value).unwrap();
+
+        assert_eq!(threads.len(), 2);
+        assert_eq!(threads[0].id, "thread-1");
+        assert_eq!(threads[0].path, "src/app.rs");
+        assert_eq!(threads[0].state, ReviewThreadState::Unresolved);
+        assert_eq!(threads[0].comments.len(), 2);
+        assert_eq!(threads[0].comments[0].author, "reviewer");
+        assert_eq!(
+            threads[0].comments[0]
+                .position
+                .as_ref()
+                .map(|position| position.line),
+            Some(Some(42))
+        );
+        assert_eq!(threads[0].comments[1].author, "ghost");
+        assert_eq!(threads[1].state, ReviewThreadState::Outdated);
     }
 }
