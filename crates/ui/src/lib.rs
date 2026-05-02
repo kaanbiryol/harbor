@@ -8,10 +8,11 @@ use gpui::{
 use gpui_component::{Disableable, Sizable, button::Button};
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
-    PullRequest, PullRequestState, RepoId, ReviewDecision, WorkflowConclusion, WorkflowRun,
-    WorkflowStatus,
+    PullRequest, PullRequestState, RepoId, ReviewDecision, WorkflowConclusion, WorkflowJob,
+    WorkflowRun, WorkflowStatus, WorkflowStep,
 };
 use harbor_github::{GhCliTransport, GitHubClient};
+use harbor_logs::{LogChunk, LogLine, LogSeverity, parse_workflow_log};
 
 use crate::diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff, parse_files};
 
@@ -224,9 +225,12 @@ pub struct AppView {
     diffs: Vec<Option<ParsedDiff>>,
     check_runs: Vec<CheckRun>,
     workflow_runs: Vec<WorkflowRun>,
+    workflow_jobs: Vec<WorkflowJob>,
+    log_chunk: Option<LogChunk>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_scroll: UniformListScrollHandle,
+    log_list_scroll: UniformListScrollHandle,
     selected_pr: usize,
     active_file: usize,
     active_hunk: usize,
@@ -238,12 +242,14 @@ pub struct AppView {
     is_loading_files: bool,
     is_loading_checks: bool,
     is_loading_workflows: bool,
+    is_loading_logs: bool,
     is_running_action: bool,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
     checks_error: Option<String>,
     workflows_error: Option<String>,
+    logs_error: Option<String>,
     action_error: Option<String>,
     did_focus: bool,
     status: String,
@@ -277,9 +283,12 @@ impl AppView {
             diffs,
             check_runs: Vec::new(),
             workflow_runs: Vec::new(),
+            workflow_jobs: Vec::new(),
+            log_chunk: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_scroll: UniformListScrollHandle::new(),
+            log_list_scroll: UniformListScrollHandle::new(),
             selected_pr: 0,
             active_file: 0,
             active_hunk: 0,
@@ -291,12 +300,14 @@ impl AppView {
             is_loading_files: false,
             is_loading_checks: false,
             is_loading_workflows: false,
+            is_loading_logs: false,
             is_running_action: false,
             load_error: None,
             details_error: None,
             files_error: None,
             checks_error: None,
             workflows_error: None,
+            logs_error: None,
             action_error: None,
             did_focus: false,
             status,
@@ -334,6 +345,13 @@ impl AppView {
             .filter(|diff| !diff.is_empty())
     }
 
+    fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
+        self.workflow_runs
+            .iter()
+            .find(|run| workflow_run_failed(run))
+            .or_else(|| self.workflow_runs.first())
+    }
+
     fn select_pull_request(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.pull_requests.len() {
             self.status = "No pull requests to select".to_string();
@@ -344,6 +362,9 @@ impl AppView {
         self.selected_pr = index;
         self.active_file = 0;
         self.active_hunk = 0;
+        self.workflow_jobs.clear();
+        self.log_chunk = None;
+        self.logs_error = None;
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -494,6 +515,7 @@ impl AppView {
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
+        self.logs_error = None;
         self.action_error = None;
         self.status = format!("Loading open pull requests from {}", repo.full_name());
 
@@ -516,12 +538,15 @@ impl AppView {
                         view.diffs.clear();
                         view.check_runs.clear();
                         view.workflow_runs.clear();
+                        view.workflow_jobs.clear();
+                        view.log_chunk = None;
                         view.selected_pr = 0;
                         view.active_file = 0;
                         view.active_hunk = 0;
                         view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                        view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.load_error = None;
                         view.status =
                             format!("Loaded {count} open pull requests from {owner}/{name}");
@@ -533,6 +558,8 @@ impl AppView {
                         view.diffs.clear();
                         view.check_runs.clear();
                         view.workflow_runs.clear();
+                        view.workflow_jobs.clear();
+                        view.log_chunk = None;
                         view.selected_pr = 0;
                         view.active_file = 0;
                         view.active_hunk = 0;
@@ -543,6 +570,7 @@ impl AppView {
                         view.is_loading_files = false;
                         view.is_loading_checks = false;
                         view.is_loading_workflows = false;
+                        view.is_loading_logs = false;
                         view.is_running_action = false;
                         view.load_error = Some(error.to_string());
                         view.status = format!("Failed to load pull requests from {owner}/{name}");
@@ -575,15 +603,19 @@ impl AppView {
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
+        self.logs_error = None;
         self.action_error = None;
         self.files.clear();
         self.diffs.clear();
         self.check_runs.clear();
         self.workflow_runs.clear();
+        self.workflow_jobs.clear();
+        self.log_chunk = None;
         self.active_file = 0;
         self.active_hunk = 0;
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Loading PR #{number} details and changed files");
 
         let owner = repo.owner.clone();
@@ -706,6 +738,95 @@ impl AppView {
                     _ => format!("Loaded PR #{number}"),
                 };
 
+                if view.active_tab == PanelTab::Logs
+                    && view.logs_error.is_none()
+                    && !view.workflow_runs.is_empty()
+                {
+                    view.load_selected_workflow_logs(cx);
+                }
+
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn load_selected_workflow_logs(&mut self, cx: &mut Context<Self>) {
+        let Some(repo) = self.configured_repo.clone() else {
+            self.logs_error =
+                Some("Workflow logs require HARBOR_REPO=owner/repo and GitHub CLI auth".into());
+            self.status = self.logs_error.clone().unwrap_or_default();
+            cx.notify();
+            return;
+        };
+        let Some(run) = self.selected_workflow_run_for_logs().cloned() else {
+            self.logs_error = Some("No workflow run is available for the selected PR head".into());
+            self.status = self.logs_error.clone().unwrap_or_default();
+            cx.notify();
+            return;
+        };
+
+        if self.is_loading_logs {
+            self.status = format!("Already loading logs for {}", workflow_run_label(&run));
+            cx.notify();
+            return;
+        }
+
+        self.active_tab = PanelTab::Logs;
+        self.is_loading_logs = true;
+        self.logs_error = None;
+        self.workflow_jobs.clear();
+        self.log_chunk = None;
+        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.status = format!("Loading logs for {}", workflow_run_label(&run));
+
+        let owner = repo.owner.clone();
+        let name = repo.name.clone();
+        let run_id = run.id;
+        let run_label = workflow_run_label(&run);
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let jobs_result = client
+                .list_workflow_jobs_for_run(&owner, &name, run_id)
+                .await;
+            let log_result = client.workflow_run_log(&owner, &name, run_id).await;
+
+            _ = this.update(cx, move |view, cx| {
+                if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
+                    return;
+                }
+
+                view.is_loading_logs = false;
+
+                match jobs_result {
+                    Ok(jobs) => {
+                        view.workflow_jobs = jobs;
+                    }
+                    Err(error) => {
+                        view.workflow_jobs.clear();
+                        view.logs_error = Some(format!("Failed to load workflow jobs: {error}"));
+                    }
+                }
+
+                match log_result {
+                    Ok(text) => {
+                        view.log_chunk = Some(parse_workflow_log(run_id, &text));
+                        if view.logs_error.is_none() {
+                            view.status = format!("Loaded logs for {run_label}");
+                        } else {
+                            view.status = format!("Loaded logs for {run_label}, but jobs failed");
+                        }
+                    }
+                    Err(error) => {
+                        view.log_chunk = None;
+                        let message = format!("Failed to load workflow logs: {error}");
+                        view.logs_error = Some(message.clone());
+                        view.status = message;
+                    }
+                }
+
+                view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                 cx.notify();
             });
         })
@@ -956,7 +1077,11 @@ impl AppView {
 
     fn open_logs(&mut self, _: &OpenLogs, _: &mut Window, cx: &mut Context<Self>) {
         self.active_tab = PanelTab::Logs;
-        self.set_placeholder_status("Open logs", cx);
+        if self.configured_repo.is_some() {
+            self.load_selected_workflow_logs(cx);
+        } else {
+            self.set_placeholder_status("Open logs", cx);
+        }
     }
 
     fn trigger_build(&mut self, _: &TriggerBuild, _: &mut Window, cx: &mut Context<Self>) {
@@ -1446,7 +1571,16 @@ impl AppView {
                             cx,
                         )
                         .into_any_element(),
-                        PanelTab::Logs => render_logs_panel().into_any_element(),
+                        PanelTab::Logs => render_logs_panel(
+                            self.selected_workflow_run_for_logs(),
+                            &self.workflow_jobs,
+                            self.log_chunk.as_ref(),
+                            self.is_loading_logs,
+                            self.logs_error.as_deref(),
+                            self.log_list_scroll.clone(),
+                            cx,
+                        )
+                        .into_any_element(),
                     }),
             )
     }
@@ -2199,6 +2333,15 @@ fn render_workflow_conclusion(
     conclusion: Option<WorkflowConclusion>,
     status: WorkflowStatus,
 ) -> impl IntoElement {
+    let (label, color) = workflow_conclusion_label(conclusion, status);
+
+    div().text_sm().text_color(color).child(label)
+}
+
+fn workflow_conclusion_label(
+    conclusion: Option<WorkflowConclusion>,
+    status: WorkflowStatus,
+) -> (&'static str, gpui::Hsla) {
     let (label, color) = match (status, conclusion) {
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => ("passed", rgb(0x34d399)),
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => {
@@ -2220,22 +2363,223 @@ fn render_workflow_conclusion(
         (WorkflowStatus::Queued, _) => ("queued", rgb(0xfbbf24)),
     };
 
-    div().text_sm().text_color(color).child(label)
+    (label, color.into())
 }
 
-fn render_logs_panel() -> impl IntoElement {
+fn render_logs_panel(
+    run: Option<&WorkflowRun>,
+    jobs: &[WorkflowJob],
+    log_chunk: Option<&LogChunk>,
+    is_loading: bool,
+    error: Option<&str>,
+    scroll_handle: UniformListScrollHandle,
+    cx: &mut Context<AppView>,
+) -> impl IntoElement {
+    let line_count = log_chunk.map_or(0, |chunk| chunk.lines.len());
+
     div()
-        .id("logs-panel-scroll")
+        .id("logs-panel")
         .flex()
         .flex_col()
         .flex_1()
         .min_h_0()
-        .overflow_y_scroll()
         .gap_2()
-        .child("Logs")
         .child(
-            "The log viewer will use chunked, virtualized rendering for large GitHub Actions output.",
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .child("Logs")
+                .child(
+                    Button::new("load-workflow-logs")
+                        .label("load logs")
+                        .small()
+                        .outline()
+                        .loading(is_loading)
+                        .disabled(run.is_none() || is_loading)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.load_selected_workflow_logs(cx);
+                        })),
+                ),
         )
+        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+                    "target: {}",
+                    run.map(workflow_run_label)
+                        .unwrap_or_else(|| "no workflow run".to_string())
+                )))
+        .when(is_loading, |element| {
+            element.child(
+                div()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x242a31))
+                    .bg(rgb(0x0c0f12))
+                    .p_3()
+                    .text_color(rgb(0x9aa4b2))
+                    .child("Loading workflow jobs and logs..."),
+            )
+        })
+        .when_some(error.map(str::to_string), |element, error| {
+            element.child(
+                div()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x7f1d1d))
+                    .bg(rgb(0x2a1212))
+                    .p_3()
+                    .text_color(rgb(0xf87171))
+                    .child(error),
+            )
+        })
+        .when(!is_loading && run.is_none(), |element| {
+            element.child(
+                div()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x242a31))
+                    .bg(rgb(0x0c0f12))
+                    .p_3()
+                    .text_color(rgb(0x9aa4b2))
+                    .child("No workflow run found for this PR head"),
+            )
+        })
+        .when(!jobs.is_empty(), |element| {
+            element
+                .child(
+                    div()
+                        .pt_1()
+                        .text_xs()
+                        .text_color(rgb(0x9aa4b2))
+                        .child(format!("jobs {}", jobs.len())),
+                )
+                .children(jobs.iter().map(render_workflow_job))
+        })
+        .when(line_count > 0, |element| {
+            element.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x242a31))
+                    .bg(rgb(0x0c0f12))
+                    .overflow_hidden()
+                    .child(
+                        uniform_list(
+                            "workflow-log-lines",
+                            line_count,
+                            cx.processor(|view, range: std::ops::Range<usize>, _window, _cx| {
+                                let Some(chunk) = view.log_chunk.as_ref() else {
+                                    return Vec::new();
+                                };
+                                let mut rows = Vec::with_capacity(range.len());
+
+                                for index in range {
+                                    let Some(line) = chunk.lines.get(index) else {
+                                        continue;
+                                    };
+                                    rows.push(render_log_line(line));
+                                }
+
+                                rows
+                            }),
+                        )
+                        .track_scroll(&scroll_handle)
+                        .with_horizontal_sizing_behavior(
+                            ListHorizontalSizingBehavior::Unconstrained,
+                        )
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0()
+                        .font_family("Menlo")
+                        .text_xs(),
+                    ),
+            )
+        })
+        .when(
+            !is_loading && run.is_some() && error.is_none() && log_chunk.is_none(),
+            |element| {
+                element.child(
+                    div()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(rgb(0x242a31))
+                        .bg(rgb(0x0c0f12))
+                        .p_3()
+                        .text_color(rgb(0x9aa4b2))
+                        .child("Press l or load logs to fetch the workflow log output"),
+                )
+            },
+        )
+}
+
+fn render_workflow_job(job: &WorkflowJob) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .rounded_sm()
+        .border_1()
+        .border_color(rgb(0x242a31))
+        .bg(rgb(0x0c0f12))
+        .px_3()
+        .py_2()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .child(job.name.clone())
+                .child(render_workflow_conclusion(job.conclusion, job.status)),
+        )
+        .children(job.steps.iter().map(render_workflow_step))
+}
+
+fn render_workflow_step(step: &WorkflowStep) -> impl IntoElement {
+    let (label, color) = workflow_conclusion_label(step.conclusion, step.status);
+
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .pl_3()
+        .text_xs()
+        .text_color(rgb(0x9aa4b2))
+        .child(format!("{}. {}", step.number, step.name))
+        .child(div().text_color(color).child(label))
+}
+
+fn render_log_line(line: &LogLine) -> AnyElement {
+    let color = match line.severity {
+        LogSeverity::Trace => rgb(0x64748b),
+        LogSeverity::Info => rgb(0xcbd5e1),
+        LogSeverity::Warning => rgb(0xfbbf24),
+        LogSeverity::Error => rgb(0xf87171),
+    };
+
+    div()
+        .h(px(22.))
+        .flex()
+        .items_center()
+        .whitespace_nowrap()
+        .text_color(color)
+        .child(
+            div()
+                .w(px(64.))
+                .flex_none()
+                .pr_3()
+                .text_right()
+                .text_color(rgb(0x64748b))
+                .child(line.number.to_string()),
+        )
+        .child(div().flex_none().child(line.text.clone()))
+        .into_any_element()
 }
 
 fn fake_pull_requests() -> Vec<PullRequest> {

@@ -12,6 +12,7 @@ use crate::{GitHubError, Result};
 pub trait GitHubTransport: Send + Sync {
     async fn rest_get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value>;
     async fn rest_post(&self, path: &str, body: Value) -> Result<Value>;
+    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value>;
 }
 
@@ -56,6 +57,19 @@ impl GitHubTransport for GhCliTransport {
         run_json(args, Some(body.to_string())).await
     }
 
+    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+        let args = vec![
+            "run".to_string(),
+            "view".to_string(),
+            run_id.to_string(),
+            "--repo".to_string(),
+            format!("{owner}/{repo}"),
+            "--log".to_string(),
+        ];
+
+        run_text(args).await
+    }
+
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value> {
         let mut args = vec![
             "api".to_string(),
@@ -98,6 +112,22 @@ async fn run_status(args: Vec<String>) -> Result<()> {
 
 async fn run_json(args: Vec<String>, input: Option<String>) -> Result<Value> {
     smol::unblock(move || run_json_blocking(args, input)).await
+}
+
+async fn run_text(args: Vec<String>) -> Result<String> {
+    smol::unblock(move || {
+        let output = Command::new("gh")
+            .args(args)
+            .output()
+            .map_err(map_spawn_error)?;
+
+        if !output.status.success() {
+            return Err(map_failed_status(&output.stderr));
+        }
+
+        String::from_utf8(output.stdout).map_err(|error| GitHubError::Mapping(error.to_string()))
+    })
+    .await
 }
 
 fn run_json_blocking(args: Vec<String>, input: Option<String>) -> Result<Value> {

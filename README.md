@@ -16,6 +16,7 @@ The first milestone is a fast native shell with fake data:
 - Keyboard commands for changed-file navigation, hunk navigation, copying the active path, and opening the GitHub files view.
 - Check runs and workflow runs for the selected PR head SHA.
 - Workflow action controls for dispatching a workflow and rerunning failed jobs through GitHub CLI.
+- Workflow jobs, steps, and virtualized log output for the selected workflow run.
 
 ## Workspace
 

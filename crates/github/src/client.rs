@@ -1,4 +1,4 @@
-use harbor_domain::{CheckRun, DiffFile, PullRequest, RepoId, WorkflowRun};
+use harbor_domain::{CheckRun, DiffFile, PullRequest, RepoId, WorkflowJob, WorkflowRun};
 use serde_json::json;
 
 use crate::{GitHubTransport, Result, dto};
@@ -96,6 +96,25 @@ where
         dto::workflow_runs_from_value(response)
     }
 
+    pub async fn list_workflow_jobs_for_run(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+    ) -> Result<Vec<WorkflowJob>> {
+        let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/jobs");
+        let response = self
+            .transport
+            .rest_get(&path, &[("per_page", "100")])
+            .await?;
+
+        dto::workflow_jobs_from_value(response)
+    }
+
+    pub async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+        self.transport.workflow_run_log(owner, repo, run_id).await
+    }
+
     pub async fn rerun_workflow_run(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
         let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/rerun");
         self.transport.rest_post(&path, json!({})).await?;
@@ -139,6 +158,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct RecordingTransport {
         posts: Arc<Mutex<Vec<(String, Value)>>>,
+        log: Arc<Mutex<Option<String>>>,
     }
 
     #[async_trait]
@@ -155,6 +175,12 @@ mod tests {
                 .expect("posts mutex should not be poisoned")
                 .push((path.to_string(), body));
             Ok(Value::Null)
+        }
+
+        async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+            let log = format!("{owner}/{repo}#{run_id}");
+            *self.log.lock().expect("log mutex should not be poisoned") = Some(log.clone());
+            Ok(log)
         }
 
         async fn graphql(&self, _: &str, _: Value) -> Result<Value> {
@@ -197,5 +223,23 @@ mod tests {
         assert_eq!(posts.len(), 1);
         assert_eq!(posts[0].0, "/repos/acme/app/actions/workflows/9/dispatches");
         assert_eq!(posts[0].1, json!({ "ref": "feature/build" }));
+    }
+
+    #[test]
+    fn delegates_workflow_run_log() {
+        let transport = RecordingTransport::default();
+        let client = GitHubClient::new(transport.clone());
+
+        let log = smol::block_on(client.workflow_run_log("acme", "app", 42)).unwrap();
+
+        assert_eq!(log, "acme/app#42");
+        assert_eq!(
+            transport
+                .log
+                .lock()
+                .expect("log mutex should not be poisoned")
+                .as_deref(),
+            Some("acme/app#42")
+        );
     }
 }

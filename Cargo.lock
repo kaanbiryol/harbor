@@ -2454,6 +2454,7 @@ dependencies = [
  "gpui-component",
  "harbor-domain",
  "harbor-github",
+ "harbor-logs",
 ]
 
 [[package]]
