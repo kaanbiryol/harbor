@@ -1,0 +1,247 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct RepoId {
+    pub owner: String,
+    pub name: String,
+}
+
+impl RepoId {
+    pub fn new(owner: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            owner: owner.into(),
+            name: name.into(),
+        }
+    }
+
+    pub fn full_name(&self) -> String {
+        format!("{}/{}", self.owner, self.name)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Repository {
+    pub id: RepoId,
+    pub default_branch: String,
+    pub private: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Label {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum PullRequestState {
+    Open,
+    Closed,
+    Merged,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ReviewDecision {
+    Approved,
+    ChangesRequested,
+    ReviewRequired,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum MergeState {
+    Clean,
+    Dirty,
+    Blocked,
+    Behind,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ChecksSummary {
+    pub total: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub pending: usize,
+    pub skipped: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequest {
+    pub repo: RepoId,
+    pub number: u64,
+    pub title: String,
+    pub body: Option<String>,
+    pub author: String,
+    pub url: String,
+    pub state: PullRequestState,
+    pub is_draft: bool,
+    pub head_ref: String,
+    pub base_ref: String,
+    pub head_sha: String,
+    pub review_decision: Option<ReviewDecision>,
+    pub merge_state: Option<MergeState>,
+    pub labels: Vec<Label>,
+    pub checks_summary: ChecksSummary,
+    pub unresolved_threads: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum FileStatus {
+    Added,
+    Modified,
+    Removed,
+    Renamed,
+    Copied,
+    Changed,
+    Unchanged,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DiffFile {
+    pub path: String,
+    pub previous_path: Option<String>,
+    pub status: FileStatus,
+    pub additions: u32,
+    pub deletions: u32,
+    pub changes: u32,
+    pub patch: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ReviewThreadState {
+    Resolved,
+    Unresolved,
+    Outdated,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ReviewSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewCommentPosition {
+    pub path: String,
+    pub line: Option<u32>,
+    pub original_line: Option<u32>,
+    pub side: ReviewSide,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewComment {
+    pub id: String,
+    pub author: String,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub position: Option<ReviewCommentPosition>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewThread {
+    pub id: String,
+    pub path: String,
+    pub state: ReviewThreadState,
+    pub comments: Vec<ReviewComment>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum PullRequestReviewState {
+    Pending,
+    Commented,
+    Approved,
+    ChangesRequested,
+    Dismissed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestReview {
+    pub id: String,
+    pub author: String,
+    pub state: PullRequestReviewState,
+    pub body: Option<String>,
+    pub submitted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CheckStatus {
+    Queued,
+    InProgress,
+    Completed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CheckConclusion {
+    Success,
+    Failure,
+    Neutral,
+    Cancelled,
+    Skipped,
+    TimedOut,
+    ActionRequired,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CheckRun {
+    pub id: Option<u64>,
+    pub name: String,
+    pub status: CheckStatus,
+    pub conclusion: Option<CheckConclusion>,
+    pub details_url: Option<String>,
+    pub html_url: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum WorkflowStatus {
+    Queued,
+    InProgress,
+    Completed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum WorkflowConclusion {
+    Success,
+    Failure,
+    Cancelled,
+    Skipped,
+    TimedOut,
+    ActionRequired,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowRun {
+    pub id: u64,
+    pub name: String,
+    pub workflow_name: Option<String>,
+    pub status: WorkflowStatus,
+    pub conclusion: Option<WorkflowConclusion>,
+    pub head_branch: String,
+    pub head_sha: String,
+    pub event: String,
+    pub url: String,
+    pub html_url: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowJob {
+    pub id: u64,
+    pub name: String,
+    pub status: WorkflowStatus,
+    pub conclusion: Option<WorkflowConclusion>,
+    pub steps: Vec<WorkflowStep>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowStep {
+    pub name: String,
+    pub number: u32,
+    pub status: WorkflowStatus,
+    pub conclusion: Option<WorkflowConclusion>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
