@@ -5,7 +5,7 @@ use gpui::{
     ListHorizontalSizingBehavior, Render, ScrollStrategy, UniformListScrollHandle, Window, actions,
     div, prelude::*, px, rgb, uniform_list,
 };
-use gpui_component::{Sizable, button::Button};
+use gpui_component::{Disableable, Sizable, button::Button};
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
     PullRequest, PullRequestState, RepoId, ReviewDecision, WorkflowConclusion, WorkflowRun,
@@ -108,6 +108,64 @@ struct CommandSpec {
     title: &'static str,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum WorkflowAction {
+    DispatchBuild,
+    RerunFailedJobs,
+}
+
+#[derive(Clone, Debug)]
+enum WorkflowActionRequest {
+    DispatchBuild {
+        owner: String,
+        repo: String,
+        workflow_id: u64,
+        git_ref: String,
+        workflow_name: String,
+    },
+    RerunFailedJobs {
+        owner: String,
+        repo: String,
+        run_id: u64,
+        workflow_name: String,
+    },
+}
+
+impl WorkflowActionRequest {
+    fn start_status(&self) -> String {
+        match self {
+            Self::DispatchBuild {
+                workflow_name,
+                git_ref,
+                ..
+            } => format!("Dispatching {workflow_name} on {git_ref}"),
+            Self::RerunFailedJobs { workflow_name, .. } => {
+                format!("Requesting failed job rerun for {workflow_name}")
+            }
+        }
+    }
+
+    fn success_status(&self) -> String {
+        match self {
+            Self::DispatchBuild {
+                workflow_name,
+                git_ref,
+                ..
+            } => format!("Dispatched {workflow_name} on {git_ref}"),
+            Self::RerunFailedJobs { workflow_name, .. } => {
+                format!("Requested failed job rerun for {workflow_name}")
+            }
+        }
+    }
+
+    fn failure_label(&self) -> &'static str {
+        match self {
+            Self::DispatchBuild { .. } => "dispatch workflow",
+            Self::RerunFailedJobs { .. } => "rerun failed jobs",
+        }
+    }
+}
+
 const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
         shortcut: "cmd+k",
@@ -180,11 +238,13 @@ pub struct AppView {
     is_loading_files: bool,
     is_loading_checks: bool,
     is_loading_workflows: bool,
+    is_running_action: bool,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
     checks_error: Option<String>,
     workflows_error: Option<String>,
+    action_error: Option<String>,
     did_focus: bool,
     status: String,
 }
@@ -231,11 +291,13 @@ impl AppView {
             is_loading_files: false,
             is_loading_checks: false,
             is_loading_workflows: false,
+            is_running_action: false,
             load_error: None,
             details_error: None,
             files_error: None,
             checks_error: None,
             workflows_error: None,
+            action_error: None,
             did_focus: false,
             status,
         };
@@ -432,6 +494,7 @@ impl AppView {
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
+        self.action_error = None;
         self.status = format!("Loading open pull requests from {}", repo.full_name());
 
         let owner = repo.owner.clone();
@@ -480,6 +543,7 @@ impl AppView {
                         view.is_loading_files = false;
                         view.is_loading_checks = false;
                         view.is_loading_workflows = false;
+                        view.is_running_action = false;
                         view.load_error = Some(error.to_string());
                         view.status = format!("Failed to load pull requests from {owner}/{name}");
                     }
@@ -511,6 +575,7 @@ impl AppView {
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
+        self.action_error = None;
         self.files.clear();
         self.diffs.clear();
         self.check_runs.clear();
@@ -721,6 +786,134 @@ impl AppView {
         cx.notify();
     }
 
+    fn workflow_action_request(
+        &self,
+        action: WorkflowAction,
+    ) -> std::result::Result<WorkflowActionRequest, String> {
+        let Some(repo) = self.configured_repo.clone() else {
+            return Err(
+                "Workflow actions require HARBOR_REPO=owner/repo and GitHub CLI auth".into(),
+            );
+        };
+
+        match action {
+            WorkflowAction::DispatchBuild => {
+                let Some(pr) = self.selected_pull_request() else {
+                    return Err("Select a pull request before dispatching a workflow".into());
+                };
+                let Some(run) = self
+                    .workflow_runs
+                    .iter()
+                    .find(|run| run.workflow_id.is_some())
+                else {
+                    return Err(
+                        "No workflow id is available for the selected pull request head".into(),
+                    );
+                };
+                let Some(workflow_id) = run.workflow_id else {
+                    return Err(
+                        "No workflow id is available for the selected pull request head".into(),
+                    );
+                };
+
+                Ok(WorkflowActionRequest::DispatchBuild {
+                    owner: repo.owner,
+                    repo: repo.name,
+                    workflow_id,
+                    git_ref: pr.head_ref.clone(),
+                    workflow_name: workflow_run_label(run),
+                })
+            }
+            WorkflowAction::RerunFailedJobs => {
+                let Some(run) = self
+                    .workflow_runs
+                    .iter()
+                    .find(|run| workflow_run_failed(run))
+                    .or_else(|| self.workflow_runs.first())
+                else {
+                    return Err(
+                        "No workflow run is available for the selected pull request head".into(),
+                    );
+                };
+
+                Ok(WorkflowActionRequest::RerunFailedJobs {
+                    owner: repo.owner,
+                    repo: repo.name,
+                    run_id: run.id,
+                    workflow_name: workflow_run_label(run),
+                })
+            }
+        }
+    }
+
+    fn run_workflow_action(&mut self, action: WorkflowAction, cx: &mut Context<Self>) {
+        self.active_tab = PanelTab::Actions;
+
+        if self.is_running_action {
+            self.status = "A workflow action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let request = match self.workflow_action_request(action) {
+            Ok(request) => request,
+            Err(message) => {
+                self.action_error = Some(message.clone());
+                self.status = message;
+                cx.notify();
+                return;
+            }
+        };
+
+        self.is_running_action = true;
+        self.action_error = None;
+        self.status = request.start_status();
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = match &request {
+                WorkflowActionRequest::DispatchBuild {
+                    owner,
+                    repo,
+                    workflow_id,
+                    git_ref,
+                    ..
+                } => {
+                    client
+                        .dispatch_workflow(owner, repo, *workflow_id, git_ref)
+                        .await
+                }
+                WorkflowActionRequest::RerunFailedJobs {
+                    owner,
+                    repo,
+                    run_id,
+                    ..
+                } => client.rerun_failed_jobs(owner, repo, *run_id).await,
+            };
+
+            _ = this.update(cx, move |view, cx| {
+                view.is_running_action = false;
+
+                match result {
+                    Ok(()) => {
+                        view.action_error = None;
+                        view.load_selected_pull_request(cx);
+                        view.status = request.success_status();
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to {}: {error}", request.failure_label());
+                        view.action_error = Some(message.clone());
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn refresh_selected(
         &mut self,
         _: &RefreshSelectedPullRequest,
@@ -767,11 +960,11 @@ impl AppView {
     }
 
     fn trigger_build(&mut self, _: &TriggerBuild, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_placeholder_status("Trigger build", cx);
+        self.run_workflow_action(WorkflowAction::DispatchBuild, cx);
     }
 
     fn rerun_failed(&mut self, _: &RerunFailedJobs, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_placeholder_status("Rerun failed jobs", cx);
+        self.run_workflow_action(WorkflowAction::RerunFailedJobs, cx);
     }
 
     fn filter_current_list(
@@ -1244,9 +1437,13 @@ impl AppView {
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
+                            pr,
                             &self.workflow_runs,
                             self.is_loading_workflows,
                             self.workflows_error.as_deref(),
+                            self.action_error.as_deref(),
+                            self.is_running_action,
+                            cx,
                         )
                         .into_any_element(),
                         PanelTab::Logs => render_logs_panel().into_any_element(),
@@ -1821,10 +2018,23 @@ fn render_check_conclusion(
 }
 
 fn render_actions_panel(
+    pr: Option<&PullRequest>,
     workflow_runs: &[WorkflowRun],
     is_loading: bool,
     error: Option<&str>,
+    action_error: Option<&str>,
+    is_running_action: bool,
+    cx: &mut Context<AppView>,
 ) -> impl IntoElement {
+    let rerun_target = workflow_runs
+        .iter()
+        .find(|run| workflow_run_failed(run))
+        .or_else(|| workflow_runs.first());
+    let dispatch_target = workflow_runs.iter().find(|run| run.workflow_id.is_some());
+    let can_rerun = !is_loading && error.is_none() && rerun_target.is_some() && !is_running_action;
+    let can_dispatch =
+        !is_loading && error.is_none() && dispatch_target.is_some() && !is_running_action;
+
     div()
         .id("actions-panel-scroll")
         .flex()
@@ -1834,6 +2044,65 @@ fn render_actions_panel(
         .overflow_y_scroll()
         .gap_2()
         .child("Workflow runs")
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Button::new("trigger-build")
+                        .label("trigger build")
+                        .small()
+                        .outline()
+                        .loading(is_running_action)
+                        .disabled(!can_dispatch)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
+                        })),
+                )
+                .child(
+                    Button::new("rerun-failed-jobs")
+                        .label("rerun failed")
+                        .small()
+                        .outline()
+                        .loading(is_running_action)
+                        .disabled(!can_rerun)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.run_workflow_action(WorkflowAction::RerunFailedJobs, cx);
+                        })),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0x9aa4b2))
+                        .child("b / shift+r"),
+                ),
+        )
+        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+                    "dispatch target: {} on {}",
+                    dispatch_target
+                        .map(workflow_run_label)
+                        .unwrap_or_else(|| "none".to_string()),
+                    pr.map(|pr| pr.head_ref.as_str()).unwrap_or("no selected branch")
+                )))
+        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+                    "rerun target: {}",
+                    rerun_target
+                        .map(workflow_run_label)
+                        .unwrap_or_else(|| "none".to_string())
+                )))
+        .when_some(action_error.map(str::to_string), |element, error| {
+            element.child(
+                div()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(0x7f1d1d))
+                    .bg(rgb(0x2a1212))
+                    .p_3()
+                    .text_color(rgb(0xf87171))
+                    .child(error),
+            )
+        })
         .when(is_loading, |element| {
             element.child(
                 div()
@@ -1874,13 +2143,28 @@ fn render_actions_panel(
             },
         )
         .children(workflow_runs.iter().map(render_workflow_run))
-        .child(
-            div()
-                .pt_2()
-                .text_xs()
-                .text_color(rgb(0x9aa4b2))
-                .child("Rerun and workflow_dispatch commands come in the next Actions milestone."),
+}
+
+fn workflow_run_label(run: &WorkflowRun) -> String {
+    run.workflow_name
+        .as_deref()
+        .unwrap_or(run.name.as_str())
+        .to_string()
+}
+
+fn workflow_run_failed(run: &WorkflowRun) -> bool {
+    matches!(
+        (run.status, run.conclusion),
+        (
+            WorkflowStatus::Completed,
+            Some(
+                WorkflowConclusion::Failure
+                    | WorkflowConclusion::Cancelled
+                    | WorkflowConclusion::TimedOut
+                    | WorkflowConclusion::ActionRequired
+            )
         )
+    )
 }
 
 fn render_workflow_run(run: &WorkflowRun) -> impl IntoElement {

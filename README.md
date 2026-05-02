@@ -15,6 +15,7 @@ The first milestone is a fast native shell with fake data:
 - Structured unified diff rendering with hunk headers, old/new line numbers, and added/removed/context styling.
 - Keyboard commands for changed-file navigation, hunk navigation, copying the active path, and opening the GitHub files view.
 - Check runs and workflow runs for the selected PR head SHA.
+- Workflow action controls for dispatching a workflow and rerunning failed jobs through GitHub CLI.
 
 ## Workspace
 

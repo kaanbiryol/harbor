@@ -214,6 +214,7 @@ pub enum WorkflowConclusion {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowRun {
     pub id: u64,
+    pub workflow_id: Option<u64>,
     pub name: String,
     pub workflow_name: Option<String>,
     pub status: WorkflowStatus,

@@ -91,6 +91,8 @@ struct ApiWorkflowRunsResponse {
 #[derive(Debug, Deserialize)]
 struct ApiWorkflowRun {
     id: u64,
+    #[serde(default)]
+    workflow_id: Option<u64>,
     name: String,
     #[serde(default)]
     display_title: Option<String>,
@@ -221,6 +223,7 @@ impl ApiWorkflowRun {
     fn into_domain(self) -> WorkflowRun {
         WorkflowRun {
             id: self.id,
+            workflow_id: self.workflow_id,
             name: self.display_title.unwrap_or_else(|| self.name.clone()),
             workflow_name: Some(self.name),
             status: map_workflow_status(&self.status),
@@ -452,6 +455,7 @@ mod tests {
             "workflow_runs": [
                 {
                     "id": 2001,
+                    "workflow_id": 901,
                     "name": "CI",
                     "display_title": "run tests",
                     "status": "completed",
@@ -470,6 +474,7 @@ mod tests {
         let workflow_runs = workflow_runs_from_value(value).unwrap();
 
         assert_eq!(workflow_runs.len(), 1);
+        assert_eq!(workflow_runs[0].workflow_id, Some(901));
         assert_eq!(workflow_runs[0].name, "run tests");
         assert_eq!(workflow_runs[0].workflow_name.as_deref(), Some("CI"));
         assert_eq!(workflow_runs[0].status, WorkflowStatus::Completed);
