@@ -115,6 +115,13 @@ enum WorkflowAction {
     RerunFailedJobs,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum PullRequestAction {
+    Approve,
+    RequestChanges,
+    Merge,
+}
+
 #[derive(Clone, Debug)]
 enum WorkflowActionRequest {
     DispatchBuild {
@@ -166,6 +173,67 @@ impl WorkflowActionRequest {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+enum PullRequestActionRequest {
+    Approve {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    RequestChanges {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: String,
+    },
+    Merge {
+        owner: String,
+        repo: String,
+        number: u64,
+        head_sha: String,
+    },
+}
+
+impl PullRequestActionRequest {
+    fn number(&self) -> u64 {
+        match self {
+            Self::Approve { number, .. }
+            | Self::RequestChanges { number, .. }
+            | Self::Merge { number, .. } => *number,
+        }
+    }
+
+    fn start_status(&self) -> String {
+        match self {
+            Self::Approve { .. } => format!("Approving PR #{}", self.number()),
+            Self::RequestChanges { .. } => {
+                format!("Requesting changes on PR #{}", self.number())
+            }
+            Self::Merge { .. } => format!("Merging PR #{}", self.number()),
+        }
+    }
+
+    fn success_status(&self) -> String {
+        match self {
+            Self::Approve { .. } => format!("Approved PR #{}", self.number()),
+            Self::RequestChanges { .. } => {
+                format!("Requested changes on PR #{}", self.number())
+            }
+            Self::Merge { .. } => format!("Merged PR #{}", self.number()),
+        }
+    }
+
+    fn failure_label(&self) -> &'static str {
+        match self {
+            Self::Approve { .. } => "approve pull request",
+            Self::RequestChanges { .. } => "request changes",
+            Self::Merge { .. } => "merge pull request",
+        }
+    }
+}
+
+const DEFAULT_REQUEST_CHANGES_BODY: &str = "Changes requested from Harbor.";
 
 const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
@@ -244,6 +312,7 @@ pub struct AppView {
     is_loading_workflows: bool,
     is_loading_logs: bool,
     is_running_action: bool,
+    is_running_pr_action: bool,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
@@ -251,6 +320,7 @@ pub struct AppView {
     workflows_error: Option<String>,
     logs_error: Option<String>,
     action_error: Option<String>,
+    pr_action_error: Option<String>,
     did_focus: bool,
     status: String,
 }
@@ -302,6 +372,7 @@ impl AppView {
             is_loading_workflows: false,
             is_loading_logs: false,
             is_running_action: false,
+            is_running_pr_action: false,
             load_error: None,
             details_error: None,
             files_error: None,
@@ -309,6 +380,7 @@ impl AppView {
             workflows_error: None,
             logs_error: None,
             action_error: None,
+            pr_action_error: None,
             did_focus: false,
             status,
         };
@@ -365,6 +437,7 @@ impl AppView {
         self.workflow_jobs.clear();
         self.log_chunk = None;
         self.logs_error = None;
+        self.pr_action_error = None;
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -517,6 +590,7 @@ impl AppView {
         self.workflows_error = None;
         self.logs_error = None;
         self.action_error = None;
+        self.pr_action_error = None;
         self.status = format!("Loading open pull requests from {}", repo.full_name());
 
         let owner = repo.owner.clone();
@@ -572,6 +646,7 @@ impl AppView {
                         view.is_loading_workflows = false;
                         view.is_loading_logs = false;
                         view.is_running_action = false;
+                        view.is_running_pr_action = false;
                         view.load_error = Some(error.to_string());
                         view.status = format!("Failed to load pull requests from {owner}/{name}");
                     }
@@ -605,6 +680,7 @@ impl AppView {
         self.workflows_error = None;
         self.logs_error = None;
         self.action_error = None;
+        self.pr_action_error = None;
         self.files.clear();
         self.diffs.clear();
         self.check_runs.clear();
@@ -1035,6 +1111,143 @@ impl AppView {
         .detach();
     }
 
+    fn pull_request_action_request(
+        &self,
+        action: PullRequestAction,
+    ) -> std::result::Result<PullRequestActionRequest, String> {
+        let Some(repo) = self.configured_repo.clone() else {
+            return Err(
+                "Pull request actions require HARBOR_REPO=owner/repo and GitHub CLI auth".into(),
+            );
+        };
+        let Some(pr) = self.selected_pull_request() else {
+            return Err("Select a pull request before running a pull request action".into());
+        };
+
+        match action {
+            PullRequestAction::Approve => {
+                if let Some(blocker) = review_action_blocker(pr) {
+                    return Err(blocker);
+                }
+
+                Ok(PullRequestActionRequest::Approve {
+                    owner: repo.owner,
+                    repo: repo.name,
+                    number: pr.number,
+                })
+            }
+            PullRequestAction::RequestChanges => {
+                if let Some(blocker) = review_action_blocker(pr) {
+                    return Err(blocker);
+                }
+
+                Ok(PullRequestActionRequest::RequestChanges {
+                    owner: repo.owner,
+                    repo: repo.name,
+                    number: pr.number,
+                    body: DEFAULT_REQUEST_CHANGES_BODY.to_string(),
+                })
+            }
+            PullRequestAction::Merge => {
+                if let Some(blocker) = merge_blocker(pr) {
+                    return Err(blocker);
+                }
+
+                Ok(PullRequestActionRequest::Merge {
+                    owner: repo.owner,
+                    repo: repo.name,
+                    number: pr.number,
+                    head_sha: pr.head_sha.clone(),
+                })
+            }
+        }
+    }
+
+    fn run_pull_request_action(&mut self, action: PullRequestAction, cx: &mut Context<Self>) {
+        if self.is_running_pr_action {
+            self.status = "A pull request action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let request = match self.pull_request_action_request(action) {
+            Ok(request) => request,
+            Err(message) => {
+                self.pr_action_error = Some(message.clone());
+                self.status = message;
+                cx.notify();
+                return;
+            }
+        };
+
+        self.is_running_pr_action = true;
+        self.pr_action_error = None;
+        self.status = request.start_status();
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = match &request {
+                PullRequestActionRequest::Approve {
+                    owner,
+                    repo,
+                    number,
+                } => client.approve_pull_request(owner, repo, *number).await,
+                PullRequestActionRequest::RequestChanges {
+                    owner,
+                    repo,
+                    number,
+                    body,
+                } => {
+                    client
+                        .request_pull_request_changes(owner, repo, *number, body)
+                        .await
+                }
+                PullRequestActionRequest::Merge {
+                    owner,
+                    repo,
+                    number,
+                    head_sha,
+                } => {
+                    client
+                        .merge_pull_request(owner, repo, *number, head_sha)
+                        .await
+                }
+            };
+
+            _ = this.update(cx, move |view, cx| {
+                view.is_running_pr_action = false;
+
+                match result {
+                    Ok(()) => {
+                        let status = request.success_status();
+                        view.pr_action_error = None;
+                        match &request {
+                            PullRequestActionRequest::Merge { .. } => {
+                                if let Some(repo) = view.configured_repo.clone() {
+                                    view.load_pull_requests(repo, cx);
+                                }
+                            }
+                            PullRequestActionRequest::Approve { .. }
+                            | PullRequestActionRequest::RequestChanges { .. } => {
+                                view.load_selected_pull_request(cx);
+                            }
+                        }
+                        view.status = status;
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to {}: {error}", request.failure_label());
+                        view.pr_action_error = Some(message.clone());
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn refresh_selected(
         &mut self,
         _: &RefreshSelectedPullRequest,
@@ -1060,19 +1273,29 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_placeholder_status("Open in browser", cx);
+        let Some(pr) = self.selected_pull_request() else {
+            self.status = "No pull request selected".to_string();
+            cx.notify();
+            return;
+        };
+
+        let url = pr.url.clone();
+        let number = pr.number;
+        cx.open_url(&url);
+        self.status = format!("Opened PR #{number} in browser");
+        cx.notify();
     }
 
     fn approve_pr(&mut self, _: &ApprovePullRequest, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_placeholder_status("Approve", cx);
+        self.run_pull_request_action(PullRequestAction::Approve, cx);
     }
 
     fn request_changes(&mut self, _: &RequestChanges, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_placeholder_status("Request changes", cx);
+        self.run_pull_request_action(PullRequestAction::RequestChanges, cx);
     }
 
     fn merge_pr(&mut self, _: &MergePullRequest, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_placeholder_status("Merge", cx);
+        self.run_pull_request_action(PullRequestAction::Merge, cx);
     }
 
     fn open_logs(&mut self, _: &OpenLogs, _: &mut Window, cx: &mut Context<Self>) {
@@ -1365,6 +1588,13 @@ impl AppView {
                 .into_any_element();
         };
 
+        let review_action_disabled = self.configured_repo.is_none()
+            || self.is_running_pr_action
+            || review_action_blocker(pr).is_some();
+        let merge_action_disabled = self.configured_repo.is_none()
+            || self.is_running_pr_action
+            || merge_blocker(pr).is_some();
+
         div()
             .w(px(360.))
             .flex()
@@ -1423,7 +1653,62 @@ impl AppView {
                                     .text_color(rgb(0xfbbf24))
                                     .child(format!("{} unresolved", pr.unresolved_threads)),
                             ),
-                    ),
+                    )
+                    .child(
+                        div()
+                            .pt_3()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Button::new("approve-pr")
+                                    .label("approve")
+                                    .small()
+                                    .outline()
+                                    .loading(self.is_running_pr_action)
+                                    .disabled(review_action_disabled)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.run_pull_request_action(
+                                            PullRequestAction::Approve,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new("request-pr-changes")
+                                    .label("changes")
+                                    .small()
+                                    .outline()
+                                    .loading(self.is_running_pr_action)
+                                    .disabled(review_action_disabled)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.run_pull_request_action(
+                                            PullRequestAction::RequestChanges,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new("merge-pr")
+                                    .label("merge")
+                                    .small()
+                                    .outline()
+                                    .loading(self.is_running_pr_action)
+                                    .disabled(merge_action_disabled)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.run_pull_request_action(PullRequestAction::Merge, cx);
+                                    })),
+                            ),
+                    )
+                    .when_some(self.pr_action_error.clone(), |element, error| {
+                        element.child(
+                            div()
+                                .pt_2()
+                                .text_xs()
+                                .text_color(rgb(0xf87171))
+                                .child(error),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -1622,6 +1907,64 @@ fn checks_summary_from_runs(check_runs: &[CheckRun]) -> ChecksSummary {
     }
 
     summary
+}
+
+fn review_action_blocker(pr: &PullRequest) -> Option<String> {
+    if pr.state != PullRequestState::Open {
+        Some(format!("PR #{} is not open", pr.number))
+    } else {
+        None
+    }
+}
+
+fn merge_blocker(pr: &PullRequest) -> Option<String> {
+    if pr.state != PullRequestState::Open {
+        return Some(format!("PR #{} is not open", pr.number));
+    }
+
+    if pr.is_draft {
+        return Some(format!("PR #{} is still a draft", pr.number));
+    }
+
+    if pr.head_sha.is_empty() {
+        return Some(format!("PR #{} is missing a head SHA", pr.number));
+    }
+
+    match pr.merge_state {
+        Some(MergeState::Clean) => {}
+        Some(MergeState::Dirty) => {
+            return Some(format!("PR #{} has merge conflicts", pr.number));
+        }
+        Some(MergeState::Blocked) => {
+            return Some(format!("PR #{} is blocked by repository rules", pr.number));
+        }
+        Some(MergeState::Behind) => {
+            return Some(format!("PR #{} is behind the base branch", pr.number));
+        }
+        Some(MergeState::Unknown) | None => {
+            return Some(format!(
+                "PR #{} is not confirmed mergeable by GitHub",
+                pr.number
+            ));
+        }
+    }
+
+    if pr.checks_summary.failed > 0 {
+        return Some(format!("PR #{} still has failing checks", pr.number));
+    }
+
+    if pr.checks_summary.pending > 0 {
+        return Some(format!("PR #{} still has pending checks", pr.number));
+    }
+
+    if pr.unresolved_threads > 0 {
+        return Some(format!(
+            "PR #{} still has {} unresolved review threads",
+            pr.number, pr.unresolved_threads
+        ));
+    }
+
+    None
 }
 
 fn render_review_decision(decision: Option<ReviewDecision>) -> impl IntoElement {
@@ -2724,9 +3067,12 @@ fn fake_files() -> Vec<DiffFile> {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{CheckConclusion, CheckRun, CheckStatus};
+    use harbor_domain::{
+        CheckConclusion, CheckRun, CheckStatus, ChecksSummary, MergeState, PullRequest,
+        PullRequestState, RepoId,
+    };
 
-    use super::{checks_summary_from_runs, parse_repo_id};
+    use super::{checks_summary_from_runs, merge_blocker, parse_repo_id, review_action_blocker};
 
     #[test]
     fn parses_owner_and_repo() {
@@ -2763,6 +3109,35 @@ mod tests {
         assert_eq!(summary.pending, 1);
     }
 
+    #[test]
+    fn allows_review_actions_for_open_pull_requests() {
+        assert_eq!(review_action_blocker(&pull_request()), None);
+    }
+
+    #[test]
+    fn blocks_merge_until_pull_request_is_ready() {
+        let mut pr = pull_request();
+        pr.checks_summary.pending = 1;
+
+        assert_eq!(
+            merge_blocker(&pr).as_deref(),
+            Some("PR #7 still has pending checks")
+        );
+
+        pr.checks_summary.pending = 0;
+        pr.unresolved_threads = 2;
+
+        assert_eq!(
+            merge_blocker(&pr).as_deref(),
+            Some("PR #7 still has 2 unresolved review threads")
+        );
+    }
+
+    #[test]
+    fn allows_clean_pull_request_merge() {
+        assert_eq!(merge_blocker(&pull_request()), None);
+    }
+
     fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckRun {
         CheckRun {
             id: None,
@@ -2773,6 +3148,33 @@ mod tests {
             html_url: None,
             started_at: None,
             completed_at: None,
+        }
+    }
+
+    fn pull_request() -> PullRequest {
+        PullRequest {
+            repo: RepoId::new("acme", "app"),
+            number: 7,
+            title: "Add feature".to_string(),
+            body: None,
+            author: "octocat".to_string(),
+            url: "https://github.com/acme/app/pull/7".to_string(),
+            state: PullRequestState::Open,
+            is_draft: false,
+            head_ref: "feature".to_string(),
+            base_ref: "main".to_string(),
+            head_sha: "abc123".to_string(),
+            review_decision: None,
+            merge_state: Some(MergeState::Clean),
+            labels: Vec::new(),
+            checks_summary: ChecksSummary {
+                total: 1,
+                passed: 1,
+                failed: 0,
+                pending: 0,
+                skipped: 0,
+            },
+            unresolved_threads: 0,
         }
     }
 }

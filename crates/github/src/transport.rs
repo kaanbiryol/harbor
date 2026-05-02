@@ -12,6 +12,7 @@ use crate::{GitHubError, Result};
 pub trait GitHubTransport: Send + Sync {
     async fn rest_get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value>;
     async fn rest_post(&self, path: &str, body: Value) -> Result<Value>;
+    async fn rest_put(&self, path: &str, body: Value) -> Result<Value>;
     async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value>;
 }
@@ -49,6 +50,19 @@ impl GitHubTransport for GhCliTransport {
             "api".to_string(),
             "--method".to_string(),
             "POST".to_string(),
+            path.to_string(),
+            "--input".to_string(),
+            "-".to_string(),
+        ];
+
+        run_json(args, Some(body.to_string())).await
+    }
+
+    async fn rest_put(&self, path: &str, body: Value) -> Result<Value> {
+        let args = vec![
+            "api".to_string(),
+            "--method".to_string(),
+            "PUT".to_string(),
             path.to_string(),
             "--input".to_string(),
             "-".to_string(),
