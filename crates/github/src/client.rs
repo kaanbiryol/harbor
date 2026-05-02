@@ -1,4 +1,4 @@
-use harbor_domain::{DiffFile, PullRequest, RepoId};
+use harbor_domain::{CheckRun, DiffFile, PullRequest, RepoId, WorkflowRun};
 
 use crate::{GitHubTransport, Result, dto};
 
@@ -63,5 +63,35 @@ where
             .await?;
 
         dto::diff_files_from_value(response)
+    }
+
+    pub async fn list_check_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+        git_ref: &str,
+    ) -> Result<Vec<CheckRun>> {
+        let path = format!("/repos/{owner}/{repo}/commits/{git_ref}/check-runs");
+        let response = self
+            .transport
+            .rest_get(&path, &[("per_page", "100")])
+            .await?;
+
+        dto::check_runs_from_value(response)
+    }
+
+    pub async fn list_workflow_runs_for_head(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        let path = format!("/repos/{owner}/{repo}/actions/runs");
+        let response = self
+            .transport
+            .rest_get(&path, &[("head_sha", head_sha), ("per_page", "50")])
+            .await?;
+
+        dto::workflow_runs_from_value(response)
     }
 }
