@@ -2417,7 +2417,10 @@ name = "harbor-github"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "harbor-domain",
+ "serde",
  "serde_json",
+ "smol",
  "thiserror 2.0.18",
 ]
 
@@ -2449,6 +2452,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "harbor-domain",
+ "harbor-github",
 ]
 
 [[package]]

@@ -9,6 +9,7 @@ The first milestone is a fast native shell with fake data:
 - Fake pull request inbox.
 - Fake PR details and changed files.
 - Placeholder diff, checks, actions, logs, and command palette panels.
+- Optional real open PR loading through GitHub CLI when `HARBOR_REPO=owner/repo` is set.
 
 ## Workspace
 
@@ -30,4 +31,10 @@ crates/
 cargo fmt --all
 cargo test --workspace
 cargo run -p harbor-app
+```
+
+To load real open pull requests from GitHub through `gh api`:
+
+```bash
+HARBOR_REPO=owner/repo cargo run -p harbor-app
 ```

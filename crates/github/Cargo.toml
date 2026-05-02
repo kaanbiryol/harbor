@@ -7,5 +7,8 @@ rust-version.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+harbor-domain = { path = "../domain" }
+serde.workspace = true
 serde_json.workspace = true
+smol.workspace = true
 thiserror.workspace = true
