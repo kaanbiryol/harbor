@@ -296,6 +296,66 @@ where
         Ok(())
     }
 
+    pub async fn add_review_thread_reply(
+        &self,
+        review_thread_node_id: &str,
+        pull_request_review_node_id: Option<&str>,
+        body: &str,
+    ) -> Result<()> {
+        let mut input = Map::new();
+        input.insert(
+            "pullRequestReviewThreadId".to_string(),
+            Value::String(review_thread_node_id.to_string()),
+        );
+        input.insert("body".to_string(), Value::String(body.to_string()));
+
+        if let Some(pull_request_review_node_id) = pull_request_review_node_id {
+            input.insert(
+                "pullRequestReviewId".to_string(),
+                Value::String(pull_request_review_node_id.to_string()),
+            );
+        }
+
+        self.transport
+            .graphql(
+                ADD_PULL_REQUEST_REVIEW_THREAD_REPLY_MUTATION,
+                json!({ "input": input }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn resolve_review_thread(&self, review_thread_node_id: &str) -> Result<()> {
+        self.transport
+            .graphql(
+                RESOLVE_REVIEW_THREAD_MUTATION,
+                json!({
+                    "input": {
+                        "threadId": review_thread_node_id,
+                    }
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn unresolve_review_thread(&self, review_thread_node_id: &str) -> Result<()> {
+        self.transport
+            .graphql(
+                UNRESOLVE_REVIEW_THREAD_MUTATION,
+                json!({
+                    "input": {
+                        "threadId": review_thread_node_id,
+                    }
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn submit_pull_request_review(
         &self,
         pull_request_review_node_id: &str,
@@ -457,6 +517,38 @@ mutation HarborAddPullRequestReviewThread($input: AddPullRequestReviewThreadInpu
   addPullRequestReviewThread(input: $input) {
     thread {
       id
+    }
+  }
+}
+"#;
+
+const ADD_PULL_REQUEST_REVIEW_THREAD_REPLY_MUTATION: &str = r#"
+mutation HarborAddPullRequestReviewThreadReply($input: AddPullRequestReviewThreadReplyInput!) {
+  addPullRequestReviewThreadReply(input: $input) {
+    comment {
+      id
+    }
+  }
+}
+"#;
+
+const RESOLVE_REVIEW_THREAD_MUTATION: &str = r#"
+mutation HarborResolveReviewThread($input: ResolveReviewThreadInput!) {
+  resolveReviewThread(input: $input) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+"#;
+
+const UNRESOLVE_REVIEW_THREAD_MUTATION: &str = r#"
+mutation HarborUnresolveReviewThread($input: UnresolveReviewThreadInput!) {
+  unresolveReviewThread(input: $input) {
+    thread {
+      id
+      isResolved
     }
   }
 }
@@ -1079,6 +1171,115 @@ mod tests {
                     "side": "RIGHT",
                     "startLine": 40,
                     "startSide": "RIGHT",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn adds_review_thread_reply_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "addPullRequestReviewThreadReply": {
+                    "comment": { "id": "comment-node" }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.add_review_thread_reply(
+            "thread-node",
+            Some("review-node"),
+            "Replying here.",
+        ))
+        .unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("addPullRequestReviewThreadReply"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "pullRequestReviewThreadId": "thread-node",
+                    "pullRequestReviewId": "review-node",
+                    "body": "Replying here.",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn resolves_review_thread_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "resolveReviewThread": {
+                    "thread": {
+                        "id": "thread-node",
+                        "isResolved": true
+                    }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.resolve_review_thread("thread-node")).unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("resolveReviewThread"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "threadId": "thread-node",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn unresolves_review_thread_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "unresolveReviewThread": {
+                    "thread": {
+                        "id": "thread-node",
+                        "isResolved": false
+                    }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.unresolve_review_thread("thread-node")).unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("unresolveReviewThread"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "threadId": "thread-node",
                 }
             })
         );

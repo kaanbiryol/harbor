@@ -2,6 +2,8 @@ use harbor_domain::{DiffFile, ReviewSide, ReviewThread};
 
 use crate::diff::{DiffLine, ParsedDiff};
 
+pub(crate) const REVIEW_THREAD_INLINE_ROWS: usize = 7;
+
 #[derive(Clone, Copy)]
 pub(crate) struct AnchoredReviewThread<'a> {
     anchor: ReviewThreadAnchor,
@@ -24,7 +26,8 @@ pub(crate) fn diff_row_count_with_reviews(
 
     for hunk in &diff.hunks {
         for line in &hunk.lines {
-            row_count += review_thread_count_for_line(&anchored_threads, line);
+            row_count +=
+                review_thread_count_for_line(&anchored_threads, line) * REVIEW_THREAD_INLINE_ROWS;
         }
     }
 
@@ -47,7 +50,8 @@ pub(crate) fn diff_hunk_row_index_with_reviews(
 
         row_index += 1;
         for line in &hunk.lines {
-            row_index += 1 + review_thread_count_for_line(&anchored_threads, line);
+            row_index += 1 + review_thread_count_for_line(&anchored_threads, line)
+                * REVIEW_THREAD_INLINE_ROWS;
         }
     }
 
@@ -220,7 +224,7 @@ mod tests {
         assert_eq!(review_thread_anchor_row(&diff, &file, &thread), Some(2));
         assert_eq!(
             diff_row_count_with_reviews(&diff, &file, &[thread]),
-            diff_row_count(&diff) + 1
+            diff_row_count(&diff) + REVIEW_THREAD_INLINE_ROWS
         );
     }
 
@@ -233,7 +237,7 @@ mod tests {
         assert_eq!(review_thread_anchor_row(&diff, &file, &thread), Some(1));
         assert_eq!(
             diff_row_count_with_reviews(&diff, &file, &[thread]),
-            diff_row_count(&diff) + 1
+            diff_row_count(&diff) + REVIEW_THREAD_INLINE_ROWS
         );
     }
 
@@ -270,7 +274,7 @@ mod tests {
 
         assert_eq!(
             diff_hunk_row_index_with_reviews(&diff, 1, &file, &[thread]),
-            Some(4)
+            Some(3 + REVIEW_THREAD_INLINE_ROWS)
         );
     }
 

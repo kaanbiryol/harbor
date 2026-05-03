@@ -11,11 +11,12 @@ use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide, ReviewThread, Revi
 
 use crate::diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff};
 use crate::diff_reviews::{
-    anchored_review_threads, diff_row_count_with_reviews, review_threads_for_line,
+    REVIEW_THREAD_INLINE_ROWS, anchored_review_threads, diff_row_count_with_reviews,
+    review_threads_for_line,
 };
 use crate::workspace::{
     AppView, PendingReviewSession, ReviewCommentSubmission, ReviewComposer, ReviewLineSelection,
-    ReviewLineTarget,
+    ReviewLineTarget, ReviewThreadUiError,
 };
 
 use super::review::{review_thread_state_label, single_line};
@@ -197,6 +198,17 @@ pub(crate) fn render_diff_panel(
                                     .is_empty(),
                                 view.is_submitting_review_comment,
                                 view.review_comment_error.as_deref(),
+                                view.review_thread_reply_thread_id.as_deref(),
+                                view.review_thread_reply_input.clone(),
+                                view.review_thread_reply_input
+                                    .read(_cx)
+                                    .value()
+                                    .trim()
+                                    .is_empty(),
+                                view.is_submitting_review_thread_reply,
+                                view.review_thread_reply_error.as_ref(),
+                                view.review_thread_action_thread_id.as_deref(),
+                                view.review_thread_action_error.as_ref(),
                                 view.active_hunk,
                                 line_number_width,
                                 view_entity.clone(),
@@ -249,6 +261,13 @@ fn render_diff_rows(
     review_comment_body_empty: bool,
     is_submitting_review_comment: bool,
     review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    review_thread_reply_input: Entity<InputState>,
+    review_thread_reply_body_empty: bool,
+    is_submitting_review_thread_reply: bool,
+    review_thread_reply_error: Option<&ReviewThreadUiError>,
+    review_thread_action_thread_id: Option<&str>,
+    review_thread_action_error: Option<&ReviewThreadUiError>,
     active_hunk: usize,
     line_number_width: f32,
     view_entity: Entity<AppView>,
@@ -359,16 +378,36 @@ fn render_diff_rows(
             }
 
             for thread in matching_threads {
-                if row_index >= range.end {
-                    break;
-                }
+                for thread_row in 0..REVIEW_THREAD_INLINE_ROWS {
+                    if row_index >= range.end {
+                        row_index += REVIEW_THREAD_INLINE_ROWS - thread_row;
+                        break;
+                    }
 
-                if row_in_range(row_index, &range) {
-                    rows.push(
-                        render_review_thread_inline(thread, line_number_width).into_any_element(),
-                    );
+                    if row_in_range(row_index, &range) {
+                        if thread_row == 0 {
+                            rows.push(
+                                render_review_thread_inline(
+                                    thread,
+                                    line_number_width,
+                                    active_review_thread_reply,
+                                    review_thread_reply_input.clone(),
+                                    review_thread_reply_body_empty,
+                                    is_submitting_review_thread_reply,
+                                    review_thread_reply_error,
+                                    review_thread_action_thread_id,
+                                    review_thread_action_error,
+                                    view_entity.clone(),
+                                )
+                                .into_any_element(),
+                            );
+                        } else {
+                            rows.push(render_review_composer_spacer().into_any_element());
+                        }
+                    }
+
+                    row_index += 1;
                 }
-                row_index += 1;
             }
         }
     }
@@ -701,7 +740,18 @@ fn render_review_composer_spacer() -> impl IntoElement {
     div().h(px(DIFF_ROW_HEIGHT)).w_full()
 }
 
-fn render_review_thread_inline(thread: &ReviewThread, line_number_width: f32) -> impl IntoElement {
+fn render_review_thread_inline(
+    thread: &ReviewThread,
+    line_number_width: f32,
+    active_review_thread_reply: Option<&str>,
+    review_thread_reply_input: Entity<InputState>,
+    reply_body_empty: bool,
+    is_submitting_reply: bool,
+    reply_error: Option<&ReviewThreadUiError>,
+    action_thread_id: Option<&str>,
+    action_error: Option<&ReviewThreadUiError>,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
     let (label, color) = review_thread_state_label(thread.state);
     let latest_comment = thread.comments.last();
     let preview = latest_comment
@@ -710,14 +760,30 @@ fn render_review_thread_inline(thread: &ReviewThread, line_number_width: f32) ->
     let author = latest_comment
         .map(|comment| comment.author.as_str())
         .unwrap_or("review");
+    let height = REVIEW_THREAD_INLINE_ROWS as f32 * DIFF_ROW_HEIGHT;
+    let active_reply = active_review_thread_reply == Some(thread.id.as_str());
+    let thread_action_running = action_thread_id == Some(thread.id.as_str());
+    let thread_reply_submitting = active_reply && is_submitting_reply;
+    let reply_disabled = reply_body_empty || thread_reply_submitting;
+    let is_resolved = thread.state == ReviewThreadState::Resolved;
+    let can_toggle_resolution = thread.state != ReviewThreadState::Outdated;
+    let reply_error = reply_error
+        .filter(|error| error.thread_id == thread.id)
+        .map(|error| error.message.clone());
+    let action_error = action_error
+        .filter(|error| error.thread_id == thread.id)
+        .map(|error| error.message.clone());
+    let thread_id = thread.id.clone();
+    let toggle_label = if is_resolved { "Reopen" } else { "Resolve" };
 
     div()
-        .h(px(DIFF_ROW_HEIGHT))
+        .h(px(height))
         .w_full()
         .flex()
-        .items_center()
-        .bg(rgb(0x171b20))
+        .items_start()
+        .bg(rgb(0x0c0f12))
         .text_color(rgb(0xcbd5e1))
+        .font_family(".SystemUIFont")
         .whitespace_nowrap()
         .child(render_line_number(None, line_number_width))
         .child(render_line_number(None, line_number_width))
@@ -731,22 +797,199 @@ fn render_review_thread_inline(thread: &ReviewThread, line_number_width: f32) ->
                 .min_w_0()
                 .flex_1()
                 .flex()
-                .items_center()
+                .flex_col()
                 .gap_2()
-                .child(div().flex_none().text_color(color).child(label))
+                .py_1()
+                .pr_3()
                 .child(
                     div()
-                        .flex_none()
-                        .text_color(rgb(0x64748b))
-                        .child(review_comment_count_label(thread.comments.len())),
-                )
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .text_color(rgb(0xcbd5e1))
-                        .child(format!("{author}: {preview}")),
+                        .w_full()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(rgb(0x2c3745))
+                        .bg(rgb(0x121923))
+                        .px_3()
+                        .py_2()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_medium()
+                                                .text_color(color)
+                                                .child(label),
+                                        )
+                                        .child(div().text_xs().text_color(rgb(0x64748b)).child(
+                                            review_comment_count_label(thread.comments.len()),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            Button::new(format!("reply-thread-{thread_id}"))
+                                                .label(if active_reply {
+                                                    "Replying"
+                                                } else {
+                                                    "Reply"
+                                                })
+                                                .xsmall()
+                                                .outline()
+                                                .disabled(is_submitting_reply)
+                                                .on_click({
+                                                    let view_entity = view_entity.clone();
+                                                    let thread_id = thread_id.clone();
+                                                    move |_, window, cx| {
+                                                        view_entity.update(cx, |view, cx| {
+                                                            view.open_review_thread_reply(
+                                                                thread_id.clone(),
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        });
+                                                    }
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new(format!("toggle-thread-{thread_id}"))
+                                                .label(toggle_label)
+                                                .xsmall()
+                                                .ghost()
+                                                .loading(thread_action_running)
+                                                .disabled(
+                                                    !can_toggle_resolution || thread_action_running,
+                                                )
+                                                .on_click({
+                                                    let view_entity = view_entity.clone();
+                                                    let thread_id = thread_id.clone();
+                                                    move |_, _, cx| {
+                                                        view_entity.update(cx, |view, cx| {
+                                                            view.set_review_thread_resolved(
+                                                                thread_id.clone(),
+                                                                !is_resolved,
+                                                                cx,
+                                                            );
+                                                        });
+                                                    }
+                                                }),
+                                        ),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .pt_1()
+                                .text_xs()
+                                .text_color(rgb(0x9aa4b2))
+                                .truncate()
+                                .child(format!("{author}: {preview}")),
+                        )
+                        .when(active_reply, {
+                            let view_entity = view_entity.clone();
+                            let thread_id = thread_id.clone();
+                            move |element| {
+                                element
+                                    .child(
+                                        div()
+                                            .mt_1()
+                                            .w_full()
+                                            .rounded_sm()
+                                            .border_1()
+                                            .border_color(rgb(0x354252))
+                                            .bg(rgb(0x0b1118))
+                                            .px_2()
+                                            .py_1()
+                                            .child(
+                                                Input::new(&review_thread_reply_input)
+                                                    .w_full()
+                                                    .small()
+                                                    .h(px(DIFF_ROW_HEIGHT * 2.0))
+                                                    .appearance(false)
+                                                    .bordered(false)
+                                                    .focus_bordered(false),
+                                            ),
+                                    )
+                                    .when_some(reply_error.clone(), |element, error| {
+                                        element.child(
+                                            div()
+                                                .pt_1()
+                                                .text_xs()
+                                                .text_color(rgb(0xf87171))
+                                                .child(error),
+                                        )
+                                    })
+                                    .child(
+                                        div()
+                                            .pt_1()
+                                            .flex()
+                                            .items_center()
+                                            .justify_end()
+                                            .gap_2()
+                                            .child(
+                                                Button::new(format!(
+                                                    "cancel-thread-reply-{thread_id}"
+                                                ))
+                                                .label("Cancel")
+                                                .xsmall()
+                                                .ghost()
+                                                .disabled(thread_reply_submitting)
+                                                .on_click({
+                                                    let view_entity = view_entity.clone();
+                                                    move |_, window, cx| {
+                                                        view_entity.update(cx, |view, cx| {
+                                                            view.cancel_review_thread_reply(
+                                                                window, cx,
+                                                            );
+                                                        });
+                                                    }
+                                                }),
+                                            )
+                                            .child(
+                                                Button::new(format!(
+                                                    "submit-thread-reply-{thread_id}"
+                                                ))
+                                                .label("Send reply")
+                                                .xsmall()
+                                                .primary()
+                                                .loading(thread_reply_submitting)
+                                                .disabled(reply_disabled)
+                                                .on_click({
+                                                    let view_entity = view_entity.clone();
+                                                    let thread_id = thread_id.clone();
+                                                    move |_, _, cx| {
+                                                        view_entity.update(cx, |view, cx| {
+                                                            view.submit_review_thread_reply(
+                                                                thread_id.clone(),
+                                                                cx,
+                                                            );
+                                                        });
+                                                    }
+                                                }),
+                                            ),
+                                    )
+                            }
+                        })
+                        .when_some(action_error, |element, error| {
+                            element.child(
+                                div()
+                                    .pt_1()
+                                    .text_xs()
+                                    .text_color(rgb(0xf87171))
+                                    .child(error),
+                            )
+                        }),
                 ),
         )
 }

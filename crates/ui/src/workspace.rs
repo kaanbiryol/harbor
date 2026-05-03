@@ -9,7 +9,7 @@ use gpui::{
 use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestReview, PullRequestReviewState, RepoId,
-    ReviewCommentRange, ReviewSide, ReviewThread, WorkflowJob, WorkflowRun,
+    ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
 use harbor_logs::LogChunk;
@@ -51,6 +51,12 @@ pub(crate) enum ReviewCommentSubmission {
     AddToReview,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewThreadUiError {
+    pub(crate) thread_id: String,
+    pub(crate) message: String,
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -66,6 +72,8 @@ pub struct AppView {
     pub(crate) review_line_selection: Option<ReviewLineSelection>,
     pub(crate) pending_review: Option<PendingReviewSession>,
     pub(crate) review_comment_input: Entity<InputState>,
+    pub(crate) review_thread_reply_thread_id: Option<String>,
+    pub(crate) review_thread_reply_input: Entity<InputState>,
     pub(crate) pending_review_body_input: Entity<InputState>,
     pub(crate) log_chunk: Option<LogChunk>,
     pr_list_task: Option<Task<()>>,
@@ -100,7 +108,9 @@ pub struct AppView {
     is_running_action: bool,
     is_running_pr_action: bool,
     pub(crate) is_submitting_review_comment: bool,
+    pub(crate) is_submitting_review_thread_reply: bool,
     pub(crate) is_submitting_pending_review: bool,
+    pub(crate) review_thread_action_thread_id: Option<String>,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
@@ -112,6 +122,8 @@ pub struct AppView {
     action_error: Option<String>,
     pr_action_error: Option<String>,
     pub(crate) review_comment_error: Option<String>,
+    pub(crate) review_thread_reply_error: Option<ReviewThreadUiError>,
+    pub(crate) review_thread_action_error: Option<ReviewThreadUiError>,
     pub(crate) pending_review_error: Option<String>,
     current_user_login: Option<String>,
     did_focus: bool,
@@ -130,6 +142,12 @@ impl AppView {
             InputState::new(window, cx)
                 .auto_grow(3, 8)
                 .placeholder("Leave a comment")
+                .clean_on_escape()
+        });
+        let review_thread_reply_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(2, 5)
+                .placeholder("Reply to thread")
                 .clean_on_escape()
         });
         let pending_review_body_input = cx.new(|cx| {
@@ -161,6 +179,11 @@ impl AppView {
             ),
             cx.subscribe_in(&review_comment_input, window, Self::on_review_input_event),
             cx.subscribe_in(
+                &review_thread_reply_input,
+                window,
+                Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
                 &pending_review_body_input,
                 window,
                 Self::on_review_input_event,
@@ -188,6 +211,8 @@ impl AppView {
             review_line_selection: None,
             pending_review: None,
             review_comment_input,
+            review_thread_reply_thread_id: None,
+            review_thread_reply_input,
             pending_review_body_input,
             log_chunk: None,
             pr_list_task: None,
@@ -222,7 +247,9 @@ impl AppView {
             is_running_action: false,
             is_running_pr_action: false,
             is_submitting_review_comment: false,
+            is_submitting_review_thread_reply: false,
             is_submitting_pending_review: false,
+            review_thread_action_thread_id: None,
             load_error: None,
             details_error: None,
             files_error: None,
@@ -234,6 +261,8 @@ impl AppView {
             action_error: None,
             pr_action_error: None,
             review_comment_error: None,
+            review_thread_reply_error: None,
+            review_thread_action_error: None,
             pending_review_error: None,
             current_user_login: None,
             did_focus: false,
@@ -401,6 +430,201 @@ impl AppView {
         cx.notify();
     }
 
+    pub(crate) fn open_review_thread_reply(
+        &mut self,
+        thread_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_thread_reply_thread_id = Some(thread_id);
+        self.review_thread_reply_error = None;
+        self.review_thread_reply_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+            input.focus(window, cx);
+        });
+        self.status = "Opened review thread reply".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_review_thread_reply(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_thread_reply_thread_id = None;
+        self.review_thread_reply_error = None;
+        self.review_thread_reply_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.status = "Cancelled review thread reply".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn submit_review_thread_reply(&mut self, thread_id: String, cx: &mut Context<Self>) {
+        if self.is_submitting_review_thread_reply {
+            self.status = "A review thread reply is already being submitted".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_thread_reply_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Select a pull request before replying".to_string(),
+            });
+            self.status = "Select a pull request before replying".to_string();
+            cx.notify();
+            return;
+        };
+
+        let body = self.review_thread_reply_input.read(cx).value().to_string();
+        let body = body.trim().to_string();
+        if body.is_empty() {
+            self.review_thread_reply_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Enter a reply before sending".to_string(),
+            });
+            self.status = "Enter a reply before sending".to_string();
+            cx.notify();
+            return;
+        }
+
+        let pending_review_node_id = self
+            .pending_review
+            .as_ref()
+            .map(|pending_review| pending_review.node_id.clone());
+
+        self.is_submitting_review_thread_reply = true;
+        self.review_thread_reply_thread_id = Some(thread_id.clone());
+        self.review_thread_reply_error = None;
+        self.status = format!("Posting reply on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = GitHubClient::new(GhCliTransport)
+                .add_review_thread_reply(&thread_id, pending_review_node_id.as_deref(), &body)
+                .await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.is_submitting_review_thread_reply = false;
+
+                match result {
+                    Ok(()) => {
+                        if pending_review_node_id.is_some()
+                            && let Some(pending_review) = view.pending_review.as_mut()
+                        {
+                            pending_review.comment_count += 1;
+                        }
+
+                        view.review_thread_reply_thread_id = None;
+                        view.review_thread_reply_error = None;
+                        view.status = format!("Posted reply on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to post reply: {error}");
+                        view.review_thread_reply_error = Some(ReviewThreadUiError {
+                            thread_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review thread reply state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn set_review_thread_resolved(
+        &mut self,
+        thread_id: String,
+        resolved: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.review_thread_action_thread_id.is_some() {
+            self.status = "A review thread action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_thread_action_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Select a pull request before updating a thread".to_string(),
+            });
+            self.status = "Select a pull request before updating a thread".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.review_thread_action_thread_id = Some(thread_id.clone());
+        self.review_thread_action_error = None;
+        self.status = if resolved {
+            format!("Resolving review thread on PR #{}", pr.number)
+        } else {
+            format!("Reopening review thread on PR #{}", pr.number)
+        };
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = if resolved {
+                client.resolve_review_thread(&thread_id).await
+            } else {
+                client.unresolve_review_thread(&thread_id).await
+            };
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.review_thread_action_thread_id = None;
+
+                match result {
+                    Ok(()) => {
+                        if let Some(thread) = view
+                            .review_threads
+                            .iter_mut()
+                            .find(|thread| thread.id == thread_id)
+                        {
+                            thread.state = if resolved {
+                                ReviewThreadState::Resolved
+                            } else {
+                                ReviewThreadState::Unresolved
+                            };
+                        }
+                        view.sync_unresolved_thread_count();
+                        view.review_thread_action_error = None;
+                        view.status = if resolved {
+                            format!("Resolved review thread on PR #{}", pr.number)
+                        } else {
+                            format!("Reopened review thread on PR #{}", pr.number)
+                        };
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = if resolved {
+                            format!("Failed to resolve review thread: {error}")
+                        } else {
+                            format!("Failed to reopen review thread: {error}")
+                        };
+                        view.review_thread_action_error = Some(ReviewThreadUiError {
+                            thread_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review thread action state: {error}");
+            }
+        })
+        .detach();
+    }
+
     pub(crate) fn remember_repository(&mut self, repository: RepoId) {
         self.repositories.retain(|existing| existing != &repository);
         self.repositories.insert(0, repository);
@@ -542,6 +766,8 @@ impl AppView {
         self.review_composer = None;
         self.review_line_selection = None;
         self.review_comment_error = None;
+        self.review_thread_reply_thread_id = None;
+        self.review_thread_reply_error = None;
     }
 
     pub(crate) fn apply_loaded_review_data(
@@ -550,10 +776,6 @@ impl AppView {
         review_threads: Vec<ReviewThread>,
         current_user_login: Option<String>,
     ) -> usize {
-        let unresolved_count = review_threads
-            .iter()
-            .filter(|thread| thread.state == harbor_domain::ReviewThreadState::Unresolved)
-            .count();
         let existing_pending_review = self.pending_review.clone();
         self.current_user_login = current_user_login;
         self.pending_review = pending_review_from_reviews(
@@ -563,6 +785,16 @@ impl AppView {
         );
         self.pull_request_reviews = reviews;
         self.review_threads = review_threads;
+
+        self.sync_unresolved_thread_count()
+    }
+
+    fn sync_unresolved_thread_count(&mut self) -> usize {
+        let unresolved_count = self
+            .review_threads
+            .iter()
+            .filter(|thread| thread.state == ReviewThreadState::Unresolved)
+            .count();
 
         if let Some(selected) = self.pull_requests.get_mut(self.selected_pr) {
             selected.unresolved_threads = unresolved_count;
