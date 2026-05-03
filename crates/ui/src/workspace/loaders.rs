@@ -143,6 +143,10 @@ impl AppView {
         self.pending_review = None;
         self.review_comment_error = None;
         self.pending_review_error = None;
+        self.collapsed_file_tree_folders.clear();
+        self.reviewed_file_paths.clear();
+        self.reset_changed_file_filters();
+        self.owned_file_paths.clear();
         self.is_loading_details = false;
         self.is_loading_files = false;
         self.is_loading_checks = false;
@@ -166,6 +170,10 @@ impl AppView {
                         view.pull_requests = pull_requests;
                         view.files.clear();
                         view.diffs.clear();
+                        view.collapsed_file_tree_folders.clear();
+                        view.reviewed_file_paths.clear();
+                        view.reset_changed_file_filters();
+                        view.owned_file_paths.clear();
                         view.check_runs.clear();
                         view.workflow_runs.clear();
                         view.workflow_jobs.clear();
@@ -194,6 +202,10 @@ impl AppView {
                         view.pull_requests.clear();
                         view.files.clear();
                         view.diffs.clear();
+                        view.collapsed_file_tree_folders.clear();
+                        view.reviewed_file_paths.clear();
+                        view.reset_changed_file_filters();
+                        view.owned_file_paths.clear();
                         view.check_runs.clear();
                         view.workflow_runs.clear();
                         view.workflow_jobs.clear();
@@ -254,6 +266,10 @@ impl AppView {
         self.pr_detail_tasks.clear();
         self.files.clear();
         self.diffs.clear();
+        self.collapsed_file_tree_folders.clear();
+        self.reviewed_file_paths.clear();
+        self.reset_changed_file_filters();
+        self.owned_file_paths.clear();
         self.check_runs.clear();
         self.workflow_runs.clear();
         self.workflow_jobs.clear();
@@ -343,8 +359,16 @@ impl AppView {
                             view.diffs = diffs;
                             view.active_file = 0;
                             view.active_hunk = 0;
+                            view.reset_changed_file_filters();
+                            view.prune_reviewed_file_paths();
+                            view.ensure_active_file_visible(cx);
                             view.clear_review_composer_state();
-                            view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.refresh_owned_file_filters(cx);
+                            let row_index = view
+                                .file_tree_row_index_for_file(view.active_file, cx)
+                                .unwrap_or(0);
+                            view.file_list_scroll
+                                .scroll_to_item(row_index, ScrollStrategy::Top);
                             view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.files_error = None;
                             view.status = format!("Loaded {count} changed files for PR #{number}");
@@ -352,6 +376,10 @@ impl AppView {
                         Err(error) => {
                             view.files.clear();
                             view.diffs.clear();
+                            view.collapsed_file_tree_folders.clear();
+                            view.reviewed_file_paths.clear();
+                            view.reset_changed_file_filters();
+                            view.owned_file_paths.clear();
                             view.active_file = 0;
                             view.active_hunk = 0;
                             view.clear_review_composer_state();
@@ -553,6 +581,7 @@ impl AppView {
                                 current_user_login,
                                 pending_review_comment_count,
                             );
+                            view.refresh_owned_file_filters(cx);
                             loaded_review_thread_count = Some(thread_count);
                         }
                         (None, Ok(review_threads)) => {
@@ -576,6 +605,7 @@ impl AppView {
                                 current_user_login,
                                 pending_review_comment_count,
                             );
+                            view.refresh_owned_file_filters(cx);
                             let message = format!("Failed to load review threads: {error}");
                             view.reviews_error = Some(match view.reviews_error.take() {
                                 Some(existing) => format!("{existing}; {message}"),
@@ -687,6 +717,7 @@ impl AppView {
                             current_user_login,
                             pending_review_comment_count,
                         );
+                        view.refresh_owned_file_filters(cx);
                         if view.reviews_error.is_none() {
                             view.status =
                                 format!("Refreshed review data and {thread_count} threads for PR #{number}");
@@ -716,6 +747,7 @@ impl AppView {
                             current_user_login,
                             pending_review_comment_count,
                         );
+                        view.refresh_owned_file_filters(cx);
                         let message = format!("Failed to load review threads: {threads_error}");
                         view.reviews_error = Some(match view.reviews_error.take() {
                             Some(existing) => format!("{existing}; {message}"),

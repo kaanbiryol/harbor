@@ -1,10 +1,14 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px, rgb};
+use gpui_component::{
+    Icon, IconName, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+};
 use harbor_domain::{
-    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, MergeState, PullRequest,
-    PullRequestState, ReviewDecision,
+    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, MergeState,
+    PullRequest, PullRequestState, ReviewDecision,
 };
 
-use crate::workspace::AppView;
+use crate::workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label};
 
 pub(crate) fn render_checks_summary(summary: ChecksSummary) -> impl IntoElement {
     let color = if summary.failed > 0 {
@@ -181,25 +185,101 @@ pub(crate) fn render_pull_request_row(
         .into_any_element()
 }
 
-pub(crate) fn render_changed_file_row(
-    index: usize,
-    file: &DiffFile,
-    selected: bool,
+pub(crate) fn render_changed_folder_row(
+    folder: &ChangedFileFolderRow,
     cx: &mut Context<AppView>,
 ) -> AnyElement {
+    let folder_path = folder.path.clone();
+    let chevron = if folder.expanded {
+        IconName::ChevronDown
+    } else {
+        IconName::ChevronRight
+    };
+    let folder_icon = if folder.expanded {
+        IconName::FolderOpen
+    } else {
+        IconName::FolderClosed
+    };
+
     div()
-        .id(("file-row", index))
-        .h(px(72.))
+        .id(format!("folder-row-{}", folder.path))
+        .h(px(36.))
         .w_full()
         .min_w_0()
         .flex()
-        .flex_col()
-        .justify_center()
+        .items_center()
         .overflow_hidden()
-        .px_3()
-        .py_2()
-        .border_1()
-        .border_color(rgb(0x20252b))
+        .pl(file_tree_padding(folder.depth))
+        .pr_3()
+        .gap_2()
+        .text_sm()
+        .cursor_pointer()
+        .hover(|style| style.bg(rgb(0x202a35)))
+        .on_click(cx.listener(move |view, _, _, cx| {
+            view.toggle_changed_file_folder(folder_path.clone(), cx);
+        }))
+        .child(Icon::new(chevron).xsmall().text_color(rgb(0x9aa4b2)))
+        .child(Icon::new(folder_icon).xsmall().text_color(rgb(0x93c5fd)))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .font_medium()
+                .text_color(rgb(0xd5dde7))
+                .child(folder.name.clone()),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_xs()
+                .text_color(rgb(0x7d8794))
+                .child(folder_review_summary(
+                    folder.reviewed_file_count,
+                    folder.file_count,
+                )),
+        )
+        .into_any_element()
+}
+
+pub(crate) fn render_changed_file_row(
+    row: &ChangedFileRow,
+    file: &DiffFile,
+    selected: bool,
+    reviewed: bool,
+    cx: &mut Context<AppView>,
+) -> AnyElement {
+    let index = row.file_index;
+    let review_button = Button::new(format!("file-reviewed-{index}"))
+        .icon(Icon::new(if reviewed {
+            IconName::Check
+        } else {
+            IconName::Eye
+        }))
+        .small()
+        .compact()
+        .tooltip(if reviewed {
+            "Mark as unreviewed"
+        } else {
+            "Mark as reviewed"
+        });
+    let review_button = if reviewed {
+        review_button.primary()
+    } else {
+        review_button.ghost()
+    };
+
+    div()
+        .id(("file-row", index))
+        .h(px(44.))
+        .w_full()
+        .min_w_0()
+        .flex()
+        .items_center()
+        .overflow_hidden()
+        .pl(file_tree_padding(row.depth))
+        .pr_2()
+        .gap_2()
         .when(selected, |element| element.bg(rgb(0x243244)))
         .hover(|style| style.bg(rgb(0x202a35)))
         .on_click(cx.listener(move |view, _, _, cx| {
@@ -207,39 +287,85 @@ pub(crate) fn render_changed_file_row(
         }))
         .child(
             div()
+                .w(px(14.))
                 .flex()
-                .w_full()
+                .items_center()
+                .justify_center()
+                .child(Icon::new(IconName::File).xsmall().text_color(rgb(0x9aa4b2))),
+        )
+        .child(
+            div()
                 .min_w_0()
-                .justify_between()
+                .flex_1()
+                .flex()
                 .items_center()
                 .gap_2()
-                .text_sm()
-                .child(div().min_w_0().flex_1().truncate().child(file.path.clone()))
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .text_sm()
+                        .text_color(if reviewed {
+                            rgb(0x7d8794)
+                        } else {
+                            rgb(0xe6e8eb)
+                        })
+                        .child(row.name.clone()),
+                )
                 .child(
                     div()
                         .flex_none()
-                        .flex()
-                        .gap_1()
-                        .child(
-                            div()
-                                .text_color(diff_stat_color(file.additions, rgb(0x34d399)))
-                                .child(format!("+{}", file.additions)),
-                        )
-                        .child(
-                            div()
-                                .text_color(diff_stat_color(file.deletions, rgb(0xf87171)))
-                                .child(format!("-{}", file.deletions)),
-                        ),
+                        .truncate()
+                        .text_xs()
+                        .text_color(file_status_color(file.status))
+                        .child(changed_file_status_label(file.status)),
                 ),
         )
         .child(
             div()
-                .pt_1()
+                .flex_none()
+                .flex()
+                .items_center()
+                .gap_1()
                 .text_xs()
-                .text_color(rgb(0x9aa4b2))
-                .child(format!("{:?}", file.status)),
+                .child(
+                    div()
+                        .text_color(diff_stat_color(file.additions, rgb(0x34d399)))
+                        .child(format!("+{}", file.additions)),
+                )
+                .child(
+                    div()
+                        .text_color(diff_stat_color(file.deletions, rgb(0xf87171)))
+                        .child(format!("-{}", file.deletions)),
+                ),
         )
+        .child(review_button.on_click(cx.listener(move |view, _, _, cx| {
+            view.toggle_changed_file_reviewed(index, cx);
+        })))
         .into_any_element()
+}
+
+fn folder_review_summary(reviewed_file_count: usize, file_count: usize) -> String {
+    if reviewed_file_count == 0 {
+        format!("{file_count}")
+    } else {
+        format!("{reviewed_file_count}/{file_count}")
+    }
+}
+
+fn file_tree_padding(depth: usize) -> gpui::Pixels {
+    px(10. + depth as f32 * 16.)
+}
+
+fn file_status_color(status: FileStatus) -> gpui::Rgba {
+    match status {
+        FileStatus::Added => rgb(0x34d399),
+        FileStatus::Removed => rgb(0xf87171),
+        FileStatus::Renamed | FileStatus::Copied => rgb(0x93c5fd),
+        FileStatus::Modified | FileStatus::Changed => rgb(0xfbbf24),
+        FileStatus::Unchanged => rgb(0x9aa4b2),
+    }
 }
 
 fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {

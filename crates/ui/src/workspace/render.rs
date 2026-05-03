@@ -3,7 +3,7 @@ use gpui::{
     Stateful, Window, div, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
-    Disableable, IconName, Sizable, StyledExt, TitleBar,
+    Disableable, Icon, IconName, Sizable, StyledExt, TitleBar,
     button::{Button, ButtonVariants, DropdownButton},
     input::Input,
     popover::Popover,
@@ -14,12 +14,13 @@ use harbor_github::SubmitPullRequestReviewEvent;
 
 use crate::actions::*;
 use crate::panels::{
-    merge_blocker, render_actions_panel, render_changed_file_row, render_checks_panel,
-    render_diff_panel, render_logs_panel, render_merge_state, render_pull_request_row,
-    render_review_decision, render_review_panel, review_action_blocker,
+    merge_blocker, render_actions_panel, render_changed_file_row, render_changed_folder_row,
+    render_checks_panel, render_diff_panel, render_logs_panel, render_merge_state,
+    render_pull_request_row, render_review_decision, render_review_panel, review_action_blocker,
 };
 use crate::workspace::{
-    AppView, PendingReviewSession, PullRequestInboxMode, normalized_search_query,
+    AppView, ChangedFileTreeRow, PendingReviewSession, PullRequestInboxMode,
+    normalized_search_query,
 };
 
 impl Focusable for AppView {
@@ -58,6 +59,82 @@ fn render_switcher_error_row(error: String) -> impl IntoElement {
         .text_xs()
         .text_color(rgb(0xf87171))
         .child(error)
+}
+
+fn render_file_filter_row(
+    id: impl Into<gpui::ElementId>,
+    label: String,
+    count: Option<usize>,
+    checked: bool,
+    disabled: bool,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .h(px(34.))
+        .w_full()
+        .min_w_0()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .rounded_xs()
+        .px_2()
+        .mb_1()
+        .text_sm()
+        .cursor_pointer()
+        .when(checked && !disabled, |element| element.bg(rgb(0x243244)))
+        .when(disabled, |element| element.cursor_default().opacity(0.45))
+        .hover(move |element| {
+            if disabled {
+                element
+            } else {
+                element.bg(rgb(0x202a35))
+            }
+        })
+        .child(
+            div()
+                .min_w_0()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .w(px(16.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .when(checked, |element| {
+                            element.child(
+                                Icon::new(IconName::Check)
+                                    .xsmall()
+                                    .text_color(rgb(0x93c5fd)),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(if disabled {
+                            rgb(0x7d8794)
+                        } else {
+                            rgb(0xe6e8eb)
+                        })
+                        .child(label),
+                ),
+        )
+        .when_some(count, |element, count| {
+            element.child(
+                div()
+                    .flex_none()
+                    .min_w(px(24.))
+                    .px_1()
+                    .text_align(gpui::TextAlign::Right)
+                    .text_xs()
+                    .text_color(rgb(0x9aa4b2))
+                    .child(count.to_string()),
+            )
+        })
 }
 
 fn pending_review_comment_count_label(comment_count: usize) -> String {
@@ -392,6 +469,7 @@ impl AppView {
                                                 if *open {
                                                     view.command_palette_open = false;
                                                     view.pull_request_switcher_open = false;
+                                                    view.file_filter_popover_open = false;
                                                     view.status =
                                                         "Repository search opened".to_string();
                                                     view.repository_search_input
@@ -515,6 +593,7 @@ impl AppView {
                                                 if *open {
                                                     view.command_palette_open = false;
                                                     view.repository_switcher_open = false;
+                                                    view.file_filter_popover_open = false;
                                                     view.status =
                                                         "Pull request search opened".to_string();
                                                     view.pull_request_search_input
@@ -1007,14 +1086,7 @@ impl AppView {
                         )
                     }),
             )
-            .child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .text_xs()
-                    .text_color(rgb(0x9aa4b2))
-                    .child("Changed files"),
-            )
+            .child(self.render_changed_files_header(cx))
             .when(self.is_loading_files, |element| {
                 element.child(
                     div()
@@ -1052,25 +1124,60 @@ impl AppView {
                 },
             )
             .when(
-                !self.is_loading_files && self.files_error.is_none() && !self.files.is_empty(),
+                !self.is_loading_files
+                    && self.files_error.is_none()
+                    && !self.files.is_empty()
+                    && self.changed_file_tree_rows(cx).is_empty(),
                 |element| {
+                    element.child(
+                        div()
+                            .flex_1()
+                            .px_3()
+                            .py_3()
+                            .text_sm()
+                            .text_color(rgb(0x9aa4b2))
+                            .child("No files match filter"),
+                    )
+                },
+            )
+            .when(
+                !self.is_loading_files
+                    && self.files_error.is_none()
+                    && !self.files.is_empty()
+                    && !self.changed_file_tree_rows(cx).is_empty(),
+                |element| {
+                    let row_count = self.changed_file_tree_rows(cx).len();
+
                     element.child(
                         uniform_list(
                             "changed-files-list",
-                            self.files.len(),
+                            row_count,
                             cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
+                                let tree_rows = view.changed_file_tree_rows(cx);
                                 let mut rows = Vec::with_capacity(range.len());
 
-                                for index in range {
-                                    let Some(file) = view.files.get(index) else {
+                                for row_index in range {
+                                    let Some(row) = tree_rows.get(row_index) else {
                                         continue;
                                     };
-                                    rows.push(render_changed_file_row(
-                                        index,
-                                        file,
-                                        index == view.active_file,
-                                        cx,
-                                    ));
+                                    match row {
+                                        ChangedFileTreeRow::Folder(folder_row) => {
+                                            rows.push(render_changed_folder_row(folder_row, cx));
+                                        }
+                                        ChangedFileTreeRow::File(file_row) => {
+                                            let Some(file) = view.files.get(file_row.file_index)
+                                            else {
+                                                continue;
+                                            };
+                                            rows.push(render_changed_file_row(
+                                                file_row,
+                                                file,
+                                                file_row.file_index == view.active_file,
+                                                view.reviewed_file_paths.contains(&file.path),
+                                                cx,
+                                            ));
+                                        }
+                                    }
                                 }
 
                                 rows
@@ -1084,6 +1191,226 @@ impl AppView {
                 },
             )
             .into_any_element()
+    }
+
+    fn render_changed_files_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().clone();
+        let reviewed_count = self.reviewed_file_count();
+        let total_count = self.files.len();
+        let visible_count = self.visible_file_indices(cx).len();
+        let type_filters = self.changed_file_type_filters();
+        let included_type_count = self.included_file_type_filter_count();
+        let owned_file_count = self.owned_file_paths.len();
+        let has_owned_filter_data = self.has_owned_file_filter_data();
+        let owned_filter_active = self.show_files_owned_by_current_user;
+        let has_active_filter = included_type_count < type_filters.len() || owned_filter_active;
+        let filter_label = if has_active_filter {
+            format!("Filters {visible_count}/{total_count}")
+        } else {
+            "Filters".to_string()
+        };
+
+        div()
+            .px_3()
+            .py_2()
+            .border_1()
+            .border_color(rgb(0x242a31))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .text_xs()
+                    .child(
+                        div()
+                            .font_medium()
+                            .text_color(rgb(0xd5dde7))
+                            .child("Changed files"),
+                    )
+                    .child(
+                        div()
+                            .text_color(rgb(0x9aa4b2))
+                            .child(format!("{reviewed_count}/{total_count} reviewed")),
+                    ),
+            )
+            .child(
+                div()
+                    .pt_2()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        Popover::new("changed-file-filters-popover")
+                            .appearance(false)
+                            .anchor(Anchor::TopLeft)
+                            .open(self.file_filter_popover_open)
+                            .on_open_change({
+                                let view = view.clone();
+                                move |open, _, cx| {
+                                    view.update(cx, |view, cx| {
+                                        view.file_filter_popover_open = *open;
+                                        if *open {
+                                            view.command_palette_open = false;
+                                            view.repository_switcher_open = false;
+                                            view.pull_request_switcher_open = false;
+                                        }
+                                        cx.notify();
+                                    });
+                                }
+                            })
+                            .trigger({
+                                let button = Button::new("changed-file-filters")
+                                    .label(filter_label)
+                                    .icon(IconName::Settings2)
+                                    .small()
+                                    .compact()
+                                    .dropdown_caret(true);
+                                if has_active_filter {
+                                    button.primary()
+                                } else {
+                                    button.ghost()
+                                }
+                            })
+                            .content(move |_, _window, _popover_cx| {
+                                let mut menu = div()
+                                    .id("changed-file-filters-menu")
+                                    .w(px(360.))
+                                    .max_h(px(520.))
+                                    .overflow_y_scroll()
+                                    .border_1()
+                                    .border_color(rgb(0x343b44))
+                                    .bg(rgb(0x171b20))
+                                    .p_2()
+                                    .shadow_lg()
+                                    .child(
+                                        div()
+                                            .px_1()
+                                            .pb_2()
+                                            .flex()
+                                            .items_center()
+                                            .justify_between()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .font_medium()
+                                                    .text_color(rgb(0xe6e8eb))
+                                                    .child("Filter changed files"),
+                                            )
+                                            .child(
+                                                div().text_xs().text_color(rgb(0x7d8794)).child(
+                                                    format!(
+                                                        "{visible_count}/{total_count} visible"
+                                                    ),
+                                                ),
+                                            ),
+                                    )
+                                    .child(render_switcher_section_label("Ownership"))
+                                    .child({
+                                        let view = view.clone();
+                                        render_file_filter_row(
+                                            "all-changed-files-filter-menu",
+                                            "All changed files".to_string(),
+                                            Some(total_count),
+                                            !owned_filter_active,
+                                            false,
+                                        )
+                                        .on_click(
+                                            move |_, _, cx| {
+                                                view.update(cx, |view, cx| {
+                                                    view.show_all_changed_files(cx);
+                                                });
+                                            },
+                                        )
+                                    })
+                                    .child({
+                                        let view = view.clone();
+                                        render_file_filter_row(
+                                            "owned-by-current-user-filter-menu",
+                                            "Files owned by you".to_string(),
+                                            Some(owned_file_count),
+                                            owned_filter_active,
+                                            !has_owned_filter_data,
+                                        )
+                                        .on_click(
+                                            move |_, _, cx| {
+                                                view.update(cx, |view, cx| {
+                                                if has_owned_filter_data {
+                                                    view.toggle_files_owned_by_current_user_filter(
+                                                        cx,
+                                                    );
+                                                }
+                                            });
+                                            },
+                                        )
+                                    })
+                                    .child(
+                                        div()
+                                            .mt_2()
+                                            .border_t_1()
+                                            .border_color(rgb(0x242a31))
+                                            .pt_2()
+                                            .child(render_switcher_section_label("File types")),
+                                    )
+                                    .child({
+                                        let view = view.clone();
+                                        let all_active = included_type_count == type_filters.len();
+                                        render_file_filter_row(
+                                            "include-all-file-types-menu",
+                                            "All file types".to_string(),
+                                            Some(total_count),
+                                            all_active,
+                                            false,
+                                        )
+                                        .on_click(
+                                            move |_, _, cx| {
+                                                view.update(cx, |view, cx| {
+                                                    view.include_all_changed_file_types(cx);
+                                                });
+                                            },
+                                        )
+                                    });
+
+                                for filter in type_filters.clone() {
+                                    let view = view.clone();
+                                    let file_type = filter.key.clone();
+                                    menu = menu.child(
+                                        render_file_filter_row(
+                                            format!("file-type-filter-{file_type}"),
+                                            filter.label,
+                                            Some(filter.file_count),
+                                            filter.included,
+                                            false,
+                                        )
+                                        .on_click(
+                                            move |_, _, cx| {
+                                                view.update(cx, |view, cx| {
+                                                    view.toggle_changed_file_type_filter(
+                                                        file_type.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            },
+                                        ),
+                                    );
+                                }
+
+                                menu
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0x7d8794))
+                            .child(if has_active_filter {
+                                format!("{visible_count}/{total_count} visible")
+                            } else {
+                                format!("{visible_count} visible")
+                            }),
+                    ),
+            )
     }
 
     fn render_pending_review_bar(

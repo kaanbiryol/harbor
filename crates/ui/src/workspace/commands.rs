@@ -19,13 +19,19 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.files.is_empty() {
+        let visible_files = self.visible_file_indices(cx);
+        if visible_files.is_empty() {
             self.status = "No changed files to select".to_string();
             cx.notify();
             return;
         }
 
-        self.select_file((self.active_file + 1) % self.files.len(), cx);
+        let current_position = visible_files
+            .iter()
+            .position(|file_index| *file_index == self.active_file)
+            .unwrap_or(visible_files.len().saturating_sub(1));
+        let next_position = (current_position + 1) % visible_files.len();
+        self.select_file(visible_files[next_position], cx);
     }
 
     pub(super) fn select_previous_file(
@@ -34,18 +40,23 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.files.is_empty() {
+        let visible_files = self.visible_file_indices(cx);
+        if visible_files.is_empty() {
             self.status = "No changed files to select".to_string();
             cx.notify();
             return;
         }
 
-        let previous = if self.active_file == 0 {
-            self.files.len() - 1
+        let current_position = visible_files
+            .iter()
+            .position(|file_index| *file_index == self.active_file)
+            .unwrap_or(0);
+        let previous_position = if current_position == 0 {
+            visible_files.len() - 1
         } else {
-            self.active_file - 1
+            current_position - 1
         };
-        self.select_file(previous, cx);
+        self.select_file(visible_files[previous_position], cx);
     }
 
     pub(super) fn select_next_hunk(
@@ -303,6 +314,7 @@ impl AppView {
                             repository.full_name(),
                             repo_path.display()
                         );
+                        view.refresh_owned_file_filters(cx);
                     }
                     Err(error) => {
                         view.repository_error = Some(error.clone());
@@ -456,6 +468,7 @@ impl AppView {
         if self.command_palette_open {
             self.repository_switcher_open = false;
             self.pull_request_switcher_open = false;
+            self.file_filter_popover_open = false;
         }
         self.status = if self.command_palette_open {
             "Command palette opened".to_string()
@@ -475,6 +488,7 @@ impl AppView {
         if self.repository_switcher_open {
             self.command_palette_open = false;
             self.pull_request_switcher_open = false;
+            self.file_filter_popover_open = false;
             self.repository_search_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
                 input.focus(window, cx);
@@ -493,6 +507,7 @@ impl AppView {
         self.command_palette_open = false;
         self.repository_switcher_open = false;
         self.pull_request_switcher_open = false;
+        self.file_filter_popover_open = false;
         self.status = "Closed transient UI".to_string();
         cx.notify();
     }
@@ -941,7 +956,16 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_placeholder_status("Filter", cx);
+        self.file_filter_popover_open = !self.file_filter_popover_open;
+        self.command_palette_open = false;
+        self.repository_switcher_open = false;
+        self.pull_request_switcher_open = false;
+        self.status = if self.file_filter_popover_open {
+            "Opened changed-file filters".to_string()
+        } else {
+            "Closed changed-file filters".to_string()
+        };
+        cx.notify();
     }
 }
 

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, MergeState,
     PullRequest, PullRequestState, RepoId, ReviewThread, ReviewThreadState,
@@ -8,7 +10,9 @@ use crate::panels::{
     checks_summary_from_runs, merge_blocker, review_action_blocker, review_thread_counts,
 };
 use crate::workspace::{
-    OpenTargetStatus, PullRequestInboxMode, github_file_url, next_switcher_index,
+    ChangedFileFilters, ChangedFileTreeRow, OpenTargetStatus, PullRequestInboxMode,
+    changed_file_matches_filters, changed_file_matches_query, changed_file_tree_rows,
+    changed_file_type_filters, changed_file_type_key, github_file_url, next_switcher_index,
     normalized_search_query, open_target_for_app, open_with_app_disabled, parse_repo_id,
     pull_request_matches_query, repository_matches_query,
 };
@@ -54,6 +58,177 @@ fn matches_pull_requests_for_switcher_search() {
     assert!(pull_request_matches_query(&pull_request, "7"));
     assert!(pull_request_matches_query(&pull_request, "octo"));
     assert!(!pull_request_matches_query(&pull_request, "backend"));
+}
+
+#[test]
+fn builds_changed_file_tree_rows_with_folders() {
+    let files = vec![
+        diff_file("crates/ui/src/workspace.rs", FileStatus::Modified),
+        diff_file("crates/ui/Cargo.toml", FileStatus::Modified),
+        diff_file("README.md", FileStatus::Modified),
+    ];
+    let reviewed = HashSet::from(["crates/ui/src/workspace.rs".to_string()]);
+
+    let rows = changed_file_tree_rows(
+        &files,
+        &HashSet::new(),
+        &reviewed,
+        &ChangedFileFilters::default(),
+    );
+
+    assert_eq!(
+        changed_file_tree_labels(&rows),
+        vec![
+            "dir:crates:0:1/2:open",
+            "dir:ui:1:1/2:open",
+            "dir:src:2:1/1:open",
+            "file:workspace.rs:3:0",
+            "file:Cargo.toml:2:1",
+            "file:README.md:0:2",
+        ]
+    );
+}
+
+#[test]
+fn collapses_changed_file_tree_folders() {
+    let files = vec![
+        diff_file("crates/ui/src/workspace.rs", FileStatus::Modified),
+        diff_file("crates/ui/Cargo.toml", FileStatus::Modified),
+        diff_file("README.md", FileStatus::Modified),
+    ];
+    let collapsed = HashSet::from(["crates/ui".to_string()]);
+
+    let rows = changed_file_tree_rows(
+        &files,
+        &collapsed,
+        &HashSet::new(),
+        &ChangedFileFilters::default(),
+    );
+
+    assert_eq!(
+        changed_file_tree_labels(&rows),
+        vec![
+            "dir:crates:0:0/2:open",
+            "dir:ui:1:0/2:closed",
+            "file:README.md:0:2",
+        ]
+    );
+}
+
+#[test]
+fn filters_changed_file_tree_and_expands_matches() {
+    let files = vec![
+        diff_file("crates/ui/src/workspace.rs", FileStatus::Modified),
+        diff_file("crates/ui/Cargo.toml", FileStatus::Modified),
+        diff_file("README.md", FileStatus::Modified),
+    ];
+    let collapsed = HashSet::from(["crates/ui".to_string()]);
+
+    let rows = changed_file_tree_rows(
+        &files,
+        &collapsed,
+        &HashSet::new(),
+        &ChangedFileFilters {
+            query: "workspace".to_string(),
+            ..ChangedFileFilters::default()
+        },
+    );
+
+    assert_eq!(
+        changed_file_tree_labels(&rows),
+        vec![
+            "dir:crates:0:0/1:open",
+            "dir:ui:1:0/1:open",
+            "dir:src:2:0/1:open",
+            "file:workspace.rs:3:0",
+        ]
+    );
+}
+
+#[test]
+fn matches_changed_files_by_path_previous_path_and_status() {
+    let mut file = diff_file("src/new_name.rs", FileStatus::Renamed);
+    file.previous_path = Some("src/old_name.rs".to_string());
+
+    assert!(changed_file_matches_query(&file, "new_name"));
+    assert!(changed_file_matches_query(&file, "old_name"));
+    assert!(changed_file_matches_query(&file, "renamed"));
+    assert!(!changed_file_matches_query(&file, "deleted"));
+}
+
+#[test]
+fn derives_changed_file_type_filters_from_extensions() {
+    let files = vec![
+        diff_file("script/build-worker.mjs", FileStatus::Modified),
+        diff_file("fixtures/data.json", FileStatus::Modified),
+        diff_file("Dockerfile", FileStatus::Modified),
+        diff_file(".gitignore", FileStatus::Modified),
+    ];
+    let excluded = HashSet::from(["json".to_string()]);
+
+    let filters = changed_file_type_filters(&files, &excluded);
+
+    assert_eq!(changed_file_type_key(&files[0]), "mjs");
+    assert_eq!(
+        filters
+            .into_iter()
+            .map(|filter| { format!("{}:{}:{}", filter.label, filter.file_count, filter.included) })
+            .collect::<Vec<_>>(),
+        vec!["json:1:false", "mjs:1:true", "no extension:2:true",]
+    );
+}
+
+#[test]
+fn filters_changed_file_tree_by_selected_file_types() {
+    let files = vec![
+        diff_file("script/build-worker.mjs", FileStatus::Modified),
+        diff_file("fixtures/data.json", FileStatus::Modified),
+        diff_file("README.md", FileStatus::Modified),
+    ];
+
+    let rows = changed_file_tree_rows(
+        &files,
+        &HashSet::new(),
+        &HashSet::new(),
+        &ChangedFileFilters {
+            excluded_file_types: HashSet::from(["json".to_string(), "mjs".to_string()]),
+            ..ChangedFileFilters::default()
+        },
+    );
+
+    assert_eq!(changed_file_tree_labels(&rows), vec!["file:README.md:0:2"]);
+}
+
+#[test]
+fn filters_changed_file_tree_to_owned_files() {
+    let files = vec![
+        diff_file("src/owned.rs", FileStatus::Modified),
+        diff_file("src/unowned.rs", FileStatus::Modified),
+    ];
+
+    let rows = changed_file_tree_rows(
+        &files,
+        &HashSet::new(),
+        &HashSet::new(),
+        &ChangedFileFilters {
+            owned_by_current_user_only: true,
+            owned_file_paths: HashSet::from(["src/owned.rs".to_string()]),
+            ..ChangedFileFilters::default()
+        },
+    );
+
+    assert_eq!(
+        changed_file_tree_labels(&rows),
+        vec!["dir:src:0:0/1:open", "file:owned.rs:1:0"]
+    );
+    assert!(changed_file_matches_filters(
+        &files[0],
+        &ChangedFileFilters {
+            owned_by_current_user_only: true,
+            owned_file_paths: HashSet::from(["src/owned.rs".to_string()]),
+            ..ChangedFileFilters::default()
+        }
+    ));
 }
 
 #[test]
@@ -231,4 +406,22 @@ fn diff_file(path: &str, status: FileStatus) -> DiffFile {
         changes: 1,
         patch: Some("@@ -1 +1 @@".to_string()),
     }
+}
+
+fn changed_file_tree_labels(rows: &[ChangedFileTreeRow]) -> Vec<String> {
+    rows.iter()
+        .map(|row| match row {
+            ChangedFileTreeRow::Folder(folder) => format!(
+                "dir:{}:{}:{}/{}:{}",
+                folder.name,
+                folder.depth,
+                folder.reviewed_file_count,
+                folder.file_count,
+                if folder.expanded { "open" } else { "closed" }
+            ),
+            ChangedFileTreeRow::File(file) => {
+                format!("file:{}:{}:{}", file.name, file.depth, file.file_index)
+            }
+        })
+        .collect()
 }

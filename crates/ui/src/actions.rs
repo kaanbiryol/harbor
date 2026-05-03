@@ -280,6 +280,10 @@ pub(crate) const COMMANDS: &[CommandSpec] = &[
         title: "Rerun failed jobs",
     },
     CommandSpec {
+        shortcut: "/",
+        title: "Filter changed files",
+    },
+    CommandSpec {
         shortcut: "[ / ]",
         title: "Move between changed files",
     },

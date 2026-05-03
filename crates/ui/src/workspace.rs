@@ -2,7 +2,11 @@ mod commands;
 mod loaders;
 mod render;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
@@ -10,7 +14,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, PullRequestReviewState, RepoId,
+    CheckRun, DiffFile, FileStatus, PullRequest, PullRequestReview, PullRequestReviewState, RepoId,
     ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
@@ -108,6 +112,85 @@ impl PullRequestInboxMode {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ChangedFileTreeRow {
+    Folder(ChangedFileFolderRow),
+    File(ChangedFileRow),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ChangedFileFolderRow {
+    pub(crate) path: String,
+    pub(crate) name: String,
+    pub(crate) depth: usize,
+    pub(crate) file_count: usize,
+    pub(crate) reviewed_file_count: usize,
+    pub(crate) expanded: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ChangedFileRow {
+    pub(crate) file_index: usize,
+    pub(crate) name: String,
+    pub(crate) depth: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ChangedFileFilters {
+    pub(crate) query: String,
+    pub(crate) excluded_file_types: HashSet<String>,
+    pub(crate) owned_by_current_user_only: bool,
+    pub(crate) owned_file_paths: HashSet<String>,
+}
+
+impl ChangedFileFilters {
+    fn has_active_filter(&self) -> bool {
+        !self.query.is_empty()
+            || !self.excluded_file_types.is_empty()
+            || self.owned_by_current_user_only
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ChangedFileTypeFilter {
+    pub(crate) key: String,
+    pub(crate) label: String,
+    pub(crate) file_count: usize,
+    pub(crate) included: bool,
+}
+
+#[derive(Default)]
+struct ChangedFileTreeNode {
+    folders: BTreeMap<String, ChangedFileTreeNode>,
+    files: Vec<usize>,
+    file_count: usize,
+    reviewed_file_count: usize,
+}
+
+impl ChangedFileTreeNode {
+    fn add_file(&mut self, file_index: usize, path_segments: &[&str], reviewed: bool) {
+        self.file_count += 1;
+        if reviewed {
+            self.reviewed_file_count += 1;
+        }
+
+        let Some((next_segment, remaining_segments)) = path_segments.split_first() else {
+            self.files.push(file_index);
+            return;
+        };
+
+        if remaining_segments.is_empty() {
+            self.files.push(file_index);
+            return;
+        }
+
+        self.folders
+            .entry((*next_segment).to_string())
+            .or_default()
+            .add_file(file_index, remaining_segments, reviewed);
+    }
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -144,6 +227,7 @@ pub struct AppView {
     command_palette_open: bool,
     repository_switcher_open: bool,
     pull_request_switcher_open: bool,
+    file_filter_popover_open: bool,
     repository_switcher_selection: usize,
     pull_request_switcher_selection: usize,
     repository_search_input: Entity<InputState>,
@@ -152,6 +236,11 @@ pub struct AppView {
     configured_repo: Option<RepoId>,
     repository_store: Option<SqliteStore>,
     repository_local_paths: HashMap<RepoId, PathBuf>,
+    collapsed_file_tree_folders: HashSet<String>,
+    reviewed_file_paths: HashSet<String>,
+    excluded_file_type_filters: HashSet<String>,
+    show_files_owned_by_current_user: bool,
+    owned_file_paths: HashSet<String>,
     is_loading_prs: bool,
     is_loading_details: bool,
     is_loading_files: bool,
@@ -286,6 +375,7 @@ impl AppView {
             command_palette_open: false,
             repository_switcher_open: false,
             pull_request_switcher_open: false,
+            file_filter_popover_open: false,
             repository_switcher_selection: 0,
             pull_request_switcher_selection: 0,
             repository_search_input,
@@ -294,6 +384,11 @@ impl AppView {
             configured_repo,
             repository_store: None,
             repository_local_paths: HashMap::new(),
+            collapsed_file_tree_folders: HashSet::new(),
+            reviewed_file_paths: HashSet::new(),
+            excluded_file_type_filters: HashSet::new(),
+            show_files_owned_by_current_user: false,
+            owned_file_paths: HashSet::new(),
             is_loading_prs: false,
             is_loading_details: false,
             is_loading_files: false,
@@ -361,6 +456,99 @@ impl AppView {
             .filter(|diff| !diff.is_empty())
     }
 
+    pub(crate) fn changed_file_tree_rows(&self, _cx: &App) -> Vec<ChangedFileTreeRow> {
+        let filters = self.changed_file_filters();
+
+        changed_file_tree_rows(
+            &self.files,
+            &self.collapsed_file_tree_folders,
+            &self.reviewed_file_paths,
+            &filters,
+        )
+    }
+
+    pub(crate) fn visible_file_indices(&self, cx: &App) -> Vec<usize> {
+        self.changed_file_tree_rows(cx)
+            .into_iter()
+            .filter_map(|row| match row {
+                ChangedFileTreeRow::File(file_row) => Some(file_row.file_index),
+                ChangedFileTreeRow::Folder(_) => None,
+            })
+            .collect()
+    }
+
+    pub(crate) fn reviewed_file_count(&self) -> usize {
+        self.files
+            .iter()
+            .filter(|file| self.reviewed_file_paths.contains(&file.path))
+            .count()
+    }
+
+    pub(crate) fn changed_file_filters(&self) -> ChangedFileFilters {
+        ChangedFileFilters {
+            query: String::new(),
+            excluded_file_types: self.excluded_file_type_filters.clone(),
+            owned_by_current_user_only: self.show_files_owned_by_current_user,
+            owned_file_paths: self.owned_file_paths.clone(),
+        }
+    }
+
+    pub(crate) fn changed_file_type_filters(&self) -> Vec<ChangedFileTypeFilter> {
+        changed_file_type_filters(&self.files, &self.excluded_file_type_filters)
+    }
+
+    pub(crate) fn included_file_type_filter_count(&self) -> usize {
+        self.changed_file_type_filters()
+            .into_iter()
+            .filter(|filter| filter.included)
+            .count()
+    }
+
+    pub(crate) fn has_owned_file_filter_data(&self) -> bool {
+        !self.owned_file_paths.is_empty()
+    }
+
+    fn file_tree_row_index_for_file(&self, file_index: usize, cx: &App) -> Option<usize> {
+        self.changed_file_tree_rows(cx)
+            .into_iter()
+            .position(|row| matches!(row, ChangedFileTreeRow::File(file_row) if file_row.file_index == file_index))
+    }
+
+    fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
+        let visible_files = self.visible_file_indices(cx);
+        if visible_files.is_empty() || visible_files.contains(&self.active_file) {
+            return;
+        }
+
+        if let Some(file_index) = visible_files.first().copied() {
+            self.active_file = file_index;
+            self.active_hunk = 0;
+            self.clear_review_composer_state();
+            if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
+                self.file_list_scroll
+                    .scroll_to_item(row_index, ScrollStrategy::Center);
+            }
+            self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        }
+    }
+
+    fn prune_reviewed_file_paths(&mut self) {
+        let file_paths = self
+            .files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<HashSet<_>>();
+        self.reviewed_file_paths
+            .retain(|path| file_paths.contains(path));
+        self.owned_file_paths
+            .retain(|path| file_paths.contains(path));
+    }
+
+    fn reset_changed_file_filters(&mut self) {
+        self.excluded_file_type_filters.clear();
+        self.show_files_owned_by_current_user = false;
+    }
+
     fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
         self.workflow_runs
             .iter()
@@ -378,6 +566,10 @@ impl AppView {
         self.selected_pr = index;
         self.active_file = 0;
         self.active_hunk = 0;
+        self.collapsed_file_tree_folders.clear();
+        self.reviewed_file_paths.clear();
+        self.reset_changed_file_filters();
+        self.owned_file_paths.clear();
         self.workflow_jobs.clear();
         self.log_chunk = None;
         self.pull_request_reviews.clear();
@@ -417,6 +609,10 @@ impl AppView {
             self.pull_requests.clear();
             self.files.clear();
             self.diffs.clear();
+            self.collapsed_file_tree_folders.clear();
+            self.reviewed_file_paths.clear();
+            self.reset_changed_file_filters();
+            self.owned_file_paths.clear();
             self.check_runs.clear();
             self.workflow_runs.clear();
             self.workflow_jobs.clear();
@@ -435,18 +631,121 @@ impl AppView {
     }
 
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(file) = self.files.get(index) {
-            let path = file.path.clone();
+        if let Some(path) = self.files.get(index).map(|file| file.path.clone()) {
             self.active_file = index;
             self.active_hunk = 0;
             self.active_tab = PanelTab::Diff;
             self.clear_review_composer_state();
-            self.file_list_scroll
-                .scroll_to_item(index, ScrollStrategy::Center);
+            if let Some(row_index) = self.file_tree_row_index_for_file(index, cx) {
+                self.file_list_scroll
+                    .scroll_to_item(row_index, ScrollStrategy::Center);
+            }
             self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
             self.status = format!("Selected {path}");
         }
 
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_changed_file_folder(
+        &mut self,
+        folder_path: String,
+        cx: &mut Context<Self>,
+    ) {
+        let status = if self.collapsed_file_tree_folders.remove(&folder_path) {
+            format!("Expanded {folder_path}")
+        } else {
+            self.collapsed_file_tree_folders.insert(folder_path.clone());
+            format!("Collapsed {folder_path}")
+        };
+
+        self.ensure_active_file_visible(cx);
+        self.status = status;
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_changed_file_reviewed(
+        &mut self,
+        file_index: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(path) = self.files.get(file_index).map(|file| file.path.clone()) else {
+            self.status = "No changed file to mark reviewed".to_string();
+            cx.notify();
+            return;
+        };
+
+        let reviewed = if self.reviewed_file_paths.remove(&path) {
+            false
+        } else {
+            self.reviewed_file_paths.insert(path.clone());
+            true
+        };
+        let reviewed_count = self.reviewed_file_count();
+        let total_count = self.files.len();
+
+        self.status = if reviewed {
+            format!("Marked {path} as reviewed ({reviewed_count}/{total_count})")
+        } else {
+            format!("Marked {path} as unreviewed ({reviewed_count}/{total_count})")
+        };
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_changed_file_type_filter(
+        &mut self,
+        file_type: String,
+        cx: &mut Context<Self>,
+    ) {
+        let included = if self.excluded_file_type_filters.remove(&file_type) {
+            true
+        } else {
+            self.excluded_file_type_filters.insert(file_type.clone());
+            false
+        };
+        let visible_count = self.visible_file_indices(cx).len();
+
+        self.ensure_active_file_visible(cx);
+        self.status = if included {
+            format!("Included {file_type} files ({visible_count} visible)")
+        } else {
+            format!("Excluded {file_type} files ({visible_count} visible)")
+        };
+        cx.notify();
+    }
+
+    pub(crate) fn include_all_changed_file_types(&mut self, cx: &mut Context<Self>) {
+        self.excluded_file_type_filters.clear();
+        self.ensure_active_file_visible(cx);
+        let visible_count = self.visible_file_indices(cx).len();
+        self.status = format!("Included all file types ({visible_count} visible)");
+        cx.notify();
+    }
+
+    pub(crate) fn show_all_changed_files(&mut self, cx: &mut Context<Self>) {
+        self.show_files_owned_by_current_user = false;
+        self.ensure_active_file_visible(cx);
+        let visible_count = self.visible_file_indices(cx).len();
+        self.status = format!("Showing all changed files ({visible_count} visible)");
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_files_owned_by_current_user_filter(&mut self, cx: &mut Context<Self>) {
+        if !self.has_owned_file_filter_data() {
+            self.status = "No owned-file metadata is available for this pull request".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.show_files_owned_by_current_user = !self.show_files_owned_by_current_user;
+        self.ensure_active_file_visible(cx);
+        let visible_count = self.visible_file_indices(cx).len();
+
+        self.status = if self.show_files_owned_by_current_user {
+            format!("Showing {visible_count} files owned by you")
+        } else {
+            format!("Showing {visible_count} changed files")
+        };
         cx.notify();
     }
 
@@ -888,6 +1187,64 @@ impl AppView {
         self.sync_unresolved_thread_count()
     }
 
+    pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {
+        let Some(current_user_login) = self.current_user_login.clone() else {
+            self.owned_file_paths.clear();
+            self.show_files_owned_by_current_user = false;
+            cx.notify();
+            return;
+        };
+        let Some(repository_path) = self.current_repository_local_path().cloned() else {
+            self.owned_file_paths.clear();
+            self.show_files_owned_by_current_user = false;
+            cx.notify();
+            return;
+        };
+        if self.files.is_empty() {
+            self.owned_file_paths.clear();
+            self.show_files_owned_by_current_user = false;
+            cx.notify();
+            return;
+        }
+
+        let files = self.files.clone();
+        let selected_repository = self.current_repository().cloned();
+        let selected_pr_number = self.selected_pull_request_number();
+        let task = cx.background_spawn(async move {
+            codeowners_owned_file_paths(&repository_path, &files, &current_user_login)
+        });
+
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                if view.current_repository().cloned() != selected_repository
+                    || view.selected_pull_request_number() != selected_pr_number
+                {
+                    return;
+                }
+
+                match result {
+                    Ok(paths) => {
+                        view.owned_file_paths = paths;
+                    }
+                    Err(_) => {
+                        view.owned_file_paths.clear();
+                    }
+                }
+
+                if !view.has_owned_file_filter_data() {
+                    view.show_files_owned_by_current_user = false;
+                }
+                view.ensure_active_file_visible(cx);
+                cx.notify();
+            }) {
+                eprintln!("failed to update file ownership filters: {error}");
+            }
+        })
+        .detach();
+    }
+
     fn sync_unresolved_thread_count(&mut self) -> usize {
         let unresolved_count = self
             .review_threads
@@ -1198,6 +1555,344 @@ impl AppView {
 
 pub(crate) fn normalized_search_query(query: &str) -> String {
     query.trim().to_lowercase()
+}
+
+pub(crate) fn changed_file_tree_rows(
+    files: &[DiffFile],
+    collapsed_folders: &HashSet<String>,
+    reviewed_file_paths: &HashSet<String>,
+    filters: &ChangedFileFilters,
+) -> Vec<ChangedFileTreeRow> {
+    let filters = ChangedFileFilters {
+        query: normalized_search_query(&filters.query),
+        excluded_file_types: filters.excluded_file_types.clone(),
+        owned_by_current_user_only: filters.owned_by_current_user_only,
+        owned_file_paths: filters.owned_file_paths.clone(),
+    };
+    let mut root = ChangedFileTreeNode::default();
+
+    for (file_index, file) in files.iter().enumerate() {
+        if !changed_file_matches_filters(file, &filters) {
+            continue;
+        }
+
+        let path_segments = file
+            .path
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .collect::<Vec<_>>();
+        if path_segments.is_empty() {
+            continue;
+        }
+
+        root.add_file(
+            file_index,
+            &path_segments,
+            reviewed_file_paths.contains(&file.path),
+        );
+    }
+
+    let mut rows = Vec::with_capacity(root.file_count + root.folders.len());
+    push_changed_file_tree_rows(
+        &root,
+        "",
+        0,
+        files,
+        collapsed_folders,
+        filters.has_active_filter(),
+        &mut rows,
+    );
+    rows
+}
+
+pub(crate) fn changed_file_matches_filters(file: &DiffFile, filters: &ChangedFileFilters) -> bool {
+    if filters
+        .excluded_file_types
+        .contains(&changed_file_type_key(file))
+    {
+        return false;
+    }
+
+    if filters.owned_by_current_user_only && !filters.owned_file_paths.contains(&file.path) {
+        return false;
+    }
+
+    changed_file_matches_query(file, &filters.query)
+}
+
+pub(crate) fn changed_file_matches_query(file: &DiffFile, query: &str) -> bool {
+    let query = normalized_search_query(query);
+
+    if query.is_empty() {
+        return true;
+    }
+
+    if file.path.to_lowercase().contains(&query) {
+        return true;
+    }
+
+    if file
+        .previous_path
+        .as_deref()
+        .map(|path| path.to_lowercase().contains(&query))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    changed_file_status_label(file.status).contains(&query)
+}
+
+pub(crate) fn changed_file_type_filters(
+    files: &[DiffFile],
+    excluded_file_types: &HashSet<String>,
+) -> Vec<ChangedFileTypeFilter> {
+    let mut file_counts_by_type = BTreeMap::<String, usize>::new();
+
+    for file in files {
+        let file_type = changed_file_type_key(file);
+        *file_counts_by_type.entry(file_type).or_default() += 1;
+    }
+
+    file_counts_by_type
+        .into_iter()
+        .map(|(key, file_count)| ChangedFileTypeFilter {
+            label: key.clone(),
+            included: !excluded_file_types.contains(&key),
+            key,
+            file_count,
+        })
+        .collect()
+}
+
+pub(crate) fn changed_file_type_key(file: &DiffFile) -> String {
+    let name = changed_file_name(&file.path);
+
+    if let Some((stem, extension)) = name.rsplit_once('.')
+        && !stem.is_empty()
+        && !extension.is_empty()
+    {
+        return extension.to_lowercase();
+    }
+
+    "no extension".to_string()
+}
+
+fn codeowners_owned_file_paths(
+    repository_path: &Path,
+    files: &[DiffFile],
+    current_user_login: &str,
+) -> Result<HashSet<String>, String> {
+    let Some(codeowners_path) = codeowners_path(repository_path) else {
+        return Ok(HashSet::new());
+    };
+    let contents = fs::read_to_string(&codeowners_path)
+        .map_err(|error| format!("failed to read {}: {error}", codeowners_path.display()))?;
+    let rules = parse_codeowners_rules(&contents, current_user_login);
+    if rules.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let mut owned_paths = HashSet::new();
+    for file in files {
+        let mut owned = false;
+
+        for rule in &rules {
+            if codeowners_pattern_matches_path(&rule.pattern, &file.path) {
+                owned = rule.owned_by_current_user;
+            }
+        }
+
+        if owned {
+            owned_paths.insert(file.path.clone());
+        }
+    }
+
+    Ok(owned_paths)
+}
+
+fn codeowners_path(repository_path: &Path) -> Option<PathBuf> {
+    [
+        repository_path.join(".github").join("CODEOWNERS"),
+        repository_path.join("CODEOWNERS"),
+        repository_path.join("docs").join("CODEOWNERS"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CodeownersRule {
+    pattern: String,
+    owned_by_current_user: bool,
+}
+
+fn parse_codeowners_rules(contents: &str, current_user_login: &str) -> Vec<CodeownersRule> {
+    contents
+        .lines()
+        .filter_map(|line| parse_codeowners_rule(line, current_user_login))
+        .collect()
+}
+
+fn parse_codeowners_rule(line: &str, current_user_login: &str) -> Option<CodeownersRule> {
+    let line = line.split('#').next().unwrap_or_default().trim();
+    if line.is_empty() {
+        return None;
+    }
+
+    let mut parts = line.split_whitespace();
+    let pattern = parts.next()?.trim();
+    let owned_by_current_user =
+        parts.any(|owner| codeowner_matches_user(owner, current_user_login));
+
+    Some(CodeownersRule {
+        pattern: pattern.to_string(),
+        owned_by_current_user,
+    })
+}
+
+fn codeowner_matches_user(owner: &str, current_user_login: &str) -> bool {
+    let owner = owner.trim().trim_start_matches('@');
+    owner == current_user_login
+        || owner
+            .rsplit('/')
+            .next()
+            .map(|segment| segment == current_user_login)
+            .unwrap_or(false)
+}
+
+fn codeowners_pattern_matches_path(pattern: &str, path: &str) -> bool {
+    let normalized_pattern = pattern.trim().trim_start_matches('/');
+    if normalized_pattern.is_empty() {
+        return false;
+    }
+
+    if let Some(directory_pattern) = normalized_pattern.strip_suffix('/') {
+        return path == directory_pattern || path.starts_with(&format!("{directory_pattern}/"));
+    }
+
+    if !normalized_pattern.contains('/') {
+        return wildcard_matches(normalized_pattern, changed_file_name(path))
+            || path
+                .split('/')
+                .any(|segment| wildcard_matches(normalized_pattern, segment));
+    }
+
+    wildcard_matches(normalized_pattern, path)
+        || path == normalized_pattern
+        || path.starts_with(&format!("{normalized_pattern}/"))
+}
+
+fn wildcard_matches(pattern: &str, value: &str) -> bool {
+    wildcard_matches_bytes(pattern.as_bytes(), value.as_bytes())
+}
+
+fn wildcard_matches_bytes(pattern: &[u8], value: &[u8]) -> bool {
+    match pattern.split_first() {
+        None => value.is_empty(),
+        Some((b'*', remaining_pattern)) => {
+            wildcard_matches_bytes(remaining_pattern, value)
+                || value
+                    .split_first()
+                    .map(|(_, remaining_value)| wildcard_matches_bytes(pattern, remaining_value))
+                    .unwrap_or(false)
+        }
+        Some((b'?', remaining_pattern)) => value
+            .split_first()
+            .map(|(_, remaining_value)| wildcard_matches_bytes(remaining_pattern, remaining_value))
+            .unwrap_or(false),
+        Some((expected, remaining_pattern)) => value
+            .split_first()
+            .map(|(actual, remaining_value)| {
+                expected == actual && wildcard_matches_bytes(remaining_pattern, remaining_value)
+            })
+            .unwrap_or(false),
+    }
+}
+
+pub(crate) fn changed_file_status_label(status: FileStatus) -> &'static str {
+    match status {
+        FileStatus::Added => "added",
+        FileStatus::Modified => "modified",
+        FileStatus::Removed => "removed",
+        FileStatus::Renamed => "renamed",
+        FileStatus::Copied => "copied",
+        FileStatus::Changed => "changed",
+        FileStatus::Unchanged => "unchanged",
+    }
+}
+
+fn push_changed_file_tree_rows(
+    node: &ChangedFileTreeNode,
+    parent_path: &str,
+    depth: usize,
+    files: &[DiffFile],
+    collapsed_folders: &HashSet<String>,
+    force_expanded: bool,
+    rows: &mut Vec<ChangedFileTreeRow>,
+) {
+    for (folder_name, child_node) in &node.folders {
+        let folder_path = if parent_path.is_empty() {
+            folder_name.clone()
+        } else {
+            format!("{parent_path}/{folder_name}")
+        };
+        let expanded = force_expanded || !collapsed_folders.contains(&folder_path);
+
+        rows.push(ChangedFileTreeRow::Folder(ChangedFileFolderRow {
+            path: folder_path.clone(),
+            name: folder_name.clone(),
+            depth,
+            file_count: child_node.file_count,
+            reviewed_file_count: child_node.reviewed_file_count,
+            expanded,
+        }));
+
+        if expanded {
+            push_changed_file_tree_rows(
+                child_node,
+                &folder_path,
+                depth + 1,
+                files,
+                collapsed_folders,
+                force_expanded,
+                rows,
+            );
+        }
+    }
+
+    let mut file_indices = node.files.clone();
+    file_indices.sort_by(|left, right| {
+        let left_name = files
+            .get(*left)
+            .map(|file| changed_file_name(&file.path))
+            .unwrap_or_default();
+        let right_name = files
+            .get(*right)
+            .map(|file| changed_file_name(&file.path))
+            .unwrap_or_default();
+
+        left_name.cmp(right_name)
+    });
+
+    for file_index in file_indices {
+        let Some(file) = files.get(file_index) else {
+            continue;
+        };
+
+        rows.push(ChangedFileTreeRow::File(ChangedFileRow {
+            file_index,
+            name: changed_file_name(&file.path).to_string(),
+            depth,
+        }));
+    }
+}
+
+fn changed_file_name(path: &str) -> &str {
+    path.rsplit('/')
+        .next()
+        .filter(|segment| !segment.is_empty())
+        .unwrap_or(path)
 }
 
 pub(crate) fn repository_matches_query(repository: &RepoId, query: &str) -> bool {
