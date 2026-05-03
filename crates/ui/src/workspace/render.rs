@@ -1,6 +1,6 @@
 use gpui::{
-    Anchor, App, Context, Div, FocusHandle, Focusable, IntoElement, Render, Stateful, Window, div,
-    prelude::*, px, rgb, uniform_list,
+    Anchor, App, Context, Div, Entity, FocusHandle, Focusable, IntoElement, KeyDownEvent, Render,
+    Stateful, Window, div, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
     Disableable, Sizable, StyledExt, TitleBar,
@@ -16,7 +16,7 @@ use crate::panels::{
     render_diff_panel, render_logs_panel, render_merge_state, render_pull_request_row,
     render_review_decision, render_review_panel, review_action_blocker,
 };
-use crate::workspace::AppView;
+use crate::workspace::{AppView, normalized_search_query};
 
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -57,29 +57,11 @@ fn render_switcher_error_row(error: String) -> impl IntoElement {
         .child(error)
 }
 
-fn normalized_search_query(query: &str) -> String {
-    query.trim().to_lowercase()
-}
-
-fn repository_matches_query(repository: &RepoId, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-
-    repository.full_name().to_lowercase().contains(query)
-}
-
-fn pull_request_matches_query(pull_request: &PullRequest, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-
-    pull_request.title.to_lowercase().contains(query)
-        || pull_request.number.to_string().contains(query)
-        || pull_request.author.to_lowercase().contains(query)
-}
-
-fn render_switcher_repository_row(repository: &RepoId, selected: bool) -> Stateful<Div> {
+fn render_switcher_repository_row(
+    repository: &RepoId,
+    current: bool,
+    highlighted: bool,
+) -> Stateful<Div> {
     div()
         .id(format!("switcher-repository-{}", repository.full_name()))
         .flex()
@@ -91,7 +73,8 @@ fn render_switcher_repository_row(repository: &RepoId, selected: bool) -> Statef
         .py_1()
         .text_sm()
         .cursor_pointer()
-        .when(selected, |element| element.bg(rgb(0x263241)))
+        .when(highlighted, |element| element.bg(rgb(0x263241)))
+        .when(current && !highlighted, |element| element.bg(rgb(0x202936)))
         .hover(|element| element.bg(rgb(0x222a34)))
         .child(
             div()
@@ -101,19 +84,19 @@ fn render_switcher_repository_row(repository: &RepoId, selected: bool) -> Statef
                 .text_color(rgb(0xe6e8eb))
                 .child(repository.full_name()),
         )
-        .child(
-            div()
-                .text_xs()
-                .text_color(rgb(0x7d8794))
-                .child(if selected { "current" } else { "repo" }),
-        )
+        .child(div().text_xs().text_color(rgb(0x7d8794)).child(if current {
+            "current"
+        } else {
+            "repo"
+        }))
 }
 
 fn render_switcher_pull_request_row(
     number: u64,
     title: String,
     author: String,
-    selected: bool,
+    current: bool,
+    highlighted: bool,
 ) -> Stateful<Div> {
     div()
         .id(("switcher-pull-request", number))
@@ -125,7 +108,8 @@ fn render_switcher_pull_request_row(
         .py_2()
         .text_sm()
         .cursor_pointer()
-        .when(selected, |element| element.bg(rgb(0x263241)))
+        .when(highlighted, |element| element.bg(rgb(0x263241)))
+        .when(current && !highlighted, |element| element.bg(rgb(0x202936)))
         .hover(|element| element.bg(rgb(0x222a34)))
         .child(
             div()
@@ -159,6 +143,50 @@ fn render_switcher_pull_request_row(
                 .child("by")
                 .child(div().min_w_0().truncate().child(author)),
         )
+}
+
+fn handle_repository_switcher_key(event: &KeyDownEvent, view: &Entity<AppView>, cx: &mut App) {
+    if event.keystroke.modifiers.modified() {
+        return;
+    }
+
+    match event.keystroke.key.as_str() {
+        "up" => {
+            cx.stop_propagation();
+            view.update(cx, |view, cx| {
+                view.move_repository_switcher_selection(-1, cx);
+            });
+        }
+        "down" => {
+            cx.stop_propagation();
+            view.update(cx, |view, cx| {
+                view.move_repository_switcher_selection(1, cx);
+            });
+        }
+        _ => {}
+    }
+}
+
+fn handle_pull_request_switcher_key(event: &KeyDownEvent, view: &Entity<AppView>, cx: &mut App) {
+    if event.keystroke.modifiers.modified() {
+        return;
+    }
+
+    match event.keystroke.key.as_str() {
+        "up" => {
+            cx.stop_propagation();
+            view.update(cx, |view, cx| {
+                view.move_pull_request_switcher_selection(-1, cx);
+            });
+        }
+        "down" => {
+            cx.stop_propagation();
+            view.update(cx, |view, cx| {
+                view.move_pull_request_switcher_selection(1, cx);
+            });
+        }
+        _ => {}
+    }
 }
 
 impl Render for AppView {
@@ -232,33 +260,6 @@ impl Render for AppView {
 }
 
 impl AppView {
-    fn current_repository(&self) -> Option<&RepoId> {
-        self.selected_pull_request()
-            .map(|pull_request| &pull_request.repo)
-            .or(self.configured_repo.as_ref())
-    }
-
-    fn switcher_repositories(&self) -> Vec<RepoId> {
-        let mut repositories = self.repositories.clone();
-
-        if let Some(repository) = self.configured_repo.clone() {
-            if !repositories.iter().any(|existing| existing == &repository) {
-                repositories.push(repository);
-            }
-        }
-
-        for pull_request in &self.pull_requests {
-            if !repositories
-                .iter()
-                .any(|repository| repository == &pull_request.repo)
-            {
-                repositories.push(pull_request.repo.clone());
-            }
-        }
-
-        repositories
-    }
-
     fn header_repository_label(&self) -> String {
         self.current_repository()
             .map(|repository| repository.name.clone())
@@ -287,28 +288,17 @@ impl AppView {
             normalized_search_query(&self.repository_search_input.read(cx).value());
         let pull_request_query =
             normalized_search_query(&self.pull_request_search_input.read(cx).value());
-        let repositories = self
-            .switcher_repositories()
-            .into_iter()
-            .filter(|repository| repository_matches_query(repository, &repository_query))
-            .collect::<Vec<_>>();
+        let repositories = self.filtered_switcher_repositories(cx);
         let current_repository = self.current_repository().cloned();
         let repository_error = self.repository_error.clone();
-        let pull_requests = current_repository
-            .as_ref()
-            .map(|repository| {
-                self.pull_requests
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, pull_request)| &pull_request.repo == repository)
-                    .filter(|(_, pull_request)| {
-                        pull_request_matches_query(pull_request, &pull_request_query)
-                    })
-                    .map(|(index, pull_request)| (index, pull_request.clone()))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let pull_requests = self.filtered_switcher_pull_requests(cx);
         let selected_pull_request = self.selected_pr;
+        let repository_selection = self
+            .repository_switcher_selection
+            .min(repositories.len().saturating_sub(1));
+        let pull_request_selection = self
+            .pull_request_switcher_selection
+            .min(pull_requests.len().saturating_sub(1));
         let repository_search_input = self.repository_search_input.clone();
         let pull_request_search_input = self.pull_request_search_input.clone();
         let has_repository_query = !repository_query.is_empty();
@@ -357,6 +347,7 @@ impl AppView {
                                                             input.set_value("", window, cx);
                                                             input.focus(window, cx);
                                                         });
+                                                    view.reset_repository_switcher_selection(cx);
                                                 }
                                                 cx.notify();
                                             });
@@ -383,6 +374,14 @@ impl AppView {
                                         let popover = popover_cx.entity().clone();
                                         let mut menu = div()
                                             .id("repository-switcher-menu")
+                                            .on_key_down({
+                                                let view = view.clone();
+                                                move |event, _, cx| {
+                                                    handle_repository_switcher_key(
+                                                        event, &view, cx,
+                                                    );
+                                                }
+                                            })
                                             .w(px(460.))
                                             .max_h(px(520.))
                                             .overflow_y_scroll()
@@ -414,17 +413,22 @@ impl AppView {
                                             };
                                             menu = menu.child(render_switcher_empty_row(label));
                                         } else {
-                                            for repository in &repositories {
+                                            for (row_index, repository) in
+                                                repositories.iter().enumerate()
+                                            {
                                                 let repository = repository.clone();
-                                                let selected =
+                                                let current =
                                                     current_repository.as_ref() == Some(&repository);
+                                                let highlighted =
+                                                    row_index == repository_selection;
                                                 let view = view.clone();
                                                 let popover = popover.clone();
 
                                                 menu = menu.child(
                                                     render_switcher_repository_row(
                                                         &repository,
-                                                        selected,
+                                                        current,
+                                                        highlighted,
                                                     )
                                                     .on_click(move |_, window, cx| {
                                                         view.update(cx, |view, cx| {
@@ -467,6 +471,7 @@ impl AppView {
                                                             input.set_value("", window, cx);
                                                             input.focus(window, cx);
                                                         });
+                                                    view.reset_pull_request_switcher_selection(cx);
                                                 }
                                                 cx.notify();
                                             });
@@ -493,6 +498,14 @@ impl AppView {
                                         let popover = popover_cx.entity().clone();
                                         let mut menu = div()
                                             .id("pull-request-switcher-menu")
+                                            .on_key_down({
+                                                let view = view.clone();
+                                                move |event, _, cx| {
+                                                    handle_pull_request_switcher_key(
+                                                        event, &view, cx,
+                                                    );
+                                                }
+                                            })
                                             .w(px(520.))
                                             .max_h(px(520.))
                                             .overflow_y_scroll()
@@ -524,8 +537,12 @@ impl AppView {
                                             };
                                             menu = menu.child(render_switcher_empty_row(label));
                                         } else {
-                                            for (index, pull_request) in &pull_requests {
-                                                let selected = *index == selected_pull_request;
+                                            for (row_index, (index, pull_request)) in
+                                                pull_requests.iter().enumerate()
+                                            {
+                                                let current = *index == selected_pull_request;
+                                                let highlighted =
+                                                    row_index == pull_request_selection;
                                                 let number = pull_request.number;
                                                 let title = pull_request.title.clone();
                                                 let author = pull_request.author.clone();
@@ -535,7 +552,11 @@ impl AppView {
 
                                                 menu = menu.child(
                                                     render_switcher_pull_request_row(
-                                                        number, title, author, selected,
+                                                        number,
+                                                        title,
+                                                        author,
+                                                        current,
+                                                        highlighted,
                                                     )
                                                     .on_click(move |_, window, cx| {
                                                         view.update(cx, |view, cx| {

@@ -6,7 +6,10 @@ use harbor_domain::{
 use crate::panels::{
     checks_summary_from_runs, merge_blocker, review_action_blocker, review_thread_counts,
 };
-use crate::workspace::parse_repo_id;
+use crate::workspace::{
+    next_switcher_index, normalized_search_query, parse_repo_id, pull_request_matches_query,
+    repository_matches_query,
+};
 
 #[test]
 fn parses_owner_and_repo() {
@@ -23,6 +26,41 @@ fn rejects_invalid_repo_values() {
     assert!(parse_repo_id("/app").is_none());
     assert!(parse_repo_id("acme/").is_none());
     assert!(parse_repo_id("acme/app/extra").is_none());
+}
+
+#[test]
+fn normalizes_switcher_search_queries() {
+    assert_eq!(normalized_search_query("  Acme/App  "), "acme/app");
+}
+
+#[test]
+fn matches_repositories_for_switcher_search() {
+    let repository = RepoId::new("Acme", "Mobile-App");
+
+    assert!(repository_matches_query(&repository, ""));
+    assert!(repository_matches_query(&repository, "mobile"));
+    assert!(repository_matches_query(&repository, "acme/mobile"));
+    assert!(!repository_matches_query(&repository, "backend"));
+}
+
+#[test]
+fn matches_pull_requests_for_switcher_search() {
+    let pull_request = pull_request();
+
+    assert!(pull_request_matches_query(&pull_request, ""));
+    assert!(pull_request_matches_query(&pull_request, "feature"));
+    assert!(pull_request_matches_query(&pull_request, "7"));
+    assert!(pull_request_matches_query(&pull_request, "octo"));
+    assert!(!pull_request_matches_query(&pull_request, "backend"));
+}
+
+#[test]
+fn wraps_switcher_selection_indexes() {
+    assert_eq!(next_switcher_index(0, 0, 1), 0);
+    assert_eq!(next_switcher_index(0, 3, 1), 1);
+    assert_eq!(next_switcher_index(2, 3, 1), 0);
+    assert_eq!(next_switcher_index(0, 3, -1), 2);
+    assert_eq!(next_switcher_index(10, 3, 1), 0);
 }
 
 #[test]

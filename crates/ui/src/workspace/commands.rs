@@ -232,6 +232,7 @@ impl AppView {
                 input.set_value("", window, cx);
                 input.focus(window, cx);
             });
+            self.reset_repository_switcher_selection(cx);
         }
         self.status = if self.repository_switcher_open {
             "Repository switcher opened".to_string()
