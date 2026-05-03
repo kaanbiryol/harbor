@@ -104,6 +104,13 @@ impl AppView {
         self.logs_error = None;
         self.action_error = None;
         self.pr_action_error = None;
+        self.pr_detail_tasks.clear();
+        self.is_loading_details = false;
+        self.is_loading_files = false;
+        self.is_loading_checks = false;
+        self.is_loading_workflows = false;
+        self.is_loading_reviews = false;
+        self.is_loading_logs = false;
         self.status = format!("Loading open pull requests from {}", repo.full_name());
 
         let owner = repo.owner.clone();
@@ -204,6 +211,7 @@ impl AppView {
         self.logs_error = None;
         self.action_error = None;
         self.pr_action_error = None;
+        self.pr_detail_tasks.clear();
         self.files.clear();
         self.diffs.clear();
         self.check_runs.clear();
@@ -224,178 +232,263 @@ impl AppView {
         let owner = repo.owner.clone();
         let name = repo.name.clone();
 
-        self.pr_detail_task = Some(cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
-            let detail_result = client.get_pull_request(&owner, &name, number).await;
-            let files_result = client
-                .list_pull_request_files(&owner, &name, number)
-                .await
-                .map(|files| {
-                    let diffs = parse_files(&files);
-                    (files, diffs)
-                });
-            let checks_result = if head_sha.is_empty() {
-                Ok(Vec::new())
-            } else {
-                client.list_check_runs(&owner, &name, &head_sha).await
-            };
-            let workflow_runs_result = if head_sha.is_empty() {
-                Ok(Vec::new())
-            } else {
-                client
-                    .list_workflow_runs_for_head(&owner, &name, &head_sha)
+        self.pr_detail_tasks.push(cx.spawn({
+            let owner = owner.clone();
+            let name = name.clone();
+            let repo = repo.clone();
+
+            async move |this, cx| {
+                let result = GitHubClient::new(GhCliTransport)
+                    .get_pull_request(&owner, &name, number)
+                    .await;
+
+                if let Err(error) = this.update(cx, move |view, cx| {
+                    if !selected_pull_request_matches(view, &repo, number) {
+                        return;
+                    }
+
+                    view.is_loading_details = false;
+                    match result {
+                        Ok(detail) => {
+                            if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                                *selected = detail;
+                            }
+                            view.details_error = None;
+                            view.status = format!("Loaded PR #{number} details");
+                        }
+                        Err(error) => {
+                            view.details_error = Some(error.to_string());
+                            view.status = format!("Failed to load PR #{number} details");
+                        }
+                    }
+
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update pull request detail state: {error}");
+                }
+            }
+        }));
+
+        self.pr_detail_tasks.push(cx.spawn({
+            let owner = owner.clone();
+            let name = name.clone();
+            let repo = repo.clone();
+
+            async move |this, cx| {
+                let result = GitHubClient::new(GhCliTransport)
+                    .list_pull_request_files(&owner, &name, number)
                     .await
-            };
-            let pull_request_reviews_result = client
-                .list_pull_request_reviews(&owner, &name, number)
-                .await;
-            let review_threads_result = client.list_review_threads(&owner, &name, number).await;
+                    .map(|files| {
+                        let diffs = parse_files(&files);
+                        (files, diffs)
+                    });
 
-            _ = this.update(cx, move |view, cx| {
-                if view.selected_pull_request_number() != Some(number) {
-                    return;
-                }
+                if let Err(error) = this.update(cx, move |view, cx| {
+                    if !selected_pull_request_matches(view, &repo, number) {
+                        return;
+                    }
 
-                view.is_loading_details = false;
-                view.is_loading_files = false;
-                view.is_loading_checks = false;
-                view.is_loading_workflows = false;
-                view.is_loading_reviews = false;
-
-                match detail_result {
-                    Ok(detail) => {
-                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
-                            *selected = detail;
+                    view.is_loading_files = false;
+                    match result {
+                        Ok((files, diffs)) => {
+                            let count = files.len();
+                            view.files = files;
+                            view.diffs = diffs;
+                            view.active_file = 0;
+                            view.active_hunk = 0;
+                            view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.files_error = None;
+                            view.status = format!("Loaded {count} changed files for PR #{number}");
                         }
-                        view.details_error = None;
-                    }
-                    Err(error) => {
-                        view.details_error = Some(error.to_string());
-                    }
-                }
-
-                let mut loaded_file_count = None;
-
-                match files_result {
-                    Ok((files, diffs)) => {
-                        let count = files.len();
-                        view.files = files;
-                        view.diffs = diffs;
-                        view.active_file = 0;
-                        view.active_hunk = 0;
-                        view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        view.files_error = None;
-                        loaded_file_count = Some(count);
-                    }
-                    Err(error) => {
-                        view.files.clear();
-                        view.diffs.clear();
-                        view.active_file = 0;
-                        view.active_hunk = 0;
-                        view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        view.files_error = Some(error.to_string());
-                    }
-                }
-
-                match checks_result {
-                    Ok(check_runs) => {
-                        let summary = checks_summary_from_runs(&check_runs);
-                        view.check_runs = check_runs;
-                        view.checks_error = None;
-
-                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
-                            selected.checks_summary = summary;
+                        Err(error) => {
+                            view.files.clear();
+                            view.diffs.clear();
+                            view.active_file = 0;
+                            view.active_hunk = 0;
+                            view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.files_error = Some(error.to_string());
+                            view.status = format!("Failed to load changed files for PR #{number}");
                         }
                     }
-                    Err(error) => {
-                        view.check_runs.clear();
-                        view.checks_error = Some(error.to_string());
-                    }
+
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update pull request file state: {error}");
                 }
+            }
+        }));
 
-                match workflow_runs_result {
-                    Ok(workflow_runs) => {
-                        view.workflow_runs = workflow_runs;
-                        view.workflows_error = None;
-                    }
-                    Err(error) => {
-                        view.workflow_runs.clear();
-                        view.workflows_error = Some(error.to_string());
-                    }
-                }
+        self.pr_detail_tasks.push(cx.spawn({
+            let owner = owner.clone();
+            let name = name.clone();
+            let repo = repo.clone();
+            let head_sha = head_sha.clone();
 
-                let mut loaded_review_thread_count = None;
-
-                match pull_request_reviews_result {
-                    Ok(reviews) => {
-                        view.pull_request_reviews = reviews;
-                        view.reviews_error = None;
-                    }
-                    Err(error) => {
-                        view.pull_request_reviews.clear();
-                        view.reviews_error =
-                            Some(format!("Failed to load review history: {error}"));
-                    }
-                }
-
-                match review_threads_result {
-                    Ok(review_threads) => {
-                        let unresolved_count = review_threads
-                            .iter()
-                            .filter(|thread| thread.state == ReviewThreadState::Unresolved)
-                            .count();
-                        let thread_count = review_threads.len();
-                        view.review_threads = review_threads;
-                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
-                            selected.unresolved_threads = unresolved_count;
-                        }
-                        loaded_review_thread_count = Some(thread_count);
-                    }
-                    Err(error) => {
-                        view.review_threads.clear();
-                        let message = format!("Failed to load review threads: {error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
-                            Some(existing) => format!("{existing}; {message}"),
-                            None => message,
-                        });
-                    }
-                }
-
-                view.status = match (
-                    view.details_error.as_ref(),
-                    view.files_error.as_ref(),
-                    loaded_file_count,
-                ) {
-                    (None, None, Some(count)) => {
-                        format!("Loaded PR #{number} details and {count} files")
-                    }
-                    (Some(_), None, Some(count)) => {
-                        format!("Loaded {count} files for PR #{number}, but details failed")
-                    }
-                    (None, Some(_), _) => {
-                        format!("Loaded PR #{number} details, but files failed")
-                    }
-                    (Some(_), Some(_), _) => {
-                        format!("Failed to load PR #{number} details and files")
-                    }
-                    _ => format!("Loaded PR #{number}"),
+            async move |this, cx| {
+                let result = if head_sha.is_empty() {
+                    Ok(Vec::new())
+                } else {
+                    GitHubClient::new(GhCliTransport)
+                        .list_check_runs(&owner, &name, &head_sha)
+                        .await
                 };
 
-                if let Some(count) = loaded_review_thread_count {
-                    view.status = format!("{} and {count} review threads", view.status);
-                }
+                if let Err(error) = this.update(cx, move |view, cx| {
+                    if !selected_pull_request_matches(view, &repo, number) {
+                        return;
+                    }
 
-                if view.active_tab == PanelTab::Logs
-                    && view.logs_error.is_none()
-                    && !view.workflow_runs.is_empty()
-                {
-                    view.load_selected_workflow_logs(cx);
-                }
+                    view.is_loading_checks = false;
+                    match result {
+                        Ok(check_runs) => {
+                            let count = check_runs.len();
+                            let summary = checks_summary_from_runs(&check_runs);
+                            view.check_runs = check_runs;
+                            view.checks_error = None;
 
-                cx.notify();
-            });
+                            if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                                selected.checks_summary = summary;
+                            }
+
+                            view.status = format!("Loaded {count} check runs for PR #{number}");
+                        }
+                        Err(error) => {
+                            view.check_runs.clear();
+                            view.checks_error = Some(error.to_string());
+                            view.status = format!("Failed to load checks for PR #{number}");
+                        }
+                    }
+
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update pull request checks state: {error}");
+                }
+            }
+        }));
+
+        self.pr_detail_tasks.push(cx.spawn({
+            let owner = owner.clone();
+            let name = name.clone();
+            let repo = repo.clone();
+            let head_sha = head_sha.clone();
+
+            async move |this, cx| {
+                let result = if head_sha.is_empty() {
+                    Ok(Vec::new())
+                } else {
+                    GitHubClient::new(GhCliTransport)
+                        .list_workflow_runs_for_head(&owner, &name, &head_sha)
+                        .await
+                };
+
+                if let Err(error) = this.update(cx, move |view, cx| {
+                    if !selected_pull_request_matches(view, &repo, number) {
+                        return;
+                    }
+
+                    view.is_loading_workflows = false;
+                    match result {
+                        Ok(workflow_runs) => {
+                            let count = workflow_runs.len();
+                            view.workflow_runs = workflow_runs;
+                            view.workflows_error = None;
+                            view.status = format!("Loaded {count} workflow runs for PR #{number}");
+
+                            if view.active_tab == PanelTab::Logs
+                                && view.logs_error.is_none()
+                                && !view.workflow_runs.is_empty()
+                            {
+                                view.load_selected_workflow_logs(cx);
+                            }
+                        }
+                        Err(error) => {
+                            view.workflow_runs.clear();
+                            view.workflows_error = Some(error.to_string());
+                            view.status = format!("Failed to load workflow runs for PR #{number}");
+                        }
+                    }
+
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update pull request workflow state: {error}");
+                }
+            }
+        }));
+
+        self.pr_detail_tasks.push(cx.spawn({
+            let owner = owner.clone();
+            let name = name.clone();
+            let repo = repo.clone();
+
+            async move |this, cx| {
+                let client = GitHubClient::new(GhCliTransport);
+                let pull_request_reviews_result = client
+                    .list_pull_request_reviews(&owner, &name, number)
+                    .await;
+                let review_threads_result =
+                    client.list_review_threads(&owner, &name, number).await;
+
+                if let Err(error) = this.update(cx, move |view, cx| {
+                    if !selected_pull_request_matches(view, &repo, number) {
+                        return;
+                    }
+
+                    view.is_loading_reviews = false;
+                    let mut loaded_review_thread_count = None;
+
+                    match pull_request_reviews_result {
+                        Ok(reviews) => {
+                            view.pull_request_reviews = reviews;
+                            view.reviews_error = None;
+                        }
+                        Err(error) => {
+                            view.pull_request_reviews.clear();
+                            view.reviews_error =
+                                Some(format!("Failed to load review history: {error}"));
+                        }
+                    }
+
+                    match review_threads_result {
+                        Ok(review_threads) => {
+                            let unresolved_count = review_threads
+                                .iter()
+                                .filter(|thread| thread.state == ReviewThreadState::Unresolved)
+                                .count();
+                            let thread_count = review_threads.len();
+                            view.review_threads = review_threads;
+                            if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                                selected.unresolved_threads = unresolved_count;
+                            }
+                            loaded_review_thread_count = Some(thread_count);
+                        }
+                        Err(error) => {
+                            view.review_threads.clear();
+                            let message = format!("Failed to load review threads: {error}");
+                            view.reviews_error = Some(match view.reviews_error.take() {
+                                Some(existing) => format!("{existing}; {message}"),
+                                None => message,
+                            });
+                        }
+                    }
+
+                    view.status = match (view.reviews_error.as_ref(), loaded_review_thread_count) {
+                        (None, Some(count)) => {
+                            format!("Loaded review history and {count} threads for PR #{number}")
+                        }
+                        (None, None) => format!("Loaded review history for PR #{number}"),
+                        (Some(_), Some(count)) => {
+                            format!("Loaded {count} review threads for PR #{number}, but review history failed")
+                        }
+                        (Some(_), None) => format!("Failed to load review data for PR #{number}"),
+                    };
+
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update pull request review state: {error}");
+                }
+            }
         }));
     }
 
@@ -485,6 +578,11 @@ struct RepositoryLoad {
     store: SqliteStore,
     repositories: Vec<RepoId>,
     repository_error: Option<String>,
+}
+
+fn selected_pull_request_matches(view: &AppView, repository: &RepoId, number: u64) -> bool {
+    view.configured_repo.as_ref() == Some(repository)
+        && view.selected_pull_request_number() == Some(number)
 }
 
 async fn load_repository_store(
