@@ -178,8 +178,8 @@ pub(crate) fn fake_review_threads() -> Vec<ReviewThread> {
                     updated_at: None,
                     position: Some(ReviewCommentPosition {
                         path: "crates/ui/src/inbox.rs".to_string(),
-                        line: Some(42),
-                        original_line: Some(39),
+                        line: Some(15),
+                        original_line: Some(14),
                         side: ReviewSide::Right,
                     }),
                 },
@@ -191,8 +191,8 @@ pub(crate) fn fake_review_threads() -> Vec<ReviewThread> {
                     updated_at: None,
                     position: Some(ReviewCommentPosition {
                         path: "crates/ui/src/inbox.rs".to_string(),
-                        line: Some(42),
-                        original_line: Some(39),
+                        line: Some(15),
+                        original_line: Some(14),
                         side: ReviewSide::Right,
                     }),
                 },

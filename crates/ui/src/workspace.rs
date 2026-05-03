@@ -162,7 +162,7 @@ impl AppView {
             .unwrap_or_else(|| "no selected pull request".to_string())
     }
 
-    fn active_file(&self) -> Option<&DiffFile> {
+    pub(crate) fn active_file(&self) -> Option<&DiffFile> {
         self.files.get(self.active_file)
     }
 

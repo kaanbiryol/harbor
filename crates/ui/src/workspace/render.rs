@@ -521,6 +521,7 @@ impl AppView {
                         PanelTab::Diff => render_diff_panel(
                             self.active_file(),
                             self.active_diff(),
+                            &self.review_threads,
                             self.is_loading_files,
                             self.files_error.as_deref(),
                             self.diff_list_scroll.clone(),

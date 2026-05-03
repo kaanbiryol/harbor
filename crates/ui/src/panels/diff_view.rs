@@ -2,14 +2,22 @@ use gpui::{
     AnyElement, Context, IntoElement, ListHorizontalSizingBehavior, UniformListScrollHandle, div,
     prelude::*, px, rgb, uniform_list,
 };
-use harbor_domain::DiffFile;
+use harbor_domain::{DiffFile, ReviewThread, ReviewThreadState};
 
 use crate::diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff};
+use crate::diff_reviews::{
+    anchored_review_threads, diff_row_count_with_reviews, review_threads_for_line,
+};
 use crate::workspace::AppView;
+
+use super::review::{review_thread_state_label, single_line};
+
+const REVIEW_MARKER_WIDTH: f32 = 32.0;
 
 pub(crate) fn render_diff_panel(
     file: Option<&DiffFile>,
     parsed_diff: Option<&ParsedDiff>,
+    review_threads: &[ReviewThread],
     is_loading: bool,
     error: Option<&str>,
     scroll_handle: UniformListScrollHandle,
@@ -113,7 +121,7 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     };
 
-    let row_count = diff_row_count(parsed_diff);
+    let row_count = diff_row_count_with_reviews(parsed_diff, file, review_threads);
 
     div()
         .id("diff-panel")
@@ -141,20 +149,20 @@ pub(crate) fn render_diff_panel(
                         "diff-lines-list",
                         row_count,
                         cx.processor(|view, range: std::ops::Range<usize>, _window, _cx| {
+                            let Some(file) = view.active_file() else {
+                                return Vec::new();
+                            };
                             let Some(parsed_diff) = view.active_diff() else {
                                 return Vec::new();
                             };
-                            let mut rows = Vec::with_capacity(range.len());
 
-                            for row_index in range {
-                                if let Some(row) =
-                                    render_diff_row(parsed_diff, row_index, view.active_hunk)
-                                {
-                                    rows.push(row);
-                                }
-                            }
-
-                            rows
+                            render_diff_rows(
+                                parsed_diff,
+                                file,
+                                &view.review_threads,
+                                view.active_hunk,
+                                range,
+                            )
                         }),
                     )
                     .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
@@ -191,60 +199,66 @@ pub(crate) fn render_diff_file_header(
         )))
 }
 
-enum DiffRow<'a> {
-    Hunk { hunk: &'a DiffHunk, index: usize },
-    Line(&'a DiffLine),
-}
-
-pub(crate) fn diff_row_count(diff: &ParsedDiff) -> usize {
-    diff.hunks.iter().map(|hunk| hunk.lines.len() + 1).sum()
-}
-
-pub(crate) fn diff_hunk_row_index(diff: &ParsedDiff, hunk_index: usize) -> Option<usize> {
+fn render_diff_rows(
+    diff: &ParsedDiff,
+    file: &DiffFile,
+    review_threads: &[ReviewThread],
+    active_hunk: usize,
+    range: std::ops::Range<usize>,
+) -> Vec<AnyElement> {
+    let anchored_threads = anchored_review_threads(file, review_threads);
+    let mut rows = Vec::with_capacity(range.len());
     let mut row_index = 0;
 
-    for (index, hunk) in diff.hunks.iter().enumerate() {
-        if index == hunk_index {
-            return Some(row_index);
+    for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
+        if row_index >= range.end {
+            break;
         }
 
-        row_index += hunk.lines.len() + 1;
+        if row_in_range(row_index, &range) {
+            rows.push(
+                render_diff_hunk_row(hunk, hunk_index, hunk_index == active_hunk)
+                    .into_any_element(),
+            );
+        }
+        row_index += 1;
+
+        for line in &hunk.lines {
+            if row_index >= range.end {
+                break;
+            }
+
+            let matching_threads = review_threads_for_line(&anchored_threads, line);
+            let has_unresolved_thread = matching_threads
+                .iter()
+                .any(|thread| thread.state == ReviewThreadState::Unresolved);
+
+            if row_in_range(row_index, &range) {
+                rows.push(
+                    render_diff_line(line, matching_threads.len(), has_unresolved_thread)
+                        .into_any_element(),
+                );
+            }
+            row_index += 1;
+
+            for thread in matching_threads {
+                if row_index >= range.end {
+                    break;
+                }
+
+                if row_in_range(row_index, &range) {
+                    rows.push(render_review_thread_inline(thread).into_any_element());
+                }
+                row_index += 1;
+            }
+        }
     }
 
-    None
+    rows
 }
 
-fn diff_row_at(diff: &ParsedDiff, row_index: usize) -> Option<DiffRow<'_>> {
-    let mut cursor = 0;
-
-    for (index, hunk) in diff.hunks.iter().enumerate() {
-        if row_index == cursor {
-            return Some(DiffRow::Hunk { hunk, index });
-        }
-
-        cursor += 1;
-        let line_offset = row_index.checked_sub(cursor)?;
-        if line_offset < hunk.lines.len() {
-            return Some(DiffRow::Line(&hunk.lines[line_offset]));
-        }
-
-        cursor += hunk.lines.len();
-    }
-
-    None
-}
-
-pub(crate) fn render_diff_row(
-    diff: &ParsedDiff,
-    row_index: usize,
-    active_hunk: usize,
-) -> Option<AnyElement> {
-    match diff_row_at(diff, row_index)? {
-        DiffRow::Hunk { hunk, index } => {
-            Some(render_diff_hunk_row(hunk, index, index == active_hunk).into_any_element())
-        }
-        DiffRow::Line(line) => Some(render_diff_line(line).into_any_element()),
-    }
+fn row_in_range(row_index: usize, range: &std::ops::Range<usize>) -> bool {
+    row_index >= range.start && row_index < range.end
 }
 
 pub(crate) fn render_diff_hunk_row(
@@ -266,7 +280,11 @@ pub(crate) fn render_diff_hunk_row(
         .child(format!("hunk {}  {}", index + 1, hunk.header))
 }
 
-pub(crate) fn render_diff_line(line: &DiffLine) -> impl IntoElement {
+pub(crate) fn render_diff_line(
+    line: &DiffLine,
+    thread_count: usize,
+    has_unresolved_thread: bool,
+) -> impl IntoElement {
     let (prefix, bg, text_color) = match line.kind {
         DiffLineKind::Context => (" ", rgb(0x0c0f12), rgb(0xcbd5e1)),
         DiffLineKind::Added => ("+", rgb(0x10231a), rgb(0xa7f3d0)),
@@ -283,6 +301,7 @@ pub(crate) fn render_diff_line(line: &DiffLine) -> impl IntoElement {
         .whitespace_nowrap()
         .child(render_line_number(line.old_line))
         .child(render_line_number(line.new_line))
+        .child(render_review_marker(thread_count, has_unresolved_thread))
         .child(
             div()
                 .w(px(20.))
@@ -291,6 +310,82 @@ pub(crate) fn render_diff_line(line: &DiffLine) -> impl IntoElement {
                 .child(prefix),
         )
         .child(div().flex_none().child(line.text.clone()))
+}
+
+fn render_review_thread_inline(thread: &ReviewThread) -> impl IntoElement {
+    let (label, color) = review_thread_state_label(thread.state);
+    let latest_comment = thread.comments.last();
+    let preview = latest_comment
+        .map(|comment| single_line(&comment.body))
+        .unwrap_or_else(|| "No comments in this thread".to_string());
+    let author = latest_comment
+        .map(|comment| comment.author.as_str())
+        .unwrap_or("review");
+
+    div()
+        .h(px(24.))
+        .flex()
+        .items_center()
+        .bg(rgb(0x171b20))
+        .text_color(rgb(0xcbd5e1))
+        .whitespace_nowrap()
+        .child(render_line_number(None))
+        .child(render_line_number(None))
+        .child(render_review_marker(
+            1,
+            thread.state == ReviewThreadState::Unresolved,
+        ))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(div().flex_none().text_color(color).child(label))
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(rgb(0x64748b))
+                        .child(review_comment_count_label(thread.comments.len())),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .text_color(rgb(0xcbd5e1))
+                        .child(format!("{author}: {preview}")),
+                ),
+        )
+}
+
+fn render_review_marker(thread_count: usize, has_unresolved_thread: bool) -> impl IntoElement {
+    let marker = match thread_count {
+        0 => String::new(),
+        1 => "R".to_string(),
+        count => format!("R{count}"),
+    };
+    let color = if has_unresolved_thread {
+        rgb(0xfbbf24)
+    } else {
+        rgb(0x64748b)
+    };
+
+    div()
+        .w(px(REVIEW_MARKER_WIDTH))
+        .flex_none()
+        .text_center()
+        .text_color(color)
+        .child(marker)
+}
+
+fn review_comment_count_label(comment_count: usize) -> String {
+    if comment_count == 1 {
+        "1 comment".to_string()
+    } else {
+        format!("{comment_count} comments")
+    }
 }
 
 pub(crate) fn render_line_number(line: Option<u32>) -> impl IntoElement {

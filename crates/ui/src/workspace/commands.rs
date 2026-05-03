@@ -2,9 +2,9 @@ use gpui::{ClipboardItem, Context, ScrollStrategy, Window};
 use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::actions::*;
+use crate::diff_reviews::diff_hunk_row_index_with_reviews;
 use crate::panels::{
-    diff_hunk_row_index, merge_blocker, review_action_blocker, workflow_run_failed,
-    workflow_run_label,
+    merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label,
 };
 use crate::workspace::AppView;
 
@@ -57,9 +57,9 @@ impl AppView {
         };
 
         self.active_hunk = (self.active_hunk + 1) % hunk_count;
-        if let Some(row_index) = self
-            .active_diff()
-            .and_then(|diff| diff_hunk_row_index(diff, self.active_hunk))
+        if let (Some(diff), Some(file)) = (self.active_diff(), self.active_file())
+            && let Some(row_index) =
+                diff_hunk_row_index_with_reviews(diff, self.active_hunk, file, &self.review_threads)
         {
             self.diff_list_scroll
                 .scroll_to_item(row_index, ScrollStrategy::Center);
@@ -85,9 +85,9 @@ impl AppView {
         } else {
             self.active_hunk - 1
         };
-        if let Some(row_index) = self
-            .active_diff()
-            .and_then(|diff| diff_hunk_row_index(diff, self.active_hunk))
+        if let (Some(diff), Some(file)) = (self.active_diff(), self.active_file())
+            && let Some(row_index) =
+                diff_hunk_row_index_with_reviews(diff, self.active_hunk, file, &self.review_threads)
         {
             self.diff_list_scroll
                 .scroll_to_item(row_index, ScrollStrategy::Center);
