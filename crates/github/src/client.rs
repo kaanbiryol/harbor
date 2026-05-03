@@ -135,19 +135,37 @@ where
         repo: &str,
         number: u64,
     ) -> Result<Vec<ReviewThread>> {
-        let response = self
-            .transport
-            .graphql(
-                REVIEW_THREADS_QUERY,
-                json!({
-                    "owner": owner,
-                    "repo": repo,
-                    "number": number,
-                }),
-            )
-            .await?;
+        let mut threads = Vec::new();
+        let mut after = None;
 
-        dto::review_threads_from_graphql_value(response)
+        loop {
+            let response = self
+                .transport
+                .graphql(
+                    REVIEW_THREADS_QUERY,
+                    json!({
+                        "owner": owner,
+                        "repo": repo,
+                        "number": number,
+                        "after": after,
+                    }),
+                )
+                .await?;
+            let page = dto::review_threads_page_from_graphql_value(response)?;
+            threads.extend(page.threads);
+
+            if !page.has_next_page {
+                break;
+            }
+
+            after = Some(page.end_cursor.ok_or_else(|| {
+                crate::GitHubError::Mapping(
+                    "review threads page was missing an end cursor".to_string(),
+                )
+            })?);
+        }
+
+        Ok(threads)
     }
 
     pub async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
@@ -230,10 +248,14 @@ where
 }
 
 const REVIEW_THREADS_QUERY: &str = r#"
-query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: Int!) {
+query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
-      reviewThreads(first: 100) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           path
@@ -281,6 +303,7 @@ mod tests {
         posts: Arc<Mutex<Vec<(String, Value)>>>,
         puts: Arc<Mutex<Vec<(String, Value)>>>,
         graphql_calls: Arc<Mutex<Vec<(String, Value)>>>,
+        graphql_responses: Arc<Mutex<Vec<Value>>>,
         graphql_response: Arc<Mutex<Option<Value>>>,
         log: Arc<Mutex<Option<String>>>,
     }
@@ -332,6 +355,14 @@ mod tests {
                 .lock()
                 .expect("graphql calls mutex should not be poisoned")
                 .push((query.to_string(), variables));
+            let mut responses = self
+                .graphql_responses
+                .lock()
+                .expect("graphql responses mutex should not be poisoned");
+            if !responses.is_empty() {
+                return Ok(responses.remove(0));
+            }
+
             self.graphql_response
                 .lock()
                 .expect("graphql response mutex should not be poisoned")
@@ -428,8 +459,60 @@ mod tests {
                 "owner": "acme",
                 "repo": "app",
                 "number": 7,
+                "after": null,
             })
         );
+    }
+
+    #[test]
+    fn paginates_pull_request_review_threads() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_responses
+            .lock()
+            .expect("graphql responses mutex should not be poisoned") = vec![
+            json!({
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "pageInfo": {
+                                    "hasNextPage": true,
+                                    "endCursor": "cursor-1"
+                                },
+                                "nodes": []
+                            },
+                        }
+                    }
+                }
+            }),
+            json!({
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "pageInfo": {
+                                    "hasNextPage": false,
+                                    "endCursor": null
+                                },
+                                "nodes": []
+                            }
+                        }
+                    }
+                }
+            }),
+        ];
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.list_review_threads("acme", "app", 7)).unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1["after"], Value::Null);
+        assert_eq!(calls[1].1["after"], "cursor-1");
     }
 
     #[test]
