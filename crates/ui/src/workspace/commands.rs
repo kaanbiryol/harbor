@@ -1,4 +1,5 @@
 use gpui::{ClipboardItem, Context, ScrollStrategy, Window};
+use harbor_domain::RepoId;
 use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::actions::*;
@@ -197,6 +198,10 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.command_palette_open = !self.command_palette_open;
+        if self.command_palette_open {
+            self.repository_switcher_open = false;
+            self.pull_request_switcher_open = false;
+        }
         self.status = if self.command_palette_open {
             "Command palette opened".to_string()
         } else {
@@ -205,10 +210,62 @@ impl AppView {
         cx.notify();
     }
 
+    pub(super) fn toggle_repository_switcher(
+        &mut self,
+        _: &ToggleRepositorySwitcher,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.repository_switcher_open = !self.repository_switcher_open;
+        if self.repository_switcher_open {
+            self.command_palette_open = false;
+            self.pull_request_switcher_open = false;
+            self.repository_search_input.update(cx, |input, cx| {
+                input.set_value("", window, cx);
+                input.focus(window, cx);
+            });
+        }
+        self.status = if self.repository_switcher_open {
+            "Repository switcher opened".to_string()
+        } else {
+            "Repository switcher closed".to_string()
+        };
+        cx.notify();
+    }
+
     pub(super) fn close_panel(&mut self, _: &ClosePanel, _: &mut Window, cx: &mut Context<Self>) {
         self.command_palette_open = false;
+        self.repository_switcher_open = false;
+        self.pull_request_switcher_open = false;
         self.status = "Closed transient UI".to_string();
         cx.notify();
+    }
+
+    pub(crate) fn select_repository_from_switcher(
+        &mut self,
+        repository: RepoId,
+        cx: &mut Context<Self>,
+    ) {
+        let selected_repository = repository.full_name();
+        if self
+            .selected_pull_request()
+            .is_some_and(|pull_request| pull_request.repo == repository)
+        {
+            self.status = format!("Selected repository {selected_repository}");
+            cx.notify();
+            return;
+        }
+
+        if let Some(index) = self
+            .pull_requests
+            .iter()
+            .position(|pull_request| pull_request.repo == repository)
+        {
+            self.select_pull_request(index, cx);
+            return;
+        }
+
+        self.load_pull_requests(repository, cx);
     }
 
     pub(super) fn set_placeholder_status(&mut self, label: &str, cx: &mut Context<Self>) {
@@ -225,7 +282,7 @@ impl AppView {
     ) -> std::result::Result<WorkflowActionRequest, String> {
         let Some(repo) = self.configured_repo.clone() else {
             return Err(
-                "Workflow actions require HARBOR_REPO=owner/repo and GitHub CLI auth".into(),
+                "Workflow actions require a selected repository and GitHub CLI auth".into(),
             );
         };
 
@@ -353,7 +410,7 @@ impl AppView {
     ) -> std::result::Result<PullRequestActionRequest, String> {
         let Some(repo) = self.configured_repo.clone() else {
             return Err(
-                "Pull request actions require HARBOR_REPO=owner/repo and GitHub CLI auth".into(),
+                "Pull request actions require a selected repository and GitHub CLI auth".into(),
             );
         };
         let Some(pr) = self.selected_pull_request() else {

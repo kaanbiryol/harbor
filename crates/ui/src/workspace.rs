@@ -2,23 +2,25 @@ mod commands;
 mod loaders;
 mod render;
 
-use gpui::{Context, FocusHandle, ScrollStrategy, Task, UniformListScrollHandle};
+use gpui::{
+    AppContext, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
+    UniformListScrollHandle, Window,
+};
+use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, WorkflowJob,
     WorkflowRun,
 };
 use harbor_logs::LogChunk;
+use harbor_storage::SqliteStore;
 
 use crate::actions::PanelTab;
 use crate::diff::{ParsedDiff, parse_files};
-use crate::fake_data::{
-    configured_repo_from_env, fake_files, fake_pull_request_reviews, fake_pull_requests,
-    fake_review_threads,
-};
 use crate::panels::workflow_run_failed;
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
+    repositories: Vec<RepoId>,
     files: Vec<DiffFile>,
     diffs: Vec<Option<ParsedDiff>>,
     check_runs: Vec<CheckRun>,
@@ -30,6 +32,7 @@ pub struct AppView {
     pr_list_task: Option<Task<()>>,
     pr_detail_task: Option<Task<()>>,
     log_task: Option<Task<()>>,
+    repository_task: Option<Task<()>>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_scroll: UniformListScrollHandle,
@@ -40,7 +43,12 @@ pub struct AppView {
     pub(crate) active_hunk: usize,
     active_tab: PanelTab,
     command_palette_open: bool,
+    repository_switcher_open: bool,
+    pull_request_switcher_open: bool,
+    repository_search_input: Entity<InputState>,
+    pull_request_search_input: Entity<InputState>,
     configured_repo: Option<RepoId>,
+    repository_store: Option<SqliteStore>,
     is_loading_prs: bool,
     is_loading_details: bool,
     is_loading_files: bool,
@@ -57,46 +65,54 @@ pub struct AppView {
     workflows_error: Option<String>,
     reviews_error: Option<String>,
     logs_error: Option<String>,
+    repository_error: Option<String>,
     action_error: Option<String>,
     pr_action_error: Option<String>,
     did_focus: bool,
     status: String,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl AppView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let configured_repo = configured_repo_from_env();
-        let pull_requests = if configured_repo.is_some() {
-            Vec::new()
-        } else {
-            fake_pull_requests()
-        };
-        let files = if configured_repo.is_some() {
-            Vec::new()
-        } else {
-            fake_files()
-        };
-        let pull_request_reviews = if configured_repo.is_some() {
-            Vec::new()
-        } else {
-            fake_pull_request_reviews()
-        };
-        let review_threads = if configured_repo.is_some() {
-            Vec::new()
-        } else {
-            fake_review_threads()
-        };
+        let pull_requests = Vec::new();
+        let files = Vec::new();
+        let pull_request_reviews = Vec::new();
+        let review_threads = Vec::new();
+        let repository_search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search repositories...")
+                .clean_on_escape()
+        });
+        let pull_request_search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search pull requests...")
+                .clean_on_escape()
+        });
+        let subscriptions = vec![
+            cx.subscribe_in(
+                &repository_search_input,
+                window,
+                Self::on_switcher_search_event,
+            ),
+            cx.subscribe_in(
+                &pull_request_search_input,
+                window,
+                Self::on_switcher_search_event,
+            ),
+        ];
         let diffs = parse_files(&files);
+        let repositories = initial_repositories(configured_repo.as_ref(), &pull_requests);
         let status = configured_repo
             .as_ref()
             .map(|repo| format!("Loading open pull requests from {}", repo.full_name()))
-            .unwrap_or_else(|| {
-                "Using fake data. Set HARBOR_REPO=owner/repo to load GitHub PRs.".to_string()
-            });
+            .unwrap_or_else(|| "Loading repositories from GitHub CLI".to_string());
 
         let mut view = Self {
             focus_handle: cx.focus_handle(),
             pull_requests,
+            repositories,
             files,
             diffs,
             check_runs: Vec::new(),
@@ -108,6 +124,7 @@ impl AppView {
             pr_list_task: None,
             pr_detail_task: None,
             log_task: None,
+            repository_task: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_scroll: UniformListScrollHandle::new(),
@@ -118,7 +135,12 @@ impl AppView {
             active_hunk: 0,
             active_tab: PanelTab::Diff,
             command_palette_open: false,
+            repository_switcher_open: false,
+            pull_request_switcher_open: false,
+            repository_search_input,
+            pull_request_search_input,
             configured_repo,
+            repository_store: None,
             is_loading_prs: false,
             is_loading_details: false,
             is_loading_files: false,
@@ -135,11 +157,15 @@ impl AppView {
             workflows_error: None,
             reviews_error: None,
             logs_error: None,
+            repository_error: None,
             action_error: None,
             pr_action_error: None,
             did_focus: false,
             status,
+            _subscriptions: subscriptions,
         };
+
+        view.load_recent_repositories(cx);
 
         if let Some(repo) = view.configured_repo.clone() {
             view.load_pull_requests(repo, cx);
@@ -208,8 +234,6 @@ impl AppView {
         if self.configured_repo.is_some() {
             self.load_selected_pull_request(cx);
         } else {
-            self.pull_request_reviews = fake_pull_request_reviews();
-            self.review_threads = fake_review_threads();
             cx.notify();
         }
     }
@@ -226,5 +250,61 @@ impl AppView {
         }
 
         cx.notify();
+    }
+
+    pub(crate) fn remember_repository(&mut self, repository: RepoId) {
+        self.repositories.retain(|existing| existing != &repository);
+        self.repositories.insert(0, repository);
+    }
+
+    fn on_switcher_search_event(
+        &mut self,
+        _: &Entity<InputState>,
+        event: &InputEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if matches!(event, InputEvent::Change) {
+            cx.notify();
+        }
+    }
+}
+
+fn initial_repositories(
+    configured_repo: Option<&RepoId>,
+    pull_requests: &[PullRequest],
+) -> Vec<RepoId> {
+    let mut repositories = Vec::new();
+
+    if let Some(repository) = configured_repo {
+        repositories.push(repository.clone());
+    }
+
+    for pull_request in pull_requests {
+        if !repositories
+            .iter()
+            .any(|repository| repository == &pull_request.repo)
+        {
+            repositories.push(pull_request.repo.clone());
+        }
+    }
+
+    repositories
+}
+
+pub(crate) fn configured_repo_from_env() -> Option<RepoId> {
+    std::env::var("HARBOR_REPO")
+        .ok()
+        .or_else(|| std::env::var("GH_REPO").ok())
+        .and_then(|value| parse_repo_id(&value))
+}
+
+pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
+    let (owner, name) = value.split_once('/')?;
+
+    if owner.is_empty() || name.is_empty() || name.contains('/') {
+        None
+    } else {
+        Some(RepoId::new(owner, name))
     }
 }

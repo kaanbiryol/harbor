@@ -1,7 +1,8 @@
-use gpui::{Context, ScrollStrategy};
+use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_domain::{RepoId, ReviewThreadState};
 use harbor_github::{GhCliTransport, GitHubClient};
 use harbor_logs::parse_workflow_log;
+use harbor_storage::{SqliteStore, StorageConfig, StorageError};
 
 use crate::actions::PanelTab;
 use crate::diff::parse_files;
@@ -9,7 +10,90 @@ use crate::panels::{checks_summary_from_runs, workflow_run_label};
 use crate::workspace::AppView;
 
 impl AppView {
+    pub(super) fn load_recent_repositories(&mut self, cx: &mut Context<Self>) {
+        let configured_repo = self.configured_repo.clone();
+        let task = cx.background_spawn(async move { load_repository_store(configured_repo).await });
+
+        self.repository_task = Some(cx.spawn(async move |this, cx| {
+            let result = task.await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                match result {
+                    Ok(load) => {
+                        let repository_count = load.repositories.len();
+                        let repository_error = load.repository_error.clone();
+                        view.repository_store = Some(load.store);
+                        view.repository_error = load.repository_error;
+
+                        for repository in load.repositories.into_iter().rev() {
+                            view.remember_repository(repository);
+                        }
+
+                        if view.configured_repo.is_none()
+                            && !view.is_loading_prs
+                            && view.pull_requests.is_empty()
+                        {
+                            view.status = match (repository_count, repository_error) {
+                                (0, Some(error)) => error,
+                                (0, None) => "No repositories found from GitHub CLI".to_string(),
+                                (count, Some(_)) => {
+                                    format!(
+                                        "Loaded {count} cached repositories; GitHub refresh failed"
+                                    )
+                                }
+                                (count, None) => {
+                                    format!("Loaded {count} repositories. Choose one with cmd+p")
+                                }
+                            };
+                        }
+                    }
+                    Err(error) => {
+                        view.repository_store = None;
+                        view.repository_error = Some(error.to_string());
+                        view.status = "Failed to initialize repository storage".to_string();
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update repository store state: {error}");
+            }
+        }));
+    }
+
+    pub(crate) fn record_recent_repository(&mut self, repository: RepoId, cx: &mut Context<Self>) {
+        self.remember_repository(repository.clone());
+
+        let Some(store) = self.repository_store.clone() else {
+            return;
+        };
+
+        let task = cx.background_spawn(async move { store.record_repository(&repository).await });
+
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                match result {
+                    Ok(()) => {
+                        view.repository_error = None;
+                    }
+                    Err(error) => {
+                        view.repository_error = Some(error.to_string());
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update repository write state: {error}");
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
+        self.configured_repo = Some(repo.clone());
+        self.record_recent_repository(repo.clone(), cx);
         self.is_loading_prs = true;
         self.load_error = None;
         self.details_error = None;
@@ -318,7 +402,7 @@ impl AppView {
     pub(crate) fn load_selected_workflow_logs(&mut self, cx: &mut Context<Self>) {
         let Some(repo) = self.configured_repo.clone() else {
             self.logs_error =
-                Some("Workflow logs require HARBOR_REPO=owner/repo and GitHub CLI auth".into());
+                Some("Workflow logs require a selected repository and GitHub CLI auth".into());
             self.status = self.logs_error.clone().unwrap_or_default();
             cx.notify();
             return;
@@ -395,4 +479,43 @@ impl AppView {
             });
         }));
     }
+}
+
+struct RepositoryLoad {
+    store: SqliteStore,
+    repositories: Vec<RepoId>,
+    repository_error: Option<String>,
+}
+
+async fn load_repository_store(
+    configured_repo: Option<RepoId>,
+) -> std::result::Result<RepositoryLoad, StorageError> {
+    let store = SqliteStore::connect(StorageConfig::from_env()?).await?;
+
+    if let Some(repository) = configured_repo.as_ref() {
+        store.record_repository(repository).await?;
+    }
+
+    let repository_error = match GitHubClient::new(GhCliTransport).list_repositories().await {
+        Ok(repositories) => {
+            store.sync_repositories(&repositories).await?;
+            None
+        }
+        Err(error) => Some(format!(
+            "failed to load repositories from GitHub CLI: {error}"
+        )),
+    };
+
+    let repositories = store
+        .recent_repositories()
+        .await?
+        .into_iter()
+        .map(|repository| repository.id)
+        .collect();
+
+    Ok(RepositoryLoad {
+        store,
+        repositories,
+        repository_error,
+    })
 }

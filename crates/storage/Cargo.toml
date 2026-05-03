@@ -6,4 +6,9 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+harbor-domain = { path = "../domain" }
+sqlx.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+smol.workspace = true

@@ -25,6 +25,50 @@ impl<T> GitHubClient<T>
 where
     T: GitHubTransport,
 {
+    pub async fn list_repositories(&self) -> Result<Vec<RepoId>> {
+        let mut repositories = Vec::new();
+        let mut page = 1;
+
+        loop {
+            let response = if page == 1 {
+                self.transport
+                    .rest_get(
+                        "/user/repos",
+                        &[
+                            ("affiliation", "owner,collaborator,organization_member"),
+                            ("per_page", REPOSITORY_PAGE_SIZE_QUERY),
+                            ("sort", "updated"),
+                        ],
+                    )
+                    .await?
+            } else {
+                let page_string = page.to_string();
+                self.transport
+                    .rest_get(
+                        "/user/repos",
+                        &[
+                            ("affiliation", "owner,collaborator,organization_member"),
+                            ("per_page", REPOSITORY_PAGE_SIZE_QUERY),
+                            ("sort", "updated"),
+                            ("page", page_string.as_str()),
+                        ],
+                    )
+                    .await?
+            };
+            let mut page_repositories = dto::repositories_from_value(response)?;
+            let page_repository_count = page_repositories.len();
+            repositories.append(&mut page_repositories);
+
+            if page_repository_count < REPOSITORY_PAGE_SIZE {
+                break;
+            }
+
+            page += 1;
+        }
+
+        Ok(repositories)
+    }
+
     pub async fn list_open_pull_requests(
         &self,
         owner: &str,
@@ -284,6 +328,9 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
 }
 "#;
 
+const REPOSITORY_PAGE_SIZE: usize = 100;
+const REPOSITORY_PAGE_SIZE_QUERY: &str = "100";
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -300,6 +347,7 @@ mod tests {
     struct RecordingTransport {
         gets: Arc<Mutex<Vec<RecordedGet>>>,
         get_response: Arc<Mutex<Option<Value>>>,
+        get_responses: Arc<Mutex<Vec<Value>>>,
         posts: Arc<Mutex<Vec<(String, Value)>>>,
         puts: Arc<Mutex<Vec<(String, Value)>>>,
         graphql_calls: Arc<Mutex<Vec<(String, Value)>>>,
@@ -321,6 +369,17 @@ mod tests {
                         .map(|(key, value)| (key.to_string(), value.to_string()))
                         .collect(),
                 ));
+
+            {
+                let mut responses = self
+                    .get_responses
+                    .lock()
+                    .expect("get responses mutex should not be poisoned");
+                if !responses.is_empty() {
+                    return Ok(responses.remove(0));
+                }
+            }
+
             self.get_response
                 .lock()
                 .expect("get response mutex should not be poisoned")
@@ -424,6 +483,87 @@ mod tests {
         assert_eq!(gets.len(), 1);
         assert_eq!(gets[0].0, "/repos/acme/app/pulls/7/reviews");
         assert_eq!(gets[0].1, vec![("per_page".to_string(), "100".to_string())]);
+    }
+
+    #[test]
+    fn gets_user_repositories_endpoint() {
+        let transport = RecordingTransport::default();
+        *transport
+            .get_response
+            .lock()
+            .expect("get response mutex should not be poisoned") = Some(json!([]));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.list_repositories()).unwrap();
+
+        let gets = transport
+            .gets
+            .lock()
+            .expect("gets mutex should not be poisoned");
+        assert_eq!(gets.len(), 1);
+        assert_eq!(gets[0].0, "/user/repos");
+        assert_eq!(
+            gets[0].1,
+            vec![
+                (
+                    "affiliation".to_string(),
+                    "owner,collaborator,organization_member".to_string()
+                ),
+                ("per_page".to_string(), "100".to_string()),
+                ("sort".to_string(), "updated".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn paginates_user_repositories_endpoint() {
+        let transport = RecordingTransport::default();
+        *transport
+            .get_responses
+            .lock()
+            .expect("get responses mutex should not be poisoned") = vec![
+            Value::Array(
+                (0..REPOSITORY_PAGE_SIZE)
+                    .map(|index| {
+                        json!({
+                            "name": format!("app-{index}"),
+                            "owner": { "login": "acme" },
+                        })
+                    })
+                    .collect(),
+            ),
+            json!([
+                {
+                    "name": "last",
+                    "owner": { "login": "acme" },
+                }
+            ]),
+        ];
+        let client = GitHubClient::new(transport.clone());
+
+        let repositories = smol::block_on(client.list_repositories()).unwrap();
+
+        assert_eq!(repositories.len(), REPOSITORY_PAGE_SIZE + 1);
+        assert_eq!(repositories[REPOSITORY_PAGE_SIZE].full_name(), "acme/last");
+
+        let gets = transport
+            .gets
+            .lock()
+            .expect("gets mutex should not be poisoned");
+        assert_eq!(gets.len(), 2);
+        assert_eq!(gets[0].0, "/user/repos");
+        assert_eq!(
+            gets[1].1,
+            vec![
+                (
+                    "affiliation".to_string(),
+                    "owner,collaborator,organization_member".to_string()
+                ),
+                ("per_page".to_string(), "100".to_string()),
+                ("sort".to_string(), "updated".to_string()),
+                ("page".to_string(), "2".to_string()),
+            ]
+        );
     }
 
     #[test]

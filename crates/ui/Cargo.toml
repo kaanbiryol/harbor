@@ -12,3 +12,4 @@ gpui-component.workspace = true
 harbor-domain = { path = "../domain" }
 harbor-github = { path = "../github" }
 harbor-logs = { path = "../logs" }
+harbor-storage = { path = "../storage" }

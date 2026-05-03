@@ -2,6 +2,8 @@
 mod checks;
 #[path = "dto_pull_requests.rs"]
 mod pull_requests;
+#[path = "dto_repositories.rs"]
+mod repositories;
 #[path = "dto_reviews.rs"]
 mod reviews;
 #[path = "dto_workflows.rs"]
@@ -9,6 +11,7 @@ mod workflows;
 
 pub use checks::*;
 pub use pull_requests::*;
+pub use repositories::*;
 pub use reviews::*;
 pub use workflows::*;
 
@@ -51,6 +54,26 @@ mod tests {
         assert_eq!(pulls[0].state, PullRequestState::Open);
         assert_eq!(pulls[0].merge_state, Some(MergeState::Clean));
         assert_eq!(pulls[0].labels[0].name, "performance");
+    }
+
+    #[test]
+    fn maps_repository_list() {
+        let value = json!([
+            {
+                "name": "app",
+                "owner": { "login": "acme" }
+            },
+            {
+                "name": "tools",
+                "owner": { "login": "octo" }
+            }
+        ]);
+
+        let repositories = repositories_from_value(value).unwrap();
+
+        assert_eq!(repositories.len(), 2);
+        assert_eq!(repositories[0].full_name(), "acme/app");
+        assert_eq!(repositories[1].full_name(), "octo/tools");
     }
 
     #[test]

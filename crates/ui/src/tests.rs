@@ -3,10 +3,10 @@ use harbor_domain::{
     PullRequestState, RepoId, ReviewThread, ReviewThreadState,
 };
 
-use crate::fake_data::parse_repo_id;
 use crate::panels::{
     checks_summary_from_runs, merge_blocker, review_action_blocker, review_thread_counts,
 };
+use crate::workspace::parse_repo_id;
 
 #[test]
 fn parses_owner_and_repo() {

@@ -1,6 +1,7 @@
 use gpui::{App, KeyBinding, actions};
 
 pub(crate) const KEY_CONTEXT: &str = "HarborWorkspace";
+const KEY_BINDING_CONTEXT: &str = "HarborWorkspace && !Input";
 
 actions!(
     harbor,
@@ -10,6 +11,7 @@ actions!(
         OpenSelectedPullRequest,
         CyclePanelTab,
         ToggleCommandPalette,
+        ToggleRepositorySwitcher,
         ClosePanel,
         RefreshSelectedPullRequest,
         CheckoutPullRequest,
@@ -32,29 +34,29 @@ actions!(
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("j", SelectNextPullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("k", SelectPreviousPullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("enter", OpenSelectedPullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("tab", CyclePanelTab, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-k", ToggleCommandPalette, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-p", ToggleCommandPalette, Some(KEY_CONTEXT)),
-        KeyBinding::new("escape", ClosePanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("r", RefreshSelectedPullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("c", CheckoutPullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("o", OpenPullRequestInBrowser, Some(KEY_CONTEXT)),
-        KeyBinding::new("a", ApprovePullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-a", RequestChanges, Some(KEY_CONTEXT)),
-        KeyBinding::new("m", MergePullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("l", OpenLogs, Some(KEY_CONTEXT)),
-        KeyBinding::new("b", TriggerBuild, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-r", RerunFailedJobs, Some(KEY_CONTEXT)),
-        KeyBinding::new("/", FilterCurrentList, Some(KEY_CONTEXT)),
-        KeyBinding::new("]", SelectNextFile, Some(KEY_CONTEXT)),
-        KeyBinding::new("[", SelectPreviousFile, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-]", SelectNextHunk, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-[", SelectPreviousHunk, Some(KEY_CONTEXT)),
-        KeyBinding::new("y", CopyActiveFilePath, Some(KEY_CONTEXT)),
-        KeyBinding::new("g", OpenActiveFileOnGitHub, Some(KEY_CONTEXT)),
+        KeyBinding::new("j", SelectNextPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("k", SelectPreviousPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("enter", OpenSelectedPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("tab", CyclePanelTab, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("cmd-k", ToggleCommandPalette, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("cmd-p", ToggleRepositorySwitcher, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("escape", ClosePanel, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("r", RefreshSelectedPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("c", CheckoutPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("o", OpenPullRequestInBrowser, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("a", ApprovePullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("shift-a", RequestChanges, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("m", MergePullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("l", OpenLogs, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("b", TriggerBuild, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("shift-r", RerunFailedJobs, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("/", FilterCurrentList, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("]", SelectNextFile, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("[", SelectPreviousFile, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("shift-]", SelectNextHunk, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("shift-[", SelectPreviousHunk, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("y", CopyActiveFilePath, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("g", OpenActiveFileOnGitHub, Some(KEY_BINDING_CONTEXT)),
     ]);
 }
 
@@ -234,7 +236,7 @@ pub(crate) const COMMANDS: &[CommandSpec] = &[
     },
     CommandSpec {
         shortcut: "cmd+p",
-        title: "Switch repository or pull request",
+        title: "Search repositories",
     },
     CommandSpec {
         shortcut: "j/k",
