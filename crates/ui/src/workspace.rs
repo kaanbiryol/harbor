@@ -775,6 +775,7 @@ impl AppView {
         reviews: Vec<PullRequestReview>,
         review_threads: Vec<ReviewThread>,
         current_user_login: Option<String>,
+        pending_review_comment_count: Option<usize>,
     ) -> usize {
         let existing_pending_review = self.pending_review.clone();
         self.current_user_login = current_user_login;
@@ -782,6 +783,7 @@ impl AppView {
             &reviews,
             self.current_user_login.as_deref(),
             existing_pending_review.as_ref(),
+            pending_review_comment_count,
         );
         self.pull_request_reviews = reviews;
         self.review_threads = review_threads;
@@ -965,6 +967,7 @@ impl AppView {
     pub(crate) fn submit_pending_pull_request_review(
         &mut self,
         event: SubmitPullRequestReviewEvent,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.is_submitting_pending_review || self.is_running_pr_action {
@@ -988,6 +991,17 @@ impl AppView {
         };
 
         let body = self.pending_review_body_input.read(cx).value().to_string();
+        if event == SubmitPullRequestReviewEvent::Comment
+            && pending_review.comment_count == 0
+            && body.trim().is_empty()
+        {
+            self.pending_review_error =
+                Some("Add a review summary or at least one pending comment".to_string());
+            self.status = "Add a review summary or at least one pending comment".to_string();
+            cx.notify();
+            return;
+        }
+
         let body = match event {
             SubmitPullRequestReviewEvent::RequestChanges if body.trim().is_empty() => {
                 Some(DEFAULT_REQUEST_CHANGES_BODY.to_string())
@@ -1004,12 +1018,12 @@ impl AppView {
         self.status = format!("Submitting pending review on PR #{}", pr.number);
         cx.notify();
 
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let result = GitHubClient::new(GhCliTransport)
                 .submit_pull_request_review(&pending_review.node_id, event, body.as_deref())
                 .await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
+            if let Err(error) = this.update_in(cx, move |view, window, cx| {
                 view.is_submitting_pending_review = false;
                 view.is_running_pr_action = false;
 
@@ -1017,6 +1031,9 @@ impl AppView {
                     Ok(()) => {
                         view.pending_review = None;
                         view.pending_review_error = None;
+                        view.pending_review_body_input.update(cx, |input, cx| {
+                            input.set_value("", window, cx);
+                        });
                         view.status = format!("Submitted pending review on PR #{}", pr.number);
                         view.load_selected_review_data(cx);
                     }
@@ -1165,6 +1182,7 @@ fn pending_review_from_reviews(
     reviews: &[PullRequestReview],
     current_user_login: Option<&str>,
     existing_pending_review: Option<&PendingReviewSession>,
+    pending_review_comment_count: Option<usize>,
 ) -> Option<PendingReviewSession> {
     reviews
         .iter()
@@ -1178,9 +1196,11 @@ fn pending_review_from_reviews(
         })
         .and_then(|review| {
             let node_id = review.node_id.clone()?;
-            let comment_count = existing_pending_review
-                .filter(|pending_review| pending_review.node_id == node_id)
-                .map_or(0, |pending_review| pending_review.comment_count);
+            let comment_count = pending_review_comment_count.unwrap_or_else(|| {
+                existing_pending_review
+                    .filter(|pending_review| pending_review.node_id == node_id)
+                    .map_or(0, |pending_review| pending_review.comment_count)
+            });
 
             Some(PendingReviewSession {
                 node_id,
@@ -1239,5 +1259,47 @@ pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
         None
     } else {
         Some(RepoId::new(owner, name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_review_uses_loaded_comment_count() {
+        let reviews = vec![pending_review("review-rest", "review-node", "alex")];
+
+        let pending_review = pending_review_from_reviews(&reviews, Some("alex"), None, Some(3))
+            .expect("pending review should be detected");
+
+        assert_eq!(pending_review.node_id, "review-node");
+        assert_eq!(pending_review.comment_count, 3);
+    }
+
+    #[test]
+    fn pending_review_keeps_existing_count_without_loaded_count() {
+        let reviews = vec![pending_review("review-rest", "review-node", "alex")];
+        let existing = PendingReviewSession {
+            node_id: "review-node".to_string(),
+            comment_count: 2,
+        };
+
+        let pending_review =
+            pending_review_from_reviews(&reviews, Some("alex"), Some(&existing), None)
+                .expect("pending review should be detected");
+
+        assert_eq!(pending_review.comment_count, 2);
+    }
+
+    fn pending_review(id: &str, node_id: &str, author: &str) -> PullRequestReview {
+        PullRequestReview {
+            id: id.to_string(),
+            node_id: Some(node_id.to_string()),
+            author: author.to_string(),
+            state: PullRequestReviewState::Pending,
+            body: None,
+            submitted_at: None,
+        }
     }
 }

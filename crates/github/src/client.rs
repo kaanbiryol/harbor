@@ -186,6 +186,47 @@ where
         dto::pull_request_reviews_from_value(response)
     }
 
+    pub async fn pull_request_review_comment_count(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        review_id: &str,
+    ) -> Result<usize> {
+        let path = format!("/repos/{owner}/{repo}/pulls/{number}/reviews/{review_id}/comments");
+        let mut count = 0;
+        let mut page = 1;
+
+        loop {
+            let page_string = page.to_string();
+            let response = self
+                .transport
+                .rest_get(
+                    &path,
+                    &[
+                        ("per_page", REVIEW_COMMENT_PAGE_SIZE_QUERY),
+                        ("page", page_string.as_str()),
+                    ],
+                )
+                .await?;
+            let comments = response.as_array().ok_or_else(|| {
+                crate::GitHubError::Mapping(
+                    "pull request review comments response was not an array".to_string(),
+                )
+            })?;
+            let page_count = comments.len();
+            count += page_count;
+
+            if page_count < REVIEW_COMMENT_PAGE_SIZE {
+                break;
+            }
+
+            page += 1;
+        }
+
+        Ok(count)
+    }
+
     pub async fn list_review_threads(
         &self,
         owner: &str,
@@ -639,6 +680,8 @@ fn graphql_string_at(value: Value, pointer: &str, label: &str) -> Result<String>
 
 const REPOSITORY_PAGE_SIZE: usize = 100;
 const REPOSITORY_PAGE_SIZE_QUERY: &str = "100";
+const REVIEW_COMMENT_PAGE_SIZE: usize = 100;
+const REVIEW_COMMENT_PAGE_SIZE_QUERY: &str = "100";
 
 #[cfg(test)]
 mod tests {
@@ -793,6 +836,45 @@ mod tests {
         assert_eq!(gets.len(), 1);
         assert_eq!(gets[0].0, "/repos/acme/app/pulls/7/reviews");
         assert_eq!(gets[0].1, vec![("per_page".to_string(), "100".to_string())]);
+    }
+
+    #[test]
+    fn counts_pull_request_review_comments_endpoint() {
+        let transport = RecordingTransport::default();
+        *transport
+            .get_responses
+            .lock()
+            .expect("get responses mutex should not be poisoned") = vec![
+            Value::Array((0..REVIEW_COMMENT_PAGE_SIZE).map(|_| json!({})).collect()),
+            json!([{}, {}]),
+        ];
+        let client = GitHubClient::new(transport.clone());
+
+        let count =
+            smol::block_on(client.pull_request_review_comment_count("acme", "app", 7, "12345"))
+                .unwrap();
+
+        assert_eq!(count, REVIEW_COMMENT_PAGE_SIZE + 2);
+        let gets = transport
+            .gets
+            .lock()
+            .expect("gets mutex should not be poisoned");
+        assert_eq!(gets.len(), 2);
+        assert_eq!(gets[0].0, "/repos/acme/app/pulls/7/reviews/12345/comments");
+        assert_eq!(
+            gets[0].1,
+            vec![
+                ("per_page".to_string(), "100".to_string()),
+                ("page".to_string(), "1".to_string()),
+            ]
+        );
+        assert_eq!(
+            gets[1].1,
+            vec![
+                ("per_page".to_string(), "100".to_string()),
+                ("page".to_string(), "2".to_string()),
+            ]
+        );
     }
 
     #[test]

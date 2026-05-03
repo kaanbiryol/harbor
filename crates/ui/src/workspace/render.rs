@@ -825,9 +825,10 @@ impl AppView {
                                     .outline()
                                     .loading(self.is_running_pr_action)
                                     .disabled(review_action_disabled)
-                                    .on_click(cx.listener(|view, _, _, cx| {
+                                    .on_click(cx.listener(|view, _, window, cx| {
                                         view.run_pull_request_action(
                                             PullRequestAction::Approve,
+                                            window,
                                             cx,
                                         );
                                     })),
@@ -839,9 +840,10 @@ impl AppView {
                                     .outline()
                                     .loading(self.is_running_pr_action)
                                     .disabled(review_action_disabled)
-                                    .on_click(cx.listener(|view, _, _, cx| {
+                                    .on_click(cx.listener(|view, _, window, cx| {
                                         view.run_pull_request_action(
                                             PullRequestAction::RequestChanges,
+                                            window,
                                             cx,
                                         );
                                     })),
@@ -853,8 +855,12 @@ impl AppView {
                                     .outline()
                                     .loading(self.is_running_pr_action)
                                     .disabled(merge_action_disabled)
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.run_pull_request_action(PullRequestAction::Merge, cx);
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.run_pull_request_action(
+                                            PullRequestAction::Merge,
+                                            window,
+                                            cx,
+                                        );
                                     })),
                             ),
                     )
@@ -957,6 +963,14 @@ impl AppView {
     ) -> impl IntoElement {
         let body_input = self.pending_review_body_input.clone();
         let submitting = self.is_submitting_pending_review;
+        let body_empty = self
+            .pending_review_body_input
+            .read(cx)
+            .value()
+            .trim()
+            .is_empty();
+        let comment_submit_disabled =
+            submitting || (pending_review.comment_count == 0 && body_empty);
 
         div().pt_3().child(
             div()
@@ -964,7 +978,8 @@ impl AppView {
                 .border_1()
                 .border_color(rgb(0x355071))
                 .bg(rgb(0x172033))
-                .p_2()
+                .px_3()
+                .py_2()
                 .child(
                     div()
                         .flex()
@@ -976,7 +991,7 @@ impl AppView {
                             div()
                                 .font_medium()
                                 .text_color(rgb(0xe6e8eb))
-                                .child("Pending review"),
+                                .child("pending review"),
                         )
                         .child(div().text_color(rgb(0x93c5fd)).child(
                             pending_review_comment_count_label(pending_review.comment_count),
@@ -986,6 +1001,7 @@ impl AppView {
                     div().pt_2().child(
                         Input::new(&body_input)
                             .small()
+                            .w_full()
                             .appearance(false)
                             .bordered(true)
                             .focus_bordered(true),
@@ -1004,9 +1020,10 @@ impl AppView {
                                 .outline()
                                 .loading(submitting)
                                 .disabled(submitting)
-                                .on_click(cx.listener(|view, _, _, cx| {
+                                .on_click(cx.listener(|view, _, window, cx| {
                                     view.submit_pending_pull_request_review(
                                         SubmitPullRequestReviewEvent::Approve,
+                                        window,
                                         cx,
                                     );
                                 })),
@@ -1017,10 +1034,11 @@ impl AppView {
                                 .small()
                                 .outline()
                                 .loading(submitting)
-                                .disabled(submitting)
-                                .on_click(cx.listener(|view, _, _, cx| {
+                                .disabled(comment_submit_disabled)
+                                .on_click(cx.listener(|view, _, window, cx| {
                                     view.submit_pending_pull_request_review(
                                         SubmitPullRequestReviewEvent::Comment,
+                                        window,
                                         cx,
                                     );
                                 })),
@@ -1032,9 +1050,10 @@ impl AppView {
                                 .outline()
                                 .loading(submitting)
                                 .disabled(submitting)
-                                .on_click(cx.listener(|view, _, _, cx| {
+                                .on_click(cx.listener(|view, _, window, cx| {
                                     view.submit_pending_pull_request_review(
                                         SubmitPullRequestReviewEvent::RequestChanges,
+                                        window,
                                         cx,
                                     );
                                 })),

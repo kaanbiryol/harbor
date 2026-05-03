@@ -468,6 +468,7 @@ impl AppView {
     pub(crate) fn run_pull_request_action(
         &mut self,
         action: PullRequestAction,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.pending_review.is_some() {
@@ -475,6 +476,7 @@ impl AppView {
                 PullRequestAction::Approve => {
                     self.submit_pending_pull_request_review(
                         SubmitPullRequestReviewEvent::Approve,
+                        window,
                         cx,
                     );
                     return;
@@ -482,6 +484,7 @@ impl AppView {
                 PullRequestAction::RequestChanges => {
                     self.submit_pending_pull_request_review(
                         SubmitPullRequestReviewEvent::RequestChanges,
+                        window,
                         cx,
                     );
                     return;
@@ -620,28 +623,28 @@ impl AppView {
     pub(super) fn approve_pr(
         &mut self,
         _: &ApprovePullRequest,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Approve, cx);
+        self.run_pull_request_action(PullRequestAction::Approve, window, cx);
     }
 
     pub(super) fn request_changes(
         &mut self,
         _: &RequestChanges,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::RequestChanges, cx);
+        self.run_pull_request_action(PullRequestAction::RequestChanges, window, cx);
     }
 
     pub(super) fn merge_pr(
         &mut self,
         _: &MergePullRequest,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Merge, cx);
+        self.run_pull_request_action(PullRequestAction::Merge, window, cx);
     }
 
     pub(super) fn open_logs(&mut self, _: &OpenLogs, _: &mut Window, cx: &mut Context<Self>) {
