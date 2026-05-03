@@ -103,6 +103,15 @@ fn review_thread_anchor(
     file: &DiffFile,
     review_thread: &ReviewThread,
 ) -> Option<ReviewThreadAnchor> {
+    if let Some(range) = review_thread.range.as_ref()
+        && file_path_matches(file, &range.path)
+    {
+        return Some(ReviewThreadAnchor {
+            side: range.side,
+            line: range.line,
+        });
+    }
+
     review_thread.comments.iter().find_map(|comment| {
         let position = comment.position.as_ref()?;
         if !file_path_matches(file, &position.path) && !file_path_matches(file, &review_thread.path)
@@ -287,6 +296,7 @@ mod tests {
         ReviewThread {
             id: id.to_string(),
             path: path.to_string(),
+            range: None,
             state: ReviewThreadState::Unresolved,
             comments: vec![ReviewComment {
                 id: format!("{id}-comment"),

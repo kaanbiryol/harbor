@@ -8,6 +8,8 @@ use crate::{GitHubError, Result};
 
 #[derive(Debug, Deserialize)]
 struct ApiPullRequest {
+    #[serde(default)]
+    node_id: String,
     number: u64,
     title: String,
     body: Option<String>,
@@ -87,6 +89,7 @@ impl ApiPullRequest {
     fn into_domain(self, repo: RepoId) -> PullRequest {
         PullRequest {
             repo,
+            node_id: self.node_id,
             number: self.number,
             title: self.title,
             body: self.body,

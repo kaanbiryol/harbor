@@ -1,6 +1,6 @@
 use harbor_domain::{
-    PullRequestReview, PullRequestReviewState, ReviewComment, ReviewCommentPosition, ReviewSide,
-    ReviewThread, ReviewThreadState,
+    PullRequestReview, PullRequestReviewState, ReviewComment, ReviewCommentPosition,
+    ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -15,6 +15,8 @@ struct ApiUser {
 #[derive(Debug, Deserialize)]
 struct ApiPullRequestReview {
     id: u64,
+    #[serde(default)]
+    node_id: Option<String>,
     state: String,
     #[serde(default)]
     body: Option<String>,
@@ -87,6 +89,12 @@ struct GraphQlReviewThread {
     path: Option<String>,
     #[serde(default, rename = "line")]
     line: Option<u32>,
+    #[serde(default, rename = "diffSide")]
+    diff_side: Option<String>,
+    #[serde(default, rename = "startLine")]
+    start_line: Option<u32>,
+    #[serde(default, rename = "startDiffSide")]
+    start_diff_side: Option<String>,
     #[serde(default, rename = "originalLine")]
     original_line: Option<u32>,
     #[serde(default, rename = "isResolved")]
@@ -109,8 +117,17 @@ struct GraphQlReviewComment {
     path: Option<String>,
     #[serde(default)]
     line: Option<u32>,
+    #[serde(default, rename = "diffSide")]
+    diff_side: Option<String>,
     #[serde(default, rename = "originalLine")]
     original_line: Option<u32>,
+}
+
+pub fn current_user_login_from_value(value: Value) -> Result<String> {
+    let user: ApiUser =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+
+    Ok(user.login)
 }
 
 pub fn pull_request_reviews_from_value(value: Value) -> Result<Vec<PullRequestReview>> {
@@ -158,6 +175,7 @@ impl ApiPullRequestReview {
     fn into_domain(self) -> PullRequestReview {
         PullRequestReview {
             id: self.id.to_string(),
+            node_id: self.node_id,
             author: self
                 .user
                 .map(|user| user.login)
@@ -171,16 +189,34 @@ impl ApiPullRequestReview {
 
 impl GraphQlReviewThread {
     fn into_domain(self) -> ReviewThread {
+        let fallback_side = self
+            .diff_side
+            .as_deref()
+            .map(map_review_side)
+            .unwrap_or(ReviewSide::Right);
+        let fallback_start_side = self.start_diff_side.as_deref().map(map_review_side);
         let fallback_path = self.path.unwrap_or_default();
         let fallback_line = self.line;
         let fallback_original_line = self.original_line;
+        let range = fallback_line.map(|line| ReviewCommentRange {
+            path: fallback_path.clone(),
+            line,
+            side: fallback_side,
+            start_line: self.start_line,
+            start_side: fallback_start_side,
+        });
         let comments: Vec<ReviewComment> = self
             .comments
             .nodes
             .into_iter()
             .flatten()
             .map(|comment| {
-                comment.into_domain(fallback_path.clone(), fallback_line, fallback_original_line)
+                comment.into_domain(
+                    fallback_path.clone(),
+                    fallback_line,
+                    fallback_original_line,
+                    fallback_side,
+                )
             })
             .collect();
         let path = if fallback_path.is_empty() {
@@ -196,6 +232,7 @@ impl GraphQlReviewThread {
         ReviewThread {
             id: self.id,
             path,
+            range,
             state: map_review_thread_state(self.is_resolved, self.is_outdated),
             comments,
         }
@@ -208,10 +245,16 @@ impl GraphQlReviewComment {
         fallback_path: String,
         fallback_line: Option<u32>,
         fallback_original_line: Option<u32>,
+        fallback_side: ReviewSide,
     ) -> ReviewComment {
         let path = self.path.unwrap_or(fallback_path);
         let line = self.line.or(fallback_line);
         let original_line = self.original_line.or(fallback_original_line);
+        let side = self
+            .diff_side
+            .as_deref()
+            .map(map_review_side)
+            .unwrap_or(fallback_side);
         let position = if path.is_empty() && line.is_none() && original_line.is_none() {
             None
         } else {
@@ -219,7 +262,7 @@ impl GraphQlReviewComment {
                 path,
                 line,
                 original_line,
-                side: ReviewSide::Right,
+                side,
             })
         };
 
@@ -234,6 +277,14 @@ impl GraphQlReviewComment {
             updated_at: self.updated_at,
             position,
         }
+    }
+}
+
+fn map_review_side(side: &str) -> ReviewSide {
+    if side.eq_ignore_ascii_case("LEFT") {
+        ReviewSide::Left
+    } else {
+        ReviewSide::Right
     }
 }
 

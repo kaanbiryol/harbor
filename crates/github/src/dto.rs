@@ -29,6 +29,7 @@ mod tests {
     fn maps_pull_request_list() {
         let value = json!([
             {
+                "node_id": "pr-node-42",
                 "number": 42,
                 "title": "make list rendering fast",
                 "body": "Use cached data first",
@@ -47,6 +48,7 @@ mod tests {
 
         assert_eq!(pulls.len(), 1);
         assert_eq!(pulls[0].repo.full_name(), "acme/app");
+        assert_eq!(pulls[0].node_id, "pr-node-42");
         assert_eq!(pulls[0].number, 42);
         assert_eq!(pulls[0].author, "octocat");
         assert_eq!(pulls[0].head_ref, "feature/list");
@@ -257,6 +259,7 @@ mod tests {
         let value = json!([
             {
                 "id": 401,
+                "node_id": "review-node-401",
                 "state": "APPROVED",
                 "body": "ship it",
                 "submitted_at": "2026-05-01T11:00:00Z",
@@ -275,6 +278,7 @@ mod tests {
 
         assert_eq!(reviews.len(), 2);
         assert_eq!(reviews[0].id, "401");
+        assert_eq!(reviews[0].node_id.as_deref(), Some("review-node-401"));
         assert_eq!(reviews[0].author, "octocat");
         assert_eq!(reviews[0].state, PullRequestReviewState::Approved);
         assert_eq!(reviews[0].body.as_deref(), Some("ship it"));
@@ -295,6 +299,9 @@ mod tests {
                                     "id": "thread-1",
                                     "path": "src/app.rs",
                                     "line": 42,
+                                    "diffSide": "RIGHT",
+                                    "startLine": 40,
+                                    "startDiffSide": "RIGHT",
                                     "originalLine": 40,
                                     "isResolved": false,
                                     "isOutdated": false,
@@ -307,6 +314,7 @@ mod tests {
                                                 "createdAt": "2026-05-01T10:00:00Z",
                                                 "updatedAt": "2026-05-01T10:05:00Z",
                                                 "path": "src/app.rs",
+                                                "diffSide": "RIGHT",
                                                 "line": 42,
                                                 "originalLine": 40
                                             },
@@ -327,6 +335,9 @@ mod tests {
                                     "id": "thread-2",
                                     "path": "src/old.rs",
                                     "line": null,
+                                    "diffSide": "LEFT",
+                                    "startLine": null,
+                                    "startDiffSide": null,
                                     "originalLine": 9,
                                     "isResolved": false,
                                     "isOutdated": true,
@@ -344,6 +355,13 @@ mod tests {
         assert_eq!(threads.len(), 2);
         assert_eq!(threads[0].id, "thread-1");
         assert_eq!(threads[0].path, "src/app.rs");
+        assert_eq!(
+            threads[0]
+                .range
+                .as_ref()
+                .map(|range| (range.line, range.start_line)),
+            Some((42, Some(40)))
+        );
         assert_eq!(threads[0].state, ReviewThreadState::Unresolved);
         assert_eq!(threads[0].comments.len(), 2);
         assert_eq!(threads[0].comments[0].author, "reviewer");

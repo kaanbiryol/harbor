@@ -68,6 +68,7 @@ pub struct ChecksSummary {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PullRequest {
     pub repo: RepoId,
+    pub node_id: String,
     pub number: u64,
     pub title: String,
     pub body: Option<String>,
@@ -129,6 +130,21 @@ pub struct ReviewCommentPosition {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewCommentRange {
+    pub path: String,
+    pub line: u32,
+    pub side: ReviewSide,
+    pub start_line: Option<u32>,
+    pub start_side: Option<ReviewSide>,
+}
+
+impl ReviewCommentRange {
+    pub fn is_single_line(&self) -> bool {
+        self.start_line.is_none() && self.start_side.is_none()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReviewComment {
     pub id: String,
     pub author: String,
@@ -142,6 +158,7 @@ pub struct ReviewComment {
 pub struct ReviewThread {
     pub id: String,
     pub path: String,
+    pub range: Option<ReviewCommentRange>,
     pub state: ReviewThreadState,
     pub comments: Vec<ReviewComment>,
 }
@@ -158,6 +175,7 @@ pub enum PullRequestReviewState {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PullRequestReview {
     pub id: String,
+    pub node_id: Option<String>,
     pub author: String,
     pub state: PullRequestReviewState,
     pub body: Option<String>,

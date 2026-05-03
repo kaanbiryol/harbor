@@ -105,6 +105,10 @@ impl AppView {
         self.action_error = None;
         self.pr_action_error = None;
         self.pr_detail_tasks.clear();
+        self.clear_review_composer_state();
+        self.pending_review = None;
+        self.review_comment_error = None;
+        self.pending_review_error = None;
         self.is_loading_details = false;
         self.is_loading_files = false;
         self.is_loading_checks = false;
@@ -135,6 +139,10 @@ impl AppView {
                         view.workflow_jobs.clear();
                         view.pull_request_reviews.clear();
                         view.review_threads.clear();
+                        view.clear_review_composer_state();
+                        view.pending_review = None;
+                        view.review_comment_error = None;
+                        view.pending_review_error = None;
                         view.log_chunk = None;
                         view.selected_pr = 0;
                         view.active_file = 0;
@@ -159,6 +167,10 @@ impl AppView {
                         view.workflow_jobs.clear();
                         view.pull_request_reviews.clear();
                         view.review_threads.clear();
+                        view.clear_review_composer_state();
+                        view.pending_review = None;
+                        view.review_comment_error = None;
+                        view.pending_review_error = None;
                         view.log_chunk = None;
                         view.selected_pr = 0;
                         view.active_file = 0;
@@ -219,6 +231,9 @@ impl AppView {
         self.workflow_jobs.clear();
         self.pull_request_reviews.clear();
         self.review_threads.clear();
+        self.clear_review_composer_state();
+        self.review_comment_error = None;
+        self.pending_review_error = None;
         self.log_chunk = None;
         self.active_file = 0;
         self.active_hunk = 0;
@@ -296,6 +311,7 @@ impl AppView {
                             view.diffs = diffs;
                             view.active_file = 0;
                             view.active_hunk = 0;
+                            view.clear_review_composer_state();
                             view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.files_error = None;
@@ -306,6 +322,7 @@ impl AppView {
                             view.diffs.clear();
                             view.active_file = 0;
                             view.active_hunk = 0;
+                            view.clear_review_composer_state();
                             view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.files_error = Some(error.to_string());
@@ -424,6 +441,7 @@ impl AppView {
 
             async move |this, cx| {
                 let client = GitHubClient::new(GhCliTransport);
+                let current_user_result = client.current_user().await;
                 let pull_request_reviews_result = client
                     .list_pull_request_reviews(&owner, &name, number)
                     .await;
@@ -437,33 +455,64 @@ impl AppView {
 
                     view.is_loading_reviews = false;
                     let mut loaded_review_thread_count = None;
-
-                    match pull_request_reviews_result {
-                        Ok(reviews) => {
-                            view.pull_request_reviews = reviews;
+                    let current_user_login = match current_user_result {
+                        Ok(login) => {
                             view.reviews_error = None;
+                            Some(login)
                         }
                         Err(error) => {
-                            view.pull_request_reviews.clear();
                             view.reviews_error =
-                                Some(format!("Failed to load review history: {error}"));
+                                Some(format!("Failed to detect current user: {error}"));
+                            None
                         }
-                    }
+                    };
 
-                    match review_threads_result {
-                        Ok(review_threads) => {
-                            let unresolved_count = review_threads
+                    let reviews = match pull_request_reviews_result {
+                        Ok(reviews) => Some(reviews),
+                        Err(error) => {
+                            view.pull_request_reviews.clear();
+                            let message = format!("Failed to load review history: {error}");
+                            view.reviews_error = Some(match view.reviews_error.take() {
+                                Some(existing) => format!("{existing}; {message}"),
+                                None => message,
+                            });
+                            None
+                        }
+                    };
+
+                    match (reviews, review_threads_result) {
+                        (Some(reviews), Ok(review_threads)) => {
+                            let thread_count = review_threads.len();
+                            view.apply_loaded_review_data(
+                                reviews,
+                                review_threads,
+                                current_user_login,
+                            );
+                            loaded_review_thread_count = Some(thread_count);
+                        }
+                        (None, Ok(review_threads)) => {
+                            let thread_count = review_threads.len();
+                            view.review_threads = review_threads;
+                            let unresolved_count = view
+                                .review_threads
                                 .iter()
                                 .filter(|thread| thread.state == ReviewThreadState::Unresolved)
                                 .count();
-                            let thread_count = review_threads.len();
-                            view.review_threads = review_threads;
                             if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
                                 selected.unresolved_threads = unresolved_count;
                             }
                             loaded_review_thread_count = Some(thread_count);
                         }
-                        Err(error) => {
+                        (Some(reviews), Err(error)) => {
+                            view.review_threads.clear();
+                            view.apply_loaded_review_data(reviews, Vec::new(), current_user_login);
+                            let message = format!("Failed to load review threads: {error}");
+                            view.reviews_error = Some(match view.reviews_error.take() {
+                                Some(existing) => format!("{existing}; {message}"),
+                                None => message,
+                            });
+                        }
+                        (None, Err(error)) => {
                             view.review_threads.clear();
                             let message = format!("Failed to load review threads: {error}");
                             view.reviews_error = Some(match view.reviews_error.take() {
@@ -488,6 +537,81 @@ impl AppView {
                 }) {
                     eprintln!("failed to update pull request review state: {error}");
                 }
+            }
+        }));
+    }
+
+    pub(crate) fn load_selected_review_data(&mut self, cx: &mut Context<Self>) {
+        let Some(repo) = self.configured_repo.clone() else {
+            return;
+        };
+        let Some(number) = self.selected_pull_request_number() else {
+            return;
+        };
+
+        self.is_loading_reviews = true;
+        self.reviews_error = None;
+        self.status = format!("Refreshing review data for PR #{number}");
+        cx.notify();
+
+        let owner = repo.owner.clone();
+        let name = repo.name.clone();
+
+        self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let current_user_result = client.current_user().await;
+            let reviews_result = client
+                .list_pull_request_reviews(&owner, &name, number)
+                .await;
+            let threads_result = client.list_review_threads(&owner, &name, number).await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                if !selected_pull_request_matches(view, &repo, number) {
+                    return;
+                }
+
+                view.is_loading_reviews = false;
+                let current_user_login = current_user_result.ok();
+
+                match (reviews_result, threads_result) {
+                    (Ok(reviews), Ok(threads)) => {
+                        let thread_count = threads.len();
+                        view.apply_loaded_review_data(reviews, threads, current_user_login);
+                        view.reviews_error = None;
+                        view.status =
+                            format!("Refreshed review data and {thread_count} threads for PR #{number}");
+                    }
+                    (Err(reviews_error), Ok(threads)) => {
+                        let thread_count = threads.len();
+                        view.pull_request_reviews.clear();
+                        view.review_threads = threads;
+                        view.reviews_error =
+                            Some(format!("Failed to load review history: {reviews_error}"));
+                        view.status = format!(
+                            "Refreshed {thread_count} review threads for PR #{number}, but review history failed"
+                        );
+                    }
+                    (Ok(reviews), Err(threads_error)) => {
+                        view.review_threads.clear();
+                        view.apply_loaded_review_data(reviews, Vec::new(), current_user_login);
+                        view.reviews_error =
+                            Some(format!("Failed to load review threads: {threads_error}"));
+                        view.status =
+                            format!("Refreshed review history for PR #{number}, but threads failed");
+                    }
+                    (Err(reviews_error), Err(threads_error)) => {
+                        view.pull_request_reviews.clear();
+                        view.review_threads.clear();
+                        view.reviews_error = Some(format!(
+                            "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"
+                        ));
+                        view.status = format!("Failed to refresh review data for PR #{number}");
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update refreshed review state: {error}");
             }
         }));
     }

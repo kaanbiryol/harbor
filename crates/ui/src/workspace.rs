@@ -8,15 +8,49 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, WorkflowJob,
-    WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestReview, PullRequestReviewState, RepoId,
+    ReviewCommentRange, ReviewSide, ReviewThread, WorkflowJob, WorkflowRun,
 };
+use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
 use harbor_logs::LogChunk;
 use harbor_storage::SqliteStore;
 
-use crate::actions::PanelTab;
+use crate::actions::{DEFAULT_REQUEST_CHANGES_BODY, PanelTab};
 use crate::diff::{ParsedDiff, parse_files};
 use crate::panels::workflow_run_failed;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewLineTarget {
+    pub(crate) hunk_index: usize,
+    pub(crate) line_index: usize,
+    pub(crate) range: ReviewCommentRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewComposer {
+    pub(crate) anchor: ReviewLineTarget,
+    pub(crate) range: ReviewCommentRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewLineSelection {
+    pub(crate) anchor: ReviewLineTarget,
+    pub(crate) current: ReviewLineTarget,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PendingReviewSession {
+    pub(crate) node_id: String,
+    pub(crate) comment_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReviewCommentSubmission {
+    SingleComment,
+    StartReview,
+    AddToReview,
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -28,6 +62,11 @@ pub struct AppView {
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
     pub(crate) review_threads: Vec<ReviewThread>,
+    pub(crate) review_composer: Option<ReviewComposer>,
+    pub(crate) review_line_selection: Option<ReviewLineSelection>,
+    pub(crate) pending_review: Option<PendingReviewSession>,
+    pub(crate) review_comment_input: Entity<InputState>,
+    pub(crate) pending_review_body_input: Entity<InputState>,
     pub(crate) log_chunk: Option<LogChunk>,
     pr_list_task: Option<Task<()>>,
     pr_detail_tasks: Vec<Task<()>>,
@@ -60,6 +99,8 @@ pub struct AppView {
     is_loading_logs: bool,
     is_running_action: bool,
     is_running_pr_action: bool,
+    pub(crate) is_submitting_review_comment: bool,
+    pub(crate) is_submitting_pending_review: bool,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
@@ -70,6 +111,9 @@ pub struct AppView {
     repository_error: Option<String>,
     action_error: Option<String>,
     pr_action_error: Option<String>,
+    pub(crate) review_comment_error: Option<String>,
+    pub(crate) pending_review_error: Option<String>,
+    current_user_login: Option<String>,
     did_focus: bool,
     status: String,
     _subscriptions: Vec<Subscription>,
@@ -82,6 +126,18 @@ impl AppView {
         let files = Vec::new();
         let pull_request_reviews = Vec::new();
         let review_threads = Vec::new();
+        let review_comment_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(3, 8)
+                .placeholder("Leave a comment")
+                .clean_on_escape()
+        });
+        let pending_review_body_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(2, 6)
+                .placeholder("Review summary")
+                .clean_on_escape()
+        });
         let repository_search_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Search repositories...")
@@ -103,6 +159,12 @@ impl AppView {
                 window,
                 Self::on_switcher_search_event,
             ),
+            cx.subscribe_in(&review_comment_input, window, Self::on_review_input_event),
+            cx.subscribe_in(
+                &pending_review_body_input,
+                window,
+                Self::on_review_input_event,
+            ),
         ];
         let diffs = parse_files(&files);
         let repositories = initial_repositories(configured_repo.as_ref(), &pull_requests);
@@ -122,6 +184,11 @@ impl AppView {
             workflow_jobs: Vec::new(),
             pull_request_reviews,
             review_threads,
+            review_composer: None,
+            review_line_selection: None,
+            pending_review: None,
+            review_comment_input,
+            pending_review_body_input,
             log_chunk: None,
             pr_list_task: None,
             pr_detail_tasks: Vec::new(),
@@ -154,6 +221,8 @@ impl AppView {
             is_loading_logs: false,
             is_running_action: false,
             is_running_pr_action: false,
+            is_submitting_review_comment: false,
+            is_submitting_pending_review: false,
             load_error: None,
             details_error: None,
             files_error: None,
@@ -164,6 +233,9 @@ impl AppView {
             repository_error: None,
             action_error: None,
             pr_action_error: None,
+            review_comment_error: None,
+            pending_review_error: None,
+            current_user_login: None,
             did_focus: false,
             status,
             _subscriptions: subscriptions,
@@ -224,9 +296,13 @@ impl AppView {
         self.log_chunk = None;
         self.pull_request_reviews.clear();
         self.review_threads.clear();
+        self.clear_review_composer_state();
+        self.pending_review = None;
         self.reviews_error = None;
         self.logs_error = None;
         self.pr_action_error = None;
+        self.review_comment_error = None;
+        self.pending_review_error = None;
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -244,15 +320,84 @@ impl AppView {
 
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(file) = self.files.get(index) {
+            let path = file.path.clone();
             self.active_file = index;
             self.active_hunk = 0;
             self.active_tab = PanelTab::Diff;
+            self.clear_review_composer_state();
             self.file_list_scroll
                 .scroll_to_item(index, ScrollStrategy::Center);
             self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-            self.status = format!("Selected {}", file.path);
+            self.status = format!("Selected {path}");
         }
 
+        cx.notify();
+    }
+
+    pub(crate) fn start_review_line_selection(
+        &mut self,
+        target: ReviewLineTarget,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_line_selection = Some(ReviewLineSelection {
+            anchor: target.clone(),
+            current: target,
+        });
+        self.review_composer = None;
+        self.review_comment_error = None;
+        self.active_tab = PanelTab::Diff;
+        self.status = "Started review line selection".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn extend_review_line_selection(
+        &mut self,
+        target: ReviewLineTarget,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(selection) = self.review_line_selection.as_mut() {
+            selection.current = target;
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn finish_review_line_selection(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = self.review_line_selection.take() else {
+            return;
+        };
+
+        match review_composer_from_selection(&selection.anchor, &selection.current) {
+            Ok(composer) => {
+                let range = composer.range.clone();
+                let label = review_comment_range_label(&range);
+                self.review_comment_input.update(cx, |input, cx| {
+                    input.set_value("", window, cx);
+                    input.focus(window, cx);
+                });
+                self.review_composer = Some(composer);
+                self.review_comment_error = None;
+                self.status = format!("Opened review composer for {label}");
+            }
+            Err(message) => {
+                self.review_composer = None;
+                self.review_comment_error = Some(message.clone());
+                self.status = message;
+            }
+        }
+
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_review_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_review_composer_state();
+        self.review_comment_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.status = "Cancelled review comment".to_string();
         cx.notify();
     }
 
@@ -393,6 +538,271 @@ impl AppView {
         cx.notify();
     }
 
+    pub(crate) fn clear_review_composer_state(&mut self) {
+        self.review_composer = None;
+        self.review_line_selection = None;
+        self.review_comment_error = None;
+    }
+
+    pub(crate) fn apply_loaded_review_data(
+        &mut self,
+        reviews: Vec<PullRequestReview>,
+        review_threads: Vec<ReviewThread>,
+        current_user_login: Option<String>,
+    ) -> usize {
+        let unresolved_count = review_threads
+            .iter()
+            .filter(|thread| thread.state == harbor_domain::ReviewThreadState::Unresolved)
+            .count();
+        let existing_pending_review = self.pending_review.clone();
+        self.current_user_login = current_user_login;
+        self.pending_review = pending_review_from_reviews(
+            &reviews,
+            self.current_user_login.as_deref(),
+            existing_pending_review.as_ref(),
+        );
+        self.pull_request_reviews = reviews;
+        self.review_threads = review_threads;
+
+        if let Some(selected) = self.pull_requests.get_mut(self.selected_pr) {
+            selected.unresolved_threads = unresolved_count;
+        }
+
+        unresolved_count
+    }
+
+    pub(crate) fn submit_review_comment(
+        &mut self,
+        submission: ReviewCommentSubmission,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_submitting_review_comment {
+            self.status = "A review comment is already being submitted".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(composer) = self.review_composer.clone() else {
+            self.review_comment_error = Some("Select diff lines before commenting".to_string());
+            self.status = "Select diff lines before commenting".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_comment_error = Some("Select a pull request before commenting".to_string());
+            self.status = "Select a pull request before commenting".to_string();
+            cx.notify();
+            return;
+        };
+
+        let body = self.review_comment_input.read(cx).value().to_string();
+        let body = body.trim().to_string();
+        if body.is_empty() {
+            self.review_comment_error = Some("Enter a comment before sending".to_string());
+            self.status = "Enter a comment before sending".to_string();
+            cx.notify();
+            return;
+        }
+
+        let pending_review_node_id = match submission {
+            ReviewCommentSubmission::AddToReview => {
+                let Some(pending_review) = self.pending_review.clone() else {
+                    self.review_comment_error =
+                        Some("Start a review before adding a review comment".to_string());
+                    self.status = "Start a review before adding a review comment".to_string();
+                    cx.notify();
+                    return;
+                };
+                Some(pending_review.node_id)
+            }
+            ReviewCommentSubmission::SingleComment | ReviewCommentSubmission::StartReview => None,
+        };
+
+        if submission == ReviewCommentSubmission::StartReview && pr.node_id.is_empty() {
+            self.review_comment_error =
+                Some("GitHub did not return a pull request node id".to_string());
+            self.status = "Cannot start review without a pull request node id".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.is_submitting_review_comment = true;
+        self.review_comment_error = None;
+        self.status = match submission {
+            ReviewCommentSubmission::SingleComment => {
+                format!("Posting comment on PR #{}", pr.number)
+            }
+            ReviewCommentSubmission::StartReview => {
+                format!("Starting pending review on PR #{}", pr.number)
+            }
+            ReviewCommentSubmission::AddToReview => {
+                format!("Adding comment to pending review on PR #{}", pr.number)
+            }
+        };
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = match submission {
+                ReviewCommentSubmission::SingleComment => client
+                    .create_pull_request_review_comment(
+                        &pr.repo.owner,
+                        &pr.repo.name,
+                        pr.number,
+                        &pr.head_sha,
+                        &composer.range,
+                        &body,
+                    )
+                    .await
+                    .map(|()| None),
+                ReviewCommentSubmission::StartReview => client
+                    .start_pull_request_review(&pr.node_id, &pr.head_sha, &composer.range, &body)
+                    .await
+                    .map(Some),
+                ReviewCommentSubmission::AddToReview => {
+                    if let Some(pending_review_node_id) = pending_review_node_id {
+                        client
+                            .add_pending_review_thread(
+                                &pending_review_node_id,
+                                &composer.range,
+                                &body,
+                            )
+                            .await
+                            .map(|()| None)
+                    } else {
+                        Err(harbor_github::GitHubError::Transport(
+                            "missing pending review id".to_string(),
+                        ))
+                    }
+                }
+            };
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.is_submitting_review_comment = false;
+
+                match result {
+                    Ok(new_pending_review_node_id) => {
+                        match submission {
+                            ReviewCommentSubmission::SingleComment => {}
+                            ReviewCommentSubmission::StartReview => {
+                                if let Some(node_id) = new_pending_review_node_id {
+                                    view.pending_review = Some(PendingReviewSession {
+                                        node_id,
+                                        comment_count: 1,
+                                    });
+                                }
+                            }
+                            ReviewCommentSubmission::AddToReview => {
+                                if let Some(pending_review) = view.pending_review.as_mut() {
+                                    pending_review.comment_count += 1;
+                                }
+                            }
+                        }
+
+                        view.review_composer = None;
+                        view.review_line_selection = None;
+                        view.review_comment_error = None;
+                        view.status = match submission {
+                            ReviewCommentSubmission::SingleComment => {
+                                format!("Posted comment on PR #{}", pr.number)
+                            }
+                            ReviewCommentSubmission::StartReview => {
+                                format!("Started pending review on PR #{}", pr.number)
+                            }
+                            ReviewCommentSubmission::AddToReview => {
+                                format!("Added review comment on PR #{}", pr.number)
+                            }
+                        };
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to submit review comment: {error}");
+                        view.review_comment_error = Some(message.clone());
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review comment submission state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn submit_pending_pull_request_review(
+        &mut self,
+        event: SubmitPullRequestReviewEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_submitting_pending_review || self.is_running_pr_action {
+            self.status = "A pull request action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pending_review) = self.pending_review.clone() else {
+            self.pending_review_error = Some("No pending review to submit".to_string());
+            self.status = "No pending review to submit".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.pending_review_error =
+                Some("Select a pull request before submitting a review".to_string());
+            self.status = "Select a pull request before submitting a review".to_string();
+            cx.notify();
+            return;
+        };
+
+        let body = self.pending_review_body_input.read(cx).value().to_string();
+        let body = match event {
+            SubmitPullRequestReviewEvent::RequestChanges if body.trim().is_empty() => {
+                Some(DEFAULT_REQUEST_CHANGES_BODY.to_string())
+            }
+            _ => {
+                let trimmed = body.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            }
+        };
+
+        self.is_submitting_pending_review = true;
+        self.is_running_pr_action = true;
+        self.pending_review_error = None;
+        self.status = format!("Submitting pending review on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = GitHubClient::new(GhCliTransport)
+                .submit_pull_request_review(&pending_review.node_id, event, body.as_deref())
+                .await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.is_submitting_pending_review = false;
+                view.is_running_pr_action = false;
+
+                match result {
+                    Ok(()) => {
+                        view.pending_review = None;
+                        view.pending_review_error = None;
+                        view.status = format!("Submitted pending review on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to submit pending review: {error}");
+                        view.pending_review_error = Some(message.clone());
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update pending review submission state: {error}");
+            }
+        })
+        .detach();
+    }
+
     fn on_switcher_search_event(
         &mut self,
         input: &Entity<InputState>,
@@ -426,6 +836,18 @@ impl AppView {
             _ => {}
         }
     }
+
+    fn on_review_input_event(
+        &mut self,
+        _: &Entity<InputState>,
+        event: &InputEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if matches!(event, InputEvent::Change) {
+            cx.notify();
+        }
+    }
 }
 
 pub(crate) fn normalized_search_query(query: &str) -> String {
@@ -457,6 +879,96 @@ pub(crate) fn next_switcher_index(current: usize, len: usize, delta: isize) -> u
 
     let current = current.min(len - 1) as isize;
     (current + delta).rem_euclid(len as isize) as usize
+}
+
+fn review_composer_from_selection(
+    anchor: &ReviewLineTarget,
+    current: &ReviewLineTarget,
+) -> std::result::Result<ReviewComposer, String> {
+    let range = review_range_from_targets(anchor, current)?;
+    let anchor = if anchor.line_index >= current.line_index {
+        anchor.clone()
+    } else {
+        current.clone()
+    };
+
+    Ok(ReviewComposer { anchor, range })
+}
+
+pub(crate) fn review_range_from_targets(
+    anchor: &ReviewLineTarget,
+    current: &ReviewLineTarget,
+) -> std::result::Result<ReviewCommentRange, String> {
+    if anchor.hunk_index != current.hunk_index {
+        return Err("Review comments can only span lines in one diff hunk".to_string());
+    }
+
+    if anchor.range.path != current.range.path {
+        return Err("Review comments can only span one file".to_string());
+    }
+
+    if anchor.range.side != current.range.side {
+        return Err("Review comments can only span one diff side".to_string());
+    }
+
+    let (start, end) = if anchor.line_index <= current.line_index {
+        (anchor, current)
+    } else {
+        (current, anchor)
+    };
+    let mut range = end.range.clone();
+
+    if start.line_index != end.line_index {
+        range.start_line = Some(start.range.line);
+        range.start_side = Some(start.range.side);
+    } else {
+        range.start_line = None;
+        range.start_side = None;
+    }
+
+    Ok(range)
+}
+
+fn pending_review_from_reviews(
+    reviews: &[PullRequestReview],
+    current_user_login: Option<&str>,
+    existing_pending_review: Option<&PendingReviewSession>,
+) -> Option<PendingReviewSession> {
+    reviews
+        .iter()
+        .find(|review| {
+            review.state == PullRequestReviewState::Pending
+                && current_user_login.is_none_or(|login| review.author == login)
+                && review
+                    .node_id
+                    .as_ref()
+                    .is_some_and(|node_id| !node_id.is_empty())
+        })
+        .and_then(|review| {
+            let node_id = review.node_id.clone()?;
+            let comment_count = existing_pending_review
+                .filter(|pending_review| pending_review.node_id == node_id)
+                .map_or(0, |pending_review| pending_review.comment_count);
+
+            Some(PendingReviewSession {
+                node_id,
+                comment_count,
+            })
+        })
+        .or_else(|| existing_pending_review.cloned())
+}
+
+fn review_comment_range_label(range: &ReviewCommentRange) -> String {
+    let side = match range.side {
+        ReviewSide::Left => "left",
+        ReviewSide::Right => "right",
+    };
+
+    if let Some(start_line) = range.start_line {
+        format!("{side} lines {start_line}-{}", range.line)
+    } else {
+        format!("{side} line {}", range.line)
+    }
 }
 
 fn initial_repositories(

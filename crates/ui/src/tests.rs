@@ -138,6 +138,7 @@ fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckR
 fn pull_request() -> PullRequest {
     PullRequest {
         repo: RepoId::new("acme", "app"),
+        node_id: "pr-node".to_string(),
         number: 7,
         title: "Add feature".to_string(),
         body: None,
@@ -166,6 +167,7 @@ fn review_thread(state: ReviewThreadState) -> ReviewThread {
     ReviewThread {
         id: "thread".to_string(),
         path: "src/app.rs".to_string(),
+        range: None,
         state,
         comments: Vec::new(),
     }

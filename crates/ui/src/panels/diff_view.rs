@@ -1,20 +1,32 @@
 use gpui::{
-    AnyElement, Context, IntoElement, ListHorizontalSizingBehavior, UniformListScrollHandle, div,
-    prelude::*, px, rgb, uniform_list,
+    AnyElement, Context, Entity, IntoElement, ListHorizontalSizingBehavior, MouseButton,
+    UniformListScrollHandle, div, prelude::*, px, rgb, uniform_list,
 };
-use harbor_domain::{DiffFile, ReviewThread, ReviewThreadState};
+use gpui_component::{
+    Disableable, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+    input::{Input, InputState},
+};
+use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState};
 
 use crate::diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff};
 use crate::diff_reviews::{
     anchored_review_threads, diff_row_count_with_reviews, review_threads_for_line,
 };
-use crate::workspace::AppView;
+use crate::workspace::{
+    AppView, PendingReviewSession, ReviewCommentSubmission, ReviewComposer, ReviewLineSelection,
+    ReviewLineTarget,
+};
 
 use super::review::{review_thread_state_label, single_line};
 
 const MIN_LINE_NUMBER_WIDTH: f32 = 28.0;
 const LINE_NUMBER_PADDING: f32 = 8.0;
 const LINE_NUMBER_DIGIT_WIDTH: f32 = 8.0;
+const DIFF_ROW_HEIGHT: f32 = 24.0;
+const REVIEW_COMPOSER_ROWS: usize = 8;
+const REVIEW_COMPOSER_ROWS_WITH_ERROR: usize = 9;
+const REVIEW_COMPOSER_MAX_WIDTH: f32 = 820.0;
 const REVIEW_MARKER_WIDTH: f32 = 24.0;
 const PREFIX_WIDTH: f32 = 16.0;
 
@@ -22,6 +34,8 @@ pub(crate) fn render_diff_panel(
     file: Option<&DiffFile>,
     parsed_diff: Option<&ParsedDiff>,
     review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
     is_loading: bool,
     error: Option<&str>,
     scroll_handle: UniformListScrollHandle,
@@ -125,7 +139,14 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     };
 
-    let row_count = diff_row_count_with_reviews(parsed_diff, file, review_threads);
+    let row_count = diff_row_count_with_review_controls(
+        parsed_diff,
+        file,
+        review_threads,
+        review_composer,
+        review_comment_error,
+    );
+    let view_entity = cx.entity().clone();
 
     div()
         .id("diff-panel")
@@ -152,7 +173,7 @@ pub(crate) fn render_diff_panel(
                     uniform_list(
                         "diff-lines-list",
                         row_count,
-                        cx.processor(|view, range: std::ops::Range<usize>, _window, _cx| {
+                        cx.processor(move |view, range: std::ops::Range<usize>, _window, _cx| {
                             let Some(file) = view.active_file() else {
                                 return Vec::new();
                             };
@@ -165,8 +186,20 @@ pub(crate) fn render_diff_panel(
                                 parsed_diff,
                                 file,
                                 &view.review_threads,
+                                view.review_composer.as_ref(),
+                                view.review_line_selection.as_ref(),
+                                view.pending_review.as_ref(),
+                                view.review_comment_input.clone(),
+                                view.review_comment_input
+                                    .read(_cx)
+                                    .value()
+                                    .trim()
+                                    .is_empty(),
+                                view.is_submitting_review_comment,
+                                view.review_comment_error.as_deref(),
                                 view.active_hunk,
                                 line_number_width,
+                                view_entity.clone(),
                                 range,
                             )
                         }),
@@ -209,16 +242,23 @@ fn render_diff_rows(
     diff: &ParsedDiff,
     file: &DiffFile,
     review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_line_selection: Option<&ReviewLineSelection>,
+    pending_review: Option<&PendingReviewSession>,
+    review_comment_input: Entity<InputState>,
+    review_comment_body_empty: bool,
+    is_submitting_review_comment: bool,
+    review_comment_error: Option<&str>,
     active_hunk: usize,
     line_number_width: f32,
+    view_entity: Entity<AppView>,
     range: std::ops::Range<usize>,
 ) -> Vec<AnyElement> {
     let anchored_threads = anchored_review_threads(file, review_threads);
-    let review_marker_width = if anchored_threads.is_empty() {
-        0.0
-    } else {
-        REVIEW_MARKER_WIDTH
-    };
+    let review_marker_width = REVIEW_MARKER_WIDTH;
+    let active_selection_range = review_line_selection.and_then(|selection| {
+        crate::workspace::review_range_from_targets(&selection.anchor, &selection.current).ok()
+    });
     let mut rows = Vec::with_capacity(range.len());
     let mut row_index = 0;
 
@@ -235,29 +275,88 @@ fn render_diff_rows(
         }
         row_index += 1;
 
-        for line in &hunk.lines {
+        for (line_index, line) in hunk.lines.iter().enumerate() {
             if row_index >= range.end {
                 break;
             }
 
             let matching_threads = review_threads_for_line(&anchored_threads, line);
+            let review_line_target =
+                review_line_target_for_line(file, hunk_index, line_index, line);
+            let selected_for_comment = review_composer.is_some_and(|composer| {
+                review_comment_range_matches_line(file, &composer.range, line)
+            });
+            let dragging_for_comment = active_selection_range
+                .as_ref()
+                .is_some_and(|range| review_comment_range_matches_line(file, range, line));
             let has_unresolved_thread = matching_threads
                 .iter()
                 .any(|thread| thread.state == ReviewThreadState::Unresolved);
+            let has_thread_range = review_threads
+                .iter()
+                .filter_map(|thread| thread.range.as_ref())
+                .any(|range| review_comment_range_matches_line(file, range, line));
 
             if row_in_range(row_index, &range) {
                 rows.push(
                     render_diff_line(
+                        row_index,
                         line,
                         matching_threads.len(),
                         has_unresolved_thread,
+                        dragging_for_comment,
+                        selected_for_comment,
+                        has_thread_range,
+                        review_line_target.clone(),
                         line_number_width,
                         review_marker_width,
+                        view_entity.clone(),
                     )
                     .into_any_element(),
                 );
             }
             row_index += 1;
+
+            let composer_ends_here = review_composer.is_some_and(|composer| {
+                composer.anchor.hunk_index == hunk_index && composer.anchor.line_index == line_index
+            });
+
+            if composer_ends_here {
+                let composer_row_count = review_composer_row_count(review_comment_error);
+
+                for composer_row in 0..composer_row_count {
+                    if row_index >= range.end {
+                        row_index += composer_row_count - composer_row;
+                        break;
+                    }
+
+                    if row_in_range(row_index, &range) {
+                        if composer_row == 0 {
+                            if let Some(composer) = review_composer.cloned() {
+                                rows.push(
+                                    render_review_composer_inline(
+                                        composer,
+                                        pending_review.cloned(),
+                                        review_comment_input.clone(),
+                                        review_comment_body_empty,
+                                        is_submitting_review_comment,
+                                        review_comment_error,
+                                        composer_row_count,
+                                        line_number_width,
+                                        review_marker_width,
+                                        view_entity.clone(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                        } else {
+                            rows.push(render_review_composer_spacer().into_any_element());
+                        }
+                    }
+
+                    row_index += 1;
+                }
+            }
 
             for thread in matching_threads {
                 if row_index >= range.end {
@@ -287,7 +386,8 @@ pub(crate) fn render_diff_hunk_row(
     active: bool,
 ) -> impl IntoElement {
     div()
-        .h(px(24.))
+        .h(px(DIFF_ROW_HEIGHT))
+        .w_full()
         .flex()
         .items_center()
         .gap_2()
@@ -301,11 +401,17 @@ pub(crate) fn render_diff_hunk_row(
 }
 
 pub(crate) fn render_diff_line(
+    row_index: usize,
     line: &DiffLine,
     thread_count: usize,
     has_unresolved_thread: bool,
+    dragging_for_comment: bool,
+    selected_for_comment: bool,
+    has_thread_range: bool,
+    review_line_target: Option<ReviewLineTarget>,
     line_number_width: f32,
     review_marker_width: f32,
+    view_entity: Entity<AppView>,
 ) -> impl IntoElement {
     let (prefix, bg, text_color) = match line.kind {
         DiffLineKind::Context => (" ", rgb(0x0c0f12), rgb(0xcbd5e1)),
@@ -313,9 +419,60 @@ pub(crate) fn render_diff_line(
         DiffLineKind::Removed => ("-", rgb(0x291516), rgb(0xfca5a5)),
         DiffLineKind::Metadata => ("\\", rgb(0x111827), rgb(0x9aa4b2)),
     };
+    let selected_bg = match line.kind {
+        DiffLineKind::Context => rgb(0x20324a),
+        DiffLineKind::Added => rgb(0x174832),
+        DiffLineKind::Removed => rgb(0x4d2b32),
+        DiffLineKind::Metadata => rgb(0x20324a),
+    };
+    let dragging_bg = match line.kind {
+        DiffLineKind::Context => rgb(0x263d5b),
+        DiffLineKind::Added => rgb(0x1b5a3f),
+        DiffLineKind::Removed => rgb(0x61363e),
+        DiffLineKind::Metadata => rgb(0x263d5b),
+    };
+    let thread_range_bg = match line.kind {
+        DiffLineKind::Context => rgb(0x141b24),
+        DiffLineKind::Added => rgb(0x14291f),
+        DiffLineKind::Removed => rgb(0x301d20),
+        DiffLineKind::Metadata => rgb(0x141b24),
+    };
+    let bg = if dragging_for_comment {
+        dragging_bg
+    } else if selected_for_comment {
+        selected_bg
+    } else if has_thread_range {
+        thread_range_bg
+    } else {
+        bg
+    };
+    let hover_bg = if dragging_for_comment {
+        match line.kind {
+            DiffLineKind::Added => rgb(0x20694a),
+            DiffLineKind::Removed => rgb(0x704049),
+            DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x2c486a),
+        }
+    } else if selected_for_comment {
+        match line.kind {
+            DiffLineKind::Added => rgb(0x1b553d),
+            DiffLineKind::Removed => rgb(0x5a3239),
+            DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x243a55),
+        }
+    } else if has_thread_range {
+        match line.kind {
+            DiffLineKind::Added => rgb(0x193326),
+            DiffLineKind::Removed => rgb(0x3a2327),
+            DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x1a2531),
+        }
+    } else {
+        rgb(0x18212b)
+    };
+    let line_id = format!("diff-line-{row_index}");
 
     div()
-        .h(px(24.))
+        .id(line_id)
+        .h(px(DIFF_ROW_HEIGHT))
+        .w_full()
         .flex()
         .items_start()
         .bg(bg)
@@ -336,6 +493,212 @@ pub(crate) fn render_diff_line(
                 .child(prefix),
         )
         .child(div().flex_none().child(line.text.clone()))
+        .when_some(review_line_target, move |element, target| {
+            let view_entity = view_entity.clone();
+            let move_view_entity = view_entity.clone();
+            let up_view_entity = view_entity.clone();
+            let down_target = target.clone();
+            let move_target = target.clone();
+
+            element
+                .cursor_pointer()
+                .hover(move |element| element.bg(hover_bg))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    let target = down_target.clone();
+                    view_entity.update(cx, move |view, cx| {
+                        view.start_review_line_selection(target, cx);
+                    });
+                    cx.stop_propagation();
+                })
+                .on_mouse_move(move |_, _, cx| {
+                    let target = move_target.clone();
+                    move_view_entity.update(cx, move |view, cx| {
+                        view.extend_review_line_selection(target, cx);
+                    });
+                })
+                .on_mouse_up(MouseButton::Left, move |_, window, cx| {
+                    up_view_entity.update(cx, move |view, cx| {
+                        view.finish_review_line_selection(window, cx);
+                    });
+                    cx.stop_propagation();
+                })
+        })
+}
+
+fn render_review_composer_inline(
+    composer: ReviewComposer,
+    pending_review: Option<PendingReviewSession>,
+    review_comment_input: Entity<InputState>,
+    body_empty: bool,
+    is_submitting: bool,
+    error: Option<&str>,
+    row_count: usize,
+    line_number_width: f32,
+    review_marker_width: f32,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    let target_label = review_comment_range_label(&composer.range);
+    let submit_disabled = body_empty || is_submitting;
+    let has_pending_review = pending_review.is_some();
+    let height = row_count as f32 * DIFF_ROW_HEIGHT;
+
+    div()
+        .h(px(height))
+        .w_full()
+        .flex()
+        .items_start()
+        .bg(rgb(0x0c0f12))
+        .text_color(rgb(0xcbd5e1))
+        .font_family(".SystemUIFont")
+        .child(render_line_number(None, line_number_width))
+        .child(render_line_number(None, line_number_width))
+        .child(render_review_menu_marker(review_marker_width))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .py_1()
+                .pr_3()
+                .child(
+                    div()
+                        .w_full()
+                        .max_w(px(REVIEW_COMPOSER_MAX_WIDTH))
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(rgb(0x2c3745))
+                        .bg(rgb(0x121923))
+                        .px_3()
+                        .py_2()
+                        .child(
+                            div()
+                                .pb_2()
+                                .text_xs()
+                                .font_medium()
+                                .text_color(rgb(0x9fc7ff))
+                                .child(format!("Comment on {target_label}")),
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .rounded_sm()
+                                .border_1()
+                                .border_color(rgb(0x354252))
+                                .bg(rgb(0x0b1118))
+                                .px_2()
+                                .py_1()
+                                .child(
+                                    Input::new(&review_comment_input)
+                                        .w_full()
+                                        .small()
+                                        .h(px(DIFF_ROW_HEIGHT * 3.0))
+                                        .appearance(false)
+                                        .bordered(false)
+                                        .focus_bordered(false),
+                                ),
+                        )
+                        .when_some(error.map(ToString::to_string), |element, error| {
+                            element.child(
+                                div()
+                                    .pt_2()
+                                    .text_xs()
+                                    .text_color(rgb(0xf87171))
+                                    .child(error),
+                            )
+                        })
+                        .child(
+                            div()
+                                .pt_2()
+                                .flex()
+                                .items_center()
+                                .justify_end()
+                                .gap_2()
+                                .child(
+                                    Button::new("cancel-review-comment")
+                                        .label("Cancel")
+                                        .xsmall()
+                                        .ghost()
+                                        .disabled(is_submitting)
+                                        .on_click({
+                                            let view_entity = view_entity.clone();
+                                            move |_, window, cx| {
+                                                view_entity.update(cx, |view, cx| {
+                                                    view.cancel_review_composer(window, cx);
+                                                });
+                                            }
+                                        }),
+                                )
+                                .when_some(pending_review, {
+                                    let view_entity = view_entity.clone();
+                                    move |element, _pending_review| {
+                                        element.child(
+                                            Button::new("add-review-comment")
+                                                .label("Add review comment")
+                                                .xsmall()
+                                                .primary()
+                                                .loading(is_submitting)
+                                                .disabled(submit_disabled)
+                                                .on_click(move |_, _, cx| {
+                                                    view_entity.update(cx, |view, cx| {
+                                                        view.submit_review_comment(
+                                                            ReviewCommentSubmission::AddToReview,
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                    }
+                                })
+                                .when(!has_pending_review, {
+                                    let view_entity = view_entity.clone();
+                                    move |element| {
+                                        element
+                                            .child(
+                                                Button::new("add-single-comment")
+                                                    .label("Add single comment")
+                                                    .xsmall()
+                                                    .outline()
+                                                    .loading(is_submitting)
+                                                    .disabled(submit_disabled)
+                                                    .on_click({
+                                                        let view_entity = view_entity.clone();
+                                                        move |_, _, cx| {
+                                                            view_entity.update(cx, |view, cx| {
+                                                                view.submit_review_comment(
+                                                                    ReviewCommentSubmission::SingleComment,
+                                                                    cx,
+                                                                );
+                                                            });
+                                                        }
+                                                    }),
+                                            )
+                                            .child(
+                                                Button::new("start-review-comment")
+                                                    .label("Start review")
+                                                    .xsmall()
+                                                    .primary()
+                                                    .loading(is_submitting)
+                                                    .disabled(submit_disabled)
+                                                    .on_click(move |_, _, cx| {
+                                                        view_entity.update(cx, |view, cx| {
+                                                            view.submit_review_comment(
+                                                                ReviewCommentSubmission::StartReview,
+                                                                cx,
+                                                            );
+                                                        });
+                                                    }),
+                                            )
+                                    }
+                                }),
+                        ),
+                ),
+        )
+}
+
+fn render_review_composer_spacer() -> impl IntoElement {
+    div().h(px(DIFF_ROW_HEIGHT)).w_full()
 }
 
 fn render_review_thread_inline(thread: &ReviewThread, line_number_width: f32) -> impl IntoElement {
@@ -349,7 +712,8 @@ fn render_review_thread_inline(thread: &ReviewThread, line_number_width: f32) ->
         .unwrap_or("review");
 
     div()
-        .h(px(24.))
+        .h(px(DIFF_ROW_HEIGHT))
+        .w_full()
         .flex()
         .items_center()
         .bg(rgb(0x171b20))
@@ -411,12 +775,125 @@ fn render_review_marker(
         .child(marker)
 }
 
+fn render_review_menu_marker(width: f32) -> impl IntoElement {
+    div()
+        .w(px(width))
+        .flex_none()
+        .text_center()
+        .text_color(rgb(0x93c5fd))
+        .child("")
+}
+
 fn review_comment_count_label(comment_count: usize) -> String {
     if comment_count == 1 {
         "1 comment".to_string()
     } else {
         format!("{comment_count} comments")
     }
+}
+
+fn diff_row_count_with_review_controls(
+    diff: &ParsedDiff,
+    file: &DiffFile,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+) -> usize {
+    let mut row_count = diff_row_count_with_reviews(diff, file, review_threads);
+
+    if review_composer
+        .is_some_and(|composer| review_comment_range_matches_file(file, &composer.range))
+    {
+        row_count += review_composer_row_count(review_comment_error);
+    }
+
+    row_count
+}
+
+fn review_composer_row_count(error: Option<&str>) -> usize {
+    if error.is_some() {
+        REVIEW_COMPOSER_ROWS_WITH_ERROR
+    } else {
+        REVIEW_COMPOSER_ROWS
+    }
+}
+
+fn review_line_target_for_line(
+    file: &DiffFile,
+    hunk_index: usize,
+    line_index: usize,
+    line: &DiffLine,
+) -> Option<ReviewLineTarget> {
+    match line.kind {
+        DiffLineKind::Metadata => None,
+        DiffLineKind::Removed => {
+            let line_number = line.old_line?;
+            Some(ReviewLineTarget {
+                hunk_index,
+                line_index,
+                range: ReviewCommentRange {
+                    path: file.path.clone(),
+                    line: line_number,
+                    side: ReviewSide::Left,
+                    start_line: None,
+                    start_side: None,
+                },
+            })
+        }
+        DiffLineKind::Added | DiffLineKind::Context => {
+            line.new_line.map(|line_number| ReviewLineTarget {
+                hunk_index,
+                line_index,
+                range: ReviewCommentRange {
+                    path: file.path.clone(),
+                    line: line_number,
+                    side: ReviewSide::Right,
+                    start_line: None,
+                    start_side: None,
+                },
+            })
+        }
+    }
+}
+
+fn review_comment_range_matches_line(
+    file: &DiffFile,
+    range: &ReviewCommentRange,
+    line: &DiffLine,
+) -> bool {
+    if !review_comment_range_matches_file(file, range) {
+        return false;
+    }
+
+    match range.side {
+        ReviewSide::Left => line.old_line.is_some_and(|line_number| {
+            line_number >= range.start_line.unwrap_or(range.line) && line_number <= range.line
+        }),
+        ReviewSide::Right => line.new_line.is_some_and(|line_number| {
+            line_number >= range.start_line.unwrap_or(range.line) && line_number <= range.line
+        }),
+    }
+}
+
+fn review_comment_range_matches_file(file: &DiffFile, range: &ReviewCommentRange) -> bool {
+    path_matches_file(file, &range.path)
+}
+
+fn review_comment_range_label(range: &ReviewCommentRange) -> String {
+    let side = match range.side {
+        ReviewSide::Left => "left",
+        ReviewSide::Right => "right",
+    };
+
+    if let Some(start_line) = range.start_line {
+        format!("{side} lines {start_line}-{}", range.line)
+    } else {
+        format!("{side} line {}", range.line)
+    }
+}
+
+fn path_matches_file(file: &DiffFile, path: &str) -> bool {
+    path == file.path || file.previous_path.as_deref() == Some(path)
 }
 
 fn render_line_number(line: Option<u32>, width: f32) -> impl IntoElement {
@@ -445,6 +922,8 @@ fn line_number_width_for_diff(diff: &ParsedDiff) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use harbor_domain::FileStatus;
+
     use crate::diff::parse_unified_diff;
 
     use super::*;
@@ -464,5 +943,93 @@ mod tests {
             line_number_width_for_diff(&diff),
             6.0 * LINE_NUMBER_DIGIT_WIDTH + LINE_NUMBER_PADDING
         );
+    }
+
+    #[test]
+    fn selects_right_side_target_for_added_line() {
+        let file = test_file("src/lib.rs");
+        let diff = parse_unified_diff("@@ -1 +1,2 @@\n context\n+added\n");
+        let target = review_line_target_for_line(&file, 0, 1, &diff.hunks[0].lines[1])
+            .expect("added line should be commentable");
+
+        assert_eq!(target.range.path, "src/lib.rs");
+        assert_eq!(target.range.side, ReviewSide::Right);
+        assert_eq!(target.range.line, 2);
+        assert_eq!(target.range.start_line, None);
+    }
+
+    #[test]
+    fn selects_left_side_target_for_removed_line() {
+        let file = test_file("src/lib.rs");
+        let diff = parse_unified_diff("@@ -10,2 +10 @@\n-removed\n context\n");
+        let target = review_line_target_for_line(&file, 0, 0, &diff.hunks[0].lines[0])
+            .expect("removed line should be commentable");
+
+        assert_eq!(target.range.path, "src/lib.rs");
+        assert_eq!(target.range.side, ReviewSide::Left);
+        assert_eq!(target.range.line, 10);
+        assert_eq!(target.range.start_line, None);
+    }
+
+    #[test]
+    fn counts_inline_composer_row() {
+        let file = test_file("src/lib.rs");
+        let diff = parse_unified_diff("@@ -1 +1,2 @@\n context\n+added\n");
+        let target = review_line_target_for_line(&file, 0, 1, &diff.hunks[0].lines[1])
+            .expect("added line should be commentable");
+        let composer = ReviewComposer {
+            anchor: target.clone(),
+            range: target.range,
+        };
+
+        assert_eq!(
+            diff_row_count_with_review_controls(&diff, &file, &[], Some(&composer), None),
+            3 + REVIEW_COMPOSER_ROWS
+        );
+    }
+
+    #[test]
+    fn builds_multiline_right_side_review_range() {
+        let file = test_file("src/lib.rs");
+        let diff = parse_unified_diff("@@ -1 +1,3 @@\n context\n+added\n+again\n");
+        let start = review_line_target_for_line(&file, 0, 1, &diff.hunks[0].lines[1])
+            .expect("added line should be commentable");
+        let end = review_line_target_for_line(&file, 0, 2, &diff.hunks[0].lines[2])
+            .expect("added line should be commentable");
+
+        let range = crate::workspace::review_range_from_targets(&start, &end).unwrap();
+
+        assert_eq!(range.path, "src/lib.rs");
+        assert_eq!(range.side, ReviewSide::Right);
+        assert_eq!(range.start_line, Some(2));
+        assert_eq!(range.start_side, Some(ReviewSide::Right));
+        assert_eq!(range.line, 3);
+    }
+
+    #[test]
+    fn rejects_mixed_side_review_range() {
+        let file = test_file("src/lib.rs");
+        let diff = parse_unified_diff("@@ -1 +1 @@\n-old\n+new\n");
+        let left = review_line_target_for_line(&file, 0, 0, &diff.hunks[0].lines[0])
+            .expect("removed line should be commentable");
+        let right = review_line_target_for_line(&file, 0, 1, &diff.hunks[0].lines[1])
+            .expect("added line should be commentable");
+
+        let error = crate::workspace::review_range_from_targets(&left, &right)
+            .expect_err("mixed side selection should fail");
+
+        assert_eq!(error, "Review comments can only span one diff side");
+    }
+
+    fn test_file(path: &str) -> DiffFile {
+        DiffFile {
+            path: path.to_string(),
+            previous_path: None,
+            status: FileStatus::Modified,
+            additions: 1,
+            deletions: 1,
+            changes: 2,
+            patch: None,
+        }
     }
 }

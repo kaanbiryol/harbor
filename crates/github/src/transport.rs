@@ -85,6 +85,26 @@ impl GitHubTransport for GhCliTransport {
     }
 
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value> {
+        if graphql_variables_need_input(&variables) {
+            let args = vec![
+                "api".to_string(),
+                "graphql".to_string(),
+                "--input".to_string(),
+                "-".to_string(),
+            ];
+            return run_json(
+                args,
+                Some(
+                    serde_json::json!({
+                        "query": query,
+                        "variables": variables,
+                    })
+                    .to_string(),
+                ),
+            )
+            .await;
+        }
+
         let mut args = vec![
             "api".to_string(),
             "graphql".to_string(),
@@ -194,6 +214,16 @@ fn graphql_field_arg(key: &str, value: &Value) -> Result<(String, String)> {
     };
 
     Ok(field)
+}
+
+fn graphql_variables_need_input(variables: &Value) -> bool {
+    variables
+        .as_object()
+        .is_some_and(|variables| variables.values().any(value_is_complex))
+}
+
+fn value_is_complex(value: &Value) -> bool {
+    matches!(value, Value::Array(_) | Value::Object(_))
 }
 
 fn map_spawn_error(error: std::io::Error) -> GitHubError {

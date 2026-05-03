@@ -1,6 +1,6 @@
 use gpui::{ClipboardItem, Context, ScrollStrategy, Window};
 use harbor_domain::RepoId;
-use harbor_github::{GhCliTransport, GitHubClient};
+use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
 
 use crate::actions::*;
 use crate::diff_reviews::diff_hunk_row_index_with_reviews;
@@ -470,6 +470,26 @@ impl AppView {
         action: PullRequestAction,
         cx: &mut Context<Self>,
     ) {
+        if self.pending_review.is_some() {
+            match action {
+                PullRequestAction::Approve => {
+                    self.submit_pending_pull_request_review(
+                        SubmitPullRequestReviewEvent::Approve,
+                        cx,
+                    );
+                    return;
+                }
+                PullRequestAction::RequestChanges => {
+                    self.submit_pending_pull_request_review(
+                        SubmitPullRequestReviewEvent::RequestChanges,
+                        cx,
+                    );
+                    return;
+                }
+                PullRequestAction::Merge => {}
+            }
+        }
+
         if self.is_running_pr_action {
             self.status = "A pull request action is already running".to_string();
             cx.notify();

@@ -9,6 +9,7 @@ use gpui_component::{
     popover::Popover,
 };
 use harbor_domain::{PullRequest, RepoId};
+use harbor_github::SubmitPullRequestReviewEvent;
 
 use crate::actions::*;
 use crate::panels::{
@@ -16,7 +17,7 @@ use crate::panels::{
     render_diff_panel, render_logs_panel, render_merge_state, render_pull_request_row,
     render_review_decision, render_review_panel, review_action_blocker,
 };
-use crate::workspace::{AppView, normalized_search_query};
+use crate::workspace::{AppView, PendingReviewSession, normalized_search_query};
 
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -55,6 +56,14 @@ fn render_switcher_error_row(error: String) -> impl IntoElement {
         .text_xs()
         .text_color(rgb(0xf87171))
         .child(error)
+}
+
+fn pending_review_comment_count_label(comment_count: usize) -> String {
+    match comment_count {
+        0 => "pending comments".to_string(),
+        1 => "1 pending comment".to_string(),
+        count => format!("{count} pending comments"),
+    }
 }
 
 fn render_switcher_repository_row(
@@ -849,6 +858,9 @@ impl AppView {
                                     })),
                             ),
                     )
+                    .when_some(self.pending_review.clone(), |element, pending_review| {
+                        element.child(self.render_pending_review_bar(pending_review, cx))
+                    })
                     .when_some(self.pr_action_error.clone(), |element, error| {
                         element.child(
                             div()
@@ -938,6 +950,108 @@ impl AppView {
             .into_any_element()
     }
 
+    fn render_pending_review_bar(
+        &self,
+        pending_review: PendingReviewSession,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let body_input = self.pending_review_body_input.clone();
+        let submitting = self.is_submitting_pending_review;
+
+        div().pt_3().child(
+            div()
+                .rounded_sm()
+                .border_1()
+                .border_color(rgb(0x355071))
+                .bg(rgb(0x172033))
+                .p_2()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .text_xs()
+                        .child(
+                            div()
+                                .font_medium()
+                                .text_color(rgb(0xe6e8eb))
+                                .child("Pending review"),
+                        )
+                        .child(div().text_color(rgb(0x93c5fd)).child(
+                            pending_review_comment_count_label(pending_review.comment_count),
+                        )),
+                )
+                .child(
+                    div().pt_2().child(
+                        Input::new(&body_input)
+                            .small()
+                            .appearance(false)
+                            .bordered(true)
+                            .focus_bordered(true),
+                    ),
+                )
+                .child(
+                    div()
+                        .pt_2()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            Button::new("submit-pending-approve")
+                                .label("Approve")
+                                .small()
+                                .outline()
+                                .loading(submitting)
+                                .disabled(submitting)
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    view.submit_pending_pull_request_review(
+                                        SubmitPullRequestReviewEvent::Approve,
+                                        cx,
+                                    );
+                                })),
+                        )
+                        .child(
+                            Button::new("submit-pending-comment")
+                                .label("Comment")
+                                .small()
+                                .outline()
+                                .loading(submitting)
+                                .disabled(submitting)
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    view.submit_pending_pull_request_review(
+                                        SubmitPullRequestReviewEvent::Comment,
+                                        cx,
+                                    );
+                                })),
+                        )
+                        .child(
+                            Button::new("submit-pending-request-changes")
+                                .label("Request changes")
+                                .small()
+                                .outline()
+                                .loading(submitting)
+                                .disabled(submitting)
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    view.submit_pending_pull_request_review(
+                                        SubmitPullRequestReviewEvent::RequestChanges,
+                                        cx,
+                                    );
+                                })),
+                        ),
+                )
+                .when_some(self.pending_review_error.clone(), |element, error| {
+                    element.child(
+                        div()
+                            .pt_2()
+                            .text_xs()
+                            .text_color(rgb(0xf87171))
+                            .child(error),
+                    )
+                }),
+        )
+    }
+
     fn render_panel(&self, pr: Option<&PullRequest>, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
 
@@ -1007,6 +1121,8 @@ impl AppView {
                             self.active_file(),
                             self.active_diff(),
                             &self.review_threads,
+                            self.review_composer.as_ref(),
+                            self.review_comment_error.as_deref(),
                             self.is_loading_files,
                             self.files_error.as_deref(),
                             self.diff_list_scroll.clone(),
