@@ -186,8 +186,16 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.active_tab = self.active_tab.next();
-        self.status = format!("Switched to {} panel", self.active_tab.label());
+        self.select_panel_tab(self.active_tab.next(), cx);
+    }
+
+    pub(crate) fn select_panel_tab(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
+        if self.active_tab == tab {
+            return;
+        }
+
+        self.active_tab = tab;
+        self.status = format!("Switched to {} panel", tab.label());
         cx.notify();
     }
 

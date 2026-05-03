@@ -918,6 +918,8 @@ impl AppView {
     }
 
     fn render_panel(&self, pr: Option<&PullRequest>, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().clone();
+
         div()
             .flex_1()
             .flex()
@@ -936,16 +938,38 @@ impl AppView {
                     .p_2()
                     .border_1()
                     .border_color(rgb(0x242a31))
-                    .children(PanelTab::ALL.iter().map(|tab| {
-                        let active = *tab == self.active_tab;
-                        div()
-                            .px_3()
-                            .py_1()
-                            .rounded_sm()
-                            .text_sm()
-                            .when(active, |element| element.bg(rgb(0x243244)))
-                            .child(tab.label())
-                    })),
+                    .children(
+                        PanelTab::ALL
+                            .iter()
+                            .copied()
+                            .enumerate()
+                            .map(|(index, tab)| {
+                                let active = tab == self.active_tab;
+                                let view = view.clone();
+
+                                div()
+                                    .id(("panel-tab", index))
+                                    .px_3()
+                                    .py_1()
+                                    .rounded_sm()
+                                    .text_sm()
+                                    .cursor_pointer()
+                                    .when(active, |element| element.bg(rgb(0x243244)))
+                                    .hover(move |element| {
+                                        if active {
+                                            element
+                                        } else {
+                                            element.bg(rgb(0x1d2530))
+                                        }
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        view.update(cx, |view, cx| {
+                                            view.select_panel_tab(tab, cx);
+                                        });
+                                    })
+                                    .child(tab.label())
+                            }),
+                    ),
             )
             .child(
                 div()
