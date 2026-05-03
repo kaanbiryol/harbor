@@ -18,6 +18,13 @@ pub enum SubmitPullRequestReviewEvent {
     RequestChanges,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PullRequestListFilter {
+    Open,
+    Closed,
+    NeedsReview,
+}
+
 impl<T> GitHubClient<T> {
     pub fn new(transport: T) -> Self {
         Self { transport }
@@ -97,6 +104,43 @@ where
             .await?;
 
         dto::pull_requests_from_value(RepoId::new(owner, repo), response)
+    }
+
+    pub async fn list_repository_pull_requests(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+    ) -> Result<Vec<PullRequest>> {
+        let mut pull_requests = Vec::new();
+        let mut after = None;
+        let search_query = repository_pull_requests_query(repository, filter);
+
+        loop {
+            let response = self
+                .transport
+                .graphql(
+                    REPOSITORY_PULL_REQUESTS_QUERY,
+                    json!({
+                        "searchQuery": search_query,
+                        "after": after,
+                    }),
+                )
+                .await?;
+            let page = dto::pull_request_search_page_from_graphql_value(response)?;
+            pull_requests.extend(page.pull_requests);
+
+            if !page.has_next_page {
+                break;
+            }
+
+            after = Some(page.end_cursor.ok_or_else(|| {
+                crate::GitHubError::Mapping(
+                    "repository pull request page was missing an end cursor".to_string(),
+                )
+            })?);
+        }
+
+        Ok(pull_requests)
     }
 
     pub async fn get_pull_request(
@@ -501,6 +545,49 @@ where
     }
 }
 
+const REPOSITORY_PULL_REQUESTS_QUERY: &str = r#"
+query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
+  search(query: $searchQuery, type: ISSUE, first: 50, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      __typename
+      ... on PullRequest {
+        id
+        number
+        title
+        body
+        url
+        state
+        isDraft
+        author {
+          login
+        }
+        repository {
+          name
+          owner {
+            login
+          }
+        }
+        headRefName
+        baseRefName
+        headRefOid
+        reviewDecision
+        mergeStateStatus
+        labels(first: 20) {
+          nodes {
+            name
+            color
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
 const REVIEW_THREADS_QUERY: &str = r#"
 query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
@@ -678,6 +765,19 @@ fn graphql_string_at(value: Value, pointer: &str, label: &str) -> Result<String>
         .ok_or_else(|| crate::GitHubError::Mapping(format!("missing {label}")))
 }
 
+fn repository_pull_requests_query(repository: &RepoId, filter: PullRequestListFilter) -> String {
+    let mode = match filter {
+        PullRequestListFilter::Open => "is:open archived:false",
+        PullRequestListFilter::Closed => "is:closed archived:false",
+        PullRequestListFilter::NeedsReview => "is:open archived:false review-requested:@me",
+    };
+
+    format!(
+        "repo:{} is:pr {mode} sort:updated-desc",
+        repository.full_name()
+    )
+}
+
 const REPOSITORY_PAGE_SIZE: usize = 100;
 const REPOSITORY_PAGE_SIZE_QUERY: &str = "100";
 const REVIEW_COMMENT_PAGE_SIZE: usize = 100;
@@ -688,7 +788,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
-    use harbor_domain::{ReviewCommentRange, ReviewSide};
+    use harbor_domain::{RepoId, ReviewCommentRange, ReviewSide};
     use serde_json::{Value, json};
 
     use super::*;
@@ -976,6 +1076,111 @@ mod tests {
                 ("page".to_string(), "2".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn queries_repository_pull_request_filters() {
+        for (filter, query) in [
+            (
+                PullRequestListFilter::Open,
+                "repo:acme/app is:pr is:open archived:false sort:updated-desc",
+            ),
+            (
+                PullRequestListFilter::Closed,
+                "repo:acme/app is:pr is:closed archived:false sort:updated-desc",
+            ),
+            (
+                PullRequestListFilter::NeedsReview,
+                "repo:acme/app is:pr is:open archived:false review-requested:@me sort:updated-desc",
+            ),
+        ] {
+            let transport = RecordingTransport::default();
+            *transport
+                .graphql_response
+                .lock()
+                .expect("graphql response mutex should not be poisoned") = Some(json!({
+                "data": {
+                    "search": {
+                        "pageInfo": {
+                            "hasNextPage": false,
+                            "endCursor": null
+                        },
+                        "nodes": []
+                    }
+                }
+            }));
+            let client = GitHubClient::new(transport.clone());
+
+            smol::block_on(
+                client.list_repository_pull_requests(&RepoId::new("acme", "app"), filter),
+            )
+            .unwrap();
+
+            let calls = transport
+                .graphql_calls
+                .lock()
+                .expect("graphql calls mutex should not be poisoned");
+            assert_eq!(calls.len(), 1);
+            assert!(calls[0].0.contains("HarborRepositoryPullRequests"));
+            assert_eq!(
+                calls[0].1,
+                json!({
+                    "searchQuery": query,
+                    "after": null,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn paginates_repository_pull_requests() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_responses
+            .lock()
+            .expect("graphql responses mutex should not be poisoned") = vec![
+            json!({
+                "data": {
+                    "search": {
+                        "pageInfo": {
+                            "hasNextPage": true,
+                            "endCursor": "cursor-1"
+                        },
+                        "nodes": []
+                    }
+                }
+            }),
+            json!({
+                "data": {
+                    "search": {
+                        "pageInfo": {
+                            "hasNextPage": false,
+                            "endCursor": null
+                        },
+                        "nodes": []
+                    }
+                }
+            }),
+        ];
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.list_repository_pull_requests(
+            &RepoId::new("acme", "app"),
+            PullRequestListFilter::Open,
+        ))
+        .unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0].1["searchQuery"],
+            "repo:acme/app is:pr is:open archived:false sort:updated-desc"
+        );
+        assert_eq!(calls[0].1["after"], Value::Null);
+        assert_eq!(calls[1].1["after"], "cursor-1");
     }
 
     #[test]

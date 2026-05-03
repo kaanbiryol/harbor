@@ -218,7 +218,18 @@ pub(crate) fn render_changed_file_row(
                 .child(
                     div()
                         .flex_none()
-                        .child(format!("+{} -{}", file.additions, file.deletions)),
+                        .flex()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_color(diff_stat_color(file.additions, rgb(0x34d399)))
+                                .child(format!("+{}", file.additions)),
+                        )
+                        .child(
+                            div()
+                                .text_color(diff_stat_color(file.deletions, rgb(0xf87171)))
+                                .child(format!("-{}", file.deletions)),
+                        ),
                 ),
         )
         .child(
@@ -229,4 +240,12 @@ pub(crate) fn render_changed_file_row(
                 .child(format!("{:?}", file.status)),
         )
         .into_any_element()
+}
+
+fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {
+    if count == 0 {
+        rgb(0x9aa4b2)
+    } else {
+        active_color
+    }
 }

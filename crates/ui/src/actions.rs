@@ -28,7 +28,16 @@ actions!(
         SelectNextHunk,
         SelectPreviousHunk,
         CopyActiveFilePath,
-        OpenActiveFileOnGitHub
+        OpenActiveFileOnGitHub,
+        ChooseLocalCheckout,
+        OpenWithVsCode,
+        OpenWithCursor,
+        OpenWithZed,
+        OpenWithFinder,
+        OpenWithTerminal,
+        OpenWithGhostty,
+        OpenWithWarp,
+        OpenWithXcode
     ]
 );
 
@@ -255,6 +264,14 @@ pub(crate) const COMMANDS: &[CommandSpec] = &[
         title: "Refresh selected pull request",
     },
     CommandSpec {
+        shortcut: "c",
+        title: "Prepare selected pull request worktree",
+    },
+    CommandSpec {
+        shortcut: "o",
+        title: "Open selected pull request in browser",
+    },
+    CommandSpec {
         shortcut: "l",
         title: "Open logs",
     },
@@ -277,5 +294,13 @@ pub(crate) const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
         shortcut: "g",
         title: "Open active file on GitHub",
+    },
+    CommandSpec {
+        shortcut: "menu",
+        title: "Choose local checkout",
+    },
+    CommandSpec {
+        shortcut: "menu",
+        title: "Open active file or PR worktree with local app",
     },
 ];

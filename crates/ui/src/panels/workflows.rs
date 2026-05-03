@@ -82,7 +82,6 @@ pub(crate) fn render_actions_panel(
         .when_some(action_error.map(str::to_string), |element, error| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x7f1d1d))
                     .bg(rgb(0x2a1212))
@@ -94,7 +93,6 @@ pub(crate) fn render_actions_panel(
         .when(is_loading, |element| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -106,7 +104,6 @@ pub(crate) fn render_actions_panel(
         .when_some(error.map(str::to_string), |element, error| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -120,7 +117,6 @@ pub(crate) fn render_actions_panel(
             |element| {
                 element.child(
                     div()
-                        .rounded_sm()
                         .border_1()
                         .border_color(rgb(0x242a31))
                         .bg(rgb(0x0c0f12))
@@ -161,7 +157,6 @@ pub(crate) fn render_workflow_run(run: &WorkflowRun) -> impl IntoElement {
         .items_center()
         .justify_between()
         .gap_3()
-        .rounded_sm()
         .border_1()
         .border_color(rgb(0x242a31))
         .bg(rgb(0x0c0f12))

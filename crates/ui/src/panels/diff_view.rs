@@ -56,7 +56,6 @@ pub(crate) fn render_diff_panel(
             )
             .child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -81,7 +80,6 @@ pub(crate) fn render_diff_panel(
             )
             .child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -106,7 +104,6 @@ pub(crate) fn render_diff_panel(
             )
             .child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -127,7 +124,6 @@ pub(crate) fn render_diff_panel(
             .child(render_diff_file_header(file, None))
             .child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -165,7 +161,6 @@ pub(crate) fn render_diff_panel(
                 .flex_1()
                 .min_h_0()
                 .min_w_0()
-                .rounded_sm()
                 .border_1()
                 .border_color(rgb(0x242a31))
                 .bg(rgb(0x0c0f12))
@@ -605,7 +600,6 @@ fn render_review_composer_inline(
                     div()
                         .w_full()
                         .max_w(px(REVIEW_COMPOSER_MAX_WIDTH))
-                        .rounded_sm()
                         .border_1()
                         .border_color(rgb(0x2c3745))
                         .bg(rgb(0x121923))
@@ -622,7 +616,6 @@ fn render_review_composer_inline(
                         .child(
                             div()
                                 .w_full()
-                                .rounded_sm()
                                 .border_1()
                                 .border_color(rgb(0x354252))
                                 .bg(rgb(0x0b1118))
@@ -804,7 +797,6 @@ fn render_review_thread_inline(
                 .child(
                     div()
                         .w_full()
-                        .rounded_sm()
                         .border_1()
                         .border_color(rgb(0x2c3745))
                         .bg(rgb(0x121923))
@@ -905,7 +897,6 @@ fn render_review_thread_inline(
                                         div()
                                             .mt_1()
                                             .w_full()
-                                            .rounded_sm()
                                             .border_1()
                                             .border_color(rgb(0x354252))
                                             .bg(rgb(0x0b1118))

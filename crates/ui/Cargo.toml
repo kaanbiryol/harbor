@@ -10,6 +10,7 @@ chrono.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
 harbor-domain = { path = "../domain" }
+harbor-git = { path = "../git" }
 harbor-github = { path = "../github" }
 harbor-logs = { path = "../logs" }
 harbor-storage = { path = "../storage" }

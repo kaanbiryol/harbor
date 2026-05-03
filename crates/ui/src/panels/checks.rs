@@ -31,7 +31,6 @@ pub(crate) fn render_checks_panel(
         .when(is_loading, |element| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -43,7 +42,6 @@ pub(crate) fn render_checks_panel(
         .when_some(error.map(str::to_string), |element, error| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -57,7 +55,6 @@ pub(crate) fn render_checks_panel(
             |element| {
                 element.child(
                     div()
-                        .rounded_sm()
                         .border_1()
                         .border_color(rgb(0x242a31))
                         .bg(rgb(0x0c0f12))
@@ -76,7 +73,6 @@ pub(crate) fn render_check_run(check_run: &CheckRun) -> impl IntoElement {
         .items_center()
         .justify_between()
         .gap_3()
-        .rounded_sm()
         .border_1()
         .border_color(rgb(0x242a31))
         .bg(rgb(0x0c0f12))

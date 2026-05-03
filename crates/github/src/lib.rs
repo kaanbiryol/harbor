@@ -2,7 +2,7 @@ mod client;
 mod dto;
 mod transport;
 
-pub use client::{GitHubClient, SubmitPullRequestReviewEvent};
+pub use client::{GitHubClient, PullRequestListFilter, SubmitPullRequestReviewEvent};
 pub use transport::{GhCliTransport, GitHubTransport};
 
 pub type Result<T> = std::result::Result<T, GitHubError>;

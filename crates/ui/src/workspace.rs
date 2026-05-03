@@ -2,6 +2,8 @@ mod commands;
 mod loaders;
 mod render;
 
+use std::{collections::HashMap, path::PathBuf};
+
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
     UniformListScrollHandle, Window,
@@ -18,6 +20,11 @@ use harbor_storage::SqliteStore;
 use crate::actions::{DEFAULT_REQUEST_CHANGES_BODY, PanelTab};
 use crate::diff::{ParsedDiff, parse_files};
 use crate::panels::workflow_run_failed;
+
+#[cfg(test)]
+pub(crate) use commands::{OpenTargetStatus, github_file_url, open_target_for_app};
+#[cfg(test)]
+pub(crate) use render::open_with_app_disabled;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewLineTarget {
@@ -57,6 +64,50 @@ pub(crate) struct ReviewThreadUiError {
     pub(crate) message: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum PullRequestInboxMode {
+    #[default]
+    Open,
+    Closed,
+    NeedsReview,
+}
+
+impl PullRequestInboxMode {
+    pub(crate) const ALL: [Self; 3] = [Self::Open, Self::Closed, Self::NeedsReview];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::Closed => "Closed",
+            Self::NeedsReview => "Needs review",
+        }
+    }
+
+    pub(crate) fn status_label(self) -> &'static str {
+        match self {
+            Self::Open => "open pull requests",
+            Self::Closed => "closed pull requests",
+            Self::NeedsReview => "pull requests requesting your review",
+        }
+    }
+
+    pub(crate) fn empty_message(self) -> &'static str {
+        match self {
+            Self::Open => "No open pull requests",
+            Self::Closed => "No closed pull requests",
+            Self::NeedsReview => "No pull requests require your review",
+        }
+    }
+
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+            Self::NeedsReview => "needs-review",
+        }
+    }
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -80,6 +131,7 @@ pub struct AppView {
     pr_detail_tasks: Vec<Task<()>>,
     log_task: Option<Task<()>>,
     repository_task: Option<Task<()>>,
+    local_task: Option<Task<()>>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_scroll: UniformListScrollHandle,
@@ -96,8 +148,10 @@ pub struct AppView {
     pull_request_switcher_selection: usize,
     repository_search_input: Entity<InputState>,
     pull_request_search_input: Entity<InputState>,
+    pull_request_inbox_mode: PullRequestInboxMode,
     configured_repo: Option<RepoId>,
     repository_store: Option<SqliteStore>,
+    repository_local_paths: HashMap<RepoId, PathBuf>,
     is_loading_prs: bool,
     is_loading_details: bool,
     is_loading_files: bool,
@@ -219,6 +273,7 @@ impl AppView {
             pr_detail_tasks: Vec::new(),
             log_task: None,
             repository_task: None,
+            local_task: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_scroll: UniformListScrollHandle::new(),
@@ -235,8 +290,10 @@ impl AppView {
             pull_request_switcher_selection: 0,
             repository_search_input,
             pull_request_search_input,
+            pull_request_inbox_mode: PullRequestInboxMode::default(),
             configured_repo,
             repository_store: None,
+            repository_local_paths: HashMap::new(),
             is_loading_prs: false,
             is_loading_details: false,
             is_loading_files: false,
@@ -340,9 +397,39 @@ impl AppView {
             .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Selected {}", self.selected_pr_label());
 
-        if self.configured_repo.is_some() {
-            self.load_selected_pull_request(cx);
+        self.load_selected_pull_request(cx);
+    }
+
+    pub(crate) fn select_pull_request_inbox_mode(
+        &mut self,
+        mode: PullRequestInboxMode,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pull_request_inbox_mode == mode {
+            return;
+        }
+
+        self.pull_request_inbox_mode = mode;
+
+        if let Some(repository) = self.configured_repo.clone() {
+            self.load_pull_requests(repository, cx);
         } else {
+            self.pull_requests.clear();
+            self.files.clear();
+            self.diffs.clear();
+            self.check_runs.clear();
+            self.workflow_runs.clear();
+            self.workflow_jobs.clear();
+            self.pull_request_reviews.clear();
+            self.review_threads.clear();
+            self.clear_review_composer_state();
+            self.pending_review = None;
+            self.log_chunk = None;
+            self.selected_pr = 0;
+            self.active_file = 0;
+            self.active_hunk = 0;
+            self.status =
+                "Select a repository from the header before loading pull requests".to_string();
             cx.notify();
         }
     }
@@ -631,18 +718,28 @@ impl AppView {
     }
 
     pub(crate) fn current_repository(&self) -> Option<&RepoId> {
-        self.selected_pull_request()
-            .map(|pull_request| &pull_request.repo)
-            .or(self.configured_repo.as_ref())
+        self.configured_repo.as_ref().or_else(|| {
+            self.selected_pull_request()
+                .map(|pull_request| &pull_request.repo)
+        })
+    }
+
+    pub(crate) fn current_repository_local_path(&self) -> Option<&PathBuf> {
+        self.current_repository()
+            .and_then(|repository| self.repository_local_paths.get(repository))
+    }
+
+    pub(crate) fn set_repository_local_path(&mut self, repository: RepoId, path: PathBuf) {
+        self.repository_local_paths.insert(repository, path);
     }
 
     pub(crate) fn switcher_repositories(&self) -> Vec<RepoId> {
         let mut repositories = self.repositories.clone();
 
-        if let Some(repository) = self.configured_repo.clone() {
-            if !repositories.iter().any(|existing| existing == &repository) {
-                repositories.push(repository);
-            }
+        if let Some(repository) = self.configured_repo.clone()
+            && !repositories.iter().any(|existing| existing == &repository)
+        {
+            repositories.push(repository);
         }
 
         for pull_request in &self.pull_requests {
@@ -1035,7 +1132,7 @@ impl AppView {
                             input.set_value("", window, cx);
                         });
                         view.status = format!("Submitted pending review on PR #{}", pr.number);
-                        view.load_selected_review_data(cx);
+                        view.reload_pull_request_inbox(cx);
                     }
                     Err(error) => {
                         let message = format!("Failed to submit pending review: {error}");

@@ -68,7 +68,6 @@ pub(crate) fn render_review_panel(
         .when(is_loading, |element| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -80,7 +79,6 @@ pub(crate) fn render_review_panel(
         .when_some(error.map(str::to_string), |element, error| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x7f1d1d))
                     .bg(rgb(0x2a1212))
@@ -94,7 +92,6 @@ pub(crate) fn render_review_panel(
             |element| {
                 element.child(
                     div()
-                        .rounded_sm()
                         .border_1()
                         .border_color(rgb(0x242a31))
                         .bg(rgb(0x0c0f12))
@@ -112,7 +109,6 @@ pub(crate) fn render_review_panel(
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -168,7 +164,6 @@ pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl Int
         .items_center()
         .justify_between()
         .gap_3()
-        .rounded_sm()
         .border_1()
         .border_color(rgb(0x242a31))
         .bg(rgb(0x0c0f12))
@@ -326,7 +321,6 @@ pub(crate) fn render_review_thread_row(
                     .child(
                         div()
                             .w_full()
-                            .rounded_sm()
                             .border_1()
                             .border_color(rgb(0x354252))
                             .bg(rgb(0x0b1118))

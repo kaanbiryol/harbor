@@ -1,14 +1,16 @@
 use harbor_domain::{
-    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, MergeState, PullRequest,
-    PullRequestState, RepoId, ReviewThread, ReviewThreadState,
+    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, MergeState,
+    PullRequest, PullRequestState, RepoId, ReviewThread, ReviewThreadState,
 };
+use harbor_git::{ExternalApp, OpenTarget};
 
 use crate::panels::{
     checks_summary_from_runs, merge_blocker, review_action_blocker, review_thread_counts,
 };
 use crate::workspace::{
-    next_switcher_index, normalized_search_query, parse_repo_id, pull_request_matches_query,
-    repository_matches_query,
+    OpenTargetStatus, PullRequestInboxMode, github_file_url, next_switcher_index,
+    normalized_search_query, open_target_for_app, open_with_app_disabled, parse_repo_id,
+    pull_request_matches_query, repository_matches_query,
 };
 
 #[test]
@@ -61,6 +63,18 @@ fn wraps_switcher_selection_indexes() {
     assert_eq!(next_switcher_index(2, 3, 1), 0);
     assert_eq!(next_switcher_index(0, 3, -1), 2);
     assert_eq!(next_switcher_index(10, 3, 1), 0);
+}
+
+#[test]
+fn defaults_pull_request_inbox_to_open_mode() {
+    assert_eq!(PullRequestInboxMode::default(), PullRequestInboxMode::Open);
+    assert_eq!(PullRequestInboxMode::Open.label(), "Open");
+    assert_eq!(PullRequestInboxMode::Closed.label(), "Closed");
+    assert_eq!(PullRequestInboxMode::NeedsReview.label(), "Needs review");
+    assert_eq!(
+        PullRequestInboxMode::Closed.empty_message(),
+        "No closed pull requests"
+    );
 }
 
 #[test]
@@ -122,6 +136,40 @@ fn counts_review_threads_by_state() {
     assert_eq!(review_thread_counts(&threads), (2, 1, 1));
 }
 
+#[test]
+fn builds_active_file_github_url() {
+    let file = diff_file("src/ui/app view.rs", FileStatus::Modified);
+
+    assert_eq!(
+        github_file_url(&pull_request(), &file).as_deref(),
+        Some("https://github.com/acme/app/blob/abc123/src/ui/app%20view.rs")
+    );
+}
+
+#[test]
+fn falls_back_for_removed_github_files() {
+    let file = diff_file("src/deleted.rs", FileStatus::Removed);
+
+    assert_eq!(github_file_url(&pull_request(), &file), None);
+}
+
+#[test]
+fn opens_worktree_root_for_removed_local_files() {
+    let root = std::path::Path::new("/tmp/harbor-worktree");
+    let file = diff_file("src/deleted.rs", FileStatus::Removed);
+
+    let (target, status) = open_target_for_app(ExternalApp::Zed, root, Some(&file));
+
+    assert_eq!(target, OpenTarget::Directory(root.to_path_buf()));
+    assert_eq!(status, OpenTargetStatus::RemovedFile);
+}
+
+#[test]
+fn disables_open_with_apps_without_local_path() {
+    assert!(open_with_app_disabled(false, false, ExternalApp::Finder));
+    assert!(open_with_app_disabled(true, true, ExternalApp::Finder));
+}
+
 fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckRun {
     CheckRun {
         id: None,
@@ -170,5 +218,17 @@ fn review_thread(state: ReviewThreadState) -> ReviewThread {
         range: None,
         state,
         comments: Vec::new(),
+    }
+}
+
+fn diff_file(path: &str, status: FileStatus) -> DiffFile {
+    DiffFile {
+        path: path.to_string(),
+        previous_path: None,
+        status,
+        additions: 1,
+        deletions: 0,
+        changes: 1,
+        patch: Some("@@ -1 +1 @@".to_string()),
     }
 }

@@ -3,12 +3,13 @@ use gpui::{
     Stateful, Window, div, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
-    Disableable, Sizable, StyledExt, TitleBar,
-    button::{Button, ButtonVariants},
+    Disableable, IconName, Sizable, StyledExt, TitleBar,
+    button::{Button, ButtonVariants, DropdownButton},
     input::Input,
     popover::Popover,
 };
 use harbor_domain::{PullRequest, RepoId};
+use harbor_git::ExternalApp;
 use harbor_github::SubmitPullRequestReviewEvent;
 
 use crate::actions::*;
@@ -17,7 +18,9 @@ use crate::panels::{
     render_diff_panel, render_logs_panel, render_merge_state, render_pull_request_row,
     render_review_decision, render_review_panel, review_action_blocker,
 };
-use crate::workspace::{AppView, PendingReviewSession, normalized_search_query};
+use crate::workspace::{
+    AppView, PendingReviewSession, PullRequestInboxMode, normalized_search_query,
+};
 
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -47,7 +50,6 @@ fn render_switcher_error_row(error: String) -> impl IntoElement {
     div()
         .mx_1()
         .mb_1()
-        .rounded_sm()
         .border_1()
         .border_color(rgb(0x4b2a2f))
         .bg(rgb(0x211417))
@@ -77,7 +79,6 @@ fn render_switcher_repository_row(
         .items_center()
         .justify_between()
         .gap_3()
-        .rounded_sm()
         .px_2()
         .py_1()
         .text_sm()
@@ -112,7 +113,6 @@ fn render_switcher_pull_request_row(
         .flex()
         .flex_col()
         .gap_1()
-        .rounded_sm()
         .px_2()
         .py_2()
         .text_sm()
@@ -198,6 +198,39 @@ fn handle_pull_request_switcher_key(event: &KeyDownEvent, view: &Entity<AppView>
     }
 }
 
+fn open_with_action(app: ExternalApp) -> Box<dyn gpui::Action> {
+    match app {
+        ExternalApp::VsCode => Box::new(OpenWithVsCode),
+        ExternalApp::Cursor => Box::new(OpenWithCursor),
+        ExternalApp::Zed => Box::new(OpenWithZed),
+        ExternalApp::Finder => Box::new(OpenWithFinder),
+        ExternalApp::Terminal => Box::new(OpenWithTerminal),
+        ExternalApp::Ghostty => Box::new(OpenWithGhostty),
+        ExternalApp::Warp => Box::new(OpenWithWarp),
+        ExternalApp::Xcode => Box::new(OpenWithXcode),
+    }
+}
+
+fn open_with_icon(app: ExternalApp) -> IconName {
+    match app {
+        ExternalApp::Finder => IconName::FolderOpen,
+        ExternalApp::Terminal | ExternalApp::Ghostty | ExternalApp::Warp => {
+            IconName::SquareTerminal
+        }
+        ExternalApp::VsCode | ExternalApp::Cursor | ExternalApp::Zed | ExternalApp::Xcode => {
+            IconName::Frame
+        }
+    }
+}
+
+pub(crate) fn open_with_app_disabled(
+    has_local_path: bool,
+    local_action_running: bool,
+    app: ExternalApp,
+) -> bool {
+    !has_local_path || local_action_running || !app.is_available()
+}
+
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.did_focus {
@@ -233,6 +266,15 @@ impl Render for AppView {
             .on_action(cx.listener(Self::select_previous_hunk))
             .on_action(cx.listener(Self::copy_active_file_path))
             .on_action(cx.listener(Self::open_active_file_on_github))
+            .on_action(cx.listener(Self::choose_local_checkout))
+            .on_action(cx.listener(Self::open_with_vs_code))
+            .on_action(cx.listener(Self::open_with_cursor))
+            .on_action(cx.listener(Self::open_with_zed))
+            .on_action(cx.listener(Self::open_with_finder))
+            .on_action(cx.listener(Self::open_with_terminal))
+            .on_action(cx.listener(Self::open_with_ghostty))
+            .on_action(cx.listener(Self::open_with_warp))
+            .on_action(cx.listener(Self::open_with_xcode))
             .size_full()
             .flex()
             .flex_col()
@@ -301,6 +343,7 @@ impl AppView {
         let current_repository = self.current_repository().cloned();
         let repository_error = self.repository_error.clone();
         let pull_requests = self.filtered_switcher_pull_requests(cx);
+        let inbox_mode = self.pull_request_inbox_mode;
         let selected_pull_request = self.selected_pr;
         let repository_selection = self
             .repository_switcher_selection
@@ -394,7 +437,6 @@ impl AppView {
                                             .w(px(460.))
                                             .max_h(px(520.))
                                             .overflow_y_scroll()
-                                            .rounded_md()
                                             .border_1()
                                             .border_color(rgb(0x343b44))
                                             .bg(rgb(0x171b20))
@@ -518,7 +560,6 @@ impl AppView {
                                             .w(px(520.))
                                             .max_h(px(520.))
                                             .overflow_y_scroll()
-                                            .rounded_md()
                                             .border_1()
                                             .border_color(rgb(0x343b44))
                                             .bg(rgb(0x171b20))
@@ -542,7 +583,7 @@ impl AppView {
                                             let label = if has_pull_request_query {
                                                 "no pull requests match search"
                                             } else {
-                                                "no open pull requests for selected repository"
+                                                inbox_mode.empty_message()
                                             };
                                             menu = menu.child(render_switcher_empty_row(label));
                                         } else {
@@ -586,13 +627,68 @@ impl AppView {
                             ),
                     )
                     .child(
-                        Button::new("command-palette")
-                            .ghost()
-                            .small()
-                            .compact()
-                            .label("cmd+k"),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(self.render_open_with_dropdown())
+                            .child(
+                                Button::new("command-palette")
+                                    .ghost()
+                                    .small()
+                                    .compact()
+                                    .label("cmd+k"),
+                            ),
                     ),
             )
+    }
+
+    fn render_open_with_dropdown(&self) -> impl IntoElement {
+        let has_repository = self.current_repository().is_some();
+        let local_path = self.current_repository_local_path().cloned();
+        let has_local_path = local_path.is_some();
+        let local_action_running = self.local_task.is_some();
+
+        DropdownButton::new("open-with")
+            .button(
+                Button::new("open-with-primary")
+                    .icon(IconName::ExternalLink)
+                    .label("Open With")
+                    .small()
+                    .compact(),
+            )
+            .small()
+            .compact()
+            .outline()
+            .disabled(!has_repository || local_action_running)
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                let mut menu = menu.max_w(px(320.)).menu_with_disabled(
+                    "Choose Local Checkout...",
+                    Box::new(ChooseLocalCheckout),
+                    !has_repository || local_action_running,
+                );
+
+                if let Some(local_path) = local_path.clone() {
+                    menu = menu.label(format!("Local: {}", local_path.display()));
+                } else {
+                    menu = menu.label("No local checkout selected");
+                }
+
+                menu = menu.separator();
+
+                for app in ExternalApp::ALL {
+                    let disabled =
+                        open_with_app_disabled(has_local_path, local_action_running, app);
+                    menu = menu.menu_with_icon_and_disabled(
+                        app.label(),
+                        open_with_icon(app),
+                        open_with_action(app),
+                        disabled,
+                    );
+                }
+
+                menu
+            })
     }
 
     fn render_command_palette(&self) -> impl IntoElement {
@@ -600,7 +696,6 @@ impl AppView {
             .mx_2()
             .mt_2()
             .p_3()
-            .rounded_md()
             .border_1()
             .border_color(rgb(0x3a424c))
             .bg(rgb(0x171b20))
@@ -630,13 +725,23 @@ impl AppView {
     fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let show_list =
             !self.is_loading_prs && self.load_error.is_none() && !self.pull_requests.is_empty();
+        let current_mode = self.pull_request_inbox_mode;
+        let repository_label = self
+            .configured_repo
+            .as_ref()
+            .map(RepoId::full_name)
+            .unwrap_or_else(|| "choose a repository from the header".to_string());
+        let empty_message = if self.configured_repo.is_some() {
+            current_mode.empty_message()
+        } else {
+            "Choose a repository from the header"
+        };
 
         div()
             .w(px(320.))
             .flex()
             .flex_col()
             .min_h_0()
-            .rounded_md()
             .border_1()
             .border_color(rgb(0x242a31))
             .bg(rgb(0x15191e))
@@ -649,13 +754,31 @@ impl AppView {
                     .text_color(rgb(0xf1f5f9))
                     .child("Pull request inbox")
                     .child(
-                        div().pt_1().text_xs().text_color(rgb(0x9aa4b2)).child(
-                            self.configured_repo
-                                .as_ref()
-                                .map(RepoId::full_name)
-                                .unwrap_or_else(|| "no repository selected".to_string()),
-                        ),
-                    ),
+                        div()
+                            .pt_1()
+                            .text_xs()
+                            .text_color(rgb(0x9aa4b2))
+                            .child(repository_label),
+                    )
+                    .child(div().pt_2().flex().items_center().gap_1().children(
+                        PullRequestInboxMode::ALL.into_iter().map(|mode| {
+                            let active = mode == current_mode;
+                            let button =
+                                Button::new(format!("pull-request-inbox-mode-{}", mode.key()))
+                                    .label(mode.label())
+                                    .small()
+                                    .compact();
+                            let button = if active {
+                                button.primary()
+                            } else {
+                                button.ghost()
+                            };
+
+                            button.on_click(cx.listener(move |view, _, _, cx| {
+                                view.select_pull_request_inbox_mode(mode, cx);
+                            }))
+                        }),
+                    )),
             )
             .when(self.is_loading_prs, |element| {
                 element.child(
@@ -665,7 +788,7 @@ impl AppView {
                         .py_3()
                         .text_sm()
                         .text_color(rgb(0x9aa4b2))
-                        .child("Loading open pull requests..."),
+                        .child(format!("Loading {}...", current_mode.status_label())),
                 )
             })
             .when(
@@ -692,7 +815,7 @@ impl AppView {
                             .py_3()
                             .text_sm()
                             .text_color(rgb(0x9aa4b2))
-                            .child("No open pull requests"),
+                            .child(empty_message),
                     )
                 },
             )
@@ -734,7 +857,6 @@ impl AppView {
                 .flex()
                 .flex_col()
                 .min_h_0()
-                .rounded_md()
                 .border_1()
                 .border_color(rgb(0x242a31))
                 .bg(rgb(0x15191e))
@@ -746,19 +868,17 @@ impl AppView {
                 .into_any_element();
         };
 
-        let review_action_disabled = self.configured_repo.is_none()
-            || self.is_running_pr_action
-            || review_action_blocker(pr).is_some();
-        let merge_action_disabled = self.configured_repo.is_none()
-            || self.is_running_pr_action
-            || merge_blocker(pr).is_some();
+        let review_action_disabled =
+            self.is_running_pr_action || review_action_blocker(pr).is_some();
+        let merge_action_disabled = self.is_running_pr_action || merge_blocker(pr).is_some();
+        let pull_request_url = pr.url.clone();
+        let pull_request_number = pr.number;
 
         div()
             .w(px(360.))
             .flex()
             .flex_col()
             .min_h_0()
-            .rounded_md()
             .border_1()
             .border_color(rgb(0x242a31))
             .bg(rgb(0x15191e))
@@ -770,7 +890,17 @@ impl AppView {
                     .border_color(rgb(0x242a31))
                     .child(
                         div()
+                            .id(("pull-request-title-link", pr.number))
                             .text_sm()
+                            .text_color(rgb(0x93c5fd))
+                            .cursor_pointer()
+                            .hover(|element| element.text_color(rgb(0xbfdbfe)))
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                cx.open_url(&pull_request_url);
+                                view.status =
+                                    format!("Opened PR #{pull_request_number} in browser");
+                                cx.notify();
+                            }))
                             .child(format!("#{} {}", pr.number, pr.title)),
                     )
                     .child(
@@ -974,7 +1104,6 @@ impl AppView {
 
         div().pt_3().child(
             div()
-                .rounded_sm()
                 .border_1()
                 .border_color(rgb(0x355071))
                 .bg(rgb(0x172033))
@@ -1080,7 +1209,6 @@ impl AppView {
             .flex_col()
             .min_h_0()
             .min_w_0()
-            .rounded_md()
             .border_1()
             .border_color(rgb(0x242a31))
             .bg(rgb(0x15191e))
@@ -1105,7 +1233,6 @@ impl AppView {
                                     .id(("panel-tab", index))
                                     .px_3()
                                     .py_1()
-                                    .rounded_sm()
                                     .text_sm()
                                     .cursor_pointer()
                                     .when(active, |element| element.bg(rgb(0x243244)))

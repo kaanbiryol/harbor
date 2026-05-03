@@ -21,6 +21,7 @@ anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 gpui = { git = "https://github.com/zed-industries/zed" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
 gpui-component = { git = "https://github.com/longbridge/gpui-component" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
 serde = { version = "1", features = ["derive"] }

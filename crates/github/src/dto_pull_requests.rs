@@ -1,5 +1,6 @@
 use harbor_domain::{
     ChecksSummary, DiffFile, FileStatus, Label, MergeState, PullRequest, PullRequestState, RepoId,
+    ReviewDecision,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -49,6 +50,104 @@ struct ApiLabel {
 }
 
 #[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchResponse {
+    data: Option<GraphQlPullRequestSearchData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchData {
+    search: GraphQlPullRequestSearchConnection,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchConnection {
+    #[serde(default)]
+    nodes: Vec<Option<GraphQlPullRequestSearchNode>>,
+    #[serde(default, rename = "pageInfo")]
+    page_info: GraphQlPageInfo,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct GraphQlPageInfo {
+    #[serde(default, rename = "hasNextPage")]
+    has_next_page: bool,
+    #[serde(default, rename = "endCursor")]
+    end_cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchNode {
+    #[serde(default, rename = "__typename")]
+    typename: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    number: Option<u64>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default, rename = "isDraft")]
+    is_draft: bool,
+    #[serde(default)]
+    author: Option<ApiUser>,
+    #[serde(default)]
+    repository: Option<GraphQlRepository>,
+    #[serde(default, rename = "headRefName")]
+    head_ref_name: Option<String>,
+    #[serde(default, rename = "baseRefName")]
+    base_ref_name: Option<String>,
+    #[serde(default, rename = "headRefOid")]
+    head_ref_oid: Option<String>,
+    #[serde(default, rename = "reviewDecision")]
+    review_decision: Option<String>,
+    #[serde(default, rename = "mergeStateStatus")]
+    merge_state_status: Option<String>,
+    #[serde(default)]
+    labels: GraphQlNodes<GraphQlLabel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlRepository {
+    name: String,
+    owner: GraphQlRepositoryOwner,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlRepositoryOwner {
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(bound(deserialize = "T: Deserialize<'de>"))]
+struct GraphQlNodes<T> {
+    #[serde(default)]
+    nodes: Vec<Option<T>>,
+}
+
+impl<T> Default for GraphQlNodes<T> {
+    fn default() -> Self {
+        Self { nodes: Vec::new() }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlLabel {
+    name: String,
+    color: Option<String>,
+}
+
+pub(crate) struct PullRequestSearchPage {
+    pub(crate) pull_requests: Vec<PullRequest>,
+    pub(crate) has_next_page: bool,
+    pub(crate) end_cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ApiDiffFile {
     filename: String,
     #[serde(default)]
@@ -76,6 +175,29 @@ pub fn pull_request_from_value(repo: RepoId, value: Value) -> Result<PullRequest
         serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
 
     Ok(pull.into_domain(repo))
+}
+
+pub(crate) fn pull_request_search_page_from_graphql_value(
+    value: Value,
+) -> Result<PullRequestSearchPage> {
+    let response: GraphQlPullRequestSearchResponse =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let data = response
+        .data
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL response data".to_string()))?;
+
+    let mut pull_requests = Vec::new();
+    for node in data.search.nodes.into_iter().flatten() {
+        if node.is_pull_request() {
+            pull_requests.push(node.into_domain()?);
+        }
+    }
+
+    Ok(PullRequestSearchPage {
+        pull_requests,
+        has_next_page: data.search.page_info.has_next_page,
+        end_cursor: data.search.page_info.end_cursor,
+    })
 }
 
 pub fn diff_files_from_value(value: Value) -> Result<Vec<DiffFile>> {
@@ -123,6 +245,56 @@ impl ApiPullRequest {
     }
 }
 
+impl GraphQlPullRequestSearchNode {
+    fn is_pull_request(&self) -> bool {
+        self.typename.as_deref() == Some("PullRequest") || self.number.is_some()
+    }
+
+    fn into_domain(self) -> Result<PullRequest> {
+        let repository = required_graphql_field(self.repository, "repository")?;
+        let repo = RepoId::new(repository.owner.login, repository.name);
+
+        Ok(PullRequest {
+            repo,
+            node_id: required_graphql_field(self.id, "id")?,
+            number: required_graphql_field(self.number, "number")?,
+            title: required_graphql_field(self.title, "title")?,
+            body: self.body.filter(|body| !body.is_empty()),
+            author: self
+                .author
+                .map(|author| author.login)
+                .unwrap_or_else(|| "ghost".to_string()),
+            url: required_graphql_field(self.url, "url")?,
+            state: self
+                .state
+                .as_deref()
+                .map(|state| map_pull_request_state(state, None))
+                .unwrap_or(PullRequestState::Open),
+            is_draft: self.is_draft,
+            head_ref: required_graphql_field(self.head_ref_name, "headRefName")?,
+            base_ref: required_graphql_field(self.base_ref_name, "baseRefName")?,
+            head_sha: required_graphql_field(self.head_ref_oid, "headRefOid")?,
+            review_decision: self
+                .review_decision
+                .as_deref()
+                .and_then(map_review_decision),
+            merge_state: self.merge_state_status.as_deref().map(map_merge_state),
+            labels: self
+                .labels
+                .nodes
+                .into_iter()
+                .flatten()
+                .map(|label| Label {
+                    name: label.name,
+                    color: label.color,
+                })
+                .collect(),
+            checks_summary: ChecksSummary::default(),
+            unresolved_threads: 0,
+        })
+    }
+}
+
 impl ApiDiffFile {
     fn into_domain(self) -> DiffFile {
         DiffFile {
@@ -137,8 +309,14 @@ impl ApiDiffFile {
     }
 }
 
+fn required_graphql_field<T>(value: Option<T>, label: &str) -> Result<T> {
+    value.ok_or_else(|| GitHubError::Mapping(format!("missing GraphQL pull request {label}")))
+}
+
 fn map_pull_request_state(state: &str, merged: Option<bool>) -> PullRequestState {
     if merged.unwrap_or(false) {
+        PullRequestState::Merged
+    } else if state.eq_ignore_ascii_case("merged") {
         PullRequestState::Merged
     } else if state.eq_ignore_ascii_case("closed") {
         PullRequestState::Closed
@@ -148,12 +326,21 @@ fn map_pull_request_state(state: &str, merged: Option<bool>) -> PullRequestState
 }
 
 fn map_merge_state(state: &str) -> MergeState {
-    match state {
+    match state.to_ascii_lowercase().as_str() {
         "clean" | "unstable" | "has_hooks" => MergeState::Clean,
         "dirty" => MergeState::Dirty,
         "blocked" => MergeState::Blocked,
         "behind" => MergeState::Behind,
         _ => MergeState::Unknown,
+    }
+}
+
+fn map_review_decision(decision: &str) -> Option<ReviewDecision> {
+    match decision.to_ascii_lowercase().as_str() {
+        "approved" => Some(ReviewDecision::Approved),
+        "changes_requested" => Some(ReviewDecision::ChangesRequested),
+        "review_required" => Some(ReviewDecision::ReviewRequired),
+        _ => None,
     }
 }
 

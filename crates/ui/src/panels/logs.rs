@@ -55,7 +55,6 @@ pub(crate) fn render_logs_panel(
         .when(is_loading, |element| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -67,7 +66,6 @@ pub(crate) fn render_logs_panel(
         .when_some(error.map(str::to_string), |element, error| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x7f1d1d))
                     .bg(rgb(0x2a1212))
@@ -79,7 +77,6 @@ pub(crate) fn render_logs_panel(
         .when(!is_loading && run.is_none(), |element| {
             element.child(
                 div()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -107,7 +104,6 @@ pub(crate) fn render_logs_panel(
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .rounded_sm()
                     .border_1()
                     .border_color(rgb(0x242a31))
                     .bg(rgb(0x0c0f12))
@@ -149,7 +145,6 @@ pub(crate) fn render_logs_panel(
             |element| {
                 element.child(
                     div()
-                        .rounded_sm()
                         .border_1()
                         .border_color(rgb(0x242a31))
                         .bg(rgb(0x0c0f12))
@@ -166,7 +161,6 @@ pub(crate) fn render_workflow_job(job: &WorkflowJob) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_1()
-        .rounded_sm()
         .border_1()
         .border_color(rgb(0x242a31))
         .bg(rgb(0x0c0f12))

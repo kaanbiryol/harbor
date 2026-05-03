@@ -19,7 +19,8 @@ pub use workflows::*;
 mod tests {
     use harbor_domain::{
         CheckConclusion, CheckStatus, FileStatus, MergeState, PullRequestReviewState,
-        PullRequestState, RepoId, ReviewThreadState, WorkflowConclusion, WorkflowStatus,
+        PullRequestState, RepoId, ReviewDecision, ReviewThreadState, WorkflowConclusion,
+        WorkflowStatus,
     };
     use serde_json::json;
 
@@ -56,6 +57,111 @@ mod tests {
         assert_eq!(pulls[0].state, PullRequestState::Open);
         assert_eq!(pulls[0].merge_state, Some(MergeState::Clean));
         assert_eq!(pulls[0].labels[0].name, "performance");
+    }
+
+    #[test]
+    fn maps_pull_request_search_states() {
+        let value = json!({
+            "data": {
+                "search": {
+                    "pageInfo": {
+                        "hasNextPage": false,
+                        "endCursor": null
+                    },
+                    "nodes": [
+                        {
+                            "__typename": "PullRequest",
+                            "id": "pr-node-42",
+                            "number": 42,
+                            "title": "make list rendering fast",
+                            "body": "",
+                            "url": "https://github.com/acme/app/pull/42",
+                            "state": "OPEN",
+                            "isDraft": false,
+                            "author": { "login": "octocat" },
+                            "repository": {
+                                "name": "app",
+                                "owner": { "login": "acme" }
+                            },
+                            "headRefName": "feature/list",
+                            "baseRefName": "main",
+                            "headRefOid": "abc123",
+                            "reviewDecision": "REVIEW_REQUIRED",
+                            "mergeStateStatus": "CLEAN",
+                            "labels": {
+                                "nodes": [{ "name": "performance", "color": "34d399" }]
+                            }
+                        },
+                        {
+                            "__typename": "PullRequest",
+                            "id": "pr-node-43",
+                            "number": 43,
+                            "title": "close stale work",
+                            "body": null,
+                            "url": "https://github.com/acme/app/pull/43",
+                            "state": "CLOSED",
+                            "isDraft": false,
+                            "author": { "login": "octocat" },
+                            "repository": {
+                                "name": "app",
+                                "owner": { "login": "acme" }
+                            },
+                            "headRefName": "feature/stale",
+                            "baseRefName": "main",
+                            "headRefOid": "def456",
+                            "reviewDecision": null,
+                            "mergeStateStatus": "UNKNOWN",
+                            "labels": {
+                                "nodes": []
+                            }
+                        },
+                        {
+                            "__typename": "PullRequest",
+                            "id": "pr-node-44",
+                            "number": 44,
+                            "title": "merge completed work",
+                            "body": null,
+                            "url": "https://github.com/acme/app/pull/44",
+                            "state": "MERGED",
+                            "isDraft": false,
+                            "author": { "login": "octocat" },
+                            "repository": {
+                                "name": "app",
+                                "owner": { "login": "acme" }
+                            },
+                            "headRefName": "feature/done",
+                            "baseRefName": "main",
+                            "headRefOid": "ghi789",
+                            "reviewDecision": "APPROVED",
+                            "mergeStateStatus": "CLEAN",
+                            "labels": {
+                                "nodes": []
+                            }
+                        }
+                    ]
+                }
+            }
+        });
+
+        let page = pull_request_search_page_from_graphql_value(value).unwrap();
+
+        assert_eq!(page.pull_requests.len(), 3);
+        assert!(!page.has_next_page);
+        assert_eq!(page.pull_requests[0].repo.full_name(), "acme/app");
+        assert_eq!(page.pull_requests[0].node_id, "pr-node-42");
+        assert_eq!(page.pull_requests[0].number, 42);
+        assert_eq!(
+            page.pull_requests[0].review_decision,
+            Some(ReviewDecision::ReviewRequired)
+        );
+        assert_eq!(page.pull_requests[0].merge_state, Some(MergeState::Clean));
+        assert_eq!(page.pull_requests[0].labels[0].name, "performance");
+        assert_eq!(page.pull_requests[1].state, PullRequestState::Closed);
+        assert_eq!(page.pull_requests[2].state, PullRequestState::Merged);
+        assert_eq!(
+            page.pull_requests[2].review_decision,
+            Some(ReviewDecision::Approved)
+        );
     }
 
     #[test]

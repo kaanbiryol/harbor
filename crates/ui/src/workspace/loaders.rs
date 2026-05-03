@@ -1,13 +1,13 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId, ReviewThreadState};
-use harbor_github::{GhCliTransport, GitHubClient};
+use harbor_github::{GhCliTransport, GitHubClient, PullRequestListFilter};
 use harbor_logs::parse_workflow_log;
-use harbor_storage::{SqliteStore, StorageConfig, StorageError};
+use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
 
 use crate::actions::PanelTab;
 use crate::diff::parse_files;
 use crate::panels::{checks_summary_from_runs, workflow_run_label};
-use crate::workspace::AppView;
+use crate::workspace::{AppView, PullRequestInboxMode};
 
 impl AppView {
     pub(super) fn load_recent_repositories(&mut self, cx: &mut Context<Self>) {
@@ -22,29 +22,43 @@ impl AppView {
                     Ok(load) => {
                         let repository_count = load.repositories.len();
                         let repository_error = load.repository_error.clone();
+                        let default_repository =
+                            load.repositories.first().map(|repository| repository.id.clone());
                         view.repository_store = Some(load.store);
                         view.repository_error = load.repository_error;
 
                         for repository in load.repositories.into_iter().rev() {
-                            view.remember_repository(repository);
+                            view.remember_repository(repository.id.clone());
+                            if let Some(local_path) = repository.local_path {
+                                view.set_repository_local_path(repository.id, local_path);
+                            }
                         }
 
                         if view.configured_repo.is_none()
                             && !view.is_loading_prs
                             && view.pull_requests.is_empty()
                         {
-                            view.status = match (repository_count, repository_error) {
-                                (0, Some(error)) => error,
-                                (0, None) => "No repositories found from GitHub CLI".to_string(),
-                                (count, Some(_)) => {
-                                    format!(
-                                        "Loaded {count} cached repositories; GitHub refresh failed"
-                                    )
-                                }
-                                (count, None) => {
-                                    format!("Loaded {count} repositories. Choose one with cmd+p")
-                                }
-                            };
+                            if let Some(repository) = default_repository {
+                                view.load_pull_requests(repository, cx);
+                            } else {
+                                view.status = match (repository_count, repository_error) {
+                                    (0, Some(error)) => error,
+                                    (0, None) => {
+                                        "No repositories found. Choose a repository from the header"
+                                            .to_string()
+                                    }
+                                    (count, Some(_)) => {
+                                        format!(
+                                            "Loaded {count} cached repositories; GitHub refresh failed"
+                                        )
+                                    }
+                                    (count, None) => {
+                                        format!(
+                                            "Loaded {count} repositories. Choose one from the header"
+                                        )
+                                    }
+                                };
+                            }
                         }
                     }
                     Err(error) => {
@@ -92,7 +106,27 @@ impl AppView {
     }
 
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
+        self.load_repository_pull_requests(repo, self.pull_request_inbox_mode, cx);
+    }
+
+    pub(super) fn reload_pull_request_inbox(&mut self, cx: &mut Context<Self>) {
+        if let Some(repo) = self.configured_repo.clone() {
+            self.load_pull_requests(repo, cx);
+        } else {
+            self.status =
+                "Select a repository from the header before loading pull requests".to_string();
+            cx.notify();
+        }
+    }
+
+    fn load_repository_pull_requests(
+        &mut self,
+        repo: RepoId,
+        mode: PullRequestInboxMode,
+        cx: &mut Context<Self>,
+    ) {
         self.configured_repo = Some(repo.clone());
+        self.pull_request_inbox_mode = mode;
         self.record_recent_repository(repo.clone(), cx);
         self.is_loading_prs = true;
         self.load_error = None;
@@ -115,14 +149,11 @@ impl AppView {
         self.is_loading_workflows = false;
         self.is_loading_reviews = false;
         self.is_loading_logs = false;
-        self.status = format!("Loading open pull requests from {}", repo.full_name());
-
-        let owner = repo.owner.clone();
-        let name = repo.name.clone();
+        self.status = pull_request_inbox_loading_status(&repo, mode);
 
         self.pr_list_task = Some(cx.spawn(async move |this, cx| {
             let result = GitHubClient::new(GhCliTransport)
-                .list_open_pull_requests(&owner, &name)
+                .list_repository_pull_requests(&repo, pull_request_list_filter(mode))
                 .await;
 
             _ = this.update(cx, |view, cx| {
@@ -131,6 +162,7 @@ impl AppView {
                 match result {
                     Ok(pull_requests) => {
                         let count = pull_requests.len();
+                        let status = pull_request_inbox_loaded_status(&repo, mode, count);
                         view.pull_requests = pull_requests;
                         view.files.clear();
                         view.diffs.clear();
@@ -154,11 +186,11 @@ impl AppView {
                             .scroll_to_item(0, ScrollStrategy::Top);
                         view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.load_error = None;
-                        view.status =
-                            format!("Loaded {count} open pull requests from {owner}/{name}");
+                        view.status = status;
                         view.load_selected_pull_request(cx);
                     }
                     Err(error) => {
+                        let status = pull_request_inbox_failed_status(&repo, mode);
                         view.pull_requests.clear();
                         view.files.clear();
                         view.diffs.clear();
@@ -189,7 +221,7 @@ impl AppView {
                         view.is_running_action = false;
                         view.is_running_pr_action = false;
                         view.load_error = Some(error.to_string());
-                        view.status = format!("Failed to load pull requests from {owner}/{name}");
+                        view.status = status;
                     }
                 }
 
@@ -199,16 +231,12 @@ impl AppView {
     }
 
     pub(super) fn load_selected_pull_request(&mut self, cx: &mut Context<Self>) {
-        let Some(repo) = self.configured_repo.clone() else {
+        let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };
-        let Some(number) = self.selected_pull_request_number() else {
-            return;
-        };
-        let head_sha = self
-            .selected_pull_request()
-            .map(|pull_request| pull_request.head_sha.clone())
-            .unwrap_or_default();
+        let repo = pull_request.repo;
+        let number = pull_request.number;
+        let head_sha = pull_request.head_sha;
 
         self.is_loading_details = true;
         self.is_loading_files = true;
@@ -266,7 +294,11 @@ impl AppView {
                     match result {
                         Ok(detail) => {
                             if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                                let review_decision = selected.review_decision;
                                 *selected = detail;
+                                if selected.review_decision.is_none() {
+                                    selected.review_decision = review_decision;
+                                }
                             }
                             view.details_error = None;
                             view.status = format!("Loaded PR #{number} details");
@@ -579,12 +611,11 @@ impl AppView {
         }));
     }
     pub(crate) fn load_selected_review_data(&mut self, cx: &mut Context<Self>) {
-        let Some(repo) = self.configured_repo.clone() else {
+        let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };
-        let Some(number) = self.selected_pull_request_number() else {
-            return;
-        };
+        let repo = pull_request.repo;
+        let number = pull_request.number;
 
         self.is_loading_reviews = true;
         self.reviews_error = None;
@@ -715,9 +746,12 @@ impl AppView {
     }
 
     pub(crate) fn load_selected_workflow_logs(&mut self, cx: &mut Context<Self>) {
-        let Some(repo) = self.configured_repo.clone() else {
+        let Some(repo) = self
+            .selected_pull_request()
+            .map(|pull_request| pull_request.repo.clone())
+        else {
             self.logs_error =
-                Some("Workflow logs require a selected repository and GitHub CLI auth".into());
+                Some("Workflow logs require a selected pull request and GitHub CLI auth".into());
             self.status = self.logs_error.clone().unwrap_or_default();
             cx.notify();
             return;
@@ -798,13 +832,50 @@ impl AppView {
 
 struct RepositoryLoad {
     store: SqliteStore,
-    repositories: Vec<RepoId>,
+    repositories: Vec<RecentRepository>,
     repository_error: Option<String>,
 }
 
 fn selected_pull_request_matches(view: &AppView, repository: &RepoId, number: u64) -> bool {
-    view.configured_repo.as_ref() == Some(repository)
-        && view.selected_pull_request_number() == Some(number)
+    view.selected_pull_request().is_some_and(|pull_request| {
+        &pull_request.repo == repository && pull_request.number == number
+    })
+}
+
+fn pull_request_list_filter(mode: PullRequestInboxMode) -> PullRequestListFilter {
+    match mode {
+        PullRequestInboxMode::Open => PullRequestListFilter::Open,
+        PullRequestInboxMode::Closed => PullRequestListFilter::Closed,
+        PullRequestInboxMode::NeedsReview => PullRequestListFilter::NeedsReview,
+    }
+}
+
+fn pull_request_inbox_loading_status(repository: &RepoId, mode: PullRequestInboxMode) -> String {
+    format!(
+        "Loading {} from {}",
+        mode.status_label(),
+        repository.full_name()
+    )
+}
+
+fn pull_request_inbox_loaded_status(
+    repository: &RepoId,
+    mode: PullRequestInboxMode,
+    count: usize,
+) -> String {
+    format!(
+        "Loaded {count} {} from {}",
+        mode.status_label(),
+        repository.full_name()
+    )
+}
+
+fn pull_request_inbox_failed_status(repository: &RepoId, mode: PullRequestInboxMode) -> String {
+    format!(
+        "Failed to load {} from {}",
+        mode.status_label(),
+        repository.full_name()
+    )
 }
 
 fn pending_review_rest_id(
@@ -818,6 +889,34 @@ fn pending_review_rest_id(
                 && current_user_login.is_none_or(|login| review.author == login)
         })
         .map(|review| review.id.clone())
+}
+
+async fn load_repository_store(
+    configured_repo: Option<RepoId>,
+) -> std::result::Result<RepositoryLoad, StorageError> {
+    let store = SqliteStore::connect(StorageConfig::from_env()?).await?;
+
+    if let Some(repository) = configured_repo.as_ref() {
+        store.record_repository(repository).await?;
+    }
+
+    let repository_error = match GitHubClient::new(GhCliTransport).list_repositories().await {
+        Ok(repositories) => {
+            store.sync_repositories(&repositories).await?;
+            None
+        }
+        Err(error) => Some(format!(
+            "failed to load repositories from GitHub CLI: {error}"
+        )),
+    };
+
+    let repositories = store.recent_repositories().await?;
+
+    Ok(RepositoryLoad {
+        store,
+        repositories,
+        repository_error,
+    })
 }
 
 #[cfg(test)]
@@ -854,37 +953,4 @@ mod tests {
             submitted_at: None,
         }
     }
-}
-
-async fn load_repository_store(
-    configured_repo: Option<RepoId>,
-) -> std::result::Result<RepositoryLoad, StorageError> {
-    let store = SqliteStore::connect(StorageConfig::from_env()?).await?;
-
-    if let Some(repository) = configured_repo.as_ref() {
-        store.record_repository(repository).await?;
-    }
-
-    let repository_error = match GitHubClient::new(GhCliTransport).list_repositories().await {
-        Ok(repositories) => {
-            store.sync_repositories(&repositories).await?;
-            None
-        }
-        Err(error) => Some(format!(
-            "failed to load repositories from GitHub CLI: {error}"
-        )),
-    };
-
-    let repositories = store
-        .recent_repositories()
-        .await?
-        .into_iter()
-        .map(|repository| repository.id)
-        .collect();
-
-    Ok(RepositoryLoad {
-        store,
-        repositories,
-        repository_error,
-    })
 }
