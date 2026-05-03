@@ -12,7 +12,11 @@ use crate::workspace::AppView;
 
 use super::review::{review_thread_state_label, single_line};
 
-const REVIEW_MARKER_WIDTH: f32 = 32.0;
+const MIN_LINE_NUMBER_WIDTH: f32 = 28.0;
+const LINE_NUMBER_PADDING: f32 = 8.0;
+const LINE_NUMBER_DIGIT_WIDTH: f32 = 8.0;
+const REVIEW_MARKER_WIDTH: f32 = 24.0;
+const PREFIX_WIDTH: f32 = 16.0;
 
 pub(crate) fn render_diff_panel(
     file: Option<&DiffFile>,
@@ -155,12 +159,14 @@ pub(crate) fn render_diff_panel(
                             let Some(parsed_diff) = view.active_diff() else {
                                 return Vec::new();
                             };
+                            let line_number_width = line_number_width_for_diff(parsed_diff);
 
                             render_diff_rows(
                                 parsed_diff,
                                 file,
                                 &view.review_threads,
                                 view.active_hunk,
+                                line_number_width,
                                 range,
                             )
                         }),
@@ -204,9 +210,15 @@ fn render_diff_rows(
     file: &DiffFile,
     review_threads: &[ReviewThread],
     active_hunk: usize,
+    line_number_width: f32,
     range: std::ops::Range<usize>,
 ) -> Vec<AnyElement> {
     let anchored_threads = anchored_review_threads(file, review_threads);
+    let review_marker_width = if anchored_threads.is_empty() {
+        0.0
+    } else {
+        REVIEW_MARKER_WIDTH
+    };
     let mut rows = Vec::with_capacity(range.len());
     let mut row_index = 0;
 
@@ -235,8 +247,14 @@ fn render_diff_rows(
 
             if row_in_range(row_index, &range) {
                 rows.push(
-                    render_diff_line(line, matching_threads.len(), has_unresolved_thread)
-                        .into_any_element(),
+                    render_diff_line(
+                        line,
+                        matching_threads.len(),
+                        has_unresolved_thread,
+                        line_number_width,
+                        review_marker_width,
+                    )
+                    .into_any_element(),
                 );
             }
             row_index += 1;
@@ -247,7 +265,9 @@ fn render_diff_rows(
                 }
 
                 if row_in_range(row_index, &range) {
-                    rows.push(render_review_thread_inline(thread).into_any_element());
+                    rows.push(
+                        render_review_thread_inline(thread, line_number_width).into_any_element(),
+                    );
                 }
                 row_index += 1;
             }
@@ -284,6 +304,8 @@ pub(crate) fn render_diff_line(
     line: &DiffLine,
     thread_count: usize,
     has_unresolved_thread: bool,
+    line_number_width: f32,
+    review_marker_width: f32,
 ) -> impl IntoElement {
     let (prefix, bg, text_color) = match line.kind {
         DiffLineKind::Context => (" ", rgb(0x0c0f12), rgb(0xcbd5e1)),
@@ -299,12 +321,16 @@ pub(crate) fn render_diff_line(
         .bg(bg)
         .text_color(text_color)
         .whitespace_nowrap()
-        .child(render_line_number(line.old_line))
-        .child(render_line_number(line.new_line))
-        .child(render_review_marker(thread_count, has_unresolved_thread))
+        .child(render_line_number(line.old_line, line_number_width))
+        .child(render_line_number(line.new_line, line_number_width))
+        .child(render_review_marker(
+            thread_count,
+            has_unresolved_thread,
+            review_marker_width,
+        ))
         .child(
             div()
-                .w(px(20.))
+                .w(px(PREFIX_WIDTH))
                 .flex_none()
                 .text_color(text_color)
                 .child(prefix),
@@ -312,7 +338,7 @@ pub(crate) fn render_diff_line(
         .child(div().flex_none().child(line.text.clone()))
 }
 
-fn render_review_thread_inline(thread: &ReviewThread) -> impl IntoElement {
+fn render_review_thread_inline(thread: &ReviewThread, line_number_width: f32) -> impl IntoElement {
     let (label, color) = review_thread_state_label(thread.state);
     let latest_comment = thread.comments.last();
     let preview = latest_comment
@@ -329,11 +355,12 @@ fn render_review_thread_inline(thread: &ReviewThread) -> impl IntoElement {
         .bg(rgb(0x171b20))
         .text_color(rgb(0xcbd5e1))
         .whitespace_nowrap()
-        .child(render_line_number(None))
-        .child(render_line_number(None))
+        .child(render_line_number(None, line_number_width))
+        .child(render_line_number(None, line_number_width))
         .child(render_review_marker(
             1,
             thread.state == ReviewThreadState::Unresolved,
+            REVIEW_MARKER_WIDTH,
         ))
         .child(
             div()
@@ -360,7 +387,11 @@ fn render_review_thread_inline(thread: &ReviewThread) -> impl IntoElement {
         )
 }
 
-fn render_review_marker(thread_count: usize, has_unresolved_thread: bool) -> impl IntoElement {
+fn render_review_marker(
+    thread_count: usize,
+    has_unresolved_thread: bool,
+    width: f32,
+) -> impl IntoElement {
     let marker = match thread_count {
         0 => String::new(),
         1 => "R".to_string(),
@@ -373,7 +404,7 @@ fn render_review_marker(thread_count: usize, has_unresolved_thread: bool) -> imp
     };
 
     div()
-        .w(px(REVIEW_MARKER_WIDTH))
+        .w(px(width))
         .flex_none()
         .text_center()
         .text_color(color)
@@ -388,12 +419,50 @@ fn review_comment_count_label(comment_count: usize) -> String {
     }
 }
 
-pub(crate) fn render_line_number(line: Option<u32>) -> impl IntoElement {
+fn render_line_number(line: Option<u32>, width: f32) -> impl IntoElement {
     div()
-        .w(px(52.))
+        .w(px(width))
         .flex_none()
         .pr_2()
         .text_right()
         .text_color(rgb(0x64748b))
         .child(line.map_or_else(String::new, |line| line.to_string()))
+}
+
+fn line_number_width_for_diff(diff: &ParsedDiff) -> f32 {
+    let max_line = diff
+        .hunks
+        .iter()
+        .flat_map(|hunk| hunk.lines.iter())
+        .flat_map(|line| [line.old_line, line.new_line])
+        .flatten()
+        .max()
+        .unwrap_or(1);
+    let digits = max_line.to_string().len() as f32;
+
+    (digits * LINE_NUMBER_DIGIT_WIDTH + LINE_NUMBER_PADDING).max(MIN_LINE_NUMBER_WIDTH)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::diff::parse_unified_diff;
+
+    use super::*;
+
+    #[test]
+    fn keeps_small_diff_gutters_compact() {
+        let diff = parse_unified_diff("@@ -8,2 +8,2 @@\n one\n two\n");
+
+        assert_eq!(line_number_width_for_diff(&diff), MIN_LINE_NUMBER_WIDTH);
+    }
+
+    #[test]
+    fn expands_gutter_for_large_line_numbers() {
+        let diff = parse_unified_diff("@@ -99999,2 +100000,2 @@\n context\n-removed\n+added\n");
+
+        assert_eq!(
+            line_number_width_for_diff(&diff),
+            6.0 * LINE_NUMBER_DIGIT_WIDTH + LINE_NUMBER_PADDING
+        );
+    }
 }
