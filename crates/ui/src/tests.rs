@@ -14,7 +14,7 @@ use crate::workspace::{
     changed_file_matches_filters, changed_file_matches_query, changed_file_tree_rows,
     changed_file_type_filters, changed_file_type_key, github_file_url, next_switcher_index,
     normalized_search_query, open_target_for_app, open_with_app_disabled, parse_repo_id,
-    pull_request_matches_query, repository_matches_query,
+    pull_request_matches_query, repository_matches_query, repository_switcher_accepted_repository,
 };
 
 #[test]
@@ -23,6 +23,11 @@ fn parses_owner_and_repo() {
 
     assert_eq!(repo.owner, "acme");
     assert_eq!(repo.name, "app");
+
+    let repo = parse_repo_id("  Acme/Mobile-App  ").unwrap();
+
+    assert_eq!(repo.owner, "Acme");
+    assert_eq!(repo.name, "Mobile-App");
 }
 
 #[test]
@@ -32,6 +37,8 @@ fn rejects_invalid_repo_values() {
     assert!(parse_repo_id("/app").is_none());
     assert!(parse_repo_id("acme/").is_none());
     assert!(parse_repo_id("acme/app/extra").is_none());
+    assert!(parse_repo_id("acme /app").is_none());
+    assert!(parse_repo_id("acme/app name").is_none());
 }
 
 #[test]
@@ -47,6 +54,32 @@ fn matches_repositories_for_switcher_search() {
     assert!(repository_matches_query(&repository, "mobile"));
     assert!(repository_matches_query(&repository, "acme/mobile"));
     assert!(!repository_matches_query(&repository, "backend"));
+}
+
+#[test]
+fn repository_switcher_accepts_selected_existing_repository_first() {
+    let repositories = vec![RepoId::new("acme", "app"), RepoId::new("octo", "tools")];
+
+    assert_eq!(
+        repository_switcher_accepted_repository(&repositories, 1, "typed/repo"),
+        Some(RepoId::new("octo", "tools"))
+    );
+}
+
+#[test]
+fn repository_switcher_accepts_typed_repository_without_matches() {
+    assert_eq!(
+        repository_switcher_accepted_repository(&[], 0, "  typed/repo  "),
+        Some(RepoId::new("typed", "repo"))
+    );
+}
+
+#[test]
+fn repository_switcher_rejects_invalid_typed_repository_without_matches() {
+    assert_eq!(
+        repository_switcher_accepted_repository(&[], 0, "typed"),
+        None
+    );
 }
 
 #[test]

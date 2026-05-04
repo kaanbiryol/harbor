@@ -20,7 +20,7 @@ use crate::panels::{
 };
 use crate::workspace::{
     AppView, ChangedFileTreeRow, PendingReviewSession, PullRequestInboxMode,
-    normalized_search_query,
+    normalized_search_query, parse_repo_id,
 };
 
 impl Focusable for AppView {
@@ -38,12 +38,21 @@ fn render_switcher_section_label(label: &'static str) -> impl IntoElement {
         .child(label)
 }
 
-fn render_switcher_empty_row(label: &'static str) -> impl IntoElement {
+fn render_switcher_empty_row(label: impl Into<String>) -> impl IntoElement {
     div()
         .px_2()
         .py_2()
         .text_sm()
         .text_color(rgb(0x7d8794))
+        .child(label.into())
+}
+
+fn render_switcher_loading_row(label: &'static str) -> impl IntoElement {
+    div()
+        .px_2()
+        .py_2()
+        .text_sm()
+        .text_color(rgb(0x93c5fd))
         .child(label)
 }
 
@@ -176,6 +185,33 @@ fn render_switcher_repository_row(
         } else {
             "repo"
         }))
+}
+
+fn render_switcher_typed_repository_row(repository: &RepoId, highlighted: bool) -> Stateful<Div> {
+    div()
+        .id(format!(
+            "switcher-typed-repository-{}",
+            repository.full_name()
+        ))
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .px_2()
+        .py_1()
+        .text_sm()
+        .cursor_pointer()
+        .when(highlighted, |element| element.bg(rgb(0x263241)))
+        .hover(|element| element.bg(rgb(0x222a34)))
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .font_medium()
+                .text_color(rgb(0xe6e8eb))
+                .child(format!("Open {}", repository.full_name())),
+        )
+        .child(div().text_xs().text_color(rgb(0x7d8794)).child("typed"))
 }
 
 fn render_switcher_pull_request_row(
@@ -311,7 +347,12 @@ pub(crate) fn open_with_app_disabled(
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.did_focus {
-            window.focus(&self.focus_handle, cx);
+            if self.repository_switcher_open {
+                self.repository_search_input
+                    .update(cx, |input, cx| input.focus(window, cx));
+            } else {
+                window.focus(&self.focus_handle, cx);
+            }
             self.did_focus = true;
         }
 
@@ -412,13 +453,19 @@ impl AppView {
         let view = cx.entity().clone();
         let repository_label = self.header_repository_label();
         let pull_request_label = self.header_pull_request_label();
-        let repository_query =
-            normalized_search_query(&self.repository_search_input.read(cx).value());
+        let repository_search_value = self.repository_search_input.read(cx).value();
+        let repository_query = normalized_search_query(&repository_search_value);
         let pull_request_query =
             normalized_search_query(&self.pull_request_search_input.read(cx).value());
         let repositories = self.filtered_switcher_repositories(cx);
+        let typed_repository = if repositories.is_empty() {
+            parse_repo_id(&repository_search_value)
+        } else {
+            None
+        };
         let current_repository = self.current_repository().cloned();
         let repository_error = self.repository_error.clone();
+        let is_loading_repositories = self.is_loading_repositories;
         let pull_requests = self.filtered_switcher_pull_requests(cx);
         let inbox_mode = self.pull_request_inbox_mode;
         let selected_pull_request = self.selected_pr;
@@ -534,13 +581,47 @@ impl AppView {
                                             menu = menu.child(render_switcher_error_row(error));
                                         }
 
+                                        if is_loading_repositories {
+                                            menu = menu.child(render_switcher_loading_row(
+                                                "Fetching repositories from GitHub...",
+                                            ));
+                                        }
+
                                         if repositories.is_empty() {
-                                            let label = if has_repository_query {
-                                                "no repositories match search"
+                                            if let Some(repository) = typed_repository.clone() {
+                                                let selected_repository = repository.clone();
+                                                let view = view.clone();
+                                                let popover = popover.clone();
+
+                                                menu = menu.child(
+                                                    render_switcher_typed_repository_row(
+                                                        &repository,
+                                                        true,
+                                                    )
+                                                    .on_click(move |_, window, cx| {
+                                                        view.update(cx, |view, cx| {
+                                                            view.select_repository_from_switcher(
+                                                                selected_repository.clone(),
+                                                                cx,
+                                                            );
+                                                            view.repository_switcher_open = false;
+                                                            cx.notify();
+                                                        });
+                                                        popover.update(cx, |popover, cx| {
+                                                            popover.dismiss(window, cx);
+                                                        });
+                                                    }),
+                                                );
                                             } else {
-                                                "no repositories found"
-                                            };
-                                            menu = menu.child(render_switcher_empty_row(label));
+                                                let label = if has_repository_query
+                                                    || is_loading_repositories
+                                                {
+                                                    "Type owner/repo to open a repository"
+                                                } else {
+                                                    "No repositories found. Type owner/repo to open a repository"
+                                                };
+                                                menu = menu.child(render_switcher_empty_row(label));
+                                            }
                                         } else {
                                             for (row_index, repository) in
                                                 repositories.iter().enumerate()

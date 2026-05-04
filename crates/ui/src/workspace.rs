@@ -241,6 +241,7 @@ pub struct AppView {
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
     owned_file_paths: HashSet<String>,
+    is_loading_repositories: bool,
     is_loading_prs: bool,
     is_loading_details: bool,
     is_loading_files: bool,
@@ -337,7 +338,8 @@ impl AppView {
         let status = configured_repo
             .as_ref()
             .map(|repo| format!("Loading open pull requests from {}", repo.full_name()))
-            .unwrap_or_else(|| "Loading repositories from GitHub CLI".to_string());
+            .unwrap_or_else(|| "Fetching repositories from GitHub...".to_string());
+        let show_repository_switcher = configured_repo.is_none();
 
         let mut view = Self {
             focus_handle: cx.focus_handle(),
@@ -373,7 +375,7 @@ impl AppView {
             active_hunk: 0,
             active_tab: PanelTab::Diff,
             command_palette_open: false,
-            repository_switcher_open: false,
+            repository_switcher_open: show_repository_switcher,
             pull_request_switcher_open: false,
             file_filter_popover_open: false,
             repository_switcher_selection: 0,
@@ -389,6 +391,7 @@ impl AppView {
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
+            is_loading_repositories: true,
             is_loading_prs: false,
             is_loading_details: false,
             is_loading_files: false,
@@ -1122,14 +1125,17 @@ impl AppView {
 
     pub(crate) fn accept_repository_switcher_selection(&mut self, cx: &mut Context<Self>) {
         let repositories = self.filtered_switcher_repositories(cx);
-        let Some(repository) = repositories
-            .get(
-                self.repository_switcher_selection
-                    .min(repositories.len().saturating_sub(1)),
-            )
-            .cloned()
-        else {
-            self.status = "No repositories match search".to_string();
+        let query = self.repository_search_input.read(cx).value();
+        let Some(repository) = repository_switcher_accepted_repository(
+            &repositories,
+            self.repository_switcher_selection,
+            &query,
+        ) else {
+            self.status = if self.is_loading_repositories {
+                "Fetching repositories from GitHub...".to_string()
+            } else {
+                "Type owner/repo to open a repository".to_string()
+            };
             cx.notify();
             return;
         };
@@ -1555,6 +1561,17 @@ impl AppView {
 
 pub(crate) fn normalized_search_query(query: &str) -> String {
     query.trim().to_lowercase()
+}
+
+pub(crate) fn repository_switcher_accepted_repository(
+    repositories: &[RepoId],
+    selected_index: usize,
+    query: &str,
+) -> Option<RepoId> {
+    repositories
+        .get(selected_index.min(repositories.len().saturating_sub(1)))
+        .cloned()
+        .or_else(|| parse_repo_id(query))
 }
 
 pub(crate) fn changed_file_tree_rows(
@@ -2045,9 +2062,15 @@ pub(crate) fn configured_repo_from_env() -> Option<RepoId> {
 }
 
 pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
+    let value = value.trim();
     let (owner, name) = value.split_once('/')?;
 
-    if owner.is_empty() || name.is_empty() || name.contains('/') {
+    if owner.is_empty()
+        || name.is_empty()
+        || name.contains('/')
+        || owner.chars().any(char::is_whitespace)
+        || name.chars().any(char::is_whitespace)
+    {
         None
     } else {
         Some(RepoId::new(owner, name))

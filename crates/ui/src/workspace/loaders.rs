@@ -12,6 +12,7 @@ use crate::workspace::{AppView, PullRequestInboxMode};
 impl AppView {
     pub(super) fn load_recent_repositories(&mut self, cx: &mut Context<Self>) {
         let configured_repo = self.configured_repo.clone();
+        self.is_loading_repositories = true;
         let task = cx.background_spawn(async move { load_repository_store(configured_repo).await });
 
         self.repository_task = Some(cx.spawn(async move |this, cx| {
@@ -21,48 +22,33 @@ impl AppView {
                 match result {
                     Ok(load) => {
                         let repository_count = load.repositories.len();
-                        let repository_error = load.repository_error.clone();
-                        let default_repository =
-                            load.repositories.first().map(|repository| repository.id.clone());
+                        let store = load.store.clone();
                         view.repository_store = Some(load.store);
-                        view.repository_error = load.repository_error;
+                        view.repository_error = None;
 
-                        for repository in load.repositories.into_iter().rev() {
-                            view.remember_repository(repository.id.clone());
-                            if let Some(local_path) = repository.local_path {
-                                view.set_repository_local_path(repository.id, local_path);
-                            }
+                        view.apply_recent_repositories(load.repositories);
+                        if let Some(repository) = view.configured_repo.clone() {
+                            view.record_recent_repository(repository, cx);
                         }
 
                         if view.configured_repo.is_none()
                             && !view.is_loading_prs
                             && view.pull_requests.is_empty()
                         {
-                            if let Some(repository) = default_repository {
-                                view.load_pull_requests(repository, cx);
+                            view.status = if repository_count == 0 {
+                                "Fetching repositories from GitHub...".to_string()
                             } else {
-                                view.status = match (repository_count, repository_error) {
-                                    (0, Some(error)) => error,
-                                    (0, None) => {
-                                        "No repositories found. Choose a repository from the header"
-                                            .to_string()
-                                    }
-                                    (count, Some(_)) => {
-                                        format!(
-                                            "Loaded {count} cached repositories; GitHub refresh failed"
-                                        )
-                                    }
-                                    (count, None) => {
-                                        format!(
-                                            "Loaded {count} repositories. Choose one from the header"
-                                        )
-                                    }
-                                };
-                            }
+                                format!(
+                                    "Loaded {repository_count} cached repositories. Choose one from the header or type owner/repo"
+                                )
+                            };
                         }
+
+                        view.refresh_repositories_from_github(store, cx);
                     }
                     Err(error) => {
                         view.repository_store = None;
+                        view.is_loading_repositories = false;
                         view.repository_error = Some(error.to_string());
                         view.status = "Failed to initialize repository storage".to_string();
                     }
@@ -73,6 +59,73 @@ impl AppView {
                 eprintln!("failed to update repository store state: {error}");
             }
         }));
+    }
+
+    fn refresh_repositories_from_github(&mut self, store: SqliteStore, cx: &mut Context<Self>) {
+        self.is_loading_repositories = true;
+        let task = cx.background_spawn(async move { refresh_repository_store(store).await });
+
+        self.repository_task = Some(cx.spawn(async move |this, cx| {
+            let result = task.await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.is_loading_repositories = false;
+
+                match result {
+                    Ok(load) => {
+                        let repository_count = load.repositories.len();
+                        let repository_error = load.repository_error.clone();
+                        view.repository_error = load.repository_error;
+                        view.apply_recent_repositories(load.repositories);
+
+                        if view.configured_repo.is_none()
+                            && !view.is_loading_prs
+                            && view.pull_requests.is_empty()
+                        {
+                            view.status = match (repository_count, repository_error) {
+                                (0, Some(error)) => error,
+                                (0, None) => {
+                                    "No repositories found. Type owner/repo to open a repository"
+                                        .to_string()
+                                }
+                                (count, Some(_)) => {
+                                    format!(
+                                        "Loaded {count} cached repositories; GitHub refresh failed. Choose one from the header or type owner/repo"
+                                    )
+                                }
+                                (count, None) => {
+                                    format!(
+                                        "Loaded {count} repositories. Choose one from the header or type owner/repo"
+                                    )
+                                }
+                            };
+                        }
+                    }
+                    Err(error) => {
+                        view.repository_error = Some(error.to_string());
+                        if view.configured_repo.is_none()
+                            && !view.is_loading_prs
+                            && view.pull_requests.is_empty()
+                        {
+                            view.status = error.to_string();
+                        }
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update repository refresh state: {error}");
+            }
+        }));
+    }
+
+    fn apply_recent_repositories(&mut self, repositories: Vec<RecentRepository>) {
+        for repository in repositories.into_iter().rev() {
+            self.remember_repository(repository.id.clone());
+            if let Some(local_path) = repository.local_path {
+                self.set_repository_local_path(repository.id, local_path);
+            }
+        }
     }
 
     pub(crate) fn record_recent_repository(&mut self, repository: RepoId, cx: &mut Context<Self>) {
@@ -865,6 +918,10 @@ impl AppView {
 struct RepositoryLoad {
     store: SqliteStore,
     repositories: Vec<RecentRepository>,
+}
+
+struct RepositoryRefresh {
+    repositories: Vec<RecentRepository>,
     repository_error: Option<String>,
 }
 
@@ -932,6 +989,17 @@ async fn load_repository_store(
         store.record_repository(repository).await?;
     }
 
+    let repositories = store.recent_repositories().await?;
+
+    Ok(RepositoryLoad {
+        store,
+        repositories,
+    })
+}
+
+async fn refresh_repository_store(
+    store: SqliteStore,
+) -> std::result::Result<RepositoryRefresh, StorageError> {
     let repository_error = match GitHubClient::new(GhCliTransport).list_repositories().await {
         Ok(repositories) => {
             store.sync_repositories(&repositories).await?;
@@ -944,8 +1012,7 @@ async fn load_repository_store(
 
     let repositories = store.recent_repositories().await?;
 
-    Ok(RepositoryLoad {
-        store,
+    Ok(RepositoryRefresh {
         repositories,
         repository_error,
     })
