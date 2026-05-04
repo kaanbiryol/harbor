@@ -1,6 +1,6 @@
 use gpui::{
     Anchor, AnyElement, Context, Entity, IntoElement, ListHorizontalSizingBehavior, MouseButton,
-    UniformListScrollHandle, div, img, prelude::*, px, rgb, uniform_list,
+    StyledText, UniformListScrollHandle, div, img, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
@@ -550,6 +550,11 @@ pub(crate) fn render_diff_line(
         rgb(0x18212b)
     };
     let line_id = format!("diff-line-{row_index}");
+    let code_text_color = if line.syntax_highlights.is_empty() {
+        text_color
+    } else {
+        rgb(0xd5dde7)
+    };
 
     div()
         .id(line_id)
@@ -574,7 +579,9 @@ pub(crate) fn render_diff_line(
                 .text_color(text_color)
                 .child(prefix),
         )
-        .child(div().flex_none().child(line.text.clone()))
+        .child(div().flex_none().text_color(code_text_color).child(
+            StyledText::new(line.text.clone()).with_highlights(line.syntax_highlights.clone()),
+        ))
         .when_some(review_line_target, move |element, target| {
             let view_entity = view_entity.clone();
             let move_view_entity = view_entity.clone();

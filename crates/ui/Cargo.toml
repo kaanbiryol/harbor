@@ -8,7 +8,7 @@ rust-version.workspace = true
 [dependencies]
 chrono.workspace = true
 gpui.workspace = true
-gpui-component.workspace = true
+gpui-component = { workspace = true, features = ["tree-sitter-languages"] }
 harbor-domain = { path = "../domain" }
 harbor-git = { path = "../git" }
 harbor-github = { path = "../github" }

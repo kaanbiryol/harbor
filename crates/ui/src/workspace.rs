@@ -12,7 +12,10 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
     UniformListScrollHandle, Window,
 };
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::{
+    ActiveTheme,
+    input::{InputEvent, InputState},
+};
 use harbor_domain::{
     CheckRun, DiffFile, FileStatus, PullRequest, PullRequestReview, PullRequestReviewState,
     ReactionContent, RepoId, ReviewComment, ReviewCommentPosition, ReviewCommentRange,
@@ -23,7 +26,7 @@ use harbor_logs::LogChunk;
 use harbor_storage::SqliteStore;
 
 use crate::actions::{DEFAULT_REQUEST_CHANGES_BODY, PanelTab};
-use crate::diff::{ParsedDiff, parse_files};
+use crate::diff::{ParsedDiff, parse_files_with_syntax};
 use crate::panels::workflow_run_failed;
 
 const LOCAL_REVIEW_THREAD_ID_PREFIX: &str = "local-review-thread-";
@@ -447,7 +450,7 @@ impl AppView {
                 Self::on_review_input_event,
             ),
         ];
-        let diffs = parse_files(&files);
+        let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
         let repositories = initial_repositories(configured_repo.as_ref(), &pull_requests);
         let status = configured_repo
             .as_ref()

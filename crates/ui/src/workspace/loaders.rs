@@ -1,11 +1,12 @@
 use gpui::{AppContext, Context, ScrollStrategy};
+use gpui_component::ActiveTheme;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId, ReviewThreadState};
 use harbor_github::{GhCliTransport, GitHubClient, PullRequestListFilter};
 use harbor_logs::parse_workflow_log;
 use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
 
 use crate::actions::PanelTab;
-use crate::diff::parse_files;
+use crate::diff::{parse_files, parse_unified_diff_with_syntax};
 use crate::panels::{checks_summary_from_runs, workflow_run_label};
 use crate::workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode};
 
@@ -459,6 +460,7 @@ impl AppView {
             let owner = owner.clone();
             let name = name.clone();
             let repo = repo.clone();
+            let highlight_theme = cx.theme().highlight_theme.clone();
 
             async move |this, cx| {
                 let result = GitHubClient::new(GhCliTransport)
@@ -468,9 +470,11 @@ impl AppView {
                         let diffs = parse_files(&files);
                         (files, diffs)
                     });
+                let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
+                let update_repo = repo.clone();
 
                 if let Err(error) = this.update(cx, move |view, cx| {
-                    if !selected_pull_request_matches(view, &repo, number) {
+                    if !selected_pull_request_matches(view, &update_repo, number) {
                         return;
                     }
 
@@ -517,6 +521,43 @@ impl AppView {
                     cx.notify();
                 }) {
                     eprintln!("failed to update pull request file state: {error}");
+                }
+
+                let Some(files_for_syntax) = files_for_syntax else {
+                    return;
+                };
+
+                for (file_index, file) in files_for_syntax.into_iter().enumerate() {
+                    let file_path = file.path.clone();
+                    let Some(patch) = file.patch.clone() else {
+                        continue;
+                    };
+                    let highlight_theme = highlight_theme.clone();
+                    let highlighted_diff = cx
+                        .background_spawn(async move {
+                            parse_unified_diff_with_syntax(&file, &patch, &highlight_theme)
+                        })
+                        .await;
+
+                    let update_repo = repo.clone();
+                    if let Err(error) = this.update(cx, move |view, cx| {
+                        if !selected_pull_request_matches(view, &update_repo, number) {
+                            return;
+                        }
+                        if view.files.get(file_index).map(|file| file.path.as_str())
+                            != Some(file_path.as_str())
+                        {
+                            return;
+                        }
+
+                        if let Some(diff) = view.diffs.get_mut(file_index) {
+                            *diff = Some(highlighted_diff);
+                        }
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    }) {
+                        eprintln!("failed to update pull request syntax highlight state: {error}");
+                    }
                 }
             }
         }));
