@@ -7,7 +7,19 @@ use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError}
 use crate::actions::PanelTab;
 use crate::diff::parse_files;
 use crate::panels::{checks_summary_from_runs, workflow_run_label};
-use crate::workspace::{AppView, PullRequestInboxMode};
+use crate::workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestFetchPolicy {
+    PreferCache,
+    Refresh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestDetailFetchPolicy {
+    PreferCache,
+    Refresh,
+}
 
 impl AppView {
     pub(super) fn load_recent_repositories(&mut self, cx: &mut Context<Self>) {
@@ -159,12 +171,35 @@ impl AppView {
     }
 
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
-        self.load_repository_pull_requests(repo, self.pull_request_inbox_mode, cx);
+        self.load_repository_pull_requests(
+            repo,
+            self.pull_request_inbox_mode,
+            PullRequestFetchPolicy::PreferCache,
+            cx,
+        );
+    }
+
+    pub(super) fn load_repository_pull_requests_from_cache(
+        &mut self,
+        repo: RepoId,
+        mode: PullRequestInboxMode,
+        cx: &mut Context<Self>,
+    ) {
+        self.load_repository_pull_requests(repo, mode, PullRequestFetchPolicy::PreferCache, cx);
+    }
+
+    pub(super) fn refresh_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
+        self.load_repository_pull_requests(
+            repo,
+            self.pull_request_inbox_mode,
+            PullRequestFetchPolicy::Refresh,
+            cx,
+        );
     }
 
     pub(super) fn reload_pull_request_inbox(&mut self, cx: &mut Context<Self>) {
         if let Some(repo) = self.configured_repo.clone() {
-            self.load_pull_requests(repo, cx);
+            self.refresh_pull_requests(repo, cx);
         } else {
             self.status =
                 "Select a repository from the header before loading pull requests".to_string();
@@ -176,8 +211,20 @@ impl AppView {
         &mut self,
         repo: RepoId,
         mode: PullRequestInboxMode,
+        fetch_policy: PullRequestFetchPolicy,
         cx: &mut Context<Self>,
     ) {
+        let key = PullRequestInboxCacheKey::new(repo.clone(), mode);
+
+        self.cache_current_pull_request_inbox_snapshot();
+
+        if fetch_policy == PullRequestFetchPolicy::PreferCache
+            && self.restore_pull_request_inbox_snapshot(key.clone(), cx)
+        {
+            self.record_recent_repository(repo, cx);
+            return;
+        }
+
         self.configured_repo = Some(repo.clone());
         self.pull_request_inbox_mode = mode;
         self.record_recent_repository(repo.clone(), cx);
@@ -214,6 +261,10 @@ impl AppView {
                 .await;
 
             _ = this.update(cx, |view, cx| {
+                if view.current_pull_request_inbox_key().as_ref() != Some(&key) {
+                    return;
+                }
+
                 view.is_loading_prs = false;
 
                 match result {
@@ -248,7 +299,7 @@ impl AppView {
                         view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.load_error = None;
                         view.status = status;
-                        view.load_selected_pull_request(cx);
+                        view.refresh_selected_pull_request(cx);
                     }
                     Err(error) => {
                         let status = pull_request_inbox_failed_status(&repo, mode);
@@ -296,12 +347,30 @@ impl AppView {
     }
 
     pub(super) fn load_selected_pull_request(&mut self, cx: &mut Context<Self>) {
+        self.load_selected_pull_request_with_policy(PullRequestDetailFetchPolicy::PreferCache, cx);
+    }
+
+    pub(super) fn refresh_selected_pull_request(&mut self, cx: &mut Context<Self>) {
+        self.load_selected_pull_request_with_policy(PullRequestDetailFetchPolicy::Refresh, cx);
+    }
+
+    fn load_selected_pull_request_with_policy(
+        &mut self,
+        fetch_policy: PullRequestDetailFetchPolicy,
+        cx: &mut Context<Self>,
+    ) {
         let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };
         let repo = pull_request.repo;
         let number = pull_request.number;
         let head_sha = pull_request.head_sha;
+
+        if fetch_policy == PullRequestDetailFetchPolicy::PreferCache
+            && self.restore_selected_pull_request_detail_snapshot(cx)
+        {
+            return;
+        }
 
         self.is_loading_details = true;
         self.is_loading_files = true;
@@ -378,6 +447,7 @@ impl AppView {
                         }
                     }
 
+                    view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
                     eprintln!("failed to update pull request detail state: {error}");
@@ -443,6 +513,7 @@ impl AppView {
                         }
                     }
 
+                    view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
                     eprintln!("failed to update pull request file state: {error}");
@@ -491,6 +562,7 @@ impl AppView {
                         }
                     }
 
+                    view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
                     eprintln!("failed to update pull request checks state: {error}");
@@ -540,6 +612,7 @@ impl AppView {
                         }
                     }
 
+                    view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
                     eprintln!("failed to update pull request workflow state: {error}");
@@ -686,6 +759,7 @@ impl AppView {
                         (Some(_), None) => format!("Failed to load review data for PR #{number}"),
                     };
 
+                    view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
                     eprintln!("failed to update pull request review state: {error}");
@@ -823,6 +897,7 @@ impl AppView {
                     }
                 }
 
+                view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             }) {
                 eprintln!("failed to update refreshed review state: {error}");
@@ -909,6 +984,7 @@ impl AppView {
                 }
 
                 view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             });
         }));

@@ -643,7 +643,7 @@ impl AppView {
                 match result {
                     Ok(()) => {
                         view.action_error = None;
-                        view.load_selected_pull_request(cx);
+                        view.refresh_selected_pull_request(cx);
                         view.status = request.success_status();
                     }
                     Err(error) => {
@@ -816,9 +816,9 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         if self.selected_pull_request_number().is_some() {
-            self.load_selected_pull_request(cx);
+            self.refresh_selected_pull_request(cx);
         } else if let Some(repo) = self.configured_repo.clone() {
-            self.load_pull_requests(repo, cx);
+            self.refresh_pull_requests(repo, cx);
         } else {
             self.status =
                 "Select a repository from the header before refreshing pull requests".to_string();

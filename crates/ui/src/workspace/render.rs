@@ -23,6 +23,9 @@ use crate::workspace::{
     normalized_search_query, parse_repo_id,
 };
 
+const REPOSITORY_SWITCHER_ROW_HEIGHT: f32 = 34.;
+const REPOSITORY_SWITCHER_MAX_VISIBLE_ROWS: usize = 10;
+
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -161,6 +164,7 @@ fn render_switcher_repository_row(
 ) -> Stateful<Div> {
     div()
         .id(format!("switcher-repository-{}", repository.full_name()))
+        .h(px(REPOSITORY_SWITCHER_ROW_HEIGHT))
         .flex()
         .items_center()
         .justify_between()
@@ -185,6 +189,11 @@ fn render_switcher_repository_row(
         } else {
             "repo"
         }))
+}
+
+fn repository_switcher_list_height(repository_count: usize) -> f32 {
+    REPOSITORY_SWITCHER_ROW_HEIGHT
+        * repository_count.min(REPOSITORY_SWITCHER_MAX_VISIBLE_ROWS) as f32
 }
 
 fn render_switcher_typed_repository_row(repository: &RepoId, highlighted: bool) -> Stateful<Div> {
@@ -623,38 +632,65 @@ impl AppView {
                                                 menu = menu.child(render_switcher_empty_row(label));
                                             }
                                         } else {
-                                            for (row_index, repository) in
-                                                repositories.iter().enumerate()
-                                            {
-                                                let repository = repository.clone();
-                                                let current =
-                                                    current_repository.as_ref() == Some(&repository);
-                                                let highlighted =
-                                                    row_index == repository_selection;
-                                                let view = view.clone();
-                                                let popover = popover.clone();
+                                            let repository_count = repositories.len();
+                                            let list_height =
+                                                repository_switcher_list_height(repository_count);
+                                            let repositories = repositories.clone();
+                                            let current_repository = current_repository.clone();
+                                            let view = view.clone();
+                                            let popover = popover.clone();
 
-                                                menu = menu.child(
-                                                    render_switcher_repository_row(
-                                                        &repository,
-                                                        current,
-                                                        highlighted,
-                                                    )
-                                                    .on_click(move |_, window, cx| {
-                                                        view.update(cx, |view, cx| {
-                                                            view.select_repository_from_switcher(
-                                                                repository.clone(),
-                                                                cx,
+                                            menu = menu.child(
+                                                uniform_list(
+                                                    "repository-switcher-list",
+                                                    repository_count,
+                                                    move |range, _window, _cx| {
+                                                        let mut rows =
+                                                            Vec::with_capacity(range.len());
+
+                                                        for row_index in range {
+                                                            let Some(repository) =
+                                                                repositories.get(row_index).cloned()
+                                                            else {
+                                                                continue;
+                                                            };
+                                                            let current =
+                                                                current_repository.as_ref()
+                                                                    == Some(&repository);
+                                                            let highlighted =
+                                                                row_index == repository_selection;
+                                                            let view = view.clone();
+                                                            let popover = popover.clone();
+
+                                                            rows.push(
+                                                                render_switcher_repository_row(
+                                                                    &repository,
+                                                                    current,
+                                                                    highlighted,
+                                                                )
+                                                                .on_click(move |_, window, cx| {
+                                                                    view.update(cx, |view, cx| {
+                                                                        view.select_repository_from_switcher(
+                                                                            repository.clone(),
+                                                                            cx,
+                                                                        );
+                                                                        view.repository_switcher_open = false;
+                                                                        cx.notify();
+                                                                    });
+                                                                    popover.update(cx, |popover, cx| {
+                                                                        popover.dismiss(window, cx);
+                                                                    });
+                                                                }),
                                                             );
-                                                            view.repository_switcher_open = false;
-                                                            cx.notify();
-                                                        });
-                                                        popover.update(cx, |popover, cx| {
-                                                            popover.dismiss(window, cx);
-                                                        });
-                                                    }),
-                                                );
-                                            }
+                                                        }
+
+                                                        rows
+                                                    },
+                                                )
+                                                .h(px(list_height))
+                                                .w_full()
+                                                .min_h_0(),
+                                            );
                                         }
 
                                         menu

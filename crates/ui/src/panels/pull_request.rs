@@ -10,6 +10,8 @@ use harbor_domain::{
 
 use crate::workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label};
 
+const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 44.;
+
 pub(crate) fn render_checks_summary(summary: ChecksSummary) -> impl IntoElement {
     let color = if summary.failed > 0 {
         rgb(0xf87171)
@@ -203,7 +205,7 @@ pub(crate) fn render_changed_folder_row(
 
     div()
         .id(format!("folder-row-{}", folder.path))
-        .h(px(36.))
+        .h(px(CHANGED_FILE_TREE_ROW_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()
@@ -271,7 +273,7 @@ pub(crate) fn render_changed_file_row(
 
     div()
         .id(("file-row", index))
-        .h(px(44.))
+        .h(px(CHANGED_FILE_TREE_ROW_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()
