@@ -11,4 +11,5 @@ gpui-component-assets.workspace = true
 gpui-component.workspace = true
 gpui_platform.workspace = true
 harbor-ui = { path = "../ui" }
+reqwest_client.workspace = true
 tracing.workspace = true

@@ -1,25 +1,29 @@
 use gpui::{
-    AnyElement, Context, Entity, IntoElement, ListHorizontalSizingBehavior, MouseButton,
-    UniformListScrollHandle, div, prelude::*, px, rgb, uniform_list,
+    Anchor, AnyElement, Context, Entity, IntoElement, ListHorizontalSizingBehavior, MouseButton,
+    UniformListScrollHandle, div, img, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
-    Disableable, Sizable, StyledExt,
+    Disableable, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
+    popover::Popover,
 };
-use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState};
+use harbor_domain::{
+    DiffFile, ReactionContent, ReviewComment, ReviewCommentRange, ReviewSide, ReviewThread,
+    ReviewThreadState,
+};
 
 use crate::diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff};
 use crate::diff_reviews::{
-    REVIEW_THREAD_INLINE_ROWS, anchored_review_threads, diff_row_count_with_reviews,
-    review_threads_for_line,
+    anchored_review_threads, review_thread_inline_rows, review_threads_for_line,
 };
 use crate::workspace::{
-    AppView, PendingReviewSession, ReviewCommentSubmission, ReviewComposer, ReviewLineSelection,
-    ReviewLineTarget, ReviewThreadUiError,
+    AppView, PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
+    ReviewLineSelection, ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
+    review_comment_pending_sync, review_reaction,
 };
 
-use super::review::{review_thread_state_label, single_line};
+use super::review::review_thread_state_label;
 
 const MIN_LINE_NUMBER_WIDTH: f32 = 28.0;
 const LINE_NUMBER_PADDING: f32 = 8.0;
@@ -28,6 +32,8 @@ const DIFF_ROW_HEIGHT: f32 = 24.0;
 const REVIEW_COMPOSER_ROWS: usize = 8;
 const REVIEW_COMPOSER_ROWS_WITH_ERROR: usize = 9;
 const REVIEW_COMPOSER_MAX_WIDTH: f32 = 820.0;
+const REVIEW_THREAD_REPLY_ROWS: usize = 5;
+const REVIEW_COMMENT_EDIT_ROWS: usize = 4;
 const REVIEW_MARKER_WIDTH: f32 = 24.0;
 const PREFIX_WIDTH: f32 = 16.0;
 
@@ -37,6 +43,8 @@ pub(crate) fn render_diff_panel(
     review_threads: &[ReviewThread],
     review_composer: Option<&ReviewComposer>,
     review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
     is_loading: bool,
     error: Option<&str>,
     scroll_handle: UniformListScrollHandle,
@@ -142,10 +150,13 @@ pub(crate) fn render_diff_panel(
         review_threads,
         review_composer,
         review_comment_error,
+        active_review_thread_reply,
+        active_review_comment_edit,
     );
     let view_entity = cx.entity().clone();
 
     div()
+        .image_cache(gpui::retain_all("diff-review-avatar-cache"))
         .id("diff-panel")
         .flex()
         .flex_col()
@@ -204,6 +215,19 @@ pub(crate) fn render_diff_panel(
                                 view.review_thread_reply_error.as_ref(),
                                 view.review_thread_action_thread_id.as_deref(),
                                 view.review_thread_action_error.as_ref(),
+                                view.review_comment_edit_comment_id.as_deref(),
+                                view.review_comment_edit_input.clone(),
+                                view.review_comment_edit_input
+                                    .read(_cx)
+                                    .value()
+                                    .trim()
+                                    .is_empty(),
+                                view.is_submitting_review_comment_edit,
+                                view.review_comment_edit_error.as_ref(),
+                                view.review_comment_action_comment_id.as_deref(),
+                                view.review_comment_action_error.as_ref(),
+                                view.review_reaction_action.as_ref(),
+                                view.review_reaction_error.as_ref(),
                                 view.active_hunk,
                                 line_number_width,
                                 view_entity.clone(),
@@ -263,6 +287,15 @@ fn render_diff_rows(
     review_thread_reply_error: Option<&ReviewThreadUiError>,
     review_thread_action_thread_id: Option<&str>,
     review_thread_action_error: Option<&ReviewThreadUiError>,
+    active_review_comment_edit: Option<&str>,
+    review_comment_edit_input: Entity<InputState>,
+    review_comment_edit_body_empty: bool,
+    is_submitting_review_comment_edit: bool,
+    review_comment_edit_error: Option<&ReviewCommentUiError>,
+    review_comment_action_comment_id: Option<&str>,
+    review_comment_action_error: Option<&ReviewCommentUiError>,
+    review_reaction_action: Option<&ReviewReactionAction>,
+    review_reaction_error: Option<&ReviewCommentUiError>,
     active_hunk: usize,
     line_number_width: f32,
     view_entity: Entity<AppView>,
@@ -373,9 +406,15 @@ fn render_diff_rows(
             }
 
             for thread in matching_threads {
-                for thread_row in 0..REVIEW_THREAD_INLINE_ROWS {
+                let thread_row_count = review_thread_inline_rows_with_controls(
+                    thread,
+                    active_review_thread_reply,
+                    active_review_comment_edit,
+                );
+
+                for thread_row in 0..thread_row_count {
                     if row_index >= range.end {
-                        row_index += REVIEW_THREAD_INLINE_ROWS - thread_row;
+                        row_index += thread_row_count - thread_row;
                         break;
                     }
 
@@ -392,6 +431,15 @@ fn render_diff_rows(
                                     review_thread_reply_error,
                                     review_thread_action_thread_id,
                                     review_thread_action_error,
+                                    active_review_comment_edit,
+                                    review_comment_edit_input.clone(),
+                                    review_comment_edit_body_empty,
+                                    is_submitting_review_comment_edit,
+                                    review_comment_edit_error,
+                                    review_comment_action_comment_id,
+                                    review_comment_action_error,
+                                    review_reaction_action,
+                                    review_reaction_error,
                                     view_entity.clone(),
                                 )
                                 .into_any_element(),
@@ -743,17 +791,19 @@ fn render_review_thread_inline(
     reply_error: Option<&ReviewThreadUiError>,
     action_thread_id: Option<&str>,
     action_error: Option<&ReviewThreadUiError>,
+    active_review_comment_edit: Option<&str>,
+    review_comment_edit_input: Entity<InputState>,
+    edit_body_empty: bool,
+    is_submitting_edit: bool,
+    edit_error: Option<&ReviewCommentUiError>,
+    action_comment_id: Option<&str>,
+    comment_action_error: Option<&ReviewCommentUiError>,
+    reaction_action: Option<&ReviewReactionAction>,
+    reaction_error: Option<&ReviewCommentUiError>,
     view_entity: Entity<AppView>,
 ) -> impl IntoElement {
     let (label, color) = review_thread_state_label(thread.state);
-    let latest_comment = thread.comments.last();
-    let preview = latest_comment
-        .map(|comment| single_line(&comment.body))
-        .unwrap_or_else(|| "No comments in this thread".to_string());
-    let author = latest_comment
-        .map(|comment| comment.author.as_str())
-        .unwrap_or("review");
-    let height = REVIEW_THREAD_INLINE_ROWS as f32 * DIFF_ROW_HEIGHT;
+    let height = review_thread_inline_rows(thread) as f32 * DIFF_ROW_HEIGHT;
     let active_reply = active_review_thread_reply == Some(thread.id.as_str());
     let thread_action_running = action_thread_id == Some(thread.id.as_str());
     let thread_reply_submitting = active_reply && is_submitting_reply;
@@ -800,10 +850,15 @@ fn render_review_thread_inline(
                         .border_1()
                         .border_color(rgb(0x2c3745))
                         .bg(rgb(0x121923))
-                        .px_3()
-                        .py_2()
+                        .rounded_xs()
+                        .overflow_hidden()
                         .child(
                             div()
+                                .border_b_1()
+                                .border_color(rgb(0x263241))
+                                .bg(rgb(0x151e29))
+                                .px_2()
+                                .py_1()
                                 .flex()
                                 .items_center()
                                 .justify_between()
@@ -815,13 +870,7 @@ fn render_review_thread_inline(
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_medium()
-                                                .text_color(color)
-                                                .child(label),
-                                        )
+                                        .child(render_review_thread_status_pill(label, color))
                                         .child(div().text_xs().text_color(rgb(0x64748b)).child(
                                             review_comment_count_label(thread.comments.len()),
                                         )),
@@ -857,6 +906,11 @@ fn render_review_thread_inline(
                                         )
                                         .child(
                                             Button::new(format!("toggle-thread-{thread_id}"))
+                                                .icon(if is_resolved {
+                                                    IconName::Undo2
+                                                } else {
+                                                    IconName::CircleCheck
+                                                })
                                                 .label(toggle_label)
                                                 .xsmall()
                                                 .ghost()
@@ -880,102 +934,53 @@ fn render_review_thread_inline(
                                         ),
                                 ),
                         )
-                        .child(
-                            div()
-                                .pt_1()
-                                .text_xs()
-                                .text_color(rgb(0x9aa4b2))
-                                .truncate()
-                                .child(format!("{author}: {preview}")),
-                        )
+                        .child(div().px_2().pb_2().children(
+                            thread.comments.iter().enumerate().map(|(index, comment)| {
+                                render_review_comment_inline(
+                                    comment,
+                                    index > 0,
+                                    active_review_comment_edit,
+                                    review_comment_edit_input.clone(),
+                                    edit_body_empty,
+                                    is_submitting_edit,
+                                    edit_error,
+                                    action_comment_id,
+                                    comment_action_error,
+                                    reaction_action,
+                                    reaction_error,
+                                    view_entity.clone(),
+                                )
+                            }),
+                        ))
+                        .when(thread.comments.is_empty(), |element| {
+                            element.child(
+                                div()
+                                    .px_2()
+                                    .pb_2()
+                                    .text_xs()
+                                    .text_color(rgb(0x9aa4b2))
+                                    .child("No comments in this thread"),
+                            )
+                        })
                         .when(active_reply, {
                             let view_entity = view_entity.clone();
                             let thread_id = thread_id.clone();
                             move |element| {
-                                element
-                                    .child(
-                                        div()
-                                            .mt_1()
-                                            .w_full()
-                                            .border_1()
-                                            .border_color(rgb(0x354252))
-                                            .bg(rgb(0x0b1118))
-                                            .px_2()
-                                            .py_1()
-                                            .child(
-                                                Input::new(&review_thread_reply_input)
-                                                    .w_full()
-                                                    .small()
-                                                    .h(px(DIFF_ROW_HEIGHT * 2.0))
-                                                    .appearance(false)
-                                                    .bordered(false)
-                                                    .focus_bordered(false),
-                                            ),
-                                    )
-                                    .when_some(reply_error.clone(), |element, error| {
-                                        element.child(
-                                            div()
-                                                .pt_1()
-                                                .text_xs()
-                                                .text_color(rgb(0xf87171))
-                                                .child(error),
-                                        )
-                                    })
-                                    .child(
-                                        div()
-                                            .pt_1()
-                                            .flex()
-                                            .items_center()
-                                            .justify_end()
-                                            .gap_2()
-                                            .child(
-                                                Button::new(format!(
-                                                    "cancel-thread-reply-{thread_id}"
-                                                ))
-                                                .label("Cancel")
-                                                .xsmall()
-                                                .ghost()
-                                                .disabled(thread_reply_submitting)
-                                                .on_click({
-                                                    let view_entity = view_entity.clone();
-                                                    move |_, window, cx| {
-                                                        view_entity.update(cx, |view, cx| {
-                                                            view.cancel_review_thread_reply(
-                                                                window, cx,
-                                                            );
-                                                        });
-                                                    }
-                                                }),
-                                            )
-                                            .child(
-                                                Button::new(format!(
-                                                    "submit-thread-reply-{thread_id}"
-                                                ))
-                                                .label("Send reply")
-                                                .xsmall()
-                                                .primary()
-                                                .loading(thread_reply_submitting)
-                                                .disabled(reply_disabled)
-                                                .on_click({
-                                                    let view_entity = view_entity.clone();
-                                                    let thread_id = thread_id.clone();
-                                                    move |_, _, cx| {
-                                                        view_entity.update(cx, |view, cx| {
-                                                            view.submit_review_thread_reply(
-                                                                thread_id.clone(),
-                                                                cx,
-                                                            );
-                                                        });
-                                                    }
-                                                }),
-                                            ),
-                                    )
+                                element.child(render_review_thread_reply_composer(
+                                    thread_id.clone(),
+                                    review_thread_reply_input.clone(),
+                                    reply_disabled,
+                                    thread_reply_submitting,
+                                    reply_error.clone(),
+                                    view_entity.clone(),
+                                ))
                             }
                         })
                         .when_some(action_error, |element, error| {
                             element.child(
                                 div()
-                                    .pt_1()
+                                    .px_2()
+                                    .pb_2()
                                     .text_xs()
                                     .text_color(rgb(0xf87171))
                                     .child(error),
@@ -983,6 +988,724 @@ fn render_review_thread_inline(
                         }),
                 ),
         )
+}
+
+fn render_review_thread_status_pill(label: &str, color: gpui::Hsla) -> impl IntoElement {
+    div()
+        .rounded_xs()
+        .border_1()
+        .border_color(rgb(0x334155))
+        .bg(rgb(0x0f1720))
+        .px_1()
+        .py_0p5()
+        .text_xs()
+        .font_medium()
+        .text_color(color)
+        .child(label.to_string())
+}
+
+fn render_review_thread_reply_composer(
+    thread_id: String,
+    review_thread_reply_input: Entity<InputState>,
+    reply_disabled: bool,
+    thread_reply_submitting: bool,
+    reply_error: Option<String>,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    div()
+        .border_t_1()
+        .border_color(rgb(0x263241))
+        .bg(rgb(0x101720))
+        .px_2()
+        .py_2()
+        .child(
+            div()
+                .w_full()
+                .border_1()
+                .border_color(rgb(0x354252))
+                .bg(rgb(0x0b1118))
+                .px_2()
+                .py_1()
+                .child(
+                    Input::new(&review_thread_reply_input)
+                        .w_full()
+                        .small()
+                        .h(px(DIFF_ROW_HEIGHT * 2.0))
+                        .appearance(false)
+                        .bordered(false)
+                        .focus_bordered(false),
+                ),
+        )
+        .when_some(reply_error, |element, error| {
+            element.child(
+                div()
+                    .pt_1()
+                    .text_xs()
+                    .text_color(rgb(0xf87171))
+                    .child(error),
+            )
+        })
+        .child(
+            div()
+                .pt_1()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap_2()
+                .child(
+                    Button::new(format!("cancel-thread-reply-{thread_id}"))
+                        .label("Cancel")
+                        .xsmall()
+                        .ghost()
+                        .disabled(thread_reply_submitting)
+                        .on_click({
+                            let view_entity = view_entity.clone();
+                            move |_, window, cx| {
+                                view_entity.update(cx, |view, cx| {
+                                    view.cancel_review_thread_reply(window, cx);
+                                });
+                            }
+                        }),
+                )
+                .child(
+                    Button::new(format!("submit-thread-reply-{thread_id}"))
+                        .label("Send reply")
+                        .xsmall()
+                        .primary()
+                        .loading(thread_reply_submitting)
+                        .disabled(reply_disabled)
+                        .on_click({
+                            let view_entity = view_entity.clone();
+                            let thread_id = thread_id.clone();
+                            move |_, _, cx| {
+                                view_entity.update(cx, |view, cx| {
+                                    view.submit_review_thread_reply(thread_id.clone(), cx);
+                                });
+                            }
+                        }),
+                ),
+        )
+}
+
+fn render_review_comment_inline(
+    comment: &ReviewComment,
+    separated: bool,
+    active_review_comment_edit: Option<&str>,
+    review_comment_edit_input: Entity<InputState>,
+    edit_body_empty: bool,
+    is_submitting_edit: bool,
+    edit_error: Option<&ReviewCommentUiError>,
+    action_comment_id: Option<&str>,
+    comment_action_error: Option<&ReviewCommentUiError>,
+    reaction_action: Option<&ReviewReactionAction>,
+    reaction_error: Option<&ReviewCommentUiError>,
+    view_entity: Entity<AppView>,
+) -> AnyElement {
+    let comment_id = comment.id.clone();
+    let comment_body = comment.body.clone();
+    let active_edit = active_review_comment_edit == Some(comment.id.as_str());
+    let edit_submitting = active_edit && is_submitting_edit;
+    let action_running = action_comment_id == Some(comment.id.as_str());
+    let edit_error = edit_error
+        .filter(|error| error.comment_id == comment.id)
+        .map(|error| error.message.clone());
+    let action_error = comment_action_error
+        .filter(|error| error.comment_id == comment.id)
+        .map(|error| error.message.clone());
+    let reaction_error = reaction_error
+        .filter(|error| error.comment_id == comment.id)
+        .map(|error| error.message.clone());
+    let (can_update, can_delete) = review_comment_action_visibility(comment);
+
+    div()
+        .pt_2()
+        .when(separated, |element| {
+            element.mt_2().border_t_1().border_color(rgb(0x263241))
+        })
+        .flex()
+        .items_start()
+        .gap_2()
+        .child(render_review_comment_avatar(comment))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .text_xs()
+                                .child(
+                                    div()
+                                        .font_medium()
+                                        .text_color(rgb(0xe5edf7))
+                                        .child(comment.author.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(rgb(0x64748b))
+                                        .child(review_comment_time_label(comment)),
+                                )
+                                .when(review_comment_pending_sync(comment), |element| {
+                                    element.child(
+                                        div()
+                                            .rounded_xs()
+                                            .border_1()
+                                            .border_color(rgb(0x355071))
+                                            .bg(rgb(0x101b2a))
+                                            .px_1()
+                                            .text_color(rgb(0x93c5fd))
+                                            .child("syncing"),
+                                    )
+                                }),
+                        )
+                        .when(can_update || can_delete, {
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            let comment_body = comment_body.clone();
+                            move |element| {
+                                element.child(render_review_comment_actions_menu(
+                                    comment_id.clone(),
+                                    comment_body.clone(),
+                                    can_update,
+                                    can_delete,
+                                    active_edit,
+                                    edit_submitting,
+                                    action_running,
+                                    view_entity.clone(),
+                                ))
+                            }
+                        }),
+                )
+                .when(!active_edit, |element| {
+                    element.child(render_review_comment_body(&comment.body))
+                })
+                .when(active_edit, {
+                    let view_entity = view_entity.clone();
+                    let comment_id = comment_id.clone();
+                    move |element| {
+                        element.child(render_review_comment_edit_composer(
+                            comment_id.clone(),
+                            review_comment_edit_input.clone(),
+                            edit_body_empty,
+                            edit_submitting,
+                            edit_error.clone(),
+                            view_entity.clone(),
+                        ))
+                    }
+                })
+                .child(render_review_reactions(
+                    comment,
+                    reaction_action,
+                    view_entity.clone(),
+                ))
+                .when_some(action_error, |element, error| {
+                    element.child(
+                        div()
+                            .pt_1()
+                            .text_xs()
+                            .text_color(rgb(0xf87171))
+                            .child(error),
+                    )
+                })
+                .when_some(reaction_error, |element, error| {
+                    element.child(
+                        div()
+                            .pt_1()
+                            .text_xs()
+                            .text_color(rgb(0xf87171))
+                            .child(error),
+                    )
+                }),
+        )
+        .into_any_element()
+}
+
+fn render_review_comment_avatar(comment: &ReviewComment) -> impl IntoElement {
+    let initial = author_initial(&comment.author);
+    let avatar = div()
+        .mt(px(1.0))
+        .w(px(20.0))
+        .h(px(20.0))
+        .flex_none()
+        .rounded_xs()
+        .border_1()
+        .border_color(rgb(0x334155))
+        .bg(rgb(0x1d2734))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_xs()
+        .font_medium()
+        .text_color(rgb(0xcbd5e1));
+
+    if let Some(avatar_url) = review_comment_avatar_url(comment) {
+        let loading_initial = initial.clone();
+        let fallback_initial = initial.clone();
+        avatar
+            .overflow_hidden()
+            .child(
+                img(avatar_url)
+                    .w(px(20.0))
+                    .h(px(20.0))
+                    .with_loading(move || render_review_comment_avatar_initial(&loading_initial))
+                    .with_fallback(move || render_review_comment_avatar_initial(&fallback_initial)),
+            )
+            .into_any_element()
+    } else {
+        avatar.child(initial).into_any_element()
+    }
+}
+
+fn render_review_comment_avatar_initial(initial: &str) -> AnyElement {
+    div()
+        .w(px(20.0))
+        .h(px(20.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_xs()
+        .font_medium()
+        .text_color(rgb(0xcbd5e1))
+        .child(initial.to_string())
+        .into_any_element()
+}
+
+pub(crate) fn review_comment_avatar_url(comment: &ReviewComment) -> Option<String> {
+    comment
+        .author_avatar_url
+        .clone()
+        .or_else(|| github_avatar_url_for_login(&comment.author))
+}
+
+pub(crate) fn github_avatar_url_for_login(login: &str) -> Option<String> {
+    let login = login.trim();
+
+    if login.is_empty()
+        || login.eq_ignore_ascii_case("ghost")
+        || login.eq_ignore_ascii_case("you")
+        || login.chars().any(char::is_whitespace)
+    {
+        None
+    } else {
+        Some(format!("https://github.com/{login}.png?size=48"))
+    }
+}
+
+fn render_review_comment_actions_menu(
+    comment_id: String,
+    comment_body: String,
+    can_update: bool,
+    can_delete: bool,
+    active_edit: bool,
+    edit_submitting: bool,
+    action_running: bool,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    Popover::new(format!("comment-actions-{comment_id}"))
+        .appearance(false)
+        .anchor(Anchor::TopRight)
+        .trigger(
+            Button::new(format!("comment-actions-trigger-{comment_id}"))
+                .icon(IconName::Ellipsis)
+                .xsmall()
+                .compact()
+                .ghost()
+                .tooltip("Comment actions"),
+        )
+        .content(move |_, _window, _popover_cx| {
+            div()
+                .w(px(160.0))
+                .border_1()
+                .border_color(rgb(0x343b44))
+                .bg(rgb(0x171b20))
+                .p_1()
+                .shadow_lg()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .when(can_update, {
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            let comment_body = comment_body.clone();
+                            move |element| {
+                                element.child(
+                                    Button::new(format!("edit-comment-{comment_id}"))
+                                        .icon(IconName::ALargeSmall)
+                                        .label(if active_edit { "Editing" } else { "Edit" })
+                                        .small()
+                                        .ghost()
+                                        .disabled(edit_submitting || action_running)
+                                        .on_click({
+                                            let view_entity = view_entity.clone();
+                                            let comment_id = comment_id.clone();
+                                            let comment_body = comment_body.clone();
+                                            move |_, window, cx| {
+                                                view_entity.update(cx, |view, cx| {
+                                                    view.open_review_comment_edit(
+                                                        comment_id.clone(),
+                                                        comment_body.clone(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        }),
+                                )
+                            }
+                        })
+                        .when(can_delete, {
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            move |element| {
+                                element.child(
+                                    Button::new(format!("delete-comment-{comment_id}"))
+                                        .icon(IconName::Delete)
+                                        .label("Delete")
+                                        .small()
+                                        .ghost()
+                                        .loading(action_running)
+                                        .disabled(action_running || edit_submitting)
+                                        .on_click({
+                                            let view_entity = view_entity.clone();
+                                            let comment_id = comment_id.clone();
+                                            move |_, _, cx| {
+                                                view_entity.update(cx, |view, cx| {
+                                                    view.delete_review_comment(
+                                                        comment_id.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        }),
+                                )
+                            }
+                        }),
+                )
+        })
+}
+
+fn render_review_comment_edit_composer(
+    comment_id: String,
+    review_comment_edit_input: Entity<InputState>,
+    edit_body_empty: bool,
+    edit_submitting: bool,
+    edit_error: Option<String>,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    div()
+        .child(
+            div()
+                .mt_2()
+                .w_full()
+                .border_1()
+                .border_color(rgb(0x354252))
+                .bg(rgb(0x0b1118))
+                .px_2()
+                .py_1()
+                .child(
+                    Input::new(&review_comment_edit_input)
+                        .w_full()
+                        .small()
+                        .h(px(DIFF_ROW_HEIGHT * 2.0))
+                        .appearance(false)
+                        .bordered(false)
+                        .focus_bordered(false),
+                ),
+        )
+        .when_some(edit_error, |element, error| {
+            element.child(
+                div()
+                    .pt_1()
+                    .text_xs()
+                    .text_color(rgb(0xf87171))
+                    .child(error),
+            )
+        })
+        .child(
+            div()
+                .pt_1()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap_2()
+                .child(
+                    Button::new(format!("cancel-comment-edit-{comment_id}"))
+                        .label("Cancel")
+                        .xsmall()
+                        .ghost()
+                        .disabled(edit_submitting)
+                        .on_click({
+                            let view_entity = view_entity.clone();
+                            move |_, window, cx| {
+                                view_entity.update(cx, |view, cx| {
+                                    view.cancel_review_comment_edit(window, cx);
+                                });
+                            }
+                        }),
+                )
+                .child(
+                    Button::new(format!("save-comment-edit-{comment_id}"))
+                        .label("Save")
+                        .xsmall()
+                        .primary()
+                        .loading(edit_submitting)
+                        .disabled(edit_body_empty || edit_submitting)
+                        .on_click({
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            move |_, _, cx| {
+                                view_entity.update(cx, |view, cx| {
+                                    view.submit_review_comment_edit(comment_id.clone(), cx);
+                                });
+                            }
+                        }),
+                ),
+        )
+}
+
+fn author_initial(author: &str) -> String {
+    author
+        .chars()
+        .find(|character| character.is_alphanumeric())
+        .map(|character| character.to_uppercase().to_string())
+        .unwrap_or_else(|| "?".to_string())
+}
+
+fn render_review_comment_body(body: &str) -> impl IntoElement {
+    let lines: Vec<String> = body.lines().map(str::to_string).collect::<Vec<_>>();
+    let lines = if lines.is_empty() {
+        vec!["empty comment".to_string()]
+    } else {
+        lines
+    };
+
+    div()
+        .pt_2()
+        .text_xs()
+        .text_color(rgb(0xcbd5e1))
+        .children(lines.into_iter().map(|line| {
+            div().min_h(px(16.0)).child(if line.is_empty() {
+                " ".to_string()
+            } else {
+                line
+            })
+        }))
+}
+
+fn render_review_reactions(
+    comment: &ReviewComment,
+    reaction_action: Option<&ReviewReactionAction>,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    let visible_reactions = visible_review_reaction_contents(comment);
+    let has_visible_reactions = !visible_reactions.is_empty();
+    let can_add_reaction = comment.viewer_can_react;
+
+    div().when(has_visible_reactions || can_add_reaction, |element| {
+        element
+            .pt_2()
+            .flex()
+            .items_center()
+            .gap_1()
+            .children(visible_reactions.into_iter().map(|content| {
+                render_review_reaction_button(
+                    comment,
+                    content,
+                    reaction_action,
+                    view_entity.clone(),
+                )
+            }))
+            .when(can_add_reaction, |element| {
+                element.child(render_add_reaction_popover(comment, view_entity.clone()))
+            })
+    })
+}
+
+fn render_review_reaction_button(
+    comment: &ReviewComment,
+    content: ReactionContent,
+    reaction_action: Option<&ReviewReactionAction>,
+    view_entity: Entity<AppView>,
+) -> AnyElement {
+    let reaction = review_reaction(comment, content);
+    let count = reaction.map_or(0, |reaction| reaction.count);
+    let viewer_has_reacted = reaction.is_some_and(|reaction| reaction.viewer_has_reacted);
+    let running = reaction_action
+        .is_some_and(|action| action.comment_id == comment.id && action.content == content);
+    let comment_id = comment.id.clone();
+    let label = review_reaction_button_label(content, count);
+    let button = Button::new(format!("reaction-{comment_id}-{}", content.label()))
+        .label(label)
+        .xsmall()
+        .disabled(!comment.viewer_can_react || running)
+        .on_click({
+            let view_entity = view_entity.clone();
+            let comment_id = comment_id.clone();
+            move |_, _, cx| {
+                view_entity.update(cx, |view, cx| {
+                    view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
+                });
+            }
+        });
+
+    if viewer_has_reacted {
+        button.primary().into_any_element()
+    } else {
+        button.ghost().into_any_element()
+    }
+}
+
+fn render_add_reaction_popover(
+    comment: &ReviewComment,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    let comment_id = comment.id.clone();
+
+    Popover::new(format!("add-reaction-{comment_id}"))
+        .appearance(false)
+        .anchor(Anchor::TopRight)
+        .trigger(
+            Button::new(format!("add-reaction-trigger-{comment_id}"))
+                .icon(IconName::Plus)
+                .xsmall()
+                .compact()
+                .ghost()
+                .tooltip("Add reaction"),
+        )
+        .content({
+            let view_entity = view_entity.clone();
+            move |_, _window, _popover_cx| {
+                let (comment, reaction_action) = {
+                    let view = view_entity.read(_popover_cx);
+                    (
+                        view.review_comment(&comment_id).cloned(),
+                        view.review_reaction_action.clone(),
+                    )
+                };
+                let Some(comment) = comment else {
+                    return div()
+                        .w(px(256.0))
+                        .border_1()
+                        .border_color(rgb(0x343b44))
+                        .bg(rgb(0x171b20))
+                        .p_2()
+                        .text_xs()
+                        .text_color(rgb(0x9aa4b2))
+                        .child("Comment is no longer loaded")
+                        .into_any_element();
+                };
+
+                div()
+                    .w(px(256.0))
+                    .border_1()
+                    .border_color(rgb(0x343b44))
+                    .bg(rgb(0x171b20))
+                    .p_2()
+                    .shadow_lg()
+                    .child(div().grid().grid_cols(4).gap_1().children(
+                        ReactionContent::ALL.into_iter().map(|content| {
+                            render_review_reaction_picker_button(
+                                &comment,
+                                content,
+                                reaction_action.as_ref(),
+                                view_entity.clone(),
+                            )
+                        }),
+                    ))
+                    .into_any_element()
+            }
+        })
+}
+
+fn render_review_reaction_picker_button(
+    comment: &ReviewComment,
+    content: ReactionContent,
+    reaction_action: Option<&ReviewReactionAction>,
+    view_entity: Entity<AppView>,
+) -> AnyElement {
+    let reaction = review_reaction(comment, content);
+    let viewer_has_reacted = reaction.is_some_and(|reaction| reaction.viewer_has_reacted);
+    let running = reaction_action
+        .is_some_and(|action| action.comment_id == comment.id && action.content == content);
+    let comment_id = comment.id.clone();
+    let button = Button::new(format!("reaction-picker-{comment_id}-{}", content.label()))
+        .label(review_reaction_emoji(content))
+        .xsmall()
+        .disabled(!comment.viewer_can_react || running)
+        .on_click({
+            let view_entity = view_entity.clone();
+            let comment_id = comment_id.clone();
+            move |_, _, cx| {
+                view_entity.update(cx, |view, cx| {
+                    view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
+                });
+            }
+        });
+
+    if viewer_has_reacted {
+        button.primary().into_any_element()
+    } else {
+        button.ghost().into_any_element()
+    }
+}
+
+pub(crate) fn review_comment_action_visibility(comment: &ReviewComment) -> (bool, bool) {
+    (comment.viewer_can_update, comment.viewer_can_delete)
+}
+
+pub(crate) fn visible_review_reaction_contents(comment: &ReviewComment) -> Vec<ReactionContent> {
+    ReactionContent::ALL
+        .into_iter()
+        .filter(|content| {
+            review_reaction(comment, *content)
+                .is_some_and(|reaction| reaction.count > 0 || reaction.viewer_has_reacted)
+        })
+        .collect()
+}
+
+pub(crate) fn review_reaction_button_label(content: ReactionContent, count: usize) -> String {
+    if count == 0 {
+        review_reaction_emoji(content).to_string()
+    } else {
+        format!("{} {count}", review_reaction_emoji(content))
+    }
+}
+
+pub(crate) fn review_reaction_emoji(content: ReactionContent) -> &'static str {
+    match content {
+        ReactionContent::ThumbsUp => "👍",
+        ReactionContent::ThumbsDown => "👎",
+        ReactionContent::Laugh => "😄",
+        ReactionContent::Confused => "😕",
+        ReactionContent::Heart => "❤️",
+        ReactionContent::Hooray => "🎉",
+        ReactionContent::Rocket => "🚀",
+        ReactionContent::Eyes => "👀",
+    }
+}
+
+fn review_comment_time_label(comment: &ReviewComment) -> String {
+    let mut label = comment.created_at.format("%Y-%m-%d %H:%M").to_string();
+
+    if comment
+        .updated_at
+        .is_some_and(|updated_at| updated_at != comment.created_at)
+    {
+        label.push_str(" edited");
+    }
+
+    label
 }
 
 fn render_review_marker(
@@ -1032,8 +1755,30 @@ fn diff_row_count_with_review_controls(
     review_threads: &[ReviewThread],
     review_composer: Option<&ReviewComposer>,
     review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
 ) -> usize {
-    let mut row_count = diff_row_count_with_reviews(diff, file, review_threads);
+    let anchored_threads = anchored_review_threads(file, review_threads);
+    let mut row_count = diff
+        .hunks
+        .iter()
+        .map(|hunk| hunk.lines.len() + 1)
+        .sum::<usize>();
+
+    for hunk in &diff.hunks {
+        for line in &hunk.lines {
+            row_count += review_threads_for_line(&anchored_threads, line)
+                .into_iter()
+                .map(|thread| {
+                    review_thread_inline_rows_with_controls(
+                        thread,
+                        active_review_thread_reply,
+                        active_review_comment_edit,
+                    )
+                })
+                .sum::<usize>();
+        }
+    }
 
     if review_composer
         .is_some_and(|composer| review_comment_range_matches_file(file, &composer.range))
@@ -1042,6 +1787,25 @@ fn diff_row_count_with_review_controls(
     }
 
     row_count
+}
+
+fn review_thread_inline_rows_with_controls(
+    thread: &ReviewThread,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> usize {
+    review_thread_inline_rows(thread)
+        + usize::from(active_review_thread_reply == Some(thread.id.as_str()))
+            * REVIEW_THREAD_REPLY_ROWS
+        + active_review_comment_edit
+            .and_then(|comment_id| {
+                thread
+                    .comments
+                    .iter()
+                    .any(|comment| comment.id == comment_id)
+                    .then_some(REVIEW_COMMENT_EDIT_ROWS)
+            })
+            .unwrap_or(0)
 }
 
 fn review_composer_row_count(error: Option<&str>) -> usize {
@@ -1156,7 +1920,7 @@ fn line_number_width_for_diff(diff: &ParsedDiff) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::FileStatus;
+    use harbor_domain::{FileStatus, ReviewComment, ReviewThread, ReviewThreadState};
 
     use crate::diff::parse_unified_diff;
 
@@ -1217,8 +1981,26 @@ mod tests {
         };
 
         assert_eq!(
-            diff_row_count_with_review_controls(&diff, &file, &[], Some(&composer), None),
+            diff_row_count_with_review_controls(
+                &diff,
+                &file,
+                &[],
+                Some(&composer),
+                None,
+                None,
+                None
+            ),
             3 + REVIEW_COMPOSER_ROWS
+        );
+    }
+
+    #[test]
+    fn expands_review_thread_row_for_active_reply() {
+        let thread = test_review_thread("thread-1", "comment-1");
+
+        assert_eq!(
+            review_thread_inline_rows_with_controls(&thread, Some("thread-1"), None),
+            review_thread_inline_rows(&thread) + REVIEW_THREAD_REPLY_ROWS
         );
     }
 
@@ -1264,6 +2046,31 @@ mod tests {
             deletions: 1,
             changes: 2,
             patch: None,
+        }
+    }
+
+    fn test_review_thread(thread_id: &str, comment_id: &str) -> ReviewThread {
+        ReviewThread {
+            id: thread_id.to_string(),
+            path: "src/lib.rs".to_string(),
+            range: None,
+            state: ReviewThreadState::Unresolved,
+            comments: vec![ReviewComment {
+                id: comment_id.to_string(),
+                author: "maria".to_string(),
+                author_avatar_url: None,
+                body: "Please check this line.".to_string(),
+                created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
+                    .expect("valid test timestamp")
+                    .with_timezone(&chrono::Utc),
+                updated_at: None,
+                position: None,
+                viewer_did_author: false,
+                viewer_can_update: false,
+                viewer_can_delete: false,
+                viewer_can_react: true,
+                reactions: Vec::new(),
+            }],
         }
     }
 }

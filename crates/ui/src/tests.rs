@@ -2,12 +2,15 @@ use std::collections::HashSet;
 
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, MergeState,
-    PullRequest, PullRequestState, RepoId, ReviewThread, ReviewThreadState,
+    PullRequest, PullRequestState, ReactionContent, RepoId, ReviewComment, ReviewThread,
+    ReviewThreadState,
 };
 use harbor_git::{ExternalApp, OpenTarget};
 
 use crate::panels::{
-    checks_summary_from_runs, merge_blocker, review_action_blocker, review_thread_counts,
+    checks_summary_from_runs, github_avatar_url_for_login, merge_blocker, review_action_blocker,
+    review_comment_action_visibility, review_comment_avatar_url, review_reaction_button_label,
+    review_reaction_emoji, review_thread_counts, visible_review_reaction_contents,
 };
 use crate::workspace::{
     ChangedFileFilters, ChangedFileTreeRow, OpenTargetStatus, PullRequestInboxMode,
@@ -345,6 +348,65 @@ fn counts_review_threads_by_state() {
 }
 
 #[test]
+fn labels_review_reaction_buttons() {
+    assert_eq!(
+        review_reaction_button_label(ReactionContent::ThumbsUp, 0),
+        "👍"
+    );
+    assert_eq!(
+        review_reaction_button_label(ReactionContent::Heart, 3),
+        "❤️ 3"
+    );
+    assert_eq!(review_reaction_emoji(ReactionContent::Rocket), "🚀");
+}
+
+#[test]
+fn resolves_review_comment_avatar_urls() {
+    let mut comment = review_comment();
+
+    assert_eq!(
+        review_comment_avatar_url(&comment).as_deref(),
+        Some("https://github.com/octocat.png?size=48")
+    );
+
+    comment.author_avatar_url = Some("https://avatars.githubusercontent.com/u/1?v=4".to_string());
+    assert_eq!(
+        review_comment_avatar_url(&comment).as_deref(),
+        Some("https://avatars.githubusercontent.com/u/1?v=4")
+    );
+
+    assert_eq!(github_avatar_url_for_login("ghost"), None);
+    assert_eq!(github_avatar_url_for_login("bad login"), None);
+}
+
+#[test]
+fn shows_only_active_review_reactions_inline() {
+    let mut comment = review_comment();
+    comment.reactions = vec![harbor_domain::ReviewReaction {
+        content: ReactionContent::Heart,
+        count: 2,
+        viewer_has_reacted: false,
+    }];
+
+    assert_eq!(
+        visible_review_reaction_contents(&comment),
+        vec![ReactionContent::Heart]
+    );
+}
+
+#[test]
+fn exposes_review_comment_action_visibility() {
+    let mut comment = review_comment();
+
+    assert_eq!(review_comment_action_visibility(&comment), (false, false));
+
+    comment.viewer_can_update = true;
+    comment.viewer_can_delete = true;
+
+    assert_eq!(review_comment_action_visibility(&comment), (true, true));
+}
+
+#[test]
 fn builds_active_file_github_url() {
     let file = diff_file("src/ui/app view.rs", FileStatus::Modified);
 
@@ -426,6 +488,25 @@ fn review_thread(state: ReviewThreadState) -> ReviewThread {
         range: None,
         state,
         comments: Vec::new(),
+    }
+}
+
+fn review_comment() -> ReviewComment {
+    ReviewComment {
+        id: "comment".to_string(),
+        author: "octocat".to_string(),
+        author_avatar_url: None,
+        body: "Looks good".to_string(),
+        created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
+            .expect("valid test timestamp")
+            .with_timezone(&chrono::Utc),
+        updated_at: None,
+        position: None,
+        viewer_did_author: false,
+        viewer_can_update: false,
+        viewer_can_delete: false,
+        viewer_can_react: true,
+        reactions: Vec::new(),
     }
 }
 

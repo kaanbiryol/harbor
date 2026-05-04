@@ -144,14 +144,78 @@ impl ReviewCommentRange {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum ReactionContent {
+    ThumbsUp,
+    ThumbsDown,
+    Laugh,
+    Confused,
+    Heart,
+    Hooray,
+    Rocket,
+    Eyes,
+}
+
+impl ReactionContent {
+    pub const ALL: [Self; 8] = [
+        Self::ThumbsUp,
+        Self::ThumbsDown,
+        Self::Laugh,
+        Self::Confused,
+        Self::Heart,
+        Self::Hooray,
+        Self::Rocket,
+        Self::Eyes,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ThumbsUp => "+1",
+            Self::ThumbsDown => "-1",
+            Self::Laugh => "laugh",
+            Self::Confused => "confused",
+            Self::Heart => "heart",
+            Self::Hooray => "hooray",
+            Self::Rocket => "rocket",
+            Self::Eyes => "eyes",
+        }
+    }
+
+    pub fn graphql_name(self) -> &'static str {
+        match self {
+            Self::ThumbsUp => "THUMBS_UP",
+            Self::ThumbsDown => "THUMBS_DOWN",
+            Self::Laugh => "LAUGH",
+            Self::Confused => "CONFUSED",
+            Self::Heart => "HEART",
+            Self::Hooray => "HOORAY",
+            Self::Rocket => "ROCKET",
+            Self::Eyes => "EYES",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewReaction {
+    pub content: ReactionContent,
+    pub count: usize,
+    pub viewer_has_reacted: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReviewComment {
     pub id: String,
     pub author: String,
+    pub author_avatar_url: Option<String>,
     pub body: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
     pub position: Option<ReviewCommentPosition>,
+    pub viewer_did_author: bool,
+    pub viewer_can_update: bool,
+    pub viewer_can_delete: bool,
+    pub viewer_can_react: bool,
+    pub reactions: Vec<ReviewReaction>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

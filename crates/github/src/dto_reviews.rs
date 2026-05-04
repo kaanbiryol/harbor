@@ -1,6 +1,7 @@
 use harbor_domain::{
-    PullRequestReview, PullRequestReviewState, ReviewComment, ReviewCommentPosition,
-    ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState,
+    PullRequestReview, PullRequestReviewState, ReactionContent, ReviewComment,
+    ReviewCommentPosition, ReviewCommentRange, ReviewReaction, ReviewSide, ReviewThread,
+    ReviewThreadState,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -10,6 +11,8 @@ use crate::{GitHubError, Result};
 #[derive(Debug, Deserialize)]
 struct ApiUser {
     login: String,
+    #[serde(default, rename = "avatarUrl")]
+    avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,10 +120,32 @@ struct GraphQlReviewComment {
     path: Option<String>,
     #[serde(default)]
     line: Option<u32>,
-    #[serde(default, rename = "diffSide")]
-    diff_side: Option<String>,
     #[serde(default, rename = "originalLine")]
     original_line: Option<u32>,
+    #[serde(default, rename = "viewerDidAuthor")]
+    viewer_did_author: bool,
+    #[serde(default, rename = "viewerCanUpdate")]
+    viewer_can_update: bool,
+    #[serde(default, rename = "viewerCanDelete")]
+    viewer_can_delete: bool,
+    #[serde(default, rename = "viewerCanReact")]
+    viewer_can_react: bool,
+    #[serde(default, rename = "reactionGroups")]
+    reaction_groups: Vec<GraphQlReactionGroup>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReactionGroup {
+    content: String,
+    #[serde(default, rename = "viewerHasReacted")]
+    viewer_has_reacted: bool,
+    users: GraphQlReactionUsers,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct GraphQlReactionUsers {
+    #[serde(default, rename = "totalCount")]
+    total_count: usize,
 }
 
 pub fn current_user_login_from_value(value: Value) -> Result<String> {
@@ -189,16 +214,15 @@ impl ApiPullRequestReview {
 
 impl GraphQlReviewThread {
     fn into_domain(self) -> ReviewThread {
-        let fallback_side = self
-            .diff_side
-            .as_deref()
-            .map(map_review_side)
-            .unwrap_or(ReviewSide::Right);
+        let fallback_side =
+            review_thread_side(self.diff_side.as_deref(), self.line, self.original_line);
         let fallback_start_side = self.start_diff_side.as_deref().map(map_review_side);
         let fallback_path = self.path.unwrap_or_default();
         let fallback_line = self.line;
         let fallback_original_line = self.original_line;
-        let range = fallback_line.map(|line| ReviewCommentRange {
+        let range_line =
+            review_thread_range_line(fallback_side, fallback_line, fallback_original_line);
+        let range = range_line.map(|line| ReviewCommentRange {
             path: fallback_path.clone(),
             line,
             side: fallback_side,
@@ -250,11 +274,7 @@ impl GraphQlReviewComment {
         let path = self.path.unwrap_or(fallback_path);
         let line = self.line.or(fallback_line);
         let original_line = self.original_line.or(fallback_original_line);
-        let side = self
-            .diff_side
-            .as_deref()
-            .map(map_review_side)
-            .unwrap_or(fallback_side);
+        let side = fallback_side;
         let position = if path.is_empty() && line.is_none() && original_line.is_none() {
             None
         } else {
@@ -270,13 +290,34 @@ impl GraphQlReviewComment {
             id: self.id,
             author: self
                 .author
-                .map(|user| user.login)
+                .as_ref()
+                .map(|user| user.login.clone())
                 .unwrap_or_else(|| "ghost".to_string()),
+            author_avatar_url: self.author.and_then(|user| user.avatar_url),
             body: self.body,
             created_at: self.created_at,
             updated_at: self.updated_at,
             position,
+            viewer_did_author: self.viewer_did_author,
+            viewer_can_update: self.viewer_can_update,
+            viewer_can_delete: self.viewer_can_delete,
+            viewer_can_react: self.viewer_can_react,
+            reactions: self
+                .reaction_groups
+                .into_iter()
+                .filter_map(GraphQlReactionGroup::into_domain)
+                .collect(),
         }
+    }
+}
+
+impl GraphQlReactionGroup {
+    fn into_domain(self) -> Option<ReviewReaction> {
+        Some(ReviewReaction {
+            content: map_reaction_content(&self.content)?,
+            count: self.users.total_count,
+            viewer_has_reacted: self.viewer_has_reacted,
+        })
     }
 }
 
@@ -285,6 +326,45 @@ fn map_review_side(side: &str) -> ReviewSide {
         ReviewSide::Left
     } else {
         ReviewSide::Right
+    }
+}
+
+fn review_thread_side(
+    diff_side: Option<&str>,
+    line: Option<u32>,
+    original_line: Option<u32>,
+) -> ReviewSide {
+    diff_side.map(map_review_side).unwrap_or_else(|| {
+        if line.is_none() && original_line.is_some() {
+            ReviewSide::Left
+        } else {
+            ReviewSide::Right
+        }
+    })
+}
+
+fn review_thread_range_line(
+    side: ReviewSide,
+    line: Option<u32>,
+    original_line: Option<u32>,
+) -> Option<u32> {
+    match side {
+        ReviewSide::Left => original_line.or(line),
+        ReviewSide::Right => line.or(original_line),
+    }
+}
+
+fn map_reaction_content(content: &str) -> Option<ReactionContent> {
+    match content.to_ascii_uppercase().as_str() {
+        "THUMBS_UP" => Some(ReactionContent::ThumbsUp),
+        "THUMBS_DOWN" => Some(ReactionContent::ThumbsDown),
+        "LAUGH" => Some(ReactionContent::Laugh),
+        "CONFUSED" => Some(ReactionContent::Confused),
+        "HEART" => Some(ReactionContent::Heart),
+        "HOORAY" => Some(ReactionContent::Hooray),
+        "ROCKET" => Some(ReactionContent::Rocket),
+        "EYES" => Some(ReactionContent::Eyes),
+        _ => None,
     }
 }
 

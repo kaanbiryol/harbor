@@ -19,8 +19,8 @@ pub use workflows::*;
 mod tests {
     use harbor_domain::{
         CheckConclusion, CheckStatus, FileStatus, MergeState, PullRequestReviewState,
-        PullRequestState, RepoId, ReviewDecision, ReviewThreadState, WorkflowConclusion,
-        WorkflowStatus,
+        PullRequestState, ReactionContent, RepoId, ReviewDecision, ReviewSide, ReviewThreadState,
+        WorkflowConclusion, WorkflowStatus,
     };
     use serde_json::json;
 
@@ -395,66 +395,94 @@ mod tests {
 
     #[test]
     fn maps_review_threads_from_graphql() {
-        let value = json!({
-            "data": {
+        let value: serde_json::Value = serde_json::from_str(
+            r#"
+            {
+              "data": {
                 "repository": {
-                    "pullRequest": {
-                        "reviewThreads": {
+                  "pullRequest": {
+                    "reviewThreads": {
+                      "nodes": [
+                        {
+                          "id": "thread-1",
+                          "path": "src/app.rs",
+                          "line": 42,
+                          "diffSide": "RIGHT",
+                          "startLine": 40,
+                          "startDiffSide": "RIGHT",
+                          "originalLine": 40,
+                          "isResolved": false,
+                          "isOutdated": false,
+                          "comments": {
                             "nodes": [
-                                {
-                                    "id": "thread-1",
-                                    "path": "src/app.rs",
-                                    "line": 42,
-                                    "diffSide": "RIGHT",
-                                    "startLine": 40,
-                                    "startDiffSide": "RIGHT",
-                                    "originalLine": 40,
-                                    "isResolved": false,
-                                    "isOutdated": false,
-                                    "comments": {
-                                        "nodes": [
-                                            {
-                                                "id": "comment-1",
-                                                "body": "This can be cheaper.",
-                                                "author": { "login": "reviewer" },
-                                                "createdAt": "2026-05-01T10:00:00Z",
-                                                "updatedAt": "2026-05-01T10:05:00Z",
-                                                "path": "src/app.rs",
-                                                "diffSide": "RIGHT",
-                                                "line": 42,
-                                                "originalLine": 40
-                                            },
-                                            {
-                                                "id": "comment-2",
-                                                "body": "Updated.",
-                                                "author": null,
-                                                "createdAt": "2026-05-01T10:10:00Z",
-                                                "updatedAt": null,
-                                                "path": null,
-                                                "line": null,
-                                                "originalLine": null
-                                            }
-                                        ]
-                                    }
+                              {
+                                "id": "comment-1",
+                                "body": "This can be cheaper.",
+                                "author": {
+                                  "login": "reviewer",
+                                  "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
                                 },
-                                {
-                                    "id": "thread-2",
-                                    "path": "src/old.rs",
-                                    "line": null,
-                                    "diffSide": "LEFT",
-                                    "startLine": null,
-                                    "startDiffSide": null,
-                                    "originalLine": 9,
-                                    "isResolved": false,
-                                    "isOutdated": true,
-                                    "comments": { "nodes": [] }
-                                }
+                                "createdAt": "2026-05-01T10:00:00Z",
+                                "updatedAt": "2026-05-01T10:05:00Z",
+                                "path": "src/app.rs",
+                                "line": 42,
+                                "originalLine": 40,
+                                "viewerDidAuthor": false,
+                                "viewerCanUpdate": false,
+                                "viewerCanDelete": false,
+                                "viewerCanReact": true,
+                                "reactionGroups": [
+                                  {
+                                    "content": "THUMBS_UP",
+                                    "viewerHasReacted": true,
+                                    "users": { "totalCount": 3 }
+                                  },
+                                  {
+                                    "content": "HEART",
+                                    "viewerHasReacted": false,
+                                    "users": { "totalCount": 1 }
+                                  }
+                                ]
+                              },
+                              {
+                                "id": "comment-2",
+                                "body": "Updated.",
+                                "author": null,
+                                "createdAt": "2026-05-01T10:10:00Z",
+                                "updatedAt": null,
+                                "path": null,
+                                "line": null,
+                                "originalLine": null,
+                                "viewerDidAuthor": true,
+                                "viewerCanUpdate": true,
+                                "viewerCanDelete": true,
+                                "viewerCanReact": true,
+                                "reactionGroups": []
+                              }
                             ]
+                          }
+                        },
+                        {
+                          "id": "thread-2",
+                          "path": "src/old.rs",
+                          "line": null,
+                          "diffSide": "LEFT",
+                          "startLine": null,
+                          "startDiffSide": null,
+                          "originalLine": 9,
+                          "isResolved": false,
+                          "isOutdated": true,
+                          "comments": { "nodes": [] }
                         }
+                      ]
                     }
+                  }
                 }
+              }
             }
-        });
+        "#,
+        )
+        .expect("valid review thread JSON");
 
         let threads = review_threads_from_graphql_value(value).unwrap();
 
@@ -472,6 +500,32 @@ mod tests {
         assert_eq!(threads[0].comments.len(), 2);
         assert_eq!(threads[0].comments[0].author, "reviewer");
         assert_eq!(
+            threads[0].comments[0].author_avatar_url.as_deref(),
+            Some("https://avatars.githubusercontent.com/u/1?v=4")
+        );
+        assert!(!threads[0].comments[0].viewer_did_author);
+        assert!(!threads[0].comments[0].viewer_can_update);
+        assert!(!threads[0].comments[0].viewer_can_delete);
+        assert!(threads[0].comments[0].viewer_can_react);
+        assert_eq!(threads[0].comments[0].reactions.len(), 2);
+        assert_eq!(
+            threads[0].comments[0]
+                .reactions
+                .iter()
+                .map(|reaction| {
+                    (
+                        reaction.content,
+                        reaction.count,
+                        reaction.viewer_has_reacted,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                (ReactionContent::ThumbsUp, 3, true),
+                (ReactionContent::Heart, 1, false),
+            ]
+        );
+        assert_eq!(
             threads[0].comments[0]
                 .position
                 .as_ref()
@@ -479,6 +533,16 @@ mod tests {
             Some(Some(42))
         );
         assert_eq!(threads[0].comments[1].author, "ghost");
+        assert!(threads[0].comments[1].viewer_did_author);
+        assert!(threads[0].comments[1].viewer_can_update);
+        assert!(threads[0].comments[1].viewer_can_delete);
         assert_eq!(threads[1].state, ReviewThreadState::Outdated);
+        assert_eq!(
+            threads[1]
+                .range
+                .as_ref()
+                .map(|range| (range.side, range.line, range.start_line)),
+            Some((ReviewSide::Left, 9, None))
+        );
     }
 }

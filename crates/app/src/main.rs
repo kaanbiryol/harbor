@@ -2,11 +2,15 @@ use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
 use gpui_component_assets::Assets;
 use harbor_ui::{AppView, bind_keys};
+use std::sync::Arc;
 
 fn main() {
     gpui_platform::application()
         .with_assets(Assets)
         .run(move |cx| {
+            let http_client = reqwest_client::ReqwestClient::user_agent("harbor")
+                .expect("failed to initialize GPUI HTTP client");
+            cx.set_http_client(Arc::new(http_client));
             gpui_component::init(cx);
             Theme::change(ThemeMode::Dark, None, cx);
             let theme = Theme::global_mut(cx);

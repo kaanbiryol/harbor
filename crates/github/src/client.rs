@@ -1,6 +1,6 @@
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewCommentRange, ReviewSide,
-    ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestReview, ReactionContent, RepoId,
+    ReviewCommentRange, ReviewSide, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use serde_json::{Map, Value, json};
 
@@ -441,6 +441,81 @@ where
         Ok(())
     }
 
+    pub async fn update_review_comment(
+        &self,
+        review_comment_node_id: &str,
+        body: &str,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                UPDATE_REVIEW_COMMENT_MUTATION,
+                json!({
+                    "input": {
+                        "pullRequestReviewCommentId": review_comment_node_id,
+                        "body": body,
+                    }
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_review_comment(&self, review_comment_node_id: &str) -> Result<()> {
+        self.transport
+            .graphql(
+                DELETE_REVIEW_COMMENT_MUTATION,
+                json!({
+                    "input": {
+                        "id": review_comment_node_id,
+                    }
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn add_review_comment_reaction(
+        &self,
+        review_comment_node_id: &str,
+        content: ReactionContent,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                ADD_REACTION_MUTATION,
+                json!({
+                    "input": {
+                        "subjectId": review_comment_node_id,
+                        "content": content.graphql_name(),
+                    }
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn remove_review_comment_reaction(
+        &self,
+        review_comment_node_id: &str,
+        content: ReactionContent,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                REMOVE_REACTION_MUTATION,
+                json!({
+                    "input": {
+                        "subjectId": review_comment_node_id,
+                        "content": content.graphql_name(),
+                    }
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn submit_pull_request_review(
         &self,
         pull_request_review_node_id: &str,
@@ -613,13 +688,24 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
               body
               author {
                 login
+                avatarUrl(size: 48)
               }
               createdAt
               updatedAt
               path
-              diffSide
               line
               originalLine
+              viewerDidAuthor
+              viewerCanUpdate
+              viewerCanDelete
+              viewerCanReact
+              reactionGroups {
+                content
+                viewerHasReacted
+                users(first: 1) {
+                  totalCount
+                }
+              }
             }
           }
         }
@@ -677,6 +763,47 @@ mutation HarborUnresolveReviewThread($input: UnresolveReviewThreadInput!) {
     thread {
       id
       isResolved
+    }
+  }
+}
+"#;
+
+const UPDATE_REVIEW_COMMENT_MUTATION: &str = r#"
+mutation HarborUpdateReviewComment($input: UpdatePullRequestReviewCommentInput!) {
+  updatePullRequestReviewComment(input: $input) {
+    pullRequestReviewComment {
+      id
+      body
+    }
+  }
+}
+"#;
+
+const DELETE_REVIEW_COMMENT_MUTATION: &str = r#"
+mutation HarborDeleteReviewComment($input: DeletePullRequestReviewCommentInput!) {
+  deletePullRequestReviewComment(input: $input) {
+    pullRequestReviewComment {
+      id
+    }
+  }
+}
+"#;
+
+const ADD_REACTION_MUTATION: &str = r#"
+mutation HarborAddReaction($input: AddReactionInput!) {
+  addReaction(input: $input) {
+    reaction {
+      id
+    }
+  }
+}
+"#;
+
+const REMOVE_REACTION_MUTATION: &str = r#"
+mutation HarborRemoveReaction($input: RemoveReactionInput!) {
+  removeReaction(input: $input) {
+    reaction {
+      id
     }
   }
 }
@@ -788,7 +915,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
-    use harbor_domain::{RepoId, ReviewCommentRange, ReviewSide};
+    use harbor_domain::{ReactionContent, RepoId, ReviewCommentRange, ReviewSide};
     use serde_json::{Value, json};
 
     use super::*;
@@ -1567,6 +1694,150 @@ mod tests {
             json!({
                 "input": {
                     "threadId": "thread-node",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn updates_review_comment_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "updatePullRequestReviewComment": {
+                    "pullRequestReviewComment": {
+                        "id": "comment-node",
+                        "body": "Updated body."
+                    }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.update_review_comment("comment-node", "Updated body.")).unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("updatePullRequestReviewComment"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "pullRequestReviewCommentId": "comment-node",
+                    "body": "Updated body.",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn deletes_review_comment_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "deletePullRequestReviewComment": {
+                    "pullRequestReviewComment": {
+                        "id": "comment-node"
+                    }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.delete_review_comment("comment-node")).unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("deletePullRequestReviewComment"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "id": "comment-node",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn adds_review_comment_reaction_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "addReaction": {
+                    "reaction": {
+                        "id": "reaction-node"
+                    }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.add_review_comment_reaction("comment-node", ReactionContent::Heart))
+            .unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("addReaction"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "subjectId": "comment-node",
+                    "content": "HEART",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn removes_review_comment_reaction_variables() {
+        let transport = RecordingTransport::default();
+        *transport
+            .graphql_response
+            .lock()
+            .expect("graphql response mutex should not be poisoned") = Some(json!({
+            "data": {
+                "removeReaction": {
+                    "reaction": {
+                        "id": "reaction-node"
+                    }
+                }
+            }
+        }));
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(
+            client.remove_review_comment_reaction("comment-node", ReactionContent::ThumbsUp),
+        )
+        .unwrap();
+
+        let calls = transport
+            .graphql_calls
+            .lock()
+            .expect("graphql calls mutex should not be poisoned");
+        assert!(calls[0].0.contains("removeReaction"));
+        assert_eq!(
+            calls[0].1,
+            json!({
+                "input": {
+                    "subjectId": "comment-node",
+                    "content": "THUMBS_UP",
                 }
             })
         );

@@ -2,7 +2,8 @@ use harbor_domain::{DiffFile, ReviewSide, ReviewThread};
 
 use crate::diff::{DiffLine, ParsedDiff};
 
-pub(crate) const REVIEW_THREAD_INLINE_ROWS: usize = 7;
+pub(crate) const REVIEW_THREAD_INLINE_ROWS: usize = 8;
+const REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT: usize = 4;
 
 #[derive(Clone, Copy)]
 pub(crate) struct AnchoredReviewThread<'a> {
@@ -16,6 +17,7 @@ struct ReviewThreadAnchor {
     line: u32,
 }
 
+#[cfg(test)]
 pub(crate) fn diff_row_count_with_reviews(
     diff: &ParsedDiff,
     file: &DiffFile,
@@ -26,8 +28,10 @@ pub(crate) fn diff_row_count_with_reviews(
 
     for hunk in &diff.hunks {
         for line in &hunk.lines {
-            row_count +=
-                review_thread_count_for_line(&anchored_threads, line) * REVIEW_THREAD_INLINE_ROWS;
+            row_count += review_threads_for_line(&anchored_threads, line)
+                .into_iter()
+                .map(review_thread_inline_rows)
+                .sum::<usize>();
         }
     }
 
@@ -50,8 +54,10 @@ pub(crate) fn diff_hunk_row_index_with_reviews(
 
         row_index += 1;
         for line in &hunk.lines {
-            row_index += 1 + review_thread_count_for_line(&anchored_threads, line)
-                * REVIEW_THREAD_INLINE_ROWS;
+            row_index += 1 + review_threads_for_line(&anchored_threads, line)
+                .into_iter()
+                .map(review_thread_inline_rows)
+                .sum::<usize>();
         }
     }
 
@@ -82,16 +88,12 @@ pub(crate) fn review_threads_for_line<'a>(
         .collect()
 }
 
-fn review_thread_count_for_line(
-    anchored_threads: &[AnchoredReviewThread<'_>],
-    line: &DiffLine,
-) -> usize {
-    anchored_threads
-        .iter()
-        .filter(|anchored_thread| anchored_thread_matches_line(anchored_thread, line))
-        .count()
+pub(crate) fn review_thread_inline_rows(thread: &ReviewThread) -> usize {
+    REVIEW_THREAD_INLINE_ROWS
+        + thread.comments.len().saturating_sub(1) * REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT
 }
 
+#[cfg(test)]
 fn diff_row_count(diff: &ParsedDiff) -> usize {
     diff.hunks.iter().map(|hunk| hunk.lines.len() + 1).sum()
 }
@@ -201,8 +203,8 @@ fn review_thread_anchor_row(
 mod tests {
     use chrono::{DateTime, Utc};
     use harbor_domain::{
-        DiffFile, FileStatus, ReviewComment, ReviewCommentPosition, ReviewSide, ReviewThread,
-        ReviewThreadState,
+        DiffFile, FileStatus, ReviewComment, ReviewCommentPosition, ReviewCommentRange, ReviewSide,
+        ReviewThread, ReviewThreadState,
     };
 
     use crate::diff::parse_unified_diff;
@@ -233,6 +235,26 @@ mod tests {
         let file = test_file("src/lib.rs");
         let diff = parse_unified_diff("@@ -10,2 +10,1 @@\n-removed\n context\n");
         let thread = review_thread("thread-1", "src/lib.rs", ReviewSide::Left, None, Some(10));
+
+        assert_eq!(review_thread_anchor_row(&diff, &file, &thread), Some(1));
+        assert_eq!(
+            diff_row_count_with_reviews(&diff, &file, &[thread]),
+            diff_row_count(&diff) + REVIEW_THREAD_INLINE_ROWS
+        );
+    }
+
+    #[test]
+    fn anchors_left_side_thread_range_to_removed_line() {
+        let file = test_file("src/lib.rs");
+        let diff = parse_unified_diff("@@ -11 +11,0 @@\n-removed\n");
+        let mut thread = review_thread("thread-1", "src/lib.rs", ReviewSide::Left, None, Some(11));
+        thread.range = Some(ReviewCommentRange {
+            path: "src/lib.rs".to_string(),
+            line: 11,
+            side: ReviewSide::Left,
+            start_line: None,
+            start_side: None,
+        });
 
         assert_eq!(review_thread_anchor_row(&diff, &file, &thread), Some(1));
         assert_eq!(
@@ -278,6 +300,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn counts_additional_review_comment_rows() {
+        let mut thread = review_thread(
+            "thread-1",
+            "src/lib.rs",
+            ReviewSide::Right,
+            Some(2),
+            Some(1),
+        );
+        let mut reply = thread.comments[0].clone();
+        reply.id = "reply-1".to_string();
+        thread.comments.push(reply);
+
+        assert_eq!(
+            review_thread_inline_rows(&thread),
+            REVIEW_THREAD_INLINE_ROWS + REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT
+        );
+    }
+
     fn test_file(path: &str) -> DiffFile {
         DiffFile {
             path: path.to_string(),
@@ -305,6 +346,7 @@ mod tests {
             comments: vec![ReviewComment {
                 id: format!("{id}-comment"),
                 author: "maria".to_string(),
+                author_avatar_url: None,
                 body: "Please check this line.".to_string(),
                 created_at: test_time(),
                 updated_at: None,
@@ -314,6 +356,11 @@ mod tests {
                     original_line,
                     side,
                 }),
+                viewer_did_author: false,
+                viewer_can_update: false,
+                viewer_can_delete: false,
+                viewer_can_react: true,
+                reactions: Vec::new(),
             }],
         }
     }

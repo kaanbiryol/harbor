@@ -712,7 +712,7 @@ impl AppView {
                         }
                         (None, Ok(review_threads)) => {
                             let thread_count = review_threads.len();
-                            view.review_threads = review_threads;
+                            view.replace_loaded_review_threads(review_threads);
                             let unresolved_count = view
                                 .review_threads
                                 .iter()
@@ -724,7 +724,6 @@ impl AppView {
                             loaded_review_thread_count = Some(thread_count);
                         }
                         (Some(reviews), Err(error)) => {
-                            view.review_threads.clear();
                             view.apply_loaded_review_data(
                                 reviews,
                                 Vec::new(),
@@ -739,7 +738,6 @@ impl AppView {
                             });
                         }
                         (None, Err(error)) => {
-                            view.review_threads.clear();
                             let message = format!("Failed to load review threads: {error}");
                             view.reviews_error = Some(match view.reviews_error.take() {
                                 Some(existing) => format!("{existing}; {message}"),
@@ -856,7 +854,7 @@ impl AppView {
                     (Err(reviews_error), Ok(threads)) => {
                         let thread_count = threads.len();
                         view.pull_request_reviews.clear();
-                        view.review_threads = threads;
+                        view.replace_loaded_review_threads(threads);
                         let message = format!("Failed to load review history: {reviews_error}");
                         view.reviews_error = Some(match view.reviews_error.take() {
                             Some(existing) => format!("{existing}; {message}"),
@@ -867,7 +865,6 @@ impl AppView {
                         );
                     }
                     (Ok(reviews), Err(threads_error)) => {
-                        view.review_threads.clear();
                         view.apply_loaded_review_data(
                             reviews,
                             Vec::new(),
@@ -885,7 +882,6 @@ impl AppView {
                     }
                     (Err(reviews_error), Err(threads_error)) => {
                         view.pull_request_reviews.clear();
-                        view.review_threads.clear();
                         let message = format!(
                             "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"
                         );

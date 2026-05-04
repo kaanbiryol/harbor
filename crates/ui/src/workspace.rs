@@ -14,8 +14,9 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{
-    CheckRun, DiffFile, FileStatus, PullRequest, PullRequestReview, PullRequestReviewState, RepoId,
-    ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, FileStatus, PullRequest, PullRequestReview, PullRequestReviewState,
+    ReactionContent, RepoId, ReviewComment, ReviewCommentPosition, ReviewCommentRange,
+    ReviewReaction, ReviewSide, ReviewThread, ReviewThreadState, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
 use harbor_logs::LogChunk;
@@ -24,6 +25,9 @@ use harbor_storage::SqliteStore;
 use crate::actions::{DEFAULT_REQUEST_CHANGES_BODY, PanelTab};
 use crate::diff::{ParsedDiff, parse_files};
 use crate::panels::workflow_run_failed;
+
+const LOCAL_REVIEW_THREAD_ID_PREFIX: &str = "local-review-thread-";
+const LOCAL_REVIEW_COMMENT_ID_PREFIX: &str = "local-review-comment-";
 
 #[cfg(test)]
 pub(crate) use commands::{OpenTargetStatus, github_file_url, open_target_for_app};
@@ -66,6 +70,18 @@ pub(crate) enum ReviewCommentSubmission {
 pub(crate) struct ReviewThreadUiError {
     pub(crate) thread_id: String,
     pub(crate) message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewCommentUiError {
+    pub(crate) comment_id: String,
+    pub(crate) message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewReactionAction {
+    pub(crate) comment_id: String,
+    pub(crate) content: ReactionContent,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -284,6 +300,8 @@ pub struct AppView {
     pub(crate) review_comment_input: Entity<InputState>,
     pub(crate) review_thread_reply_thread_id: Option<String>,
     pub(crate) review_thread_reply_input: Entity<InputState>,
+    pub(crate) review_comment_edit_comment_id: Option<String>,
+    pub(crate) review_comment_edit_input: Entity<InputState>,
     pub(crate) pending_review_body_input: Entity<InputState>,
     pub(crate) log_chunk: Option<LogChunk>,
     pr_list_task: Option<Task<()>>,
@@ -331,8 +349,11 @@ pub struct AppView {
     is_running_pr_action: bool,
     pub(crate) is_submitting_review_comment: bool,
     pub(crate) is_submitting_review_thread_reply: bool,
+    pub(crate) is_submitting_review_comment_edit: bool,
     pub(crate) is_submitting_pending_review: bool,
     pub(crate) review_thread_action_thread_id: Option<String>,
+    pub(crate) review_comment_action_comment_id: Option<String>,
+    pub(crate) review_reaction_action: Option<ReviewReactionAction>,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
@@ -346,8 +367,12 @@ pub struct AppView {
     pub(crate) review_comment_error: Option<String>,
     pub(crate) review_thread_reply_error: Option<ReviewThreadUiError>,
     pub(crate) review_thread_action_error: Option<ReviewThreadUiError>,
+    pub(crate) review_comment_edit_error: Option<ReviewCommentUiError>,
+    pub(crate) review_comment_action_error: Option<ReviewCommentUiError>,
+    pub(crate) review_reaction_error: Option<ReviewCommentUiError>,
     pub(crate) pending_review_error: Option<String>,
     current_user_login: Option<String>,
+    local_review_comment_sequence: u64,
     did_focus: bool,
     status: String,
     _subscriptions: Vec<Subscription>,
@@ -370,6 +395,12 @@ impl AppView {
             InputState::new(window, cx)
                 .auto_grow(2, 5)
                 .placeholder("Reply to thread")
+                .clean_on_escape()
+        });
+        let review_comment_edit_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(2, 6)
+                .placeholder("Edit comment")
                 .clean_on_escape()
         });
         let pending_review_body_input = cx.new(|cx| {
@@ -406,6 +437,11 @@ impl AppView {
                 Self::on_review_input_event,
             ),
             cx.subscribe_in(
+                &review_comment_edit_input,
+                window,
+                Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
                 &pending_review_body_input,
                 window,
                 Self::on_review_input_event,
@@ -436,6 +472,8 @@ impl AppView {
             review_comment_input,
             review_thread_reply_thread_id: None,
             review_thread_reply_input,
+            review_comment_edit_comment_id: None,
+            review_comment_edit_input,
             pending_review_body_input,
             log_chunk: None,
             pr_list_task: None,
@@ -483,8 +521,11 @@ impl AppView {
             is_running_pr_action: false,
             is_submitting_review_comment: false,
             is_submitting_review_thread_reply: false,
+            is_submitting_review_comment_edit: false,
             is_submitting_pending_review: false,
             review_thread_action_thread_id: None,
+            review_comment_action_comment_id: None,
+            review_reaction_action: None,
             load_error: None,
             details_error: None,
             files_error: None,
@@ -498,8 +539,12 @@ impl AppView {
             review_comment_error: None,
             review_thread_reply_error: None,
             review_thread_action_error: None,
+            review_comment_edit_error: None,
+            review_comment_action_error: None,
+            review_reaction_error: None,
             pending_review_error: None,
             current_user_login: None,
+            local_review_comment_sequence: 0,
             did_focus: false,
             status,
             _subscriptions: subscriptions,
@@ -984,6 +1029,7 @@ impl AppView {
 
                 match result {
                     Ok(()) => {
+                        view.append_optimistic_review_reply(&thread_id, body.clone());
                         if pending_review_node_id.is_some()
                             && let Some(pending_review) = view.pending_review.as_mut()
                         {
@@ -1094,6 +1140,305 @@ impl AppView {
                 cx.notify();
             }) {
                 eprintln!("failed to update review thread action state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn open_review_comment_edit(
+        &mut self,
+        comment_id: String,
+        body: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_comment_edit_comment_id = Some(comment_id);
+        self.review_comment_edit_error = None;
+        self.review_comment_edit_input.update(cx, |input, cx| {
+            input.set_value(body, window, cx);
+            input.focus(window, cx);
+        });
+        self.status = "Opened review comment editor".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_review_comment_edit(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_comment_edit_comment_id = None;
+        self.review_comment_edit_error = None;
+        self.review_comment_edit_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.status = "Cancelled review comment edit".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn submit_review_comment_edit(
+        &mut self,
+        comment_id: String,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_submitting_review_comment_edit {
+            self.status = "A review comment edit is already being submitted".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Select a pull request before editing".to_string(),
+            });
+            self.status = "Select a pull request before editing".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(comment) = self.review_comment(&comment_id) else {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Review comment is no longer loaded".to_string(),
+            });
+            self.status = "Review comment is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        if !comment.viewer_can_update {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "GitHub does not allow you to edit this comment".to_string(),
+            });
+            self.status = "GitHub does not allow you to edit this comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        let body = self.review_comment_edit_input.read(cx).value().to_string();
+        let body = body.trim().to_string();
+        if body.is_empty() {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Enter a comment before saving".to_string(),
+            });
+            self.status = "Enter a comment before saving".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.is_submitting_review_comment_edit = true;
+        self.review_comment_edit_comment_id = Some(comment_id.clone());
+        self.review_comment_edit_error = None;
+        self.status = format!("Updating review comment on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = GitHubClient::new(GhCliTransport)
+                .update_review_comment(&comment_id, &body)
+                .await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.is_submitting_review_comment_edit = false;
+
+                match result {
+                    Ok(()) => {
+                        if let Some(comment) = view.review_comment_mut(&comment_id) {
+                            comment.body = body;
+                        }
+                        view.review_comment_edit_comment_id = None;
+                        view.review_comment_edit_error = None;
+                        view.status = format!("Updated review comment on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to update review comment: {error}");
+                        view.review_comment_edit_error = Some(ReviewCommentUiError {
+                            comment_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review comment edit state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn delete_review_comment(&mut self, comment_id: String, cx: &mut Context<Self>) {
+        if self.review_comment_action_comment_id.is_some() {
+            self.status = "A review comment action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_comment_action_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Select a pull request before deleting".to_string(),
+            });
+            self.status = "Select a pull request before deleting".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(comment) = self.review_comment(&comment_id) else {
+            self.review_comment_action_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Review comment is no longer loaded".to_string(),
+            });
+            self.status = "Review comment is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        if !comment.viewer_can_delete {
+            self.review_comment_action_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "GitHub does not allow you to delete this comment".to_string(),
+            });
+            self.status = "GitHub does not allow you to delete this comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.review_comment_action_comment_id = Some(comment_id.clone());
+        self.review_comment_action_error = None;
+        self.status = format!("Deleting review comment on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = GitHubClient::new(GhCliTransport)
+                .delete_review_comment(&comment_id)
+                .await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.review_comment_action_comment_id = None;
+
+                match result {
+                    Ok(()) => {
+                        view.remove_review_comment(&comment_id);
+                        view.review_comment_edit_comment_id = view
+                            .review_comment_edit_comment_id
+                            .take()
+                            .filter(|active_id| active_id != &comment_id);
+                        view.review_comment_action_error = None;
+                        view.sync_unresolved_thread_count();
+                        view.status = format!("Deleted review comment on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to delete review comment: {error}");
+                        view.review_comment_action_error = Some(ReviewCommentUiError {
+                            comment_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review comment action state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn toggle_review_comment_reaction(
+        &mut self,
+        comment_id: String,
+        content: ReactionContent,
+        cx: &mut Context<Self>,
+    ) {
+        if self.review_reaction_action.is_some() {
+            self.status = "A review reaction action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_reaction_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Select a pull request before reacting".to_string(),
+            });
+            self.status = "Select a pull request before reacting".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(comment) = self.review_comment(&comment_id) else {
+            self.review_reaction_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Review comment is no longer loaded".to_string(),
+            });
+            self.status = "Review comment is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        if !comment.viewer_can_react {
+            self.review_reaction_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "GitHub does not allow you to react to this comment".to_string(),
+            });
+            self.status = "GitHub does not allow you to react to this comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        let had_reacted =
+            review_reaction(comment, content).is_some_and(|reaction| reaction.viewer_has_reacted);
+        self.set_review_comment_reaction(&comment_id, content, !had_reacted);
+        self.review_reaction_action = Some(ReviewReactionAction {
+            comment_id: comment_id.clone(),
+            content,
+        });
+        self.review_reaction_error = None;
+        self.status = format!("Updating reaction on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = if had_reacted {
+                client
+                    .remove_review_comment_reaction(&comment_id, content)
+                    .await
+            } else {
+                client
+                    .add_review_comment_reaction(&comment_id, content)
+                    .await
+            };
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.review_reaction_action = None;
+
+                match result {
+                    Ok(()) => {
+                        view.review_reaction_error = None;
+                        view.status = format!("Updated reaction on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        view.set_review_comment_reaction(&comment_id, content, had_reacted);
+                        let message = format!("Failed to update reaction: {error}");
+                        view.review_reaction_error = Some(ReviewCommentUiError {
+                            comment_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review reaction state: {error}");
             }
         })
         .detach();
@@ -1500,6 +1845,12 @@ impl AppView {
         self.review_comment_error = None;
         self.review_thread_reply_thread_id = None;
         self.review_thread_reply_error = None;
+        self.review_comment_edit_comment_id = None;
+        self.review_comment_edit_error = None;
+        self.review_comment_action_comment_id = None;
+        self.review_comment_action_error = None;
+        self.review_reaction_action = None;
+        self.review_reaction_error = None;
     }
 
     pub(crate) fn apply_loaded_review_data(
@@ -1518,9 +1869,14 @@ impl AppView {
             pending_review_comment_count,
         );
         self.pull_request_reviews = reviews;
-        self.review_threads = review_threads;
+        self.review_threads = merge_optimistic_review_threads(review_threads, &self.review_threads);
 
         self.sync_unresolved_thread_count()
+    }
+
+    pub(crate) fn replace_loaded_review_threads(&mut self, review_threads: Vec<ReviewThread>) {
+        self.review_threads = merge_optimistic_review_threads(review_threads, &self.review_threads);
+        self.sync_unresolved_thread_count();
     }
 
     pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {
@@ -1593,6 +1949,144 @@ impl AppView {
         }
 
         unresolved_count
+    }
+
+    pub(crate) fn review_comment(&self, comment_id: &str) -> Option<&ReviewComment> {
+        self.review_threads
+            .iter()
+            .flat_map(|thread| thread.comments.iter())
+            .find(|comment| comment.id == comment_id)
+    }
+
+    fn review_comment_mut(&mut self, comment_id: &str) -> Option<&mut ReviewComment> {
+        self.review_threads
+            .iter_mut()
+            .flat_map(|thread| thread.comments.iter_mut())
+            .find(|comment| comment.id == comment_id)
+    }
+
+    fn remove_review_comment(&mut self, comment_id: &str) {
+        for thread in &mut self.review_threads {
+            thread.comments.retain(|comment| comment.id != comment_id);
+        }
+
+        self.review_threads
+            .retain(|thread| !thread.comments.is_empty());
+    }
+
+    fn set_review_comment_reaction(
+        &mut self,
+        comment_id: &str,
+        content: ReactionContent,
+        viewer_has_reacted: bool,
+    ) {
+        let Some(comment) = self.review_comment_mut(comment_id) else {
+            return;
+        };
+
+        if let Some(reaction) = comment
+            .reactions
+            .iter_mut()
+            .find(|reaction| reaction.content == content)
+        {
+            if reaction.viewer_has_reacted == viewer_has_reacted {
+                return;
+            }
+
+            reaction.viewer_has_reacted = viewer_has_reacted;
+            reaction.count = if viewer_has_reacted {
+                reaction.count.saturating_add(1)
+            } else {
+                reaction.count.saturating_sub(1)
+            };
+        } else if viewer_has_reacted {
+            comment.reactions.push(ReviewReaction {
+                content,
+                count: 1,
+                viewer_has_reacted: true,
+            });
+        }
+
+        comment
+            .reactions
+            .retain(|reaction| reaction.count > 0 || reaction.viewer_has_reacted);
+    }
+
+    fn insert_optimistic_review_thread(&mut self, range: ReviewCommentRange, body: String) {
+        let sequence = self.next_local_review_comment_sequence();
+        let comment = self.optimistic_review_comment(
+            format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}"),
+            Some(review_position_from_range(&range)),
+            body,
+        );
+
+        self.review_threads.push(ReviewThread {
+            id: format!("{LOCAL_REVIEW_THREAD_ID_PREFIX}{sequence}"),
+            path: range.path.clone(),
+            range: Some(range),
+            state: ReviewThreadState::Unresolved,
+            comments: vec![comment],
+        });
+        self.sync_unresolved_thread_count();
+    }
+
+    fn append_optimistic_review_reply(&mut self, thread_id: &str, body: String) {
+        let Some(thread_index) = self
+            .review_threads
+            .iter()
+            .position(|thread| thread.id == thread_id)
+        else {
+            return;
+        };
+
+        let position = self.review_threads[thread_index]
+            .range
+            .as_ref()
+            .map(review_position_from_range)
+            .or_else(|| {
+                self.review_threads[thread_index]
+                    .comments
+                    .iter()
+                    .find_map(|comment| comment.position.clone())
+            });
+        let sequence = self.next_local_review_comment_sequence();
+        let comment = self.optimistic_review_comment(
+            format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}"),
+            position,
+            body,
+        );
+
+        self.review_threads[thread_index].comments.push(comment);
+    }
+
+    fn optimistic_review_comment(
+        &self,
+        id: String,
+        position: Option<ReviewCommentPosition>,
+        body: String,
+    ) -> ReviewComment {
+        ReviewComment {
+            id,
+            author: self
+                .current_user_login
+                .clone()
+                .unwrap_or_else(|| "you".to_string()),
+            author_avatar_url: None,
+            body,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            position,
+            viewer_did_author: true,
+            viewer_can_update: false,
+            viewer_can_delete: false,
+            viewer_can_react: false,
+            reactions: Vec::new(),
+        }
+    }
+
+    fn next_local_review_comment_sequence(&mut self) -> u64 {
+        self.local_review_comment_sequence = self.local_review_comment_sequence.saturating_add(1);
+        self.local_review_comment_sequence
     }
 
     pub(crate) fn submit_review_comment(
@@ -1723,6 +2217,7 @@ impl AppView {
                             }
                         }
 
+                        view.insert_optimistic_review_thread(composer.range.clone(), body.clone());
                         view.review_composer = None;
                         view.review_line_selection = None;
                         view.review_comment_error = None;
@@ -2349,6 +2844,133 @@ fn pending_review_from_reviews(
         .or_else(|| existing_pending_review.cloned())
 }
 
+fn merge_optimistic_review_threads(
+    mut loaded_threads: Vec<ReviewThread>,
+    existing_threads: &[ReviewThread],
+) -> Vec<ReviewThread> {
+    for existing_thread in existing_threads {
+        if is_local_review_thread(existing_thread) {
+            if !loaded_threads.iter().any(|loaded_thread| {
+                review_thread_contains_optimistic_comment(loaded_thread, existing_thread)
+            }) {
+                loaded_threads.push(existing_thread.clone());
+            }
+            continue;
+        }
+
+        let optimistic_comments = existing_thread
+            .comments
+            .iter()
+            .filter(|comment| is_local_review_comment(comment))
+            .cloned()
+            .collect::<Vec<_>>();
+        if optimistic_comments.is_empty() {
+            continue;
+        }
+
+        let Some(loaded_thread) = loaded_threads
+            .iter_mut()
+            .find(|loaded_thread| loaded_thread.id == existing_thread.id)
+        else {
+            continue;
+        };
+
+        for optimistic_comment in optimistic_comments {
+            if !loaded_thread.comments.iter().any(|loaded_comment| {
+                review_comment_matches_optimistic(loaded_comment, &optimistic_comment)
+            }) {
+                loaded_thread.comments.push(optimistic_comment);
+            }
+        }
+    }
+
+    loaded_threads
+}
+
+fn review_thread_contains_optimistic_comment(
+    loaded_thread: &ReviewThread,
+    optimistic_thread: &ReviewThread,
+) -> bool {
+    optimistic_thread
+        .comments
+        .iter()
+        .filter(|comment| is_local_review_comment(comment))
+        .all(|optimistic_comment| {
+            loaded_thread.comments.iter().any(|loaded_comment| {
+                review_comment_matches_optimistic(loaded_comment, optimistic_comment)
+            })
+        })
+}
+
+fn review_comment_matches_optimistic(
+    loaded_comment: &ReviewComment,
+    optimistic_comment: &ReviewComment,
+) -> bool {
+    loaded_comment.body == optimistic_comment.body
+        && review_comment_positions_match(
+            loaded_comment.position.as_ref(),
+            optimistic_comment.position.as_ref(),
+        )
+}
+
+fn review_comment_positions_match(
+    left: Option<&ReviewCommentPosition>,
+    right: Option<&ReviewCommentPosition>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            left.path == right.path
+                && left.side == right.side
+                && review_comment_position_line(left) == review_comment_position_line(right)
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn review_comment_position_line(position: &ReviewCommentPosition) -> Option<u32> {
+    match position.side {
+        ReviewSide::Left => position.original_line.or(position.line),
+        ReviewSide::Right => position.line.or(position.original_line),
+    }
+}
+
+fn is_local_review_thread(thread: &ReviewThread) -> bool {
+    thread.id.starts_with(LOCAL_REVIEW_THREAD_ID_PREFIX)
+}
+
+fn is_local_review_comment(comment: &ReviewComment) -> bool {
+    comment.id.starts_with(LOCAL_REVIEW_COMMENT_ID_PREFIX)
+}
+
+fn review_position_from_range(range: &ReviewCommentRange) -> ReviewCommentPosition {
+    let (line, original_line) = match range.side {
+        ReviewSide::Left => (None, Some(range.line)),
+        ReviewSide::Right => (Some(range.line), None),
+    };
+
+    ReviewCommentPosition {
+        path: range.path.clone(),
+        line,
+        original_line,
+        side: range.side,
+    }
+}
+
+pub(crate) fn review_reaction(
+    comment: &ReviewComment,
+    content: ReactionContent,
+) -> Option<&ReviewReaction> {
+    comment
+        .reactions
+        .iter()
+        .find(|reaction| reaction.content == content)
+}
+
+pub(crate) fn review_comment_pending_sync(comment: &ReviewComment) -> bool {
+    is_local_review_comment(comment)
+}
+
 fn review_comment_range_label(range: &ReviewCommentRange) -> String {
     let side = match range.side {
         ReviewSide::Left => "left",
@@ -2437,6 +3059,41 @@ mod tests {
         assert_eq!(pending_review.comment_count, 2);
     }
 
+    #[test]
+    fn merge_preserves_optimistic_review_thread_until_refresh_loads_it() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let optimistic_thread = review_thread(
+            "local-review-thread-1",
+            "local-review-comment-1",
+            range.clone(),
+            "looks good",
+        );
+
+        let merged = merge_optimistic_review_threads(Vec::new(), &[optimistic_thread]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].range, Some(range));
+        assert_eq!(merged[0].comments[0].body, "looks good");
+    }
+
+    #[test]
+    fn merge_drops_optimistic_review_thread_when_refresh_loads_matching_comment() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let loaded_thread = review_thread("thread-1", "comment-1", range.clone(), "looks good");
+        let optimistic_thread = review_thread(
+            "local-review-thread-1",
+            "local-review-comment-1",
+            range,
+            "looks good",
+        );
+
+        let merged = merge_optimistic_review_threads(vec![loaded_thread], &[optimistic_thread]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "thread-1");
+        assert_eq!(merged[0].comments.len(), 1);
+    }
+
     fn pending_review(id: &str, node_id: &str, author: &str) -> PullRequestReview {
         PullRequestReview {
             id: id.to_string(),
@@ -2445,6 +3102,46 @@ mod tests {
             state: PullRequestReviewState::Pending,
             body: None,
             submitted_at: None,
+        }
+    }
+
+    fn review_thread(
+        thread_id: &str,
+        comment_id: &str,
+        range: ReviewCommentRange,
+        body: &str,
+    ) -> ReviewThread {
+        ReviewThread {
+            id: thread_id.to_string(),
+            path: range.path.clone(),
+            range: Some(range.clone()),
+            state: ReviewThreadState::Unresolved,
+            comments: vec![ReviewComment {
+                id: comment_id.to_string(),
+                author: "alex".to_string(),
+                author_avatar_url: None,
+                body: body.to_string(),
+                created_at: chrono::DateTime::parse_from_rfc3339("2026-05-04T20:30:00Z")
+                    .expect("valid timestamp")
+                    .with_timezone(&chrono::Utc),
+                updated_at: None,
+                position: Some(review_position_from_range(&range)),
+                viewer_did_author: true,
+                viewer_can_update: false,
+                viewer_can_delete: false,
+                viewer_can_react: false,
+                reactions: Vec::new(),
+            }],
+        }
+    }
+
+    fn review_range(path: &str, side: ReviewSide, line: u32) -> ReviewCommentRange {
+        ReviewCommentRange {
+            path: path.to_string(),
+            line,
+            side,
+            start_line: None,
+            start_side: None,
         }
     }
 }

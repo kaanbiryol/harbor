@@ -165,6 +165,8 @@ fn render_switcher_repository_row(
     div()
         .id(format!("switcher-repository-{}", repository.full_name()))
         .h(px(REPOSITORY_SWITCHER_ROW_HEIGHT))
+        .w_full()
+        .min_w_0()
         .flex()
         .items_center()
         .justify_between()
@@ -184,11 +186,13 @@ fn render_switcher_repository_row(
                 .text_color(rgb(0xe6e8eb))
                 .child(repository.full_name()),
         )
-        .child(div().text_xs().text_color(rgb(0x7d8794)).child(if current {
-            "current"
-        } else {
-            "repo"
-        }))
+        .child(
+            div()
+                .flex_none()
+                .text_xs()
+                .text_color(rgb(0x7d8794))
+                .child(if current { "current" } else { "repo" }),
+        )
 }
 
 fn repository_switcher_list_height(repository_count: usize) -> f32 {
@@ -202,6 +206,9 @@ fn render_switcher_typed_repository_row(repository: &RepoId, highlighted: bool) 
             "switcher-typed-repository-{}",
             repository.full_name()
         ))
+        .h(px(REPOSITORY_SWITCHER_ROW_HEIGHT))
+        .w_full()
+        .min_w_0()
         .flex()
         .items_center()
         .justify_between()
@@ -220,7 +227,13 @@ fn render_switcher_typed_repository_row(repository: &RepoId, highlighted: bool) 
                 .text_color(rgb(0xe6e8eb))
                 .child(format!("Open {}", repository.full_name())),
         )
-        .child(div().text_xs().text_color(rgb(0x7d8794)).child("typed"))
+        .child(
+            div()
+                .flex_none()
+                .text_xs()
+                .text_color(rgb(0x7d8794))
+                .child("typed"),
+        )
 }
 
 fn render_switcher_pull_request_row(
@@ -1713,6 +1726,8 @@ impl AppView {
                             &self.review_threads,
                             self.review_composer.as_ref(),
                             self.review_comment_error.as_deref(),
+                            self.review_thread_reply_thread_id.as_deref(),
+                            self.review_comment_edit_comment_id.as_deref(),
                             self.is_loading_files,
                             self.files_error.as_deref(),
                             self.diff_list_scroll.clone(),
