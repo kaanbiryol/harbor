@@ -387,6 +387,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::select_previous))
             .on_action(cx.listener(Self::open_selected))
             .on_action(cx.listener(Self::cycle_panel_tab))
+            .on_action(cx.listener(Self::toggle_pull_request_inbox))
             .on_action(cx.listener(Self::toggle_command_palette))
             .on_action(cx.listener(Self::toggle_repository_switcher))
             .on_action(cx.listener(Self::close_panel))
@@ -433,7 +434,9 @@ impl Render for AppView {
                     .overflow_hidden()
                     .gap_2()
                     .p_2()
-                    .child(self.render_inbox(cx))
+                    .when(self.pull_request_inbox_visible, |element| {
+                        element.child(self.render_inbox(cx))
+                    })
                     .child(self.render_details(selected_pr.as_ref(), cx))
                     .child(self.render_panel(selected_pr.as_ref(), cx)),
             )
@@ -504,6 +507,16 @@ impl AppView {
         let has_current_repository = current_repository.is_some();
         let repository_view = view.clone();
         let pull_request_view = view.clone();
+        let inbox_toggle_icon = if self.pull_request_inbox_visible {
+            IconName::PanelLeft
+        } else {
+            IconName::PanelLeftOpen
+        };
+        let inbox_toggle_tooltip = if self.pull_request_inbox_visible {
+            "Hide pull request inbox"
+        } else {
+            "Show pull request inbox"
+        };
 
         TitleBar::new()
             .bg(rgb(0x101214))
@@ -525,6 +538,21 @@ impl AppView {
                             .min_w_0()
                             .items_center()
                             .gap_1()
+                            .child(
+                                Button::new("toggle-pull-request-inbox")
+                                    .ghost()
+                                    .small()
+                                    .compact()
+                                    .icon(inbox_toggle_icon)
+                                    .tooltip(inbox_toggle_tooltip)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.toggle_pull_request_inbox(
+                                            &TogglePullRequestInbox,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
                             .child(
                                 Popover::new("repository-switcher-popover")
                                     .appearance(false)

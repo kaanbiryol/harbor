@@ -10,6 +10,7 @@ actions!(
         SelectPreviousPullRequest,
         OpenSelectedPullRequest,
         CyclePanelTab,
+        TogglePullRequestInbox,
         ToggleCommandPalette,
         ToggleRepositorySwitcher,
         ClosePanel,
@@ -47,6 +48,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("k", SelectPreviousPullRequest, Some(KEY_BINDING_CONTEXT)),
         KeyBinding::new("enter", OpenSelectedPullRequest, Some(KEY_BINDING_CONTEXT)),
         KeyBinding::new("tab", CyclePanelTab, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("cmd-b", TogglePullRequestInbox, Some(KEY_BINDING_CONTEXT)),
         KeyBinding::new("cmd-k", ToggleCommandPalette, Some(KEY_BINDING_CONTEXT)),
         KeyBinding::new("cmd-p", ToggleRepositorySwitcher, Some(KEY_BINDING_CONTEXT)),
         KeyBinding::new("escape", ClosePanel, Some(KEY_BINDING_CONTEXT)),
@@ -258,6 +260,10 @@ pub(crate) const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
         shortcut: "tab",
         title: "Cycle right panel",
+    },
+    CommandSpec {
+        shortcut: "cmd+b",
+        title: "Toggle pull request inbox",
     },
     CommandSpec {
         shortcut: "r",

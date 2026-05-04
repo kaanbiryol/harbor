@@ -87,6 +87,11 @@ pub(crate) struct ReviewReactionAction {
     pub(crate) content: ReactionContent,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OptimisticReviewCommentHandle {
+    comment_id: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub(crate) enum PullRequestInboxMode {
     #[default]
@@ -321,6 +326,7 @@ pub struct AppView {
     active_file: usize,
     pub(crate) active_hunk: usize,
     active_tab: PanelTab,
+    pull_request_inbox_visible: bool,
     command_palette_open: bool,
     repository_switcher_open: bool,
     pull_request_switcher_open: bool,
@@ -493,6 +499,7 @@ impl AppView {
             active_file: 0,
             active_hunk: 0,
             active_tab: PanelTab::Diff,
+            pull_request_inbox_visible: true,
             command_palette_open: false,
             repository_switcher_open: show_repository_switcher,
             pull_request_switcher_open: false,
@@ -983,12 +990,6 @@ impl AppView {
     }
 
     pub(crate) fn submit_review_thread_reply(&mut self, thread_id: String, cx: &mut Context<Self>) {
-        if self.is_submitting_review_thread_reply {
-            self.status = "A review thread reply is already being submitted".to_string();
-            cx.notify();
-            return;
-        }
-
         let Some(pr) = self.selected_pull_request().cloned() else {
             self.review_thread_reply_error = Some(ReviewThreadUiError {
                 thread_id,
@@ -1011,15 +1012,63 @@ impl AppView {
             return;
         }
 
+        if is_local_review_thread_id(&thread_id) {
+            self.review_thread_reply_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Wait for the review thread to finish syncing before replying".to_string(),
+            });
+            self.status =
+                "Wait for the review thread to finish syncing before replying".to_string();
+            cx.notify();
+            return;
+        }
+
+        if !self
+            .review_threads
+            .iter()
+            .any(|thread| thread.id == thread_id)
+        {
+            self.review_thread_reply_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Review thread is no longer loaded".to_string(),
+            });
+            self.status = "Review thread is no longer loaded".to_string();
+            cx.notify();
+            return;
+        }
+
         let pending_review_node_id = self
             .pending_review
             .as_ref()
             .map(|pending_review| pending_review.node_id.clone());
+        let increments_pending_review_count = pending_review_node_id.is_some();
+        let pending_review_before_increment = if increments_pending_review_count {
+            self.pending_review.clone()
+        } else {
+            None
+        };
+        let detail_key =
+            PullRequestDetailCacheKey::new(pr.repo.clone(), pr.number, pr.head_sha.clone());
+        let Some(optimistic_comment) =
+            self.append_optimistic_review_reply(&thread_id, body.clone())
+        else {
+            self.review_thread_reply_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Review thread is no longer loaded".to_string(),
+            });
+            self.status = "Review thread is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
 
-        self.is_submitting_review_thread_reply = true;
-        self.review_thread_reply_thread_id = Some(thread_id.clone());
+        if increments_pending_review_count {
+            increment_pending_review_comment_count(&mut self.pending_review);
+        }
+
+        self.is_submitting_review_thread_reply = false;
+        self.review_thread_reply_thread_id = None;
         self.review_thread_reply_error = None;
-        self.status = format!("Posting reply on PR #{}", pr.number);
+        self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1028,29 +1077,37 @@ impl AppView {
                 .await;
 
             if let Err(error) = this.update(cx, move |view, cx| {
-                view.is_submitting_review_thread_reply = false;
-
                 match result {
                     Ok(()) => {
-                        view.append_optimistic_review_reply(&thread_id, body.clone());
-                        if pending_review_node_id.is_some()
-                            && let Some(pending_review) = view.pending_review.as_mut()
-                        {
-                            pending_review.comment_count += 1;
+                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
+                            view.review_thread_reply_error = None;
+                            view.status = format!("Posted reply on PR #{}", pr.number);
+                            view.load_selected_review_data(cx);
                         }
-
-                        view.review_thread_reply_thread_id = None;
-                        view.review_thread_reply_error = None;
-                        view.status = format!("Posted reply on PR #{}", pr.number);
-                        view.load_selected_review_data(cx);
                     }
                     Err(error) => {
+                        view.remove_optimistic_review_comment_for_detail(
+                            &detail_key,
+                            &optimistic_comment.comment_id,
+                        );
+                        if increments_pending_review_count {
+                            view.rollback_pending_review_comment_count_for_detail(
+                                &detail_key,
+                                pending_review_before_increment.as_ref(),
+                            );
+                        }
+
                         let message = format!("Failed to post reply: {error}");
-                        view.review_thread_reply_error = Some(ReviewThreadUiError {
-                            thread_id,
-                            message: message.clone(),
-                        });
-                        view.status = message;
+                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
+                            if view.review_thread_reply_thread_id.is_none() {
+                                view.review_thread_reply_thread_id = Some(thread_id.clone());
+                            }
+                            view.review_thread_reply_error = Some(ReviewThreadUiError {
+                                thread_id,
+                                message: message.clone(),
+                            });
+                            view.status = message;
+                        }
                     }
                 }
 
@@ -1941,11 +1998,7 @@ impl AppView {
     }
 
     fn sync_unresolved_thread_count(&mut self) -> usize {
-        let unresolved_count = self
-            .review_threads
-            .iter()
-            .filter(|thread| thread.state == ReviewThreadState::Unresolved)
-            .count();
+        let unresolved_count = unresolved_review_thread_count(&self.review_threads);
 
         if let Some(selected) = self.pull_requests.get_mut(self.selected_pr) {
             selected.unresolved_threads = unresolved_count;
@@ -1969,12 +2022,58 @@ impl AppView {
     }
 
     fn remove_review_comment(&mut self, comment_id: &str) {
-        for thread in &mut self.review_threads {
-            thread.comments.retain(|comment| comment.id != comment_id);
+        remove_review_comment_from_threads(&mut self.review_threads, comment_id);
+    }
+
+    fn remove_optimistic_review_comment_for_detail(
+        &mut self,
+        detail_key: &PullRequestDetailCacheKey,
+        comment_id: &str,
+    ) {
+        if self.selected_pull_request_detail_key().as_ref() == Some(detail_key) {
+            self.remove_review_comment(comment_id);
+            self.sync_unresolved_thread_count();
         }
 
-        self.review_threads
-            .retain(|thread| !thread.comments.is_empty());
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(detail_key) {
+            remove_review_comment_from_threads(&mut snapshot.review_threads, comment_id);
+            snapshot.pull_request.unresolved_threads =
+                unresolved_review_thread_count(&snapshot.review_threads);
+        }
+    }
+
+    fn rollback_pending_review_comment_count_for_detail(
+        &mut self,
+        detail_key: &PullRequestDetailCacheKey,
+        previous_pending_review: Option<&PendingReviewSession>,
+    ) {
+        if self.selected_pull_request_detail_key().as_ref() == Some(detail_key) {
+            rollback_pending_review_comment_count(
+                &mut self.pending_review,
+                previous_pending_review,
+            );
+        }
+
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(detail_key) {
+            rollback_pending_review_comment_count(
+                &mut snapshot.pending_review,
+                previous_pending_review,
+            );
+        }
+    }
+
+    fn set_pending_review_for_detail(
+        &mut self,
+        detail_key: &PullRequestDetailCacheKey,
+        pending_review: PendingReviewSession,
+    ) {
+        if self.selected_pull_request_detail_key().as_ref() == Some(detail_key) {
+            self.pending_review = Some(pending_review.clone());
+        }
+
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(detail_key) {
+            snapshot.pending_review = Some(pending_review);
+        }
     }
 
     fn set_review_comment_reaction(
@@ -2015,10 +2114,15 @@ impl AppView {
             .retain(|reaction| reaction.count > 0 || reaction.viewer_has_reacted);
     }
 
-    fn insert_optimistic_review_thread(&mut self, range: ReviewCommentRange, body: String) {
+    fn insert_optimistic_review_thread(
+        &mut self,
+        range: ReviewCommentRange,
+        body: String,
+    ) -> OptimisticReviewCommentHandle {
         let sequence = self.next_local_review_comment_sequence();
+        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
         let comment = self.optimistic_review_comment(
-            format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}"),
+            comment_id.clone(),
             Some(review_position_from_range(&range)),
             body,
         );
@@ -2031,16 +2135,19 @@ impl AppView {
             comments: vec![comment],
         });
         self.sync_unresolved_thread_count();
+
+        OptimisticReviewCommentHandle { comment_id }
     }
 
-    fn append_optimistic_review_reply(&mut self, thread_id: &str, body: String) {
-        let Some(thread_index) = self
+    fn append_optimistic_review_reply(
+        &mut self,
+        thread_id: &str,
+        body: String,
+    ) -> Option<OptimisticReviewCommentHandle> {
+        let thread_index = self
             .review_threads
             .iter()
-            .position(|thread| thread.id == thread_id)
-        else {
-            return;
-        };
+            .position(|thread| thread.id == thread_id)?;
 
         let position = self.review_threads[thread_index]
             .range
@@ -2053,13 +2160,12 @@ impl AppView {
                     .find_map(|comment| comment.position.clone())
             });
         let sequence = self.next_local_review_comment_sequence();
-        let comment = self.optimistic_review_comment(
-            format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}"),
-            position,
-            body,
-        );
+        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
+        let comment = self.optimistic_review_comment(comment_id.clone(), position, body);
 
         self.review_threads[thread_index].comments.push(comment);
+
+        Some(OptimisticReviewCommentHandle { comment_id })
     }
 
     fn optimistic_review_comment(
@@ -2147,17 +2253,36 @@ impl AppView {
             return;
         }
 
-        self.is_submitting_review_comment = true;
+        let detail_key =
+            PullRequestDetailCacheKey::new(pr.repo.clone(), pr.number, pr.head_sha.clone());
+        let optimistic_comment =
+            self.insert_optimistic_review_thread(composer.range.clone(), body.clone());
+        let increments_pending_review_count = submission == ReviewCommentSubmission::AddToReview;
+        let pending_review_before_increment = if increments_pending_review_count {
+            self.pending_review.clone()
+        } else {
+            None
+        };
+        if increments_pending_review_count {
+            increment_pending_review_comment_count(&mut self.pending_review);
+        }
+
+        self.is_submitting_review_comment = submission == ReviewCommentSubmission::StartReview;
+        self.review_composer = None;
+        self.review_line_selection = None;
         self.review_comment_error = None;
         self.status = match submission {
             ReviewCommentSubmission::SingleComment => {
-                format!("Posting comment on PR #{}", pr.number)
+                format!("Added comment locally on PR #{}; syncing", pr.number)
             }
             ReviewCommentSubmission::StartReview => {
-                format!("Starting pending review on PR #{}", pr.number)
+                format!(
+                    "Started pending review locally on PR #{}; syncing",
+                    pr.number
+                )
             }
             ReviewCommentSubmission::AddToReview => {
-                format!("Adding comment to pending review on PR #{}", pr.number)
+                format!("Added review comment locally on PR #{}; syncing", pr.number)
             }
         };
         cx.notify();
@@ -2199,48 +2324,60 @@ impl AppView {
             };
 
             if let Err(error) = this.update(cx, move |view, cx| {
-                view.is_submitting_review_comment = false;
+                if submission == ReviewCommentSubmission::StartReview {
+                    view.is_submitting_review_comment = false;
+                }
 
                 match result {
                     Ok(new_pending_review_node_id) => {
-                        match submission {
-                            ReviewCommentSubmission::SingleComment => {}
-                            ReviewCommentSubmission::StartReview => {
-                                if let Some(node_id) = new_pending_review_node_id {
-                                    view.pending_review = Some(PendingReviewSession {
-                                        node_id,
-                                        comment_count: 1,
-                                    });
-                                }
-                            }
-                            ReviewCommentSubmission::AddToReview => {
-                                if let Some(pending_review) = view.pending_review.as_mut() {
-                                    pending_review.comment_count += 1;
-                                }
-                            }
+                        if let (ReviewCommentSubmission::StartReview, Some(node_id)) =
+                            (submission, new_pending_review_node_id)
+                        {
+                            view.set_pending_review_for_detail(
+                                &detail_key,
+                                PendingReviewSession {
+                                    node_id,
+                                    comment_count: 1,
+                                },
+                            );
                         }
 
-                        view.insert_optimistic_review_thread(composer.range.clone(), body.clone());
-                        view.review_composer = None;
-                        view.review_line_selection = None;
-                        view.review_comment_error = None;
-                        view.status = match submission {
-                            ReviewCommentSubmission::SingleComment => {
-                                format!("Posted comment on PR #{}", pr.number)
-                            }
-                            ReviewCommentSubmission::StartReview => {
-                                format!("Started pending review on PR #{}", pr.number)
-                            }
-                            ReviewCommentSubmission::AddToReview => {
-                                format!("Added review comment on PR #{}", pr.number)
-                            }
-                        };
-                        view.load_selected_review_data(cx);
+                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
+                            view.review_comment_error = None;
+                            view.status = match submission {
+                                ReviewCommentSubmission::SingleComment => {
+                                    format!("Posted comment on PR #{}", pr.number)
+                                }
+                                ReviewCommentSubmission::StartReview => {
+                                    format!("Started pending review on PR #{}", pr.number)
+                                }
+                                ReviewCommentSubmission::AddToReview => {
+                                    format!("Added review comment on PR #{}", pr.number)
+                                }
+                            };
+                            view.load_selected_review_data(cx);
+                        }
                     }
                     Err(error) => {
+                        view.remove_optimistic_review_comment_for_detail(
+                            &detail_key,
+                            &optimistic_comment.comment_id,
+                        );
+                        if increments_pending_review_count {
+                            view.rollback_pending_review_comment_count_for_detail(
+                                &detail_key,
+                                pending_review_before_increment.as_ref(),
+                            );
+                        }
+
                         let message = format!("Failed to submit review comment: {error}");
-                        view.review_comment_error = Some(message.clone());
-                        view.status = message;
+                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
+                            if view.review_composer.is_none() {
+                                view.review_composer = Some(composer);
+                            }
+                            view.review_comment_error = Some(message.clone());
+                            view.status = message;
+                        }
                     }
                 }
 
@@ -2890,6 +3027,44 @@ fn merge_optimistic_review_threads(
     loaded_threads
 }
 
+fn remove_review_comment_from_threads(threads: &mut Vec<ReviewThread>, comment_id: &str) {
+    for thread in threads.iter_mut() {
+        thread.comments.retain(|comment| comment.id != comment_id);
+    }
+
+    threads.retain(|thread| !thread.comments.is_empty());
+}
+
+fn unresolved_review_thread_count(threads: &[ReviewThread]) -> usize {
+    threads
+        .iter()
+        .filter(|thread| thread.state == ReviewThreadState::Unresolved)
+        .count()
+}
+
+fn increment_pending_review_comment_count(pending_review: &mut Option<PendingReviewSession>) {
+    if let Some(pending_review) = pending_review.as_mut() {
+        pending_review.comment_count = pending_review.comment_count.saturating_add(1);
+    }
+}
+
+fn rollback_pending_review_comment_count(
+    pending_review: &mut Option<PendingReviewSession>,
+    previous_pending_review: Option<&PendingReviewSession>,
+) {
+    let (Some(pending_review), Some(previous_pending_review)) =
+        (pending_review.as_mut(), previous_pending_review)
+    else {
+        return;
+    };
+
+    if pending_review.node_id == previous_pending_review.node_id
+        && pending_review.comment_count > previous_pending_review.comment_count
+    {
+        pending_review.comment_count = pending_review.comment_count.saturating_sub(1);
+    }
+}
+
 fn review_thread_contains_optimistic_comment(
     loaded_thread: &ReviewThread,
     optimistic_thread: &ReviewThread,
@@ -2939,7 +3114,11 @@ fn review_comment_position_line(position: &ReviewCommentPosition) -> Option<u32>
 }
 
 fn is_local_review_thread(thread: &ReviewThread) -> bool {
-    thread.id.starts_with(LOCAL_REVIEW_THREAD_ID_PREFIX)
+    is_local_review_thread_id(&thread.id)
+}
+
+fn is_local_review_thread_id(thread_id: &str) -> bool {
+    thread_id.starts_with(LOCAL_REVIEW_THREAD_ID_PREFIX)
 }
 
 fn is_local_review_comment(comment: &ReviewComment) -> bool {
@@ -3063,6 +3242,36 @@ mod tests {
     }
 
     #[test]
+    fn rollback_pending_review_count_only_removes_optimistic_increment() {
+        let previous = PendingReviewSession {
+            node_id: "review-node".to_string(),
+            comment_count: 2,
+        };
+        let mut pending_review = Some(PendingReviewSession {
+            node_id: "review-node".to_string(),
+            comment_count: 3,
+        });
+
+        rollback_pending_review_comment_count(&mut pending_review, Some(&previous));
+
+        assert_eq!(pending_review.expect("pending review").comment_count, 2);
+
+        let mut refreshed_pending_review = Some(PendingReviewSession {
+            node_id: "review-node".to_string(),
+            comment_count: 2,
+        });
+
+        rollback_pending_review_comment_count(&mut refreshed_pending_review, Some(&previous));
+
+        assert_eq!(
+            refreshed_pending_review
+                .expect("pending review should remain")
+                .comment_count,
+            2
+        );
+    }
+
+    #[test]
     fn merge_preserves_optimistic_review_thread_until_refresh_loads_it() {
         let range = review_range("src/lib.rs", ReviewSide::Right, 14);
         let optimistic_thread = review_thread(
@@ -3097,6 +3306,52 @@ mod tests {
         assert_eq!(merged[0].comments.len(), 1);
     }
 
+    #[test]
+    fn merge_preserves_optimistic_reply_until_refresh_loads_it() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let loaded_thread = review_thread("thread-1", "comment-1", range.clone(), "first");
+        let mut existing_thread = loaded_thread.clone();
+        existing_thread
+            .comments
+            .push(review_comment("local-review-comment-2", range, "reply"));
+
+        let merged = merge_optimistic_review_threads(vec![loaded_thread], &[existing_thread]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0]
+                .comments
+                .iter()
+                .map(|comment| comment.body.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first", "reply"]
+        );
+    }
+
+    #[test]
+    fn merge_drops_optimistic_reply_when_refresh_loads_matching_comment() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let mut loaded_thread = review_thread("thread-1", "comment-1", range.clone(), "first");
+        loaded_thread
+            .comments
+            .push(review_comment("comment-2", range.clone(), "reply"));
+        let mut existing_thread = review_thread("thread-1", "comment-1", range.clone(), "first");
+        existing_thread
+            .comments
+            .push(review_comment("local-review-comment-2", range, "reply"));
+
+        let merged = merge_optimistic_review_threads(vec![loaded_thread], &[existing_thread]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].comments.len(), 2);
+        assert!(
+            merged[0]
+                .comments
+                .iter()
+                .all(|comment| !is_local_review_comment(comment))
+        );
+    }
+
     fn pending_review(id: &str, node_id: &str, author: &str) -> PullRequestReview {
         PullRequestReview {
             id: id.to_string(),
@@ -3119,22 +3374,26 @@ mod tests {
             path: range.path.clone(),
             range: Some(range.clone()),
             state: ReviewThreadState::Unresolved,
-            comments: vec![ReviewComment {
-                id: comment_id.to_string(),
-                author: "alex".to_string(),
-                author_avatar_url: None,
-                body: body.to_string(),
-                created_at: chrono::DateTime::parse_from_rfc3339("2026-05-04T20:30:00Z")
-                    .expect("valid timestamp")
-                    .with_timezone(&chrono::Utc),
-                updated_at: None,
-                position: Some(review_position_from_range(&range)),
-                viewer_did_author: true,
-                viewer_can_update: false,
-                viewer_can_delete: false,
-                viewer_can_react: false,
-                reactions: Vec::new(),
-            }],
+            comments: vec![review_comment(comment_id, range, body)],
+        }
+    }
+
+    fn review_comment(comment_id: &str, range: ReviewCommentRange, body: &str) -> ReviewComment {
+        ReviewComment {
+            id: comment_id.to_string(),
+            author: "alex".to_string(),
+            author_avatar_url: None,
+            body: body.to_string(),
+            created_at: chrono::DateTime::parse_from_rfc3339("2026-05-04T20:30:00Z")
+                .expect("valid timestamp")
+                .with_timezone(&chrono::Utc),
+            updated_at: None,
+            position: Some(review_position_from_range(&range)),
+            viewer_did_author: true,
+            viewer_can_update: false,
+            viewer_can_delete: false,
+            viewer_can_react: false,
+            reactions: Vec::new(),
         }
     }
 

@@ -448,6 +448,25 @@ impl AppView {
         self.select_panel_tab(self.active_tab.next(), cx);
     }
 
+    pub(super) fn toggle_pull_request_inbox(
+        &mut self,
+        _: &TogglePullRequestInbox,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pull_request_inbox_visible = !self.pull_request_inbox_visible;
+        self.command_palette_open = false;
+        self.repository_switcher_open = false;
+        self.pull_request_switcher_open = false;
+        self.file_filter_popover_open = false;
+        self.status = if self.pull_request_inbox_visible {
+            "Pull request inbox shown".to_string()
+        } else {
+            "Pull request inbox hidden".to_string()
+        };
+        cx.notify();
+    }
+
     pub(crate) fn select_panel_tab(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
         if self.active_tab == tab {
             return;
