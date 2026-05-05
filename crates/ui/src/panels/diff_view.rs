@@ -1,6 +1,9 @@
+use std::{collections::HashSet, ops::Range};
+
 use gpui::{
-    Anchor, AnyElement, Context, Entity, IntoElement, ListHorizontalSizingBehavior, MouseButton,
-    StyledText, UniformListScrollHandle, div, img, prelude::*, px, rgb, uniform_list,
+    Anchor, AnyElement, App, Bounds, Context, Entity, IntoElement, ListHorizontalSizingBehavior,
+    MouseButton, Pixels, Point, StyledText, UniformListDecoration, UniformListScrollHandle, Window,
+    div, img, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
@@ -38,8 +41,10 @@ const REVIEW_MARKER_WIDTH: f32 = 24.0;
 const PREFIX_WIDTH: f32 = 16.0;
 
 pub(crate) fn render_diff_panel(
-    file: Option<&DiffFile>,
-    parsed_diff: Option<&ParsedDiff>,
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    visible_file_indices: &[usize],
+    reviewed_file_paths: &HashSet<String>,
     review_threads: &[ReviewThread],
     review_composer: Option<&ReviewComposer>,
     review_comment_error: Option<&str>,
@@ -98,7 +103,7 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     }
 
-    let Some(file) = file else {
+    if visible_file_indices.is_empty() {
         return div()
             .flex()
             .flex_col()
@@ -117,36 +122,20 @@ pub(crate) fn render_diff_panel(
                     .bg(rgb(0x0c0f12))
                     .p_3()
                     .text_color(rgb(0x9aa4b2))
-                    .child("Select a changed file to preview its diff"),
+                    .child(if files.is_empty() {
+                        "No changed files to preview"
+                    } else {
+                        "No changed files match the current filters"
+                    }),
             )
             .into_any_element();
-    };
+    }
 
-    let Some(parsed_diff) = parsed_diff else {
-        return div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h_0()
-            .gap_2()
-            .child(render_diff_file_header(file, None))
-            .child(
-                div()
-                    .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
-                    .p_3()
-                    .text_color(rgb(0xfbbf24))
-                    .child(
-                        "Diff unavailable via GitHub API. Local checkout fallback will be added.",
-                    ),
-            )
-            .into_any_element();
-    };
-
-    let row_count = diff_row_count_with_review_controls(
-        parsed_diff,
-        file,
+    let row_count = continuous_diff_row_count(
+        files,
+        diffs,
+        visible_file_indices,
+        reviewed_file_paths,
         review_threads,
         review_composer,
         review_comment_error,
@@ -154,6 +143,7 @@ pub(crate) fn render_diff_panel(
         active_review_comment_edit,
     );
     let view_entity = cx.entity().clone();
+    let processor_view_entity = view_entity.clone();
 
     div()
         .image_cache(gpui::retain_all("diff-review-avatar-cache"))
@@ -164,7 +154,21 @@ pub(crate) fn render_diff_panel(
         .min_h_0()
         .min_w_0()
         .gap_2()
-        .child(render_diff_file_header(file, Some(parsed_diff.hunks.len())))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .text_color(rgb(0xf1f5f9))
+                .child("Unified diff preview")
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0x9aa4b2))
+                        .child(format!("{} files", visible_file_indices.len())),
+                ),
+        )
         .child(
             div()
                 .flex()
@@ -181,17 +185,13 @@ pub(crate) fn render_diff_panel(
                         "diff-lines-list",
                         row_count,
                         cx.processor(move |view, range: std::ops::Range<usize>, _window, _cx| {
-                            let Some(file) = view.active_file() else {
-                                return Vec::new();
-                            };
-                            let Some(parsed_diff) = view.active_diff() else {
-                                return Vec::new();
-                            };
-                            let line_number_width = line_number_width_for_diff(parsed_diff);
+                            let visible_file_indices = view.visible_file_indices(_cx);
 
-                            render_diff_rows(
-                                parsed_diff,
-                                file,
+                            render_continuous_diff_rows(
+                                view.diff_files(),
+                                view.parsed_diffs(),
+                                &visible_file_indices,
+                                view.reviewed_file_paths(),
                                 &view.review_threads,
                                 view.review_composer.as_ref(),
                                 view.review_line_selection.as_ref(),
@@ -228,14 +228,17 @@ pub(crate) fn render_diff_panel(
                                 view.review_comment_action_error.as_ref(),
                                 view.review_reaction_action.as_ref(),
                                 view.review_reaction_error.as_ref(),
+                                view.active_file_index(),
                                 view.active_hunk,
-                                line_number_width,
-                                view_entity.clone(),
+                                processor_view_entity.clone(),
                                 range,
                             )
                         }),
                     )
                     .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+                    .with_decoration(DiffStickyHeaderDecoration {
+                        view_entity: view_entity.clone(),
+                    })
                     .track_scroll(&scroll_handle)
                     .flex_1()
                     .min_h_0()
@@ -247,26 +250,596 @@ pub(crate) fn render_diff_panel(
         .into_any_element()
 }
 
-pub(crate) fn render_diff_file_header(
+pub(crate) fn continuous_diff_row_count(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    visible_file_indices: &[usize],
+    reviewed_file_paths: &HashSet<String>,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> usize {
+    visible_file_indices
+        .iter()
+        .filter_map(|file_index| files.get(*file_index).map(|file| (*file_index, file)))
+        .map(|(file_index, file)| {
+            continuous_diff_section_row_count(
+                file_index,
+                file,
+                diffs,
+                reviewed_file_paths,
+                review_threads,
+                review_composer,
+                review_comment_error,
+                active_review_thread_reply,
+                active_review_comment_edit,
+            )
+        })
+        .sum()
+}
+
+pub(crate) fn continuous_diff_file_row_index(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    visible_file_indices: &[usize],
+    reviewed_file_paths: &HashSet<String>,
+    target_file_index: usize,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> Option<usize> {
+    let mut row_index = 0;
+
+    for file_index in visible_file_indices {
+        let file = files.get(*file_index)?;
+        if *file_index == target_file_index {
+            return Some(row_index);
+        }
+
+        row_index += continuous_diff_section_row_count(
+            *file_index,
+            file,
+            diffs,
+            reviewed_file_paths,
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        );
+    }
+
+    None
+}
+
+pub(crate) fn continuous_diff_hunk_row_index(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    visible_file_indices: &[usize],
+    reviewed_file_paths: &HashSet<String>,
+    target_file_index: usize,
+    target_hunk_index: usize,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> Option<usize> {
+    let mut row_index = 0;
+
+    for file_index in visible_file_indices {
+        let file = files.get(*file_index)?;
+        let parsed_diff = parsed_diff_for_file(diffs, *file_index);
+
+        if *file_index == target_file_index {
+            if file_is_reviewed(file, reviewed_file_paths) {
+                return None;
+            }
+
+            let parsed_diff = parsed_diff?;
+            let local_row_index = diff_hunk_row_index_with_review_controls(
+                parsed_diff,
+                target_hunk_index,
+                file,
+                review_threads,
+                review_composer,
+                review_comment_error,
+                active_review_thread_reply,
+                active_review_comment_edit,
+            )?;
+
+            return Some(row_index + 1 + local_row_index);
+        }
+
+        row_index += continuous_diff_section_row_count(
+            *file_index,
+            file,
+            diffs,
+            reviewed_file_paths,
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        );
+    }
+
+    None
+}
+
+fn parsed_diff_for_file(diffs: &[Option<ParsedDiff>], file_index: usize) -> Option<&ParsedDiff> {
+    diffs
+        .get(file_index)
+        .and_then(Option::as_ref)
+        .filter(|diff| !diff.is_empty())
+}
+
+fn file_is_reviewed(file: &DiffFile, reviewed_file_paths: &HashSet<String>) -> bool {
+    reviewed_file_paths.contains(&file.path)
+}
+
+fn continuous_diff_section_body_row_count(
+    file_index: usize,
     file: &DiffFile,
+    diffs: &[Option<ParsedDiff>],
+    reviewed_file_paths: &HashSet<String>,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> usize {
+    if file_is_reviewed(file, reviewed_file_paths) {
+        return 0;
+    }
+
+    parsed_diff_for_file(diffs, file_index).map_or(1, |diff| {
+        diff_row_count_with_review_controls(
+            diff,
+            file,
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        )
+    })
+}
+
+fn continuous_diff_section_row_count(
+    file_index: usize,
+    file: &DiffFile,
+    diffs: &[Option<ParsedDiff>],
+    reviewed_file_paths: &HashSet<String>,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> usize {
+    1 + continuous_diff_section_body_row_count(
+        file_index,
+        file,
+        diffs,
+        reviewed_file_paths,
+        review_threads,
+        review_composer,
+        review_comment_error,
+        active_review_thread_reply,
+        active_review_comment_edit,
+    )
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DiffFileSection {
+    file_index: usize,
+    header_row_index: usize,
     hunk_count: Option<usize>,
-) -> impl IntoElement {
+    reviewed: bool,
+}
+
+fn continuous_diff_section_for_row(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    visible_file_indices: &[usize],
+    reviewed_file_paths: &HashSet<String>,
+    target_row_index: usize,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> Option<DiffFileSection> {
+    let mut row_index = 0;
+
+    for file_index in visible_file_indices {
+        let file = files.get(*file_index)?;
+        let section_row_count = continuous_diff_section_row_count(
+            *file_index,
+            file,
+            diffs,
+            reviewed_file_paths,
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        );
+
+        if target_row_index < row_index + section_row_count {
+            return Some(DiffFileSection {
+                file_index: *file_index,
+                header_row_index: row_index,
+                hunk_count: parsed_diff_for_file(diffs, *file_index).map(|diff| diff.hunks.len()),
+                reviewed: file_is_reviewed(file, reviewed_file_paths),
+            });
+        }
+
+        row_index += section_row_count;
+    }
+
+    None
+}
+
+struct DiffStickyHeaderDecoration {
+    view_entity: Entity<AppView>,
+}
+
+impl UniformListDecoration for DiffStickyHeaderDecoration {
+    fn compute(
+        &self,
+        visible_range: Range<usize>,
+        bounds: Bounds<Pixels>,
+        scroll_offset: Point<Pixels>,
+        item_height: Pixels,
+        _item_count: usize,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        if visible_range.is_empty() {
+            return div().into_any_element();
+        }
+
+        let view = self.view_entity.read(cx);
+        let visible_file_indices = view.visible_file_indices(cx);
+        let Some(section) = continuous_diff_section_for_row(
+            view.diff_files(),
+            view.parsed_diffs(),
+            &visible_file_indices,
+            view.reviewed_file_paths(),
+            visible_range.start,
+            &view.review_threads,
+            view.review_composer.as_ref(),
+            view.review_comment_error.as_deref(),
+            view.review_thread_reply_thread_id.as_deref(),
+            view.review_comment_edit_comment_id.as_deref(),
+        ) else {
+            return div().into_any_element();
+        };
+
+        let scroll_top = -scroll_offset.y;
+        let header_top = item_height * section.header_row_index;
+        if section.header_row_index == visible_range.start && scroll_top <= header_top {
+            return div().into_any_element();
+        }
+
+        let Some(file) = view.diff_files().get(section.file_index).cloned() else {
+            return div().into_any_element();
+        };
+
+        div()
+            .relative()
+            .w(bounds.size.width)
+            .h(bounds.size.height)
+            .child(
+                div()
+                    .absolute()
+                    .top(-scroll_offset.y)
+                    .left(-scroll_offset.x)
+                    .w(bounds.size.width)
+                    .child(render_diff_file_section_header(
+                        section.file_index,
+                        file,
+                        section.hunk_count,
+                        section.file_index == view.active_file_index(),
+                        section.reviewed,
+                        true,
+                        self.view_entity.clone(),
+                    )),
+            )
+            .into_any_element()
+    }
+}
+
+fn render_continuous_diff_rows(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    visible_file_indices: &[usize],
+    reviewed_file_paths: &HashSet<String>,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_line_selection: Option<&ReviewLineSelection>,
+    pending_review: Option<&PendingReviewSession>,
+    review_comment_input: Entity<InputState>,
+    review_comment_body_empty: bool,
+    is_submitting_review_comment: bool,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    review_thread_reply_input: Entity<InputState>,
+    review_thread_reply_body_empty: bool,
+    is_submitting_review_thread_reply: bool,
+    review_thread_reply_error: Option<&ReviewThreadUiError>,
+    review_thread_action_thread_id: Option<&str>,
+    review_thread_action_error: Option<&ReviewThreadUiError>,
+    active_review_comment_edit: Option<&str>,
+    review_comment_edit_input: Entity<InputState>,
+    review_comment_edit_body_empty: bool,
+    is_submitting_review_comment_edit: bool,
+    review_comment_edit_error: Option<&ReviewCommentUiError>,
+    review_comment_action_comment_id: Option<&str>,
+    review_comment_action_error: Option<&ReviewCommentUiError>,
+    review_reaction_action: Option<&ReviewReactionAction>,
+    review_reaction_error: Option<&ReviewCommentUiError>,
+    active_file: usize,
+    active_hunk: usize,
+    view_entity: Entity<AppView>,
+    range: std::ops::Range<usize>,
+) -> Vec<AnyElement> {
+    let mut rows = Vec::with_capacity(range.len());
+    let mut row_index = 0;
+
+    for file_index in visible_file_indices {
+        if row_index >= range.end {
+            break;
+        }
+
+        let Some(file) = files.get(*file_index) else {
+            continue;
+        };
+        let parsed_diff = parsed_diff_for_file(diffs, *file_index);
+        let hunk_count = parsed_diff.map(|diff| diff.hunks.len());
+        let reviewed = file_is_reviewed(file, reviewed_file_paths);
+        let body_row_count = continuous_diff_section_body_row_count(
+            *file_index,
+            file,
+            diffs,
+            reviewed_file_paths,
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        );
+        let section_row_count = 1 + body_row_count;
+
+        if row_index + section_row_count <= range.start {
+            row_index += section_row_count;
+            continue;
+        }
+
+        if row_in_range(row_index, &range) {
+            rows.push(
+                render_diff_file_section_header(
+                    *file_index,
+                    file.clone(),
+                    hunk_count,
+                    *file_index == active_file,
+                    reviewed,
+                    false,
+                    view_entity.clone(),
+                )
+                .into_any_element(),
+            );
+        }
+        row_index += 1;
+
+        if reviewed {
+            continue;
+        }
+
+        if let Some(parsed_diff) = parsed_diff {
+            let line_number_width = line_number_width_for_diff(parsed_diff);
+            render_diff_rows(
+                parsed_diff,
+                file,
+                review_threads,
+                review_composer,
+                review_line_selection,
+                pending_review,
+                review_comment_input.clone(),
+                review_comment_body_empty,
+                is_submitting_review_comment,
+                review_comment_error,
+                active_review_thread_reply,
+                review_thread_reply_input.clone(),
+                review_thread_reply_body_empty,
+                is_submitting_review_thread_reply,
+                review_thread_reply_error,
+                review_thread_action_thread_id,
+                review_thread_action_error,
+                active_review_comment_edit,
+                review_comment_edit_input.clone(),
+                review_comment_edit_body_empty,
+                is_submitting_review_comment_edit,
+                review_comment_edit_error,
+                review_comment_action_comment_id,
+                review_comment_action_error,
+                review_reaction_action,
+                review_reaction_error,
+                (*file_index == active_file).then_some(active_hunk),
+                line_number_width,
+                view_entity.clone(),
+                &mut row_index,
+                &range,
+                &mut rows,
+            );
+        } else {
+            if row_in_range(row_index, &range) {
+                rows.push(render_diff_unavailable_row(row_index).into_any_element());
+            }
+            row_index += 1;
+        }
+    }
+
+    rows
+}
+
+fn render_diff_file_section_header(
+    file_index: usize,
+    file: DiffFile,
+    hunk_count: Option<usize>,
+    active: bool,
+    reviewed: bool,
+    sticky: bool,
+    view_entity: Entity<AppView>,
+) -> AnyElement {
     let hunk_label = hunk_count.map_or_else(
         || "no parsed hunks".to_string(),
         |count| format!("{count} hunks"),
     );
+    let header_id = if sticky {
+        format!("sticky-diff-file-header-{file_index}")
+    } else {
+        format!("diff-file-header-{file_index}")
+    };
+    let review_button = Button::new(format!(
+        "{}-diff-file-reviewed-{file_index}",
+        if sticky { "sticky" } else { "row" }
+    ))
+    .icon(if reviewed {
+        IconName::Check
+    } else {
+        IconName::Eye
+    })
+    .small()
+    .compact()
+    .tooltip(if reviewed {
+        "Mark as unreviewed"
+    } else {
+        "Mark as reviewed"
+    });
+    let review_button = if reviewed {
+        review_button.primary()
+    } else {
+        review_button.ghost()
+    };
+    let review_button = review_button.on_click({
+        let view_entity = view_entity.clone();
+        move |_, _, cx| {
+            view_entity.update(cx, |view, cx| {
+                view.toggle_changed_file_reviewed(file_index, cx);
+            });
+            cx.stop_propagation();
+        }
+    });
+    let path = file.path.clone();
+    let select_view_entity = view_entity.clone();
 
     div()
+        .id(header_id)
+        .h(px(DIFF_ROW_HEIGHT))
+        .w_full()
+        .min_w_0()
         .flex()
         .items_center()
         .justify_between()
         .gap_3()
+        .px_3()
+        .border_1()
+        .border_color(if active {
+            rgb(0x3b82f6)
+        } else if sticky {
+            rgb(0x334155)
+        } else {
+            rgb(0x242a31)
+        })
+        .bg(if active {
+            rgb(0x172033)
+        } else if reviewed {
+            rgb(0x10161f)
+        } else {
+            rgb(0x111827)
+        })
+        .font_family(".SystemUIFont")
         .text_color(rgb(0xf1f5f9))
-        .child(file.path.clone())
-        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
-            "{:?}  +{} -{}  {}",
-            file.status, file.additions, file.deletions, hunk_label
-        )))
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .when(sticky, |element| element.shadow_lg())
+        .hover(|element| element.bg(rgb(0x172033)))
+        .on_click(move |_, _, cx| {
+            select_view_entity.update(cx, |view, cx| {
+                view.select_file(file_index, cx);
+            });
+        })
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(review_button)
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_sm()
+                        .font_medium()
+                        .text_color(if reviewed {
+                            rgb(0x9aa4b2)
+                        } else {
+                            rgb(0xf1f5f9)
+                        })
+                        .child(path),
+                ),
+        )
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_sm()
+                .font_medium()
+                .text_color(rgb(0x9aa4b2))
+                .child(format!(
+                    "{:?}  +{} -{}  {}",
+                    file.status, file.additions, file.deletions, hunk_label
+                ))
+                .when(reviewed, |element| {
+                    element.child(
+                        div()
+                            .rounded_xs()
+                            .border_1()
+                            .border_color(rgb(0x2f4f3e))
+                            .bg(rgb(0x12241b))
+                            .px_1()
+                            .text_xs()
+                            .text_color(rgb(0x86efac))
+                            .child("reviewed"),
+                    )
+                }),
+        )
+        .into_any_element()
+}
+
+fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {
+    div()
+        .id(format!("diff-unavailable-{row_index}"))
+        .h(px(DIFF_ROW_HEIGHT))
+        .w_full()
+        .flex()
+        .items_center()
+        .px_2()
+        .bg(rgb(0x0c0f12))
+        .font_family(".SystemUIFont")
+        .text_color(rgb(0xfbbf24))
+        .whitespace_nowrap()
+        .child("Diff unavailable via GitHub API. Local checkout fallback will be added.")
 }
 
 fn render_diff_rows(
@@ -296,34 +869,34 @@ fn render_diff_rows(
     review_comment_action_error: Option<&ReviewCommentUiError>,
     review_reaction_action: Option<&ReviewReactionAction>,
     review_reaction_error: Option<&ReviewCommentUiError>,
-    active_hunk: usize,
+    active_hunk: Option<usize>,
     line_number_width: f32,
     view_entity: Entity<AppView>,
-    range: std::ops::Range<usize>,
-) -> Vec<AnyElement> {
+    row_index: &mut usize,
+    range: &std::ops::Range<usize>,
+    rows: &mut Vec<AnyElement>,
+) {
     let anchored_threads = anchored_review_threads(file, review_threads);
     let review_marker_width = REVIEW_MARKER_WIDTH;
     let active_selection_range = review_line_selection.and_then(|selection| {
         crate::workspace::review_range_from_targets(&selection.anchor, &selection.current).ok()
     });
-    let mut rows = Vec::with_capacity(range.len());
-    let mut row_index = 0;
 
     for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
-        if row_index >= range.end {
+        if *row_index >= range.end {
             break;
         }
 
-        if row_in_range(row_index, &range) {
+        if row_in_range(*row_index, range) {
             rows.push(
-                render_diff_hunk_row(hunk, hunk_index, hunk_index == active_hunk)
+                render_diff_hunk_row(hunk, hunk_index, active_hunk == Some(hunk_index))
                     .into_any_element(),
             );
         }
-        row_index += 1;
+        *row_index += 1;
 
         for (line_index, line) in hunk.lines.iter().enumerate() {
-            if row_index >= range.end {
+            if *row_index >= range.end {
                 break;
             }
 
@@ -344,10 +917,10 @@ fn render_diff_rows(
                 .filter_map(|thread| thread.range.as_ref())
                 .any(|range| review_comment_range_matches_line(file, range, line));
 
-            if row_in_range(row_index, &range) {
+            if row_in_range(*row_index, range) {
                 rows.push(
                     render_diff_line(
-                        row_index,
+                        *row_index,
                         line,
                         matching_threads.len(),
                         has_unresolved_thread,
@@ -362,22 +935,24 @@ fn render_diff_rows(
                     .into_any_element(),
                 );
             }
-            row_index += 1;
+            *row_index += 1;
 
             let composer_ends_here = review_composer.is_some_and(|composer| {
-                composer.anchor.hunk_index == hunk_index && composer.anchor.line_index == line_index
+                review_comment_range_matches_file(file, &composer.range)
+                    && composer.anchor.hunk_index == hunk_index
+                    && composer.anchor.line_index == line_index
             });
 
             if composer_ends_here {
                 let composer_row_count = review_composer_row_count(review_comment_error);
 
                 for composer_row in 0..composer_row_count {
-                    if row_index >= range.end {
-                        row_index += composer_row_count - composer_row;
+                    if *row_index >= range.end {
+                        *row_index += composer_row_count - composer_row;
                         break;
                     }
 
-                    if row_in_range(row_index, &range) {
+                    if row_in_range(*row_index, range) {
                         if composer_row == 0 {
                             if let Some(composer) = review_composer.cloned() {
                                 rows.push(
@@ -401,7 +976,7 @@ fn render_diff_rows(
                         }
                     }
 
-                    row_index += 1;
+                    *row_index += 1;
                 }
             }
 
@@ -413,12 +988,12 @@ fn render_diff_rows(
                 );
 
                 for thread_row in 0..thread_row_count {
-                    if row_index >= range.end {
-                        row_index += thread_row_count - thread_row;
+                    if *row_index >= range.end {
+                        *row_index += thread_row_count - thread_row;
                         break;
                     }
 
-                    if row_in_range(row_index, &range) {
+                    if row_in_range(*row_index, range) {
                         if thread_row == 0 {
                             rows.push(
                                 render_review_thread_inline(
@@ -449,13 +1024,11 @@ fn render_diff_rows(
                         }
                     }
 
-                    row_index += 1;
+                    *row_index += 1;
                 }
             }
         }
     }
-
-    rows
 }
 
 fn row_in_range(row_index: usize, range: &std::ops::Range<usize>) -> bool {
@@ -1796,6 +2369,52 @@ fn diff_row_count_with_review_controls(
     row_count
 }
 
+fn diff_hunk_row_index_with_review_controls(
+    diff: &ParsedDiff,
+    target_hunk_index: usize,
+    file: &DiffFile,
+    review_threads: &[ReviewThread],
+    review_composer: Option<&ReviewComposer>,
+    review_comment_error: Option<&str>,
+    active_review_thread_reply: Option<&str>,
+    active_review_comment_edit: Option<&str>,
+) -> Option<usize> {
+    let anchored_threads = anchored_review_threads(file, review_threads);
+    let mut row_index = 0;
+
+    for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
+        if hunk_index == target_hunk_index {
+            return Some(row_index);
+        }
+
+        row_index += 1;
+        for (line_index, line) in hunk.lines.iter().enumerate() {
+            row_index += 1;
+
+            if review_composer.is_some_and(|composer| {
+                review_comment_range_matches_file(file, &composer.range)
+                    && composer.anchor.hunk_index == hunk_index
+                    && composer.anchor.line_index == line_index
+            }) {
+                row_index += review_composer_row_count(review_comment_error);
+            }
+
+            row_index += review_threads_for_line(&anchored_threads, line)
+                .into_iter()
+                .map(|thread| {
+                    review_thread_inline_rows_with_controls(
+                        thread,
+                        active_review_thread_reply,
+                        active_review_comment_edit,
+                    )
+                })
+                .sum::<usize>();
+        }
+    }
+
+    None
+}
+
 fn review_thread_inline_rows_with_controls(
     thread: &ReviewThread,
     active_review_thread_reply: Option<&str>,
@@ -2008,6 +2627,276 @@ mod tests {
         assert_eq!(
             review_thread_inline_rows_with_controls(&thread, Some("thread-1"), None),
             review_thread_inline_rows(&thread) + REVIEW_THREAD_REPLY_ROWS
+        );
+    }
+
+    #[test]
+    fn counts_continuous_diff_rows_across_visible_files() {
+        let files = vec![
+            test_file("src/a.rs"),
+            test_file("src/generated.bin"),
+            test_file("src/b.rs"),
+        ];
+        let diffs = vec![
+            Some(parse_unified_diff("@@ -1 +1,2 @@\n context\n+added\n")),
+            None,
+            Some(parse_unified_diff("@@ -10 +10 @@\n later\n")),
+        ];
+        let visible_file_indices = vec![0, 1, 2];
+        let reviewed_file_paths = HashSet::new();
+
+        assert_eq!(
+            continuous_diff_row_count(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            9
+        );
+    }
+
+    #[test]
+    fn finds_continuous_file_and_hunk_rows_across_missing_patches() {
+        let files = vec![
+            test_file("src/a.rs"),
+            test_file("src/generated.bin"),
+            test_file("src/b.rs"),
+        ];
+        let diffs = vec![
+            Some(parse_unified_diff("@@ -1 +1,2 @@\n context\n+added\n")),
+            None,
+            Some(parse_unified_diff("@@ -10 +10 @@\n later\n")),
+        ];
+        let visible_file_indices = vec![0, 1, 2];
+        let reviewed_file_paths = HashSet::new();
+
+        assert_eq!(
+            continuous_diff_file_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                2,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(6)
+        );
+        assert_eq!(
+            continuous_diff_hunk_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                2,
+                0,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(7)
+        );
+        assert_eq!(
+            continuous_diff_hunk_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                1,
+                0,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn collapses_reviewed_file_sections_in_continuous_diff_rows() {
+        let files = vec![
+            test_file("src/a.rs"),
+            test_file("src/generated.bin"),
+            test_file("src/b.rs"),
+        ];
+        let diffs = vec![
+            Some(parse_unified_diff("@@ -1 +1,2 @@\n context\n+added\n")),
+            None,
+            Some(parse_unified_diff("@@ -10 +10 @@\n later\n")),
+        ];
+        let visible_file_indices = vec![0, 1, 2];
+        let reviewed_file_paths = HashSet::from(["src/a.rs".to_string()]);
+
+        assert_eq!(
+            continuous_diff_row_count(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            6
+        );
+        assert_eq!(
+            continuous_diff_file_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                2,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(3)
+        );
+        assert_eq!(
+            continuous_diff_hunk_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                0,
+                0,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            None
+        );
+        assert_eq!(
+            continuous_diff_hunk_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                2,
+                0,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(4)
+        );
+    }
+
+    #[test]
+    fn finds_continuous_diff_section_for_row_across_file_boundaries() {
+        let files = vec![
+            test_file("src/a.rs"),
+            test_file("src/generated.bin"),
+            test_file("src/b.rs"),
+        ];
+        let diffs = vec![
+            Some(parse_unified_diff("@@ -1 +1,2 @@\n context\n+added\n")),
+            None,
+            Some(parse_unified_diff("@@ -10 +10 @@\n later\n")),
+        ];
+        let visible_file_indices = vec![0, 1, 2];
+        let reviewed_file_paths = HashSet::new();
+
+        assert_eq!(
+            continuous_diff_section_for_row(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                5,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(DiffFileSection {
+                file_index: 1,
+                header_row_index: 4,
+                hunk_count: None,
+                reviewed: false,
+            })
+        );
+        assert_eq!(
+            continuous_diff_section_for_row(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                7,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(DiffFileSection {
+                file_index: 2,
+                header_row_index: 6,
+                hunk_count: Some(1),
+                reviewed: false,
+            })
+        );
+    }
+
+    #[test]
+    fn scopes_inline_composer_rows_to_matching_file() {
+        let file = test_file("src/a.rs");
+        let other_file = test_file("src/b.rs");
+        let diff = parse_unified_diff("@@ -1 +1 @@\n context\n@@ -10 +10 @@\n later\n");
+        let target = review_line_target_for_line(&file, 0, 0, &diff.hunks[0].lines[0])
+            .expect("context line should be commentable");
+        let composer = ReviewComposer {
+            anchor: target.clone(),
+            range: target.range,
+        };
+
+        assert_eq!(
+            diff_hunk_row_index_with_review_controls(
+                &diff,
+                1,
+                &file,
+                &[],
+                Some(&composer),
+                None,
+                None,
+                None
+            ),
+            Some(2 + REVIEW_COMPOSER_ROWS)
+        );
+        assert_eq!(
+            diff_hunk_row_index_with_review_controls(
+                &diff,
+                1,
+                &other_file,
+                &[],
+                Some(&composer),
+                None,
+                None,
+                None
+            ),
+            Some(2)
         );
     }
 

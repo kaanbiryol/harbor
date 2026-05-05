@@ -1,6 +1,8 @@
 use harbor_domain::{DiffFile, ReviewSide, ReviewThread};
 
-use crate::diff::{DiffLine, ParsedDiff};
+use crate::diff::DiffLine;
+#[cfg(test)]
+use crate::diff::ParsedDiff;
 
 pub(crate) const REVIEW_THREAD_INLINE_ROWS: usize = 8;
 const REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT: usize = 4;
@@ -38,6 +40,7 @@ pub(crate) fn diff_row_count_with_reviews(
     row_count
 }
 
+#[cfg(test)]
 pub(crate) fn diff_hunk_row_index_with_reviews(
     diff: &ParsedDiff,
     hunk_index: usize,

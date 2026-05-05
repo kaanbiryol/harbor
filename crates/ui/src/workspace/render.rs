@@ -1748,20 +1748,25 @@ impl AppView {
                     .p_3()
                     .text_sm()
                     .child(match self.active_tab {
-                        PanelTab::Diff => render_diff_panel(
-                            self.active_file(),
-                            self.active_diff(),
-                            &self.review_threads,
-                            self.review_composer.as_ref(),
-                            self.review_comment_error.as_deref(),
-                            self.review_thread_reply_thread_id.as_deref(),
-                            self.review_comment_edit_comment_id.as_deref(),
-                            self.is_loading_files,
-                            self.files_error.as_deref(),
-                            self.diff_list_scroll.clone(),
-                            cx,
-                        )
-                        .into_any_element(),
+                        PanelTab::Diff => {
+                            let visible_file_indices = self.visible_file_indices(cx);
+                            render_diff_panel(
+                                &self.files,
+                                &self.diffs,
+                                &visible_file_indices,
+                                &self.reviewed_file_paths,
+                                &self.review_threads,
+                                self.review_composer.as_ref(),
+                                self.review_comment_error.as_deref(),
+                                self.review_thread_reply_thread_id.as_deref(),
+                                self.review_comment_edit_comment_id.as_deref(),
+                                self.is_loading_files,
+                                self.files_error.as_deref(),
+                                self.diff_list_scroll.clone(),
+                                cx,
+                            )
+                            .into_any_element()
+                        }
                         PanelTab::Review => render_review_panel(
                             &self.pull_request_reviews,
                             &self.review_threads,

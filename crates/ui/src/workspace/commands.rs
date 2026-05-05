@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use gpui::{AppContext, ClipboardItem, Context, PathPromptOptions, ScrollStrategy, Window};
+use gpui::{App, AppContext, ClipboardItem, Context, PathPromptOptions, ScrollStrategy, Window};
 use harbor_domain::{DiffFile, FileStatus, PullRequest, RepoId};
 use harbor_git::{ExternalApp, ExternalAppKind, OpenTarget};
 use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
 
 use crate::actions::*;
-use crate::diff_reviews::diff_hunk_row_index_with_reviews;
 use crate::panels::{
-    merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label,
+    continuous_diff_hunk_row_index, merge_blocker, review_action_blocker, workflow_run_failed,
+    workflow_run_label,
 };
 use crate::workspace::AppView;
 
@@ -65,21 +65,13 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(hunk_count) = self.active_diff().map(|diff| diff.hunks.len()) else {
-            self.status = "No parsed diff hunks for active file".to_string();
+        let Some((file_index, hunk_index)) = self.next_visible_diff_hunk(cx) else {
+            self.status = "No parsed diff hunks for visible files".to_string();
             cx.notify();
             return;
         };
 
-        self.active_hunk = (self.active_hunk + 1) % hunk_count;
-        if let (Some(diff), Some(file)) = (self.active_diff(), self.active_file())
-            && let Some(row_index) =
-                diff_hunk_row_index_with_reviews(diff, self.active_hunk, file, &self.review_threads)
-        {
-            self.diff_list_scroll
-                .scroll_to_item(row_index, ScrollStrategy::Center);
-        }
-        self.status = format!("Selected hunk {}", self.active_hunk + 1);
+        self.select_visible_diff_hunk(file_index, hunk_index, cx);
         cx.notify();
     }
 
@@ -89,26 +81,157 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(hunk_count) = self.active_diff().map(|diff| diff.hunks.len()) else {
-            self.status = "No parsed diff hunks for active file".to_string();
+        let Some((file_index, hunk_index)) = self.previous_visible_diff_hunk(cx) else {
+            self.status = "No parsed diff hunks for visible files".to_string();
             cx.notify();
             return;
         };
 
-        self.active_hunk = if self.active_hunk == 0 {
-            hunk_count - 1
-        } else {
-            self.active_hunk - 1
-        };
-        if let (Some(diff), Some(file)) = (self.active_diff(), self.active_file())
-            && let Some(row_index) =
-                diff_hunk_row_index_with_reviews(diff, self.active_hunk, file, &self.review_threads)
-        {
+        self.select_visible_diff_hunk(file_index, hunk_index, cx);
+        cx.notify();
+    }
+
+    fn next_visible_diff_hunk(&self, cx: &App) -> Option<(usize, usize)> {
+        let targets = self.visible_diff_hunk_targets(cx);
+        if targets.is_empty() {
+            return None;
+        }
+
+        if let Some(current_position) = targets.iter().position(|(_, file_index, hunk_index)| {
+            *file_index == self.active_file && *hunk_index == self.active_hunk
+        }) {
+            let next_position = (current_position + 1) % targets.len();
+            let (_, file_index, hunk_index) = targets[next_position];
+            return Some((file_index, hunk_index));
+        }
+
+        let visible_file_indices = self.visible_file_indices(cx);
+        let active_file_position = visible_file_indices
+            .iter()
+            .position(|file_index| *file_index == self.active_file);
+
+        active_file_position
+            .and_then(|active_file_position| {
+                targets
+                    .iter()
+                    .find(|(file_position, _, hunk_index)| {
+                        *file_position > active_file_position
+                            || (*file_position == active_file_position
+                                && *hunk_index > self.active_hunk)
+                    })
+                    .copied()
+            })
+            .or_else(|| targets.first().copied())
+            .map(|(_, file_index, hunk_index)| (file_index, hunk_index))
+    }
+
+    fn previous_visible_diff_hunk(&self, cx: &App) -> Option<(usize, usize)> {
+        let targets = self.visible_diff_hunk_targets(cx);
+        if targets.is_empty() {
+            return None;
+        }
+
+        if let Some(current_position) = targets.iter().position(|(_, file_index, hunk_index)| {
+            *file_index == self.active_file && *hunk_index == self.active_hunk
+        }) {
+            let previous_position = if current_position == 0 {
+                targets.len() - 1
+            } else {
+                current_position - 1
+            };
+            let (_, file_index, hunk_index) = targets[previous_position];
+            return Some((file_index, hunk_index));
+        }
+
+        let visible_file_indices = self.visible_file_indices(cx);
+        let active_file_position = visible_file_indices
+            .iter()
+            .position(|file_index| *file_index == self.active_file);
+
+        active_file_position
+            .and_then(|active_file_position| {
+                targets
+                    .iter()
+                    .rev()
+                    .find(|(file_position, _, hunk_index)| {
+                        *file_position < active_file_position
+                            || (*file_position == active_file_position
+                                && *hunk_index < self.active_hunk)
+                    })
+                    .copied()
+            })
+            .or_else(|| targets.last().copied())
+            .map(|(_, file_index, hunk_index)| (file_index, hunk_index))
+    }
+
+    fn visible_diff_hunk_targets(&self, cx: &App) -> Vec<(usize, usize, usize)> {
+        let visible_file_indices = self.visible_file_indices(cx);
+        let mut targets = Vec::new();
+
+        for (file_position, file_index) in visible_file_indices.into_iter().enumerate() {
+            let Some(file) = self.files.get(file_index) else {
+                continue;
+            };
+            if self.reviewed_file_paths.contains(&file.path) {
+                continue;
+            }
+
+            let Some(diff) = self
+                .diffs
+                .get(file_index)
+                .and_then(Option::as_ref)
+                .filter(|diff| !diff.is_empty())
+            else {
+                continue;
+            };
+
+            for hunk_index in 0..diff.hunks.len() {
+                targets.push((file_position, file_index, hunk_index));
+            }
+        }
+
+        targets
+    }
+
+    fn select_visible_diff_hunk(
+        &mut self,
+        file_index: usize,
+        hunk_index: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.active_file = file_index;
+        self.active_hunk = hunk_index;
+        self.active_tab = PanelTab::Diff;
+
+        if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
+            self.file_list_scroll
+                .scroll_to_item(row_index, ScrollStrategy::Center);
+        }
+
+        let visible_file_indices = self.visible_file_indices(cx);
+        if let Some(row_index) = continuous_diff_hunk_row_index(
+            &self.files,
+            &self.diffs,
+            &visible_file_indices,
+            &self.reviewed_file_paths,
+            file_index,
+            hunk_index,
+            &self.review_threads,
+            self.review_composer.as_ref(),
+            self.review_comment_error.as_deref(),
+            self.review_thread_reply_thread_id.as_deref(),
+            self.review_comment_edit_comment_id.as_deref(),
+        ) {
             self.diff_list_scroll
                 .scroll_to_item(row_index, ScrollStrategy::Center);
         }
-        self.status = format!("Selected hunk {}", self.active_hunk + 1);
-        cx.notify();
+
+        let path = self
+            .files
+            .get(file_index)
+            .map(|file| file.path.as_str())
+            .unwrap_or("selected file");
+        self.status = format!("Selected hunk {} in {path}", hunk_index + 1);
     }
 
     pub(super) fn copy_active_file_path(

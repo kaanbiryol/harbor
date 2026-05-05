@@ -27,7 +27,7 @@ use harbor_storage::SqliteStore;
 
 use crate::actions::{DEFAULT_REQUEST_CHANGES_BODY, PanelTab};
 use crate::diff::{ParsedDiff, parse_files_with_syntax};
-use crate::panels::workflow_run_failed;
+use crate::panels::{continuous_diff_file_row_index, workflow_run_failed};
 
 const LOCAL_REVIEW_THREAD_ID_PREFIX: &str = "local-review-thread-";
 const LOCAL_REVIEW_COMMENT_ID_PREFIX: &str = "local-review-comment-";
@@ -587,11 +587,20 @@ impl AppView {
         self.files.get(self.active_file)
     }
 
-    pub(crate) fn active_diff(&self) -> Option<&ParsedDiff> {
-        self.diffs
-            .get(self.active_file)
-            .and_then(Option::as_ref)
-            .filter(|diff| !diff.is_empty())
+    pub(crate) fn active_file_index(&self) -> usize {
+        self.active_file
+    }
+
+    pub(crate) fn diff_files(&self) -> &[DiffFile] {
+        &self.files
+    }
+
+    pub(crate) fn parsed_diffs(&self) -> &[Option<ParsedDiff>] {
+        &self.diffs
+    }
+
+    pub(crate) fn reviewed_file_paths(&self) -> &HashSet<String> {
+        &self.reviewed_file_paths
     }
 
     pub(crate) fn changed_file_tree_rows(&self, _cx: &App) -> Vec<ChangedFileTreeRow> {
@@ -652,6 +661,23 @@ impl AppView {
             .position(|row| matches!(row, ChangedFileTreeRow::File(file_row) if file_row.file_index == file_index))
     }
 
+    fn diff_row_index_for_file(&self, file_index: usize, cx: &App) -> Option<usize> {
+        let visible_file_indices = self.visible_file_indices(cx);
+
+        continuous_diff_file_row_index(
+            &self.files,
+            &self.diffs,
+            &visible_file_indices,
+            &self.reviewed_file_paths,
+            file_index,
+            &self.review_threads,
+            self.review_composer.as_ref(),
+            self.review_comment_error.as_deref(),
+            self.review_thread_reply_thread_id.as_deref(),
+            self.review_comment_edit_comment_id.as_deref(),
+        )
+    }
+
     fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
         let visible_files = self.visible_file_indices(cx);
         if visible_files.is_empty() || visible_files.contains(&self.active_file) {
@@ -666,7 +692,12 @@ impl AppView {
                 self.file_list_scroll
                     .scroll_to_item(row_index, ScrollStrategy::Center);
             }
-            self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+            if let Some(row_index) = self.diff_row_index_for_file(file_index, cx) {
+                self.diff_list_scroll
+                    .scroll_to_item(row_index, ScrollStrategy::Top);
+            } else {
+                self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+            }
         }
     }
 
@@ -783,7 +814,10 @@ impl AppView {
                 self.file_list_scroll
                     .scroll_to_item(row_index, ScrollStrategy::Center);
             }
-            self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+            if let Some(row_index) = self.diff_row_index_for_file(index, cx) {
+                self.diff_list_scroll
+                    .scroll_to_item(row_index, ScrollStrategy::Top);
+            }
             self.status = format!("Selected {path}");
         }
 
