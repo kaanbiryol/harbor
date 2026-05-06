@@ -32,6 +32,8 @@ const MIN_LINE_NUMBER_WIDTH: f32 = 28.0;
 const LINE_NUMBER_PADDING: f32 = 8.0;
 const LINE_NUMBER_DIGIT_WIDTH: f32 = 8.0;
 const DIFF_ROW_HEIGHT: f32 = 24.0;
+const DIFF_FILE_HEADER_ROWS: usize = 2;
+const DIFF_FILE_HEADER_HEIGHT: f32 = DIFF_ROW_HEIGHT * 2.0;
 const REVIEW_COMPOSER_ROWS: usize = 8;
 const REVIEW_COMPOSER_ROWS_WITH_ERROR: usize = 9;
 const REVIEW_COMPOSER_MAX_WIDTH: f32 = 820.0;
@@ -352,7 +354,7 @@ pub(crate) fn continuous_diff_hunk_row_index(
                 active_review_comment_edit,
             )?;
 
-            return Some(row_index + 1 + local_row_index);
+            return Some(row_index + DIFF_FILE_HEADER_ROWS + local_row_index);
         }
 
         row_index += continuous_diff_section_row_count(
@@ -421,17 +423,18 @@ fn continuous_diff_section_row_count(
     active_review_thread_reply: Option<&str>,
     active_review_comment_edit: Option<&str>,
 ) -> usize {
-    1 + continuous_diff_section_body_row_count(
-        file_index,
-        file,
-        diffs,
-        reviewed_file_paths,
-        review_threads,
-        review_composer,
-        review_comment_error,
-        active_review_thread_reply,
-        active_review_comment_edit,
-    )
+    DIFF_FILE_HEADER_ROWS
+        + continuous_diff_section_body_row_count(
+            file_index,
+            file,
+            diffs,
+            reviewed_file_paths,
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -614,28 +617,46 @@ fn render_continuous_diff_rows(
             active_review_thread_reply,
             active_review_comment_edit,
         );
-        let section_row_count = 1 + body_row_count;
+        let section_row_count = DIFF_FILE_HEADER_ROWS + body_row_count;
 
         if row_index + section_row_count <= range.start {
             row_index += section_row_count;
             continue;
         }
 
-        if row_in_range(row_index, &range) {
-            rows.push(
-                render_diff_file_section_header(
-                    *file_index,
-                    file.clone(),
-                    hunk_count,
-                    *file_index == active_file,
-                    reviewed,
-                    false,
-                    view_entity.clone(),
-                )
-                .into_any_element(),
-            );
+        let header_start_row = row_index;
+        let visible_header_row =
+            inline_block_render_anchor(header_start_row, DIFF_FILE_HEADER_ROWS, &range);
+
+        for header_row in 0..DIFF_FILE_HEADER_ROWS {
+            if row_index >= range.end {
+                row_index += DIFF_FILE_HEADER_ROWS - header_row;
+                break;
+            }
+
+            if row_in_range(row_index, &range) {
+                if let Some((render_row, visible_row_offset)) = visible_header_row
+                    && render_row == row_index
+                {
+                    rows.push(render_virtualized_inline_block(
+                        render_diff_file_section_header(
+                            *file_index,
+                            file.clone(),
+                            hunk_count,
+                            *file_index == active_file,
+                            reviewed,
+                            false,
+                            view_entity.clone(),
+                        ),
+                        visible_row_offset,
+                    ));
+                } else {
+                    rows.push(render_diff_file_section_header_spacer().into_any_element());
+                }
+            }
+
+            row_index += 1;
         }
-        row_index += 1;
 
         if reviewed {
             continue;
@@ -699,7 +720,13 @@ fn render_diff_file_section_header(
 ) -> AnyElement {
     let hunk_label = hunk_count.map_or_else(
         || "no parsed hunks".to_string(),
-        |count| format!("{count} hunks"),
+        |count| {
+            if count == 1 {
+                "1 hunk".to_string()
+            } else {
+                format!("{count} hunks")
+            }
+        },
     );
     let header_id = if sticky {
         format!("sticky-diff-file-header-{file_index}")
@@ -741,13 +768,13 @@ fn render_diff_file_section_header(
 
     div()
         .id(header_id)
-        .h(px(DIFF_ROW_HEIGHT))
+        .h(px(DIFF_FILE_HEADER_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()
         .items_center()
         .justify_between()
-        .gap_3()
+        .gap_4()
         .px_3()
         .border_1()
         .border_color(if active {
@@ -755,14 +782,14 @@ fn render_diff_file_section_header(
         } else if sticky {
             rgb(0x334155)
         } else {
-            rgb(0x242a31)
+            rgb(0x2f3a4a)
         })
         .bg(if active {
-            rgb(0x172033)
+            rgb(0x18243b)
         } else if reviewed {
-            rgb(0x10161f)
+            rgb(0x111820)
         } else {
-            rgb(0x111827)
+            rgb(0x141c2a)
         })
         .font_family(".SystemUIFont")
         .text_color(rgb(0xf1f5f9))
@@ -781,16 +808,16 @@ fn render_diff_file_section_header(
                 .flex_1()
                 .flex()
                 .items_center()
-                .gap_2()
+                .gap_3()
                 .child(review_button)
                 .child(
                     div()
                         .min_w_0()
                         .truncate()
-                        .text_sm()
+                        .text_size(px(16.0))
                         .font_medium()
                         .text_color(if reviewed {
-                            rgb(0x9aa4b2)
+                            rgb(0xa7b0bd)
                         } else {
                             rgb(0xf1f5f9)
                         })
@@ -802,14 +829,26 @@ fn render_diff_file_section_header(
                 .flex_none()
                 .flex()
                 .items_center()
-                .gap_2()
-                .text_sm()
+                .gap_3()
+                .text_xs()
                 .font_medium()
-                .text_color(rgb(0x9aa4b2))
-                .child(format!(
-                    "{:?}  +{} -{}  {}",
-                    file.status, file.additions, file.deletions, hunk_label
-                ))
+                .text_color(rgb(0xa7b0bd))
+                .child(
+                    div()
+                        .text_color(rgb(0xcbd5e1))
+                        .child(format!("{:?}", file.status)),
+                )
+                .child(
+                    div()
+                        .text_color(rgb(0x34d399))
+                        .child(format!("+{}", file.additions)),
+                )
+                .child(
+                    div()
+                        .text_color(rgb(0xf87171))
+                        .child(format!("-{}", file.deletions)),
+                )
+                .child(div().text_color(rgb(0x9aa4b2)).child(hunk_label))
                 .when(reviewed, |element| {
                     element.child(
                         div()
@@ -825,6 +864,10 @@ fn render_diff_file_section_header(
                 }),
         )
         .into_any_element()
+}
+
+fn render_diff_file_section_header_spacer() -> impl IntoElement {
+    div().h(px(DIFF_ROW_HEIGHT)).w_full()
 }
 
 fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {
@@ -2764,7 +2807,7 @@ mod tests {
                 None,
                 None
             ),
-            9
+            12
         );
     }
 
@@ -2796,7 +2839,7 @@ mod tests {
                 None,
                 None
             ),
-            Some(6)
+            Some(8)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
@@ -2812,7 +2855,7 @@ mod tests {
                 None,
                 None
             ),
-            Some(7)
+            Some(10)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
@@ -2859,7 +2902,7 @@ mod tests {
                 None,
                 None
             ),
-            6
+            9
         );
         assert_eq!(
             continuous_diff_file_row_index(
@@ -2874,7 +2917,7 @@ mod tests {
                 None,
                 None
             ),
-            Some(3)
+            Some(5)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
@@ -2906,7 +2949,7 @@ mod tests {
                 None,
                 None
             ),
-            Some(4)
+            Some(7)
         );
     }
 
@@ -2940,7 +2983,7 @@ mod tests {
             ),
             Some(DiffFileSection {
                 file_index: 1,
-                header_row_index: 4,
+                header_row_index: 5,
                 hunk_count: None,
                 reviewed: false,
             })
@@ -2951,7 +2994,27 @@ mod tests {
                 &diffs,
                 &visible_file_indices,
                 &reviewed_file_paths,
-                7,
+                6,
+                &[],
+                None,
+                None,
+                None,
+                None
+            ),
+            Some(DiffFileSection {
+                file_index: 1,
+                header_row_index: 5,
+                hunk_count: None,
+                reviewed: false,
+            })
+        );
+        assert_eq!(
+            continuous_diff_section_for_row(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                9,
                 &[],
                 None,
                 None,
@@ -2960,7 +3023,7 @@ mod tests {
             ),
             Some(DiffFileSection {
                 file_index: 2,
-                header_row_index: 6,
+                header_row_index: 8,
                 hunk_count: Some(1),
                 reviewed: false,
             })
