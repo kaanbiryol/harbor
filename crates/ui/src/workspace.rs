@@ -2,6 +2,7 @@ mod cache;
 mod changed_files;
 mod commands;
 mod loaders;
+mod local_commands;
 mod render;
 mod review_interactions;
 mod review_state;
@@ -58,7 +59,9 @@ pub(crate) use switchers::{
 pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 
 #[cfg(test)]
-pub(crate) use commands::{OpenTargetStatus, github_file_url, open_target_for_app};
+pub(crate) use commands::github_file_url;
+#[cfg(test)]
+pub(crate) use local_commands::{OpenTargetStatus, open_target_for_app};
 #[cfg(test)]
 pub(crate) use render::header::open_with_app_disabled;
 
