@@ -3,6 +3,7 @@ mod changed_files;
 mod commands;
 mod loaders;
 mod render;
+mod review_interactions;
 mod reviews;
 mod switchers;
 
@@ -15,10 +16,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
     UniformListScrollHandle, Window,
 };
-use gpui_component::{
-    ActiveTheme,
-    input::{InputEvent, InputState},
-};
+use gpui_component::{ActiveTheme, input::InputState};
 use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestReview, ReactionContent, RepoId, ReviewComment,
     ReviewCommentPosition, ReviewCommentRange, ReviewThread, ReviewThreadState, WorkflowJob,
@@ -49,11 +47,10 @@ pub(crate) use changed_files::{
 use reviews::{
     LOCAL_REVIEW_COMMENT_ID_PREFIX, LOCAL_REVIEW_THREAD_ID_PREFIX, OptimisticReviewCommentHandle,
     ReviewReactionKey, apply_review_reaction_overrides, apply_review_thread_state_overrides,
-    increment_pending_review_comment_count, is_local_review_thread_id,
-    merge_optimistic_review_threads, pending_review_from_reviews,
-    remove_review_comment_from_threads, review_comment_range_label, review_composer_from_selection,
-    review_position_from_range, rollback_pending_review_comment_count,
-    set_review_comment_reaction_state, unresolved_review_thread_count,
+    increment_pending_review_comment_count, merge_optimistic_review_threads,
+    pending_review_from_reviews, remove_review_comment_from_threads, review_position_from_range,
+    rollback_pending_review_comment_count, set_review_comment_reaction_state,
+    unresolved_review_thread_count,
 };
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
@@ -744,233 +741,6 @@ impl AppView {
             format!("Showing {visible_count} changed files")
         };
         cx.notify();
-    }
-
-    pub(crate) fn start_review_line_selection(
-        &mut self,
-        target: ReviewLineTarget,
-        cx: &mut Context<Self>,
-    ) {
-        self.review_line_selection = Some(ReviewLineSelection {
-            anchor: target.clone(),
-            current: target,
-        });
-        self.review_composer = None;
-        self.review_comment_error = None;
-        self.active_tab = PanelTab::Diff;
-        self.status = "Started review line selection".to_string();
-        cx.notify();
-    }
-
-    pub(crate) fn extend_review_line_selection(
-        &mut self,
-        target: ReviewLineTarget,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(selection) = self.review_line_selection.as_mut() {
-            selection.current = target;
-        }
-        cx.notify();
-    }
-
-    pub(crate) fn finish_review_line_selection(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(selection) = self.review_line_selection.take() else {
-            return;
-        };
-
-        match review_composer_from_selection(&selection.anchor, &selection.current) {
-            Ok(composer) => {
-                let range = composer.range.clone();
-                let label = review_comment_range_label(&range);
-                self.review_comment_input.update(cx, |input, cx| {
-                    input.set_value("", window, cx);
-                    input.focus(window, cx);
-                });
-                self.review_composer = Some(composer);
-                self.review_comment_error = None;
-                self.status = format!("Opened review composer for {label}");
-            }
-            Err(message) => {
-                self.review_composer = None;
-                self.review_comment_error = Some(message.clone());
-                self.status = message;
-            }
-        }
-
-        cx.notify();
-    }
-
-    pub(crate) fn cancel_review_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.clear_review_composer_state();
-        self.review_comment_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
-        self.status = "Cancelled review comment".to_string();
-        cx.notify();
-    }
-
-    pub(crate) fn open_review_thread_reply(
-        &mut self,
-        thread_id: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.review_thread_reply_thread_id = Some(thread_id);
-        self.review_thread_reply_error = None;
-        self.review_thread_reply_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-            input.focus(window, cx);
-        });
-        self.status = "Opened review thread reply".to_string();
-        cx.notify();
-    }
-
-    pub(crate) fn cancel_review_thread_reply(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.review_thread_reply_thread_id = None;
-        self.review_thread_reply_error = None;
-        self.review_thread_reply_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
-        self.status = "Cancelled review thread reply".to_string();
-        cx.notify();
-    }
-
-    pub(crate) fn submit_review_thread_reply(&mut self, thread_id: String, cx: &mut Context<Self>) {
-        let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Select a pull request before replying".to_string(),
-            });
-            self.status = "Select a pull request before replying".to_string();
-            cx.notify();
-            return;
-        };
-
-        let body = self.review_thread_reply_input.read(cx).value().to_string();
-        let body = body.trim().to_string();
-        if body.is_empty() {
-            self.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Enter a reply before sending".to_string(),
-            });
-            self.status = "Enter a reply before sending".to_string();
-            cx.notify();
-            return;
-        }
-
-        if is_local_review_thread_id(&thread_id) {
-            self.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Wait for the review thread to finish syncing before replying".to_string(),
-            });
-            self.status =
-                "Wait for the review thread to finish syncing before replying".to_string();
-            cx.notify();
-            return;
-        }
-
-        if !self
-            .review_threads
-            .iter()
-            .any(|thread| thread.id == thread_id)
-        {
-            self.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Review thread is no longer loaded".to_string(),
-            });
-            self.status = "Review thread is no longer loaded".to_string();
-            cx.notify();
-            return;
-        }
-
-        let pending_review_node_id = self
-            .pending_review
-            .as_ref()
-            .map(|pending_review| pending_review.node_id.clone());
-        let increments_pending_review_count = pending_review_node_id.is_some();
-        let pending_review_before_increment = if increments_pending_review_count {
-            self.pending_review.clone()
-        } else {
-            None
-        };
-        let detail_key =
-            PullRequestDetailCacheKey::new(pr.repo.clone(), pr.number, pr.head_sha.clone());
-        let Some(optimistic_comment) =
-            self.append_optimistic_review_reply(&thread_id, body.clone())
-        else {
-            self.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Review thread is no longer loaded".to_string(),
-            });
-            self.status = "Review thread is no longer loaded".to_string();
-            cx.notify();
-            return;
-        };
-
-        if increments_pending_review_count {
-            increment_pending_review_comment_count(&mut self.pending_review);
-        }
-
-        self.is_submitting_review_thread_reply = false;
-        self.review_thread_reply_thread_id = None;
-        self.review_thread_reply_error = None;
-        self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
-        cx.notify();
-
-        cx.spawn(async move |this, cx| {
-            let result = GitHubClient::new(GhCliTransport)
-                .add_review_thread_reply(&thread_id, pending_review_node_id.as_deref(), &body)
-                .await;
-
-            if let Err(error) = this.update(cx, move |view, cx| {
-                match result {
-                    Ok(()) => {
-                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            view.review_thread_reply_error = None;
-                            view.status = format!("Posted reply on PR #{}", pr.number);
-                            view.load_selected_review_data(cx);
-                        }
-                    }
-                    Err(error) => {
-                        view.remove_optimistic_review_comment_for_detail(
-                            &detail_key,
-                            &optimistic_comment.comment_id,
-                        );
-                        if increments_pending_review_count {
-                            view.rollback_pending_review_comment_count_for_detail(
-                                &detail_key,
-                                pending_review_before_increment.as_ref(),
-                            );
-                        }
-
-                        let message = format!("Failed to post reply: {error}");
-                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            if view.review_thread_reply_thread_id.is_none() {
-                                view.review_thread_reply_thread_id = Some(thread_id.clone());
-                            }
-                            view.review_thread_reply_error = Some(ReviewThreadUiError {
-                                thread_id,
-                                message: message.clone(),
-                            });
-                            view.status = message;
-                        }
-                    }
-                }
-
-                cx.notify();
-            }) {
-                eprintln!("failed to update review thread reply state: {error}");
-            }
-        })
-        .detach();
     }
 
     pub(crate) fn set_review_thread_resolved(
@@ -1991,17 +1761,5 @@ impl AppView {
             }
         })
         .detach();
-    }
-
-    fn on_review_input_event(
-        &mut self,
-        _: &Entity<InputState>,
-        event: &InputEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if matches!(event, InputEvent::Change) {
-            cx.notify();
-        }
     }
 }
