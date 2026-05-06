@@ -1,14 +1,16 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
-use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId, ReviewThreadState};
+use harbor_domain::{RepoId, ReviewThreadState};
 use harbor_github::{GhCliTransport, GitHubClient, PullRequestListFilter};
-use harbor_logs::parse_workflow_log;
 use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
 
 use crate::actions::PanelTab;
 use crate::diff::{parse_files, parse_unified_diff_with_syntax};
-use crate::panels::{checks_summary_from_runs, workflow_run_label};
-use crate::workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode};
+use crate::panels::checks_summary_from_runs;
+use crate::workspace::{
+    AppView, PullRequestInboxCacheKey, PullRequestInboxMode,
+    review_data_loaders::{pending_review_rest_id, selected_pull_request_matches},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PullRequestFetchPolicy {
@@ -811,230 +813,6 @@ impl AppView {
             }
         }));
     }
-    pub(crate) fn load_selected_review_data(&mut self, cx: &mut Context<Self>) {
-        let Some(pull_request) = self.selected_pull_request().cloned() else {
-            return;
-        };
-        let repo = pull_request.repo;
-        let number = pull_request.number;
-
-        self.is_loading_reviews = true;
-        self.reviews_error = None;
-        self.status = format!("Refreshing review data for PR #{number}");
-        cx.notify();
-
-        let review_data_generation = self.next_review_data_generation();
-        let owner = repo.owner.clone();
-        let name = repo.name.clone();
-
-        self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
-            let current_user_result = client.current_user().await;
-            let reviews_result = client
-                .list_pull_request_reviews(&owner, &name, number)
-                .await;
-            let pending_review_comment_count_result = if let Ok(reviews) = reviews_result.as_ref()
-            {
-                if let Some(review_id) = pending_review_rest_id(
-                    reviews,
-                    current_user_result.as_ref().ok().map(String::as_str),
-                ) {
-                    Some(
-                        client
-                            .pull_request_review_comment_count(&owner, &name, number, &review_id)
-                            .await,
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let threads_result = client.list_review_threads(&owner, &name, number).await;
-
-            if let Err(error) = this.update(cx, move |view, cx| {
-                if !selected_pull_request_matches(view, &repo, number) {
-                    return;
-                }
-                if view.review_data_generation() != review_data_generation {
-                    return;
-                }
-
-                view.is_loading_reviews = false;
-                view.reviews_error = None;
-                let current_user_login = match current_user_result {
-                    Ok(login) => Some(login),
-                    Err(error) => {
-                        view.reviews_error =
-                            Some(format!("Failed to detect current user: {error}"));
-                        None
-                    }
-                };
-                let pending_review_comment_count = match pending_review_comment_count_result {
-                    Some(Ok(count)) => Some(count),
-                    Some(Err(error)) => {
-                        let message = format!("Failed to count pending review comments: {error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
-                            Some(existing) => format!("{existing}; {message}"),
-                            None => message,
-                        });
-                        None
-                    }
-                    None => None,
-                };
-
-                match (reviews_result, threads_result) {
-                    (Ok(reviews), Ok(threads)) => {
-                        let thread_count = threads.len();
-                        view.apply_loaded_review_data(
-                            reviews,
-                            threads,
-                            current_user_login,
-                            pending_review_comment_count,
-                        );
-                        view.refresh_owned_file_filters(cx);
-                        if view.reviews_error.is_none() {
-                            view.status =
-                                format!("Refreshed review data and {thread_count} threads for PR #{number}");
-                        } else {
-                            view.status =
-                                format!("Refreshed review data and {thread_count} threads for PR #{number}, with warnings");
-                        }
-                    }
-                    (Err(reviews_error), Ok(threads)) => {
-                        let thread_count = threads.len();
-                        view.pull_request_reviews.clear();
-                        view.replace_loaded_review_threads(threads);
-                        let message = format!("Failed to load review history: {reviews_error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
-                            Some(existing) => format!("{existing}; {message}"),
-                            None => message,
-                        });
-                        view.status = format!(
-                            "Refreshed {thread_count} review threads for PR #{number}, but review history failed"
-                        );
-                    }
-                    (Ok(reviews), Err(threads_error)) => {
-                        view.apply_loaded_review_data(
-                            reviews,
-                            Vec::new(),
-                            current_user_login,
-                            pending_review_comment_count,
-                        );
-                        view.refresh_owned_file_filters(cx);
-                        let message = format!("Failed to load review threads: {threads_error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
-                            Some(existing) => format!("{existing}; {message}"),
-                            None => message,
-                        });
-                        view.status =
-                            format!("Refreshed review history for PR #{number}, but threads failed");
-                    }
-                    (Err(reviews_error), Err(threads_error)) => {
-                        view.pull_request_reviews.clear();
-                        let message = format!(
-                            "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"
-                        );
-                        view.reviews_error = Some(match view.reviews_error.take() {
-                            Some(existing) => format!("{existing}; {message}"),
-                            None => message,
-                        });
-                        view.status = format!("Failed to refresh review data for PR #{number}");
-                    }
-                }
-
-                view.cache_current_pull_request_detail_snapshot();
-                cx.notify();
-            }) {
-                eprintln!("failed to update refreshed review state: {error}");
-            }
-        }));
-    }
-
-    pub(crate) fn load_selected_workflow_logs(&mut self, cx: &mut Context<Self>) {
-        let Some(repo) = self
-            .selected_pull_request()
-            .map(|pull_request| pull_request.repo.clone())
-        else {
-            self.logs_error =
-                Some("Workflow logs require a selected pull request and GitHub CLI auth".into());
-            self.status = self.logs_error.clone().unwrap_or_default();
-            cx.notify();
-            return;
-        };
-        let Some(run) = self.selected_workflow_run_for_logs().cloned() else {
-            self.logs_error = Some("No workflow run is available for the selected PR head".into());
-            self.status = self.logs_error.clone().unwrap_or_default();
-            cx.notify();
-            return;
-        };
-
-        if self.is_loading_logs {
-            self.status = format!("Already loading logs for {}", workflow_run_label(&run));
-            cx.notify();
-            return;
-        }
-
-        self.active_tab = PanelTab::Logs;
-        self.is_loading_logs = true;
-        self.logs_error = None;
-        self.workflow_jobs.clear();
-        self.log_chunk = None;
-        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.status = format!("Loading logs for {}", workflow_run_label(&run));
-
-        let owner = repo.owner.clone();
-        let name = repo.name.clone();
-        let run_id = run.id;
-        let run_label = workflow_run_label(&run);
-
-        self.log_task = Some(cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
-            let jobs_result = client
-                .list_workflow_jobs_for_run(&owner, &name, run_id)
-                .await;
-            let log_result = client.workflow_run_log(&owner, &name, run_id).await;
-
-            _ = this.update(cx, move |view, cx| {
-                if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
-                    return;
-                }
-
-                view.is_loading_logs = false;
-
-                match jobs_result {
-                    Ok(jobs) => {
-                        view.workflow_jobs = jobs;
-                    }
-                    Err(error) => {
-                        view.workflow_jobs.clear();
-                        view.logs_error = Some(format!("Failed to load workflow jobs: {error}"));
-                    }
-                }
-
-                match log_result {
-                    Ok(text) => {
-                        view.log_chunk = Some(parse_workflow_log(run_id, &text));
-                        if view.logs_error.is_none() {
-                            view.status = format!("Loaded logs for {run_label}");
-                        } else {
-                            view.status = format!("Loaded logs for {run_label}, but jobs failed");
-                        }
-                    }
-                    Err(error) => {
-                        view.log_chunk = None;
-                        let message = format!("Failed to load workflow logs: {error}");
-                        view.logs_error = Some(message.clone());
-                        view.status = message;
-                    }
-                }
-
-                view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                view.cache_current_pull_request_detail_snapshot();
-                cx.notify();
-            });
-        }));
-    }
 }
 
 struct RepositoryLoad {
@@ -1045,12 +823,6 @@ struct RepositoryLoad {
 struct RepositoryRefresh {
     repositories: Vec<RecentRepository>,
     repository_error: Option<String>,
-}
-
-fn selected_pull_request_matches(view: &AppView, repository: &RepoId, number: u64) -> bool {
-    view.selected_pull_request().is_some_and(|pull_request| {
-        &pull_request.repo == repository && pull_request.number == number
-    })
 }
 
 fn pull_request_list_filter(mode: PullRequestInboxMode) -> PullRequestListFilter {
@@ -1089,19 +861,6 @@ fn pull_request_inbox_failed_status(repository: &RepoId, mode: PullRequestInboxM
     )
 }
 
-fn pending_review_rest_id(
-    reviews: &[PullRequestReview],
-    current_user_login: Option<&str>,
-) -> Option<String> {
-    reviews
-        .iter()
-        .find(|review| {
-            review.state == PullRequestReviewState::Pending
-                && current_user_login.is_none_or(|login| review.author == login)
-        })
-        .map(|review| review.id.clone())
-}
-
 async fn load_repository_store(
     configured_repo: Option<RepoId>,
 ) -> std::result::Result<RepositoryLoad, StorageError> {
@@ -1138,40 +897,4 @@ async fn refresh_repository_store(
         repositories,
         repository_error,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pending_review_rest_id_matches_current_user() {
-        let reviews = vec![
-            review("review-1", "maria", PullRequestReviewState::Pending),
-            review("review-2", "alex", PullRequestReviewState::Pending),
-        ];
-
-        assert_eq!(
-            pending_review_rest_id(&reviews, Some("alex")),
-            Some("review-2".to_string())
-        );
-    }
-
-    #[test]
-    fn pending_review_rest_id_ignores_non_pending_reviews() {
-        let reviews = vec![review("review-1", "alex", PullRequestReviewState::Approved)];
-
-        assert_eq!(pending_review_rest_id(&reviews, Some("alex")), None);
-    }
-
-    fn review(id: &str, author: &str, state: PullRequestReviewState) -> PullRequestReview {
-        PullRequestReview {
-            id: id.to_string(),
-            node_id: Some(format!("{id}-node")),
-            author: author.to_string(),
-            state,
-            body: None,
-            submitted_at: None,
-        }
-    }
 }

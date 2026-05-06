@@ -5,11 +5,13 @@ mod commands;
 mod loaders;
 mod local_commands;
 mod render;
+mod review_data_loaders;
 mod review_interactions;
 mod review_state;
 mod review_submissions;
 mod reviews;
 mod switchers;
+mod workflow_log_loaders;
 
 use std::{
     collections::{HashMap, HashSet},
