@@ -1,10 +1,20 @@
-use gpui::{App, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::*, px, rgb};
-use gpui_component::{IconName, StyledExt};
+use gpui::{
+    Anchor, App, Context, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::*, px,
+    rgb, uniform_list,
+};
+use gpui_component::{
+    Disableable, IconName, Sizable, StyledExt, TitleBar,
+    button::{Button, ButtonVariants, DropdownButton},
+    input::Input,
+    popover::Popover,
+};
 use harbor_domain::RepoId;
 use harbor_git::ExternalApp;
 
 use crate::actions::*;
-use crate::workspace::AppView;
+use crate::workspace::{AppView, normalized_search_query, parse_repo_id};
+
+use super::render_switcher_section_label;
 
 const REPOSITORY_SWITCHER_ROW_HEIGHT: f32 = 34.;
 const REPOSITORY_SWITCHER_MAX_VISIBLE_ROWS: usize = 10;
@@ -259,4 +269,482 @@ pub(crate) fn open_with_app_disabled(
     app: ExternalApp,
 ) -> bool {
     !has_local_path || local_action_running || !app.is_available()
+}
+
+impl AppView {
+    fn header_repository_label(&self) -> String {
+        self.current_repository()
+            .map(|repository| repository.name.clone())
+            .unwrap_or_else(|| "repository".to_string())
+    }
+
+    fn header_pull_request_label(&self) -> String {
+        if let Some(pull_request) = self.selected_pull_request() {
+            return format!("#{} {}", pull_request.number, pull_request.title);
+        }
+
+        if self.is_loading_prs {
+            "loading pull requests".to_string()
+        } else if self.load_error.is_some() {
+            "pull requests unavailable".to_string()
+        } else {
+            "no pull request selected".to_string()
+        }
+    }
+
+    pub(super) fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().clone();
+        let repository_label = self.header_repository_label();
+        let pull_request_label = self.header_pull_request_label();
+        let repository_search_value = self.repository_search_input.read(cx).value();
+        let repository_query = normalized_search_query(&repository_search_value);
+        let pull_request_query =
+            normalized_search_query(&self.pull_request_search_input.read(cx).value());
+        let repositories = self.filtered_switcher_repositories(cx);
+        let typed_repository = if repositories.is_empty() {
+            parse_repo_id(&repository_search_value)
+        } else {
+            None
+        };
+        let current_repository = self.current_repository().cloned();
+        let repository_error = self.repository_error.clone();
+        let is_loading_repositories = self.is_loading_repositories;
+        let pull_requests = self.filtered_switcher_pull_requests(cx);
+        let inbox_mode = self.pull_request_inbox_mode;
+        let selected_pull_request = self.selected_pr;
+        let repository_selection = self
+            .repository_switcher_selection
+            .min(repositories.len().saturating_sub(1));
+        let pull_request_selection = self
+            .pull_request_switcher_selection
+            .min(pull_requests.len().saturating_sub(1));
+        let repository_search_input = self.repository_search_input.clone();
+        let pull_request_search_input = self.pull_request_search_input.clone();
+        let has_repository_query = !repository_query.is_empty();
+        let has_pull_request_query = !pull_request_query.is_empty();
+        let has_current_repository = current_repository.is_some();
+        let repository_view = view.clone();
+        let pull_request_view = view.clone();
+        let inbox_toggle_icon = if self.pull_request_inbox_visible {
+            IconName::PanelLeft
+        } else {
+            IconName::PanelLeftOpen
+        };
+        let inbox_toggle_tooltip = if self.pull_request_inbox_visible {
+            "Hide pull request inbox"
+        } else {
+            "Show pull request inbox"
+        };
+
+        TitleBar::new()
+            .bg(rgb(0x101214))
+            .border_color(rgb(0x242a31))
+            .child(
+                div()
+                    .flex()
+                    .h_full()
+                    .w_full()
+                    .min_w_0()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .pr_2()
+                    .child(
+                        div()
+                            .flex()
+                            .h_full()
+                            .min_w_0()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                Button::new("toggle-pull-request-inbox")
+                                    .ghost()
+                                    .small()
+                                    .compact()
+                                    .icon(inbox_toggle_icon)
+                                    .tooltip(inbox_toggle_tooltip)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.toggle_pull_request_inbox(
+                                            &TogglePullRequestInbox,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Popover::new("repository-switcher-popover")
+                                    .appearance(false)
+                                    .anchor(Anchor::TopLeft)
+                                    .open(self.repository_switcher_open)
+                                    .on_open_change({
+                                        let view = repository_view.clone();
+                                        move |open, window, cx| {
+                                            view.update(cx, |view, cx| {
+                                                view.repository_switcher_open = *open;
+                                                if *open {
+                                                    view.pull_request_switcher_open = false;
+                                                    view.file_filter_popover_open = false;
+                                                    view.status =
+                                                        "Repository search opened".to_string();
+                                                    view.repository_search_input
+                                                        .update(cx, |input, cx| {
+                                                            input.set_value("", window, cx);
+                                                            input.focus(window, cx);
+                                                        });
+                                                    view.reset_repository_switcher_selection(cx);
+                                                }
+                                                cx.notify();
+                                            });
+                                        }
+                                    })
+                                    .trigger(
+                                        Button::new("repository-switcher")
+                                            .ghost()
+                                            .small()
+                                            .compact()
+                                            .dropdown_caret(true)
+                                            .max_w(px(260.))
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .truncate()
+                                                    .font_medium()
+                                                    .text_color(rgb(0xf1f5f9))
+                                                    .child(repository_label),
+                                            ),
+                                    )
+                                    .content(move |_, _window, popover_cx| {
+                                        let view = repository_view.clone();
+                                        let popover = popover_cx.entity().clone();
+                                        let mut menu = div()
+                                            .id("repository-switcher-menu")
+                                            .on_key_down({
+                                                let view = view.clone();
+                                                move |event, _, cx| {
+                                                    handle_repository_switcher_key(
+                                                        event, &view, cx,
+                                                    );
+                                                }
+                                            })
+                                            .w(px(460.))
+                                            .max_h(px(520.))
+                                            .overflow_y_scroll()
+                                            .border_1()
+                                            .border_color(rgb(0x343b44))
+                                            .bg(rgb(0x171b20))
+                                            .p_2()
+                                            .shadow_lg()
+                                            .child(render_switcher_section_label(
+                                                "search repositories",
+                                            ))
+                                            .child(div().px_1().pb_2().child(
+                                                Input::new(&repository_search_input)
+                                                    .small()
+                                                    .cleanable(true),
+                                            ))
+                                            .child(render_switcher_section_label("repositories"));
+
+                                        if let Some(error) = repository_error.clone() {
+                                            menu = menu.child(render_switcher_error_row(error));
+                                        }
+
+                                        if is_loading_repositories {
+                                            menu = menu.child(render_switcher_loading_row(
+                                                "Fetching repositories from GitHub...",
+                                            ));
+                                        }
+
+                                        if repositories.is_empty() {
+                                            if let Some(repository) = typed_repository.clone() {
+                                                let selected_repository = repository.clone();
+                                                let view = view.clone();
+                                                let popover = popover.clone();
+
+                                                menu = menu.child(
+                                                    render_switcher_typed_repository_row(
+                                                        &repository,
+                                                        true,
+                                                    )
+                                                    .on_click(move |_, window, cx| {
+                                                        view.update(cx, |view, cx| {
+                                                            view.select_repository_from_switcher(
+                                                                selected_repository.clone(),
+                                                                cx,
+                                                            );
+                                                            view.repository_switcher_open = false;
+                                                            cx.notify();
+                                                        });
+                                                        popover.update(cx, |popover, cx| {
+                                                            popover.dismiss(window, cx);
+                                                        });
+                                                    }),
+                                                );
+                                            } else {
+                                                let label = if has_repository_query
+                                                    || is_loading_repositories
+                                                {
+                                                    "Type owner/repo to open a repository"
+                                                } else {
+                                                    "No repositories found. Type owner/repo to open a repository"
+                                                };
+                                                menu = menu.child(render_switcher_empty_row(label));
+                                            }
+                                        } else {
+                                            let repository_count = repositories.len();
+                                            let list_height =
+                                                repository_switcher_list_height(repository_count);
+                                            let repositories = repositories.clone();
+                                            let current_repository = current_repository.clone();
+                                            let view = view.clone();
+                                            let popover = popover.clone();
+
+                                            menu = menu.child(
+                                                uniform_list(
+                                                    "repository-switcher-list",
+                                                    repository_count,
+                                                    move |range, _window, _cx| {
+                                                        let mut rows =
+                                                            Vec::with_capacity(range.len());
+
+                                                        for row_index in range {
+                                                            let Some(repository) =
+                                                                repositories.get(row_index).cloned()
+                                                            else {
+                                                                continue;
+                                                            };
+                                                            let current =
+                                                                current_repository.as_ref()
+                                                                    == Some(&repository);
+                                                            let highlighted =
+                                                                row_index == repository_selection;
+                                                            let view = view.clone();
+                                                            let popover = popover.clone();
+
+                                                            rows.push(
+                                                                render_switcher_repository_row(
+                                                                    &repository,
+                                                                    current,
+                                                                    highlighted,
+                                                                )
+                                                                .on_click(
+                                                                    move |_, window, cx| {
+                                                                        view.update(
+                                                                            cx,
+                                                                            |view, cx| {
+                                                                                view.select_repository_from_switcher(
+                                                                                    repository
+                                                                                        .clone(),
+                                                                                    cx,
+                                                                                );
+                                                                                view.repository_switcher_open = false;
+                                                                                cx.notify();
+                                                                            },
+                                                                        );
+                                                                        popover.update(
+                                                                            cx,
+                                                                            |popover, cx| {
+                                                                                popover.dismiss(
+                                                                                    window, cx,
+                                                                                );
+                                                                            },
+                                                                        );
+                                                                    },
+                                                                ),
+                                                            );
+                                                        }
+
+                                                        rows
+                                                    },
+                                                )
+                                                .h(px(list_height))
+                                                .w_full()
+                                                .min_h_0(),
+                                            );
+                                        }
+
+                                        menu
+                                    }),
+                            )
+                            .child(div().px_1().text_color(rgb(0x6f7782)).child("/"))
+                            .child(
+                                Popover::new("pull-request-switcher-popover")
+                                    .appearance(false)
+                                    .anchor(Anchor::TopLeft)
+                                    .open(self.pull_request_switcher_open)
+                                    .on_open_change({
+                                        let view = pull_request_view.clone();
+                                        move |open, window, cx| {
+                                            view.update(cx, |view, cx| {
+                                                view.pull_request_switcher_open = *open;
+                                                if *open {
+                                                    view.repository_switcher_open = false;
+                                                    view.file_filter_popover_open = false;
+                                                    view.status =
+                                                        "Pull request search opened".to_string();
+                                                    view.pull_request_search_input
+                                                        .update(cx, |input, cx| {
+                                                            input.set_value("", window, cx);
+                                                            input.focus(window, cx);
+                                                        });
+                                                    view.reset_pull_request_switcher_selection(cx);
+                                                }
+                                                cx.notify();
+                                            });
+                                        }
+                                    })
+                                    .trigger(
+                                        Button::new("pull-request-switcher")
+                                            .ghost()
+                                            .small()
+                                            .compact()
+                                            .dropdown_caret(true)
+                                            .disabled(!has_current_repository)
+                                            .max_w(px(560.))
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .truncate()
+                                                    .text_color(rgb(0xcbd5e1))
+                                                    .child(pull_request_label),
+                                            ),
+                                    )
+                                    .content(move |_, _window, popover_cx| {
+                                        let view = pull_request_view.clone();
+                                        let popover = popover_cx.entity().clone();
+                                        let mut menu = div()
+                                            .id("pull-request-switcher-menu")
+                                            .on_key_down({
+                                                let view = view.clone();
+                                                move |event, _, cx| {
+                                                    handle_pull_request_switcher_key(
+                                                        event, &view, cx,
+                                                    );
+                                                }
+                                            })
+                                            .w(px(520.))
+                                            .max_h(px(520.))
+                                            .overflow_y_scroll()
+                                            .border_1()
+                                            .border_color(rgb(0x343b44))
+                                            .bg(rgb(0x171b20))
+                                            .p_2()
+                                            .shadow_lg()
+                                            .child(render_switcher_section_label(
+                                                "search pull requests",
+                                            ))
+                                            .child(div().px_1().pb_2().child(
+                                                Input::new(&pull_request_search_input)
+                                                    .small()
+                                                    .cleanable(true),
+                                            ))
+                                            .child(render_switcher_section_label("pull requests"));
+
+                                        if !has_current_repository {
+                                            menu = menu.child(render_switcher_empty_row(
+                                                "select a repository before searching pull requests",
+                                            ));
+                                        } else if pull_requests.is_empty() {
+                                            let label = if has_pull_request_query {
+                                                "no pull requests match search"
+                                            } else {
+                                                inbox_mode.empty_message()
+                                            };
+                                            menu = menu.child(render_switcher_empty_row(label));
+                                        } else {
+                                            for (row_index, (index, pull_request)) in
+                                                pull_requests.iter().enumerate()
+                                            {
+                                                let current = *index == selected_pull_request;
+                                                let highlighted =
+                                                    row_index == pull_request_selection;
+                                                let number = pull_request.number;
+                                                let title = pull_request.title.clone();
+                                                let author = pull_request.author.clone();
+                                                let view = view.clone();
+                                                let popover = popover.clone();
+                                                let index = *index;
+
+                                                menu = menu.child(
+                                                    render_switcher_pull_request_row(
+                                                        number,
+                                                        title,
+                                                        author,
+                                                        current,
+                                                        highlighted,
+                                                    )
+                                                    .on_click(move |_, window, cx| {
+                                                        view.update(cx, |view, cx| {
+                                                            view.select_pull_request(index, cx);
+                                                            view.pull_request_switcher_open = false;
+                                                            cx.notify();
+                                                        });
+                                                        popover.update(cx, |popover, cx| {
+                                                            popover.dismiss(window, cx);
+                                                        });
+                                                    }),
+                                                );
+                                            }
+                                        }
+
+                                        menu
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(self.render_open_with_dropdown()),
+                    ),
+            )
+    }
+
+    fn render_open_with_dropdown(&self) -> impl IntoElement {
+        let has_repository = self.current_repository().is_some();
+        let local_path = self.current_repository_local_path().cloned();
+        let has_local_path = local_path.is_some();
+        let local_action_running = self.local_task.is_some();
+
+        DropdownButton::new("open-with")
+            .button(
+                Button::new("open-with-primary")
+                    .icon(IconName::ExternalLink)
+                    .label("Open With")
+                    .small()
+                    .compact(),
+            )
+            .small()
+            .compact()
+            .outline()
+            .disabled(!has_repository || local_action_running)
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                let mut menu = menu.max_w(px(320.)).menu_with_disabled(
+                    "Choose Local Checkout...",
+                    Box::new(ChooseLocalCheckout),
+                    !has_repository || local_action_running,
+                );
+
+                if let Some(local_path) = local_path.clone() {
+                    menu = menu.label(format!("Local: {}", local_path.display()));
+                } else {
+                    menu = menu.label("No local checkout selected");
+                }
+
+                menu = menu.separator();
+
+                for app in ExternalApp::ALL {
+                    let disabled =
+                        open_with_app_disabled(has_local_path, local_action_running, app);
+                    menu = menu.menu_with_icon_and_disabled(
+                        app.label(),
+                        open_with_icon(app),
+                        open_with_action(app),
+                        disabled,
+                    );
+                }
+
+                menu
+            })
+    }
 }

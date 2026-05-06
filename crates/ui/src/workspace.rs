@@ -58,7 +58,7 @@ pub(crate) use reviews::{
 #[cfg(test)]
 pub(crate) use commands::{OpenTargetStatus, github_file_url, open_target_for_app};
 #[cfg(test)]
-pub(crate) use render::open_with_app_disabled;
+pub(crate) use render::header::open_with_app_disabled;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub(crate) enum PullRequestInboxMode {
