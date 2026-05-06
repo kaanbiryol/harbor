@@ -9,7 +9,7 @@ use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
-    popover::Popover,
+    popover::{Popover, PopoverState},
 };
 use harbor_domain::{
     DiffFile, ReactionContent, ReviewComment, ReviewCommentRange, ReviewSide, ReviewThread,
@@ -945,6 +945,9 @@ fn render_diff_rows(
 
             if composer_ends_here {
                 let composer_row_count = review_composer_row_count(review_comment_error);
+                let composer_start_row = *row_index;
+                let visible_composer_row =
+                    inline_block_render_anchor(composer_start_row, composer_row_count, range);
 
                 for composer_row in 0..composer_row_count {
                     if *row_index >= range.end {
@@ -953,9 +956,11 @@ fn render_diff_rows(
                     }
 
                     if row_in_range(*row_index, range) {
-                        if composer_row == 0 {
+                        if let Some((render_row, visible_row_offset)) = visible_composer_row
+                            && render_row == *row_index
+                        {
                             if let Some(composer) = review_composer.cloned() {
-                                rows.push(
+                                rows.push(render_virtualized_inline_block(
                                     render_review_composer_inline(
                                         composer,
                                         pending_review.cloned(),
@@ -969,7 +974,8 @@ fn render_diff_rows(
                                         view_entity.clone(),
                                     )
                                     .into_any_element(),
-                                );
+                                    visible_row_offset,
+                                ));
                             }
                         } else {
                             rows.push(render_review_composer_spacer().into_any_element());
@@ -986,6 +992,9 @@ fn render_diff_rows(
                     active_review_thread_reply,
                     active_review_comment_edit,
                 );
+                let thread_start_row = *row_index;
+                let visible_thread_row =
+                    inline_block_render_anchor(thread_start_row, thread_row_count, range);
 
                 for thread_row in 0..thread_row_count {
                     if *row_index >= range.end {
@@ -994,8 +1003,10 @@ fn render_diff_rows(
                     }
 
                     if row_in_range(*row_index, range) {
-                        if thread_row == 0 {
-                            rows.push(
+                        if let Some((render_row, visible_row_offset)) = visible_thread_row
+                            && render_row == *row_index
+                        {
+                            rows.push(render_virtualized_inline_block(
                                 render_review_thread_inline(
                                     thread,
                                     line_number_width,
@@ -1018,7 +1029,8 @@ fn render_diff_rows(
                                     view_entity.clone(),
                                 )
                                 .into_any_element(),
-                            );
+                                visible_row_offset,
+                            ));
                         } else {
                             rows.push(render_review_composer_spacer().into_any_element());
                         }
@@ -1033,6 +1045,34 @@ fn render_diff_rows(
 
 fn row_in_range(row_index: usize, range: &std::ops::Range<usize>) -> bool {
     row_index >= range.start && row_index < range.end
+}
+
+fn inline_block_render_anchor(
+    block_start_row: usize,
+    block_row_count: usize,
+    range: &Range<usize>,
+) -> Option<(usize, usize)> {
+    let block_end_row = block_start_row.saturating_add(block_row_count);
+    let render_row = block_start_row.max(range.start);
+
+    (render_row < block_end_row && render_row < range.end)
+        .then_some((render_row, render_row - block_start_row))
+}
+
+fn render_virtualized_inline_block(content: AnyElement, visible_row_offset: usize) -> AnyElement {
+    div()
+        .h(px(DIFF_ROW_HEIGHT))
+        .w_full()
+        .relative()
+        .child(
+            div()
+                .absolute()
+                .top(px(-((visible_row_offset as f32) * DIFF_ROW_HEIGHT)))
+                .left(px(0.0))
+                .w_full()
+                .child(content),
+        )
+        .into_any_element()
 }
 
 pub(crate) fn render_diff_hunk_row(
@@ -1390,6 +1430,31 @@ fn render_review_thread_inline(
     let reply_disabled = reply_body_empty || thread_reply_submitting;
     let is_resolved = thread.state == ReviewThreadState::Resolved;
     let can_toggle_resolution = thread.state != ReviewThreadState::Outdated;
+    let card_border_color = if is_resolved {
+        rgb(0x223142)
+    } else {
+        rgb(0x2c3745)
+    };
+    let card_bg_color = if is_resolved {
+        rgb(0x0f151d)
+    } else {
+        rgb(0x121923)
+    };
+    let card_header_bg_color = if is_resolved {
+        rgb(0x121a24)
+    } else {
+        rgb(0x151e29)
+    };
+    let card_header_border_color = if is_resolved {
+        rgb(0x203040)
+    } else {
+        rgb(0x263241)
+    };
+    let comment_count_color = if is_resolved {
+        rgb(0x56657a)
+    } else {
+        rgb(0x64748b)
+    };
     let reply_error = reply_error
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
@@ -1428,15 +1493,15 @@ fn render_review_thread_inline(
                     div()
                         .w_full()
                         .border_1()
-                        .border_color(rgb(0x2c3745))
-                        .bg(rgb(0x121923))
+                        .border_color(card_border_color)
+                        .bg(card_bg_color)
                         .rounded_xs()
                         .overflow_hidden()
                         .child(
                             div()
                                 .border_b_1()
-                                .border_color(rgb(0x263241))
-                                .bg(rgb(0x151e29))
+                                .border_color(card_header_border_color)
+                                .bg(card_header_bg_color)
                                 .px_2()
                                 .py_1()
                                 .flex()
@@ -1451,9 +1516,11 @@ fn render_review_thread_inline(
                                         .items_center()
                                         .gap_2()
                                         .child(render_review_thread_status_pill(label, color))
-                                        .child(div().text_xs().text_color(rgb(0x64748b)).child(
-                                            review_comment_count_label(thread.comments.len()),
-                                        )),
+                                        .child(
+                                            div().text_xs().text_color(comment_count_color).child(
+                                                review_comment_count_label(thread.comments.len()),
+                                            ),
+                                        ),
                                 )
                                 .child(
                                     div()
@@ -1528,6 +1595,7 @@ fn render_review_thread_inline(
                                     comment_action_error,
                                     reaction_action,
                                     reaction_error,
+                                    is_resolved,
                                     view_entity.clone(),
                                 )
                             }),
@@ -1538,7 +1606,11 @@ fn render_review_thread_inline(
                                     .px_2()
                                     .pb_2()
                                     .text_xs()
-                                    .text_color(rgb(0x9aa4b2))
+                                    .text_color(if is_resolved {
+                                        rgb(0x697789)
+                                    } else {
+                                        rgb(0x9aa4b2)
+                                    })
                                     .child("No comments in this thread"),
                             )
                         })
@@ -1679,6 +1751,7 @@ fn render_review_comment_inline(
     comment_action_error: Option<&ReviewCommentUiError>,
     reaction_action: Option<&ReviewReactionAction>,
     reaction_error: Option<&ReviewCommentUiError>,
+    thread_resolved: bool,
     view_entity: Entity<AppView>,
 ) -> AnyElement {
     let comment_id = comment.id.clone();
@@ -1696,11 +1769,31 @@ fn render_review_comment_inline(
         .filter(|error| error.comment_id == comment.id)
         .map(|error| error.message.clone());
     let (can_update, can_delete) = review_comment_action_visibility(comment);
+    let author_color = if thread_resolved {
+        rgb(0xb7c0cd)
+    } else {
+        rgb(0xe5edf7)
+    };
+    let metadata_color = if thread_resolved {
+        rgb(0x526176)
+    } else {
+        rgb(0x64748b)
+    };
+    let body_color = if thread_resolved {
+        rgb(0x8996a8)
+    } else {
+        rgb(0xcbd5e1)
+    };
+    let separator_color = if thread_resolved {
+        rgb(0x213040)
+    } else {
+        rgb(0x263241)
+    };
 
     div()
         .pt_2()
         .when(separated, |element| {
-            element.mt_2().border_t_1().border_color(rgb(0x263241))
+            element.mt_2().border_t_1().border_color(separator_color)
         })
         .flex()
         .items_start()
@@ -1726,12 +1819,12 @@ fn render_review_comment_inline(
                                 .child(
                                     div()
                                         .font_medium()
-                                        .text_color(rgb(0xe5edf7))
+                                        .text_color(author_color)
                                         .child(comment.author.clone()),
                                 )
                                 .child(
                                     div()
-                                        .text_color(rgb(0x64748b))
+                                        .text_color(metadata_color)
                                         .child(review_comment_time_label(comment)),
                                 )
                                 .when(review_comment_pending_sync(comment), |element| {
@@ -1766,7 +1859,7 @@ fn render_review_comment_inline(
                         }),
                 )
                 .when(!active_edit, |element| {
-                    element.child(render_review_comment_body(&comment.body))
+                    element.child(render_review_comment_body(&comment.body, body_color))
                 })
                 .when(active_edit, {
                     let view_entity = view_entity.clone();
@@ -1997,7 +2090,6 @@ fn render_review_comment_edit_composer(
                     Input::new(&review_comment_edit_input)
                         .w_full()
                         .small()
-                        .h(px(DIFF_ROW_HEIGHT * 2.0))
                         .appearance(false)
                         .bordered(false)
                         .focus_bordered(false),
@@ -2062,7 +2154,7 @@ fn author_initial(author: &str) -> String {
         .unwrap_or_else(|| "?".to_string())
 }
 
-fn render_review_comment_body(body: &str) -> impl IntoElement {
+fn render_review_comment_body(body: &str, color: gpui::Rgba) -> impl IntoElement {
     let lines: Vec<String> = body.lines().map(str::to_string).collect::<Vec<_>>();
     let lines = if lines.is_empty() {
         vec!["empty comment".to_string()]
@@ -2073,7 +2165,7 @@ fn render_review_comment_body(body: &str) -> impl IntoElement {
     div()
         .pt_2()
         .text_xs()
-        .text_color(rgb(0xcbd5e1))
+        .text_color(color)
         .children(lines.into_iter().map(|line| {
             div().min_h(px(16.0)).child(if line.is_empty() {
                 " ".to_string()
@@ -2165,9 +2257,10 @@ fn render_add_reaction_popover(
         )
         .content({
             let view_entity = view_entity.clone();
-            move |_, _window, _popover_cx| {
+            move |_, _window, popover_cx| {
+                let popover = popover_cx.entity().clone();
                 let (comment, reaction_action) = {
-                    let view = view_entity.read(_popover_cx);
+                    let view = view_entity.read(popover_cx);
                     (
                         view.review_comment(&comment_id).cloned(),
                         view.review_reaction_action.clone(),
@@ -2199,6 +2292,7 @@ fn render_add_reaction_popover(
                                 &comment,
                                 content,
                                 reaction_action.as_ref(),
+                                popover.clone(),
                                 view_entity.clone(),
                             )
                         }),
@@ -2212,6 +2306,7 @@ fn render_review_reaction_picker_button(
     comment: &ReviewComment,
     content: ReactionContent,
     reaction_action: Option<&ReviewReactionAction>,
+    popover: Entity<PopoverState>,
     view_entity: Entity<AppView>,
 ) -> AnyElement {
     let reaction = review_reaction(comment, content);
@@ -2226,9 +2321,13 @@ fn render_review_reaction_picker_button(
         .on_click({
             let view_entity = view_entity.clone();
             let comment_id = comment_id.clone();
-            move |_, _, cx| {
+            let popover = popover.clone();
+            move |_, window, cx| {
                 view_entity.update(cx, |view, cx| {
                     view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
+                });
+                popover.update(cx, |popover, cx| {
+                    popover.dismiss(window, cx);
                 });
             }
         });
@@ -2618,6 +2717,14 @@ mod tests {
             ),
             3 + REVIEW_COMPOSER_ROWS
         );
+    }
+
+    #[test]
+    fn anchors_inline_block_to_first_visible_row() {
+        assert_eq!(inline_block_render_anchor(10, 8, &(10..18)), Some((10, 0)));
+        assert_eq!(inline_block_render_anchor(10, 8, &(13..18)), Some((13, 3)));
+        assert_eq!(inline_block_render_anchor(10, 8, &(18..24)), None);
+        assert_eq!(inline_block_render_anchor(10, 8, &(0..10)), None);
     }
 
     #[test]

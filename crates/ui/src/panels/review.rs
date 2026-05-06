@@ -220,6 +220,31 @@ pub(crate) fn render_review_thread_row(
     let reply_disabled = reply_body_empty || thread_reply_submitting;
     let is_resolved = thread.state == ReviewThreadState::Resolved;
     let can_toggle_resolution = thread.state != ReviewThreadState::Outdated;
+    let row_border_color = if is_resolved {
+        rgb(0x1f2d3a)
+    } else {
+        rgb(0x20252b)
+    };
+    let row_bg_color = if is_resolved {
+        rgb(0x0f151d)
+    } else {
+        rgb(0x101214)
+    };
+    let row_hover_bg_color = if is_resolved {
+        rgb(0x17212c)
+    } else {
+        rgb(0x202a35)
+    };
+    let path_color = if is_resolved {
+        rgb(0xb7c0cd)
+    } else {
+        rgb(0xe6e8eb)
+    };
+    let metadata_color = if is_resolved {
+        rgb(0x637186)
+    } else {
+        rgb(0x9aa4b2)
+    };
     let reply_error = reply_error
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
@@ -238,8 +263,9 @@ pub(crate) fn render_review_thread_row(
         .px_3()
         .py_2()
         .border_1()
-        .border_color(rgb(0x20252b))
-        .hover(|style| style.bg(rgb(0x202a35)))
+        .border_color(row_border_color)
+        .bg(row_bg_color)
+        .hover(move |style| style.bg(row_hover_bg_color))
         .child(
             div()
                 .flex()
@@ -251,11 +277,12 @@ pub(crate) fn render_review_thread_row(
                         .min_w_0()
                         .flex_1()
                         .truncate()
+                        .text_color(path_color)
                         .child(thread.path.clone()),
                 )
                 .child(div().text_xs().text_color(color).child(label)),
         )
-        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+        .child(div().text_xs().text_color(metadata_color).child(format!(
             "{}  {} comments",
             location,
             thread.comments.len()
@@ -264,7 +291,7 @@ pub(crate) fn render_review_thread_row(
             element.child(
                 div()
                     .text_xs()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(metadata_color)
                     .truncate()
                     .child(format!("{}: {}", comment.author, preview)),
             )

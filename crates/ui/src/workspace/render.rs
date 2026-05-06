@@ -388,7 +388,6 @@ impl Render for AppView {
             .on_action(cx.listener(Self::open_selected))
             .on_action(cx.listener(Self::cycle_panel_tab))
             .on_action(cx.listener(Self::toggle_pull_request_inbox))
-            .on_action(cx.listener(Self::toggle_command_palette))
             .on_action(cx.listener(Self::toggle_repository_switcher))
             .on_action(cx.listener(Self::close_panel))
             .on_action(cx.listener(Self::refresh_selected))
@@ -422,9 +421,6 @@ impl Render for AppView {
             .bg(rgb(0x101214))
             .text_color(rgb(0xe6e8eb))
             .child(self.render_title_bar(cx))
-            .when(self.command_palette_open, |element| {
-                element.child(self.render_command_palette())
-            })
             .child(
                 div()
                     .flex()
@@ -564,7 +560,6 @@ impl AppView {
                                             view.update(cx, |view, cx| {
                                                 view.repository_switcher_open = *open;
                                                 if *open {
-                                                    view.command_palette_open = false;
                                                     view.pull_request_switcher_open = false;
                                                     view.file_filter_popover_open = false;
                                                     view.status =
@@ -749,7 +744,6 @@ impl AppView {
                                             view.update(cx, |view, cx| {
                                                 view.pull_request_switcher_open = *open;
                                                 if *open {
-                                                    view.command_palette_open = false;
                                                     view.repository_switcher_open = false;
                                                     view.file_filter_popover_open = false;
                                                     view.status =
@@ -868,14 +862,7 @@ impl AppView {
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(self.render_open_with_dropdown())
-                            .child(
-                                Button::new("command-palette")
-                                    .ghost()
-                                    .small()
-                                    .compact()
-                                    .label("cmd+k"),
-                            ),
+                            .child(self.render_open_with_dropdown()),
                     ),
             )
     }
@@ -926,37 +913,6 @@ impl AppView {
 
                 menu
             })
-    }
-
-    fn render_command_palette(&self) -> impl IntoElement {
-        div()
-            .mx_2()
-            .mt_2()
-            .p_3()
-            .border_1()
-            .border_color(rgb(0x3a424c))
-            .bg(rgb(0x171b20))
-            .child(
-                div()
-                    .pb_2()
-                    .text_sm()
-                    .text_color(rgb(0xf1f5f9))
-                    .child("Command palette placeholder"),
-            )
-            .children(COMMANDS.iter().map(|command| {
-                div()
-                    .flex()
-                    .justify_between()
-                    .py_1()
-                    .text_sm()
-                    .child(command.title)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(0x9aa4b2))
-                            .child(command.shortcut),
-                    )
-            }))
     }
 
     fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1410,7 +1366,6 @@ impl AppView {
                                     view.update(cx, |view, cx| {
                                         view.file_filter_popover_open = *open;
                                         if *open {
-                                            view.command_palette_open = false;
                                             view.repository_switcher_open = false;
                                             view.pull_request_switcher_open = false;
                                         }

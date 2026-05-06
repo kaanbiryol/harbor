@@ -87,6 +87,21 @@ pub(crate) struct ReviewReactionAction {
     pub(crate) content: ReactionContent,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ReviewReactionKey {
+    comment_id: String,
+    content: ReactionContent,
+}
+
+impl ReviewReactionKey {
+    fn new(comment_id: impl Into<String>, content: ReactionContent) -> Self {
+        Self {
+            comment_id: comment_id.into(),
+            content,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct OptimisticReviewCommentHandle {
     comment_id: String,
@@ -327,7 +342,6 @@ pub struct AppView {
     pub(crate) active_hunk: usize,
     active_tab: PanelTab,
     pull_request_inbox_visible: bool,
-    command_palette_open: bool,
     repository_switcher_open: bool,
     pull_request_switcher_open: bool,
     file_filter_popover_open: bool,
@@ -363,6 +377,8 @@ pub struct AppView {
     pub(crate) review_thread_action_thread_id: Option<String>,
     pub(crate) review_comment_action_comment_id: Option<String>,
     pub(crate) review_reaction_action: Option<ReviewReactionAction>,
+    review_thread_state_overrides: HashMap<String, ReviewThreadState>,
+    review_reaction_overrides: HashMap<ReviewReactionKey, bool>,
     load_error: Option<String>,
     details_error: Option<String>,
     files_error: Option<String>,
@@ -382,6 +398,7 @@ pub struct AppView {
     pub(crate) pending_review_error: Option<String>,
     current_user_login: Option<String>,
     local_review_comment_sequence: u64,
+    review_data_generation: u64,
     did_focus: bool,
     status: String,
     _subscriptions: Vec<Subscription>,
@@ -389,7 +406,6 @@ pub struct AppView {
 
 impl AppView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let configured_repo = configured_repo_from_env();
         let pull_requests = Vec::new();
         let files = Vec::new();
         let pull_request_reviews = Vec::new();
@@ -457,12 +473,8 @@ impl AppView {
             ),
         ];
         let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
-        let repositories = initial_repositories(configured_repo.as_ref(), &pull_requests);
-        let status = configured_repo
-            .as_ref()
-            .map(|repo| format!("Loading open pull requests from {}", repo.full_name()))
-            .unwrap_or_else(|| "Fetching repositories from GitHub...".to_string());
-        let show_repository_switcher = configured_repo.is_none();
+        let repositories = Vec::new();
+        let status = "Fetching repositories from GitHub...".to_string();
 
         let mut view = Self {
             focus_handle: cx.focus_handle(),
@@ -500,8 +512,7 @@ impl AppView {
             active_hunk: 0,
             active_tab: PanelTab::Diff,
             pull_request_inbox_visible: true,
-            command_palette_open: false,
-            repository_switcher_open: show_repository_switcher,
+            repository_switcher_open: true,
             pull_request_switcher_open: false,
             file_filter_popover_open: false,
             repository_switcher_selection: 0,
@@ -511,7 +522,7 @@ impl AppView {
             pull_request_inbox_mode: PullRequestInboxMode::default(),
             pull_request_inbox_cache: HashMap::new(),
             pull_request_detail_cache: HashMap::new(),
-            configured_repo,
+            configured_repo: None,
             repository_store: None,
             repository_local_paths: HashMap::new(),
             collapsed_file_tree_folders: HashSet::new(),
@@ -536,6 +547,8 @@ impl AppView {
             review_thread_action_thread_id: None,
             review_comment_action_comment_id: None,
             review_reaction_action: None,
+            review_thread_state_overrides: HashMap::new(),
+            review_reaction_overrides: HashMap::new(),
             load_error: None,
             details_error: None,
             files_error: None,
@@ -555,16 +568,13 @@ impl AppView {
             pending_review_error: None,
             current_user_login: None,
             local_review_comment_sequence: 0,
+            review_data_generation: 0,
             did_focus: false,
             status,
             _subscriptions: subscriptions,
         };
 
         view.load_recent_repositories(cx);
-
-        if let Some(repo) = view.configured_repo.clone() {
-            view.load_pull_requests(repo, cx);
-        }
 
         view
     }
@@ -1175,6 +1185,20 @@ impl AppView {
             return;
         };
 
+        let desired_state = if resolved {
+            ReviewThreadState::Resolved
+        } else {
+            ReviewThreadState::Unresolved
+        };
+        let previous_state = self
+            .review_threads
+            .iter()
+            .find(|thread| thread.id == thread_id)
+            .map(|thread| thread.state);
+        self.set_review_thread_state(&thread_id, desired_state);
+        self.review_thread_state_overrides
+            .insert(thread_id.clone(), desired_state);
+        self.sync_unresolved_thread_count();
         self.review_thread_action_thread_id = Some(thread_id.clone());
         self.review_thread_action_error = None;
         self.status = if resolved {
@@ -1197,17 +1221,7 @@ impl AppView {
 
                 match result {
                     Ok(()) => {
-                        if let Some(thread) = view
-                            .review_threads
-                            .iter_mut()
-                            .find(|thread| thread.id == thread_id)
-                        {
-                            thread.state = if resolved {
-                                ReviewThreadState::Resolved
-                            } else {
-                                ReviewThreadState::Unresolved
-                            };
-                        }
+                        view.set_review_thread_state(&thread_id, desired_state);
                         view.sync_unresolved_thread_count();
                         view.review_thread_action_error = None;
                         view.status = if resolved {
@@ -1218,6 +1232,11 @@ impl AppView {
                         view.load_selected_review_data(cx);
                     }
                     Err(error) => {
+                        view.review_thread_state_overrides.remove(&thread_id);
+                        if let Some(previous_state) = previous_state {
+                            view.set_review_thread_state(&thread_id, previous_state);
+                            view.sync_unresolved_thread_count();
+                        }
                         let message = if resolved {
                             format!("Failed to resolve review thread: {error}")
                         } else {
@@ -1489,7 +1508,11 @@ impl AppView {
 
         let had_reacted =
             review_reaction(comment, content).is_some_and(|reaction| reaction.viewer_has_reacted);
-        self.set_review_comment_reaction(&comment_id, content, !had_reacted);
+        let viewer_has_reacted = !had_reacted;
+        let reaction_key = ReviewReactionKey::new(comment_id.clone(), content);
+        self.set_review_comment_reaction(&comment_id, content, viewer_has_reacted);
+        self.review_reaction_overrides
+            .insert(reaction_key.clone(), viewer_has_reacted);
         self.review_reaction_action = Some(ReviewReactionAction {
             comment_id: comment_id.clone(),
             content,
@@ -1520,6 +1543,7 @@ impl AppView {
                         view.load_selected_review_data(cx);
                     }
                     Err(error) => {
+                        view.review_reaction_overrides.remove(&reaction_key);
                         view.set_review_comment_reaction(&comment_id, content, had_reacted);
                         let message = format!("Failed to update reaction: {error}");
                         view.review_reaction_error = Some(ReviewCommentUiError {
@@ -1950,7 +1974,7 @@ impl AppView {
     pub(crate) fn apply_loaded_review_data(
         &mut self,
         reviews: Vec<PullRequestReview>,
-        review_threads: Vec<ReviewThread>,
+        mut review_threads: Vec<ReviewThread>,
         current_user_login: Option<String>,
         pending_review_comment_count: Option<usize>,
     ) -> usize {
@@ -1963,12 +1987,28 @@ impl AppView {
             pending_review_comment_count,
         );
         self.pull_request_reviews = reviews;
+        let settled_thread_state_overrides = apply_review_thread_state_overrides(
+            &mut review_threads,
+            &self.review_thread_state_overrides,
+        );
+        let settled_reaction_overrides =
+            apply_review_reaction_overrides(&mut review_threads, &self.review_reaction_overrides);
+        self.remove_review_thread_state_overrides(settled_thread_state_overrides);
+        self.remove_review_reaction_overrides(settled_reaction_overrides);
         self.review_threads = merge_optimistic_review_threads(review_threads, &self.review_threads);
 
         self.sync_unresolved_thread_count()
     }
 
-    pub(crate) fn replace_loaded_review_threads(&mut self, review_threads: Vec<ReviewThread>) {
+    pub(crate) fn replace_loaded_review_threads(&mut self, mut review_threads: Vec<ReviewThread>) {
+        let settled_thread_state_overrides = apply_review_thread_state_overrides(
+            &mut review_threads,
+            &self.review_thread_state_overrides,
+        );
+        let settled_reaction_overrides =
+            apply_review_reaction_overrides(&mut review_threads, &self.review_reaction_overrides);
+        self.remove_review_thread_state_overrides(settled_thread_state_overrides);
+        self.remove_review_reaction_overrides(settled_reaction_overrides);
         self.review_threads = merge_optimistic_review_threads(review_threads, &self.review_threads);
         self.sync_unresolved_thread_count();
     }
@@ -2039,6 +2079,25 @@ impl AppView {
         }
 
         unresolved_count
+    }
+
+    fn set_review_thread_state(&mut self, thread_id: &str, state: ReviewThreadState) {
+        if let Some(thread) = self
+            .review_threads
+            .iter_mut()
+            .find(|thread| thread.id == thread_id)
+        {
+            thread.state = state;
+        }
+    }
+
+    pub(super) fn next_review_data_generation(&mut self) -> u64 {
+        self.review_data_generation = self.review_data_generation.saturating_add(1);
+        self.review_data_generation
+    }
+
+    pub(super) fn review_data_generation(&self) -> u64 {
+        self.review_data_generation
     }
 
     pub(crate) fn review_comment(&self, comment_id: &str) -> Option<&ReviewComment> {
@@ -2120,32 +2179,19 @@ impl AppView {
             return;
         };
 
-        if let Some(reaction) = comment
-            .reactions
-            .iter_mut()
-            .find(|reaction| reaction.content == content)
-        {
-            if reaction.viewer_has_reacted == viewer_has_reacted {
-                return;
-            }
+        set_review_comment_reaction_state(comment, content, viewer_has_reacted);
+    }
 
-            reaction.viewer_has_reacted = viewer_has_reacted;
-            reaction.count = if viewer_has_reacted {
-                reaction.count.saturating_add(1)
-            } else {
-                reaction.count.saturating_sub(1)
-            };
-        } else if viewer_has_reacted {
-            comment.reactions.push(ReviewReaction {
-                content,
-                count: 1,
-                viewer_has_reacted: true,
-            });
+    fn remove_review_reaction_overrides(&mut self, keys: Vec<ReviewReactionKey>) {
+        for key in keys {
+            self.review_reaction_overrides.remove(&key);
         }
+    }
 
-        comment
-            .reactions
-            .retain(|reaction| reaction.count > 0 || reaction.viewer_has_reacted);
+    fn remove_review_thread_state_overrides(&mut self, thread_ids: Vec<String>) {
+        for thread_id in thread_ids {
+            self.review_thread_state_overrides.remove(&thread_id);
+        }
     }
 
     fn insert_optimistic_review_thread(
@@ -3018,6 +3064,96 @@ fn pending_review_from_reviews(
         .or_else(|| existing_pending_review.cloned())
 }
 
+fn apply_review_thread_state_overrides(
+    review_threads: &mut [ReviewThread],
+    overrides: &HashMap<String, ReviewThreadState>,
+) -> Vec<String> {
+    if overrides.is_empty() {
+        return Vec::new();
+    }
+
+    let mut settled_overrides = Vec::new();
+
+    for thread in review_threads {
+        let Some(overridden_state) = overrides.get(&thread.id).copied() else {
+            continue;
+        };
+
+        if thread.state == overridden_state {
+            settled_overrides.push(thread.id.clone());
+        } else {
+            thread.state = overridden_state;
+        }
+    }
+
+    settled_overrides
+}
+
+fn apply_review_reaction_overrides(
+    review_threads: &mut [ReviewThread],
+    overrides: &HashMap<ReviewReactionKey, bool>,
+) -> Vec<ReviewReactionKey> {
+    if overrides.is_empty() {
+        return Vec::new();
+    }
+
+    let mut settled_overrides = Vec::new();
+
+    for thread in review_threads {
+        for comment in &mut thread.comments {
+            for (key, viewer_has_reacted) in overrides {
+                if key.comment_id != comment.id {
+                    continue;
+                }
+
+                let loaded_viewer_has_reacted = review_reaction(comment, key.content)
+                    .is_some_and(|reaction| reaction.viewer_has_reacted);
+
+                if loaded_viewer_has_reacted == *viewer_has_reacted {
+                    settled_overrides.push(key.clone());
+                } else {
+                    set_review_comment_reaction_state(comment, key.content, *viewer_has_reacted);
+                }
+            }
+        }
+    }
+
+    settled_overrides
+}
+
+fn set_review_comment_reaction_state(
+    comment: &mut ReviewComment,
+    content: ReactionContent,
+    viewer_has_reacted: bool,
+) {
+    if let Some(reaction) = comment
+        .reactions
+        .iter_mut()
+        .find(|reaction| reaction.content == content)
+    {
+        if reaction.viewer_has_reacted == viewer_has_reacted {
+            return;
+        }
+
+        reaction.viewer_has_reacted = viewer_has_reacted;
+        reaction.count = if viewer_has_reacted {
+            reaction.count.saturating_add(1)
+        } else {
+            reaction.count.saturating_sub(1)
+        };
+    } else if viewer_has_reacted {
+        comment.reactions.push(ReviewReaction {
+            content,
+            count: 1,
+            viewer_has_reacted: true,
+        });
+    }
+
+    comment
+        .reactions
+        .retain(|reaction| reaction.count > 0 || reaction.viewer_has_reacted);
+}
+
 fn merge_optimistic_review_threads(
     mut loaded_threads: Vec<ReviewThread>,
     existing_threads: &[ReviewThread],
@@ -3200,35 +3336,6 @@ fn review_comment_range_label(range: &ReviewCommentRange) -> String {
     }
 }
 
-fn initial_repositories(
-    configured_repo: Option<&RepoId>,
-    pull_requests: &[PullRequest],
-) -> Vec<RepoId> {
-    let mut repositories = Vec::new();
-
-    if let Some(repository) = configured_repo {
-        repositories.push(repository.clone());
-    }
-
-    for pull_request in pull_requests {
-        if !repositories
-            .iter()
-            .any(|repository| repository == &pull_request.repo)
-        {
-            repositories.push(pull_request.repo.clone());
-        }
-    }
-
-    repositories
-}
-
-pub(crate) fn configured_repo_from_env() -> Option<RepoId> {
-    std::env::var("HARBOR_REPO")
-        .ok()
-        .or_else(|| std::env::var("GH_REPO").ok())
-        .and_then(|value| parse_repo_id(&value))
-}
-
 pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
     let value = value.trim();
     let (owner, name) = value.split_once('/')?;
@@ -3384,6 +3491,100 @@ mod tests {
                 .iter()
                 .all(|comment| !is_local_review_comment(comment))
         );
+    }
+
+    #[test]
+    fn thread_state_override_keeps_resolved_thread_resolved_in_stale_review_data() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let loaded_thread = review_thread("thread-1", "comment-1", range, "first");
+        let mut loaded_threads = vec![loaded_thread];
+        let overrides = HashMap::from([("thread-1".to_string(), ReviewThreadState::Resolved)]);
+
+        let settled_overrides =
+            apply_review_thread_state_overrides(&mut loaded_threads, &overrides);
+
+        assert!(settled_overrides.is_empty());
+        assert_eq!(loaded_threads[0].state, ReviewThreadState::Resolved);
+    }
+
+    #[test]
+    fn thread_state_override_keeps_reopened_thread_unresolved_in_stale_review_data() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let mut loaded_thread = review_thread("thread-1", "comment-1", range, "first");
+        loaded_thread.state = ReviewThreadState::Resolved;
+        let mut loaded_threads = vec![loaded_thread];
+        let overrides = HashMap::from([("thread-1".to_string(), ReviewThreadState::Unresolved)]);
+
+        let settled_overrides =
+            apply_review_thread_state_overrides(&mut loaded_threads, &overrides);
+
+        assert!(settled_overrides.is_empty());
+        assert_eq!(loaded_threads[0].state, ReviewThreadState::Unresolved);
+    }
+
+    #[test]
+    fn thread_state_override_settles_when_loaded_review_data_matches() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let mut loaded_thread = review_thread("thread-1", "comment-1", range, "first");
+        loaded_thread.state = ReviewThreadState::Resolved;
+        let mut loaded_threads = vec![loaded_thread];
+        let overrides = HashMap::from([("thread-1".to_string(), ReviewThreadState::Resolved)]);
+
+        let settled_overrides =
+            apply_review_thread_state_overrides(&mut loaded_threads, &overrides);
+
+        assert_eq!(settled_overrides, vec!["thread-1".to_string()]);
+        assert_eq!(loaded_threads[0].state, ReviewThreadState::Resolved);
+    }
+
+    #[test]
+    fn reaction_override_keeps_removed_reaction_out_of_stale_review_data() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let mut loaded_thread = review_thread("thread-1", "comment-1", range, "first");
+        loaded_thread.comments[0].reactions = vec![ReviewReaction {
+            content: ReactionContent::Heart,
+            count: 1,
+            viewer_has_reacted: true,
+        }];
+        let mut loaded_threads = vec![loaded_thread];
+        let key = ReviewReactionKey::new("comment-1", ReactionContent::Heart);
+        let overrides = HashMap::from([(key, false)]);
+
+        let settled_overrides = apply_review_reaction_overrides(&mut loaded_threads, &overrides);
+
+        assert!(settled_overrides.is_empty());
+        assert!(review_reaction(&loaded_threads[0].comments[0], ReactionContent::Heart).is_none());
+    }
+
+    #[test]
+    fn reaction_override_adds_reaction_to_stale_review_data() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let loaded_thread = review_thread("thread-1", "comment-1", range, "first");
+        let mut loaded_threads = vec![loaded_thread];
+        let key = ReviewReactionKey::new("comment-1", ReactionContent::Rocket);
+        let overrides = HashMap::from([(key, true)]);
+
+        let settled_overrides = apply_review_reaction_overrides(&mut loaded_threads, &overrides);
+        let reaction = review_reaction(&loaded_threads[0].comments[0], ReactionContent::Rocket)
+            .expect("optimistic reaction should be preserved");
+
+        assert!(settled_overrides.is_empty());
+        assert_eq!(reaction.count, 1);
+        assert!(reaction.viewer_has_reacted);
+    }
+
+    #[test]
+    fn reaction_override_settles_when_loaded_review_data_matches() {
+        let range = review_range("src/lib.rs", ReviewSide::Right, 14);
+        let loaded_thread = review_thread("thread-1", "comment-1", range, "first");
+        let mut loaded_threads = vec![loaded_thread];
+        let key = ReviewReactionKey::new("comment-1", ReactionContent::Heart);
+        let overrides = HashMap::from([(key.clone(), false)]);
+
+        let settled_overrides = apply_review_reaction_overrides(&mut loaded_threads, &overrides);
+
+        assert_eq!(settled_overrides, vec![key]);
+        assert!(review_reaction(&loaded_threads[0].comments[0], ReactionContent::Heart).is_none());
     }
 
     fn pending_review(id: &str, node_id: &str, author: &str) -> PullRequestReview {

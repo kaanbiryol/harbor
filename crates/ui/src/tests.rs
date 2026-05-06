@@ -7,7 +7,6 @@ use harbor_domain::{
 };
 use harbor_git::{ExternalApp, OpenTarget};
 
-use crate::actions::COMMANDS;
 use crate::panels::{
     checks_summary_from_runs, github_avatar_url_for_login, merge_blocker, review_action_blocker,
     review_comment_action_visibility, review_comment_avatar_url, review_reaction_button_label,
@@ -287,13 +286,6 @@ fn defaults_pull_request_inbox_to_open_mode() {
         PullRequestInboxMode::Closed.empty_message(),
         "No closed pull requests"
     );
-}
-
-#[test]
-fn command_palette_lists_pull_request_inbox_toggle() {
-    assert!(COMMANDS.iter().any(|command| {
-        command.shortcut == "cmd+b" && command.title == "Toggle pull request inbox"
-    }));
 }
 
 #[test]

@@ -1,11 +1,13 @@
-use harbor_domain::{DiffFile, ReviewSide, ReviewThread};
+use harbor_domain::{DiffFile, ReviewComment, ReviewSide, ReviewThread};
 
 use crate::diff::DiffLine;
 #[cfg(test)]
 use crate::diff::ParsedDiff;
 
-pub(crate) const REVIEW_THREAD_INLINE_ROWS: usize = 8;
+pub(crate) const REVIEW_THREAD_INLINE_ROWS: usize = 6;
 const REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT: usize = 4;
+const REVIEW_THREAD_EMPTY_INLINE_ROWS: usize = 4;
+const REVIEW_COMMENT_ROWS_PER_ADDITIONAL_BODY_LINE: usize = 1;
 
 #[derive(Clone, Copy)]
 pub(crate) struct AnchoredReviewThread<'a> {
@@ -92,8 +94,22 @@ pub(crate) fn review_threads_for_line<'a>(
 }
 
 pub(crate) fn review_thread_inline_rows(thread: &ReviewThread) -> usize {
+    if thread.comments.is_empty() {
+        return REVIEW_THREAD_EMPTY_INLINE_ROWS;
+    }
+
     REVIEW_THREAD_INLINE_ROWS
         + thread.comments.len().saturating_sub(1) * REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT
+        + thread
+            .comments
+            .iter()
+            .map(review_comment_additional_body_rows)
+            .sum::<usize>()
+}
+
+fn review_comment_additional_body_rows(comment: &ReviewComment) -> usize {
+    comment.body.lines().count().max(1).saturating_sub(1)
+        * REVIEW_COMMENT_ROWS_PER_ADDITIONAL_BODY_LINE
 }
 
 #[cfg(test)]
@@ -319,6 +335,40 @@ mod tests {
         assert_eq!(
             review_thread_inline_rows(&thread),
             REVIEW_THREAD_INLINE_ROWS + REVIEW_THREAD_ROWS_PER_ADDITIONAL_COMMENT
+        );
+    }
+
+    #[test]
+    fn counts_multiline_review_comment_rows() {
+        let mut thread = review_thread(
+            "thread-1",
+            "src/lib.rs",
+            ReviewSide::Right,
+            Some(2),
+            Some(1),
+        );
+        thread.comments[0].body = "first\nsecond\nthird".to_string();
+
+        assert_eq!(
+            review_thread_inline_rows(&thread),
+            REVIEW_THREAD_INLINE_ROWS + 2 * REVIEW_COMMENT_ROWS_PER_ADDITIONAL_BODY_LINE
+        );
+    }
+
+    #[test]
+    fn keeps_empty_review_threads_compact() {
+        let mut thread = review_thread(
+            "thread-1",
+            "src/lib.rs",
+            ReviewSide::Right,
+            Some(2),
+            Some(1),
+        );
+        thread.comments.clear();
+
+        assert_eq!(
+            review_thread_inline_rows(&thread),
+            REVIEW_THREAD_EMPTY_INLINE_ROWS
         );
     }
 

@@ -578,7 +578,6 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.pull_request_inbox_visible = !self.pull_request_inbox_visible;
-        self.command_palette_open = false;
         self.repository_switcher_open = false;
         self.pull_request_switcher_open = false;
         self.file_filter_popover_open = false;
@@ -600,26 +599,6 @@ impl AppView {
         cx.notify();
     }
 
-    pub(super) fn toggle_command_palette(
-        &mut self,
-        _: &ToggleCommandPalette,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.command_palette_open = !self.command_palette_open;
-        if self.command_palette_open {
-            self.repository_switcher_open = false;
-            self.pull_request_switcher_open = false;
-            self.file_filter_popover_open = false;
-        }
-        self.status = if self.command_palette_open {
-            "Command palette opened".to_string()
-        } else {
-            "Command palette closed".to_string()
-        };
-        cx.notify();
-    }
-
     pub(super) fn toggle_repository_switcher(
         &mut self,
         _: &ToggleRepositorySwitcher,
@@ -628,7 +607,6 @@ impl AppView {
     ) {
         self.repository_switcher_open = !self.repository_switcher_open;
         if self.repository_switcher_open {
-            self.command_palette_open = false;
             self.pull_request_switcher_open = false;
             self.file_filter_popover_open = false;
             self.repository_search_input.update(cx, |input, cx| {
@@ -646,7 +624,6 @@ impl AppView {
     }
 
     pub(super) fn close_panel(&mut self, _: &ClosePanel, _: &mut Window, cx: &mut Context<Self>) {
-        self.command_palette_open = false;
         self.repository_switcher_open = false;
         self.pull_request_switcher_open = false;
         self.file_filter_popover_open = false;
@@ -1099,7 +1076,6 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.file_filter_popover_open = !self.file_filter_popover_open;
-        self.command_palette_open = false;
         self.repository_switcher_open = false;
         self.pull_request_switcher_open = false;
         self.status = if self.file_filter_popover_open {

@@ -414,6 +414,8 @@ impl AppView {
         let owner = repo.owner.clone();
         let name = repo.name.clone();
 
+        let review_data_generation = self.next_review_data_generation();
+
         self.pr_detail_tasks.push(cx.spawn({
             let owner = owner.clone();
             let name = name.clone();
@@ -698,6 +700,9 @@ impl AppView {
                     if !selected_pull_request_matches(view, &repo, number) {
                         return;
                     }
+                    if view.review_data_generation() != review_data_generation {
+                        return;
+                    }
 
                     view.is_loading_reviews = false;
                     let mut loaded_review_thread_count = None;
@@ -818,6 +823,7 @@ impl AppView {
         self.status = format!("Refreshing review data for PR #{number}");
         cx.notify();
 
+        let review_data_generation = self.next_review_data_generation();
         let owner = repo.owner.clone();
         let name = repo.name.clone();
 
@@ -848,6 +854,9 @@ impl AppView {
 
             if let Err(error) = this.update(cx, move |view, cx| {
                 if !selected_pull_request_matches(view, &repo, number) {
+                    return;
+                }
+                if view.review_data_generation() != review_data_generation {
                     return;
                 }
 

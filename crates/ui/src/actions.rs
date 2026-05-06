@@ -11,7 +11,6 @@ actions!(
         OpenSelectedPullRequest,
         CyclePanelTab,
         TogglePullRequestInbox,
-        ToggleCommandPalette,
         ToggleRepositorySwitcher,
         ClosePanel,
         RefreshSelectedPullRequest,
@@ -44,30 +43,8 @@ actions!(
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("j", SelectNextPullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("k", SelectPreviousPullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("enter", OpenSelectedPullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("tab", CyclePanelTab, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("cmd-b", TogglePullRequestInbox, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("cmd-k", ToggleCommandPalette, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("cmd-p", ToggleRepositorySwitcher, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("escape", ClosePanel, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("r", RefreshSelectedPullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("c", CheckoutPullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("o", OpenPullRequestInBrowser, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("a", ApprovePullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("shift-a", RequestChanges, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("m", MergePullRequest, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("l", OpenLogs, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("b", TriggerBuild, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("shift-r", RerunFailedJobs, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("/", FilterCurrentList, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("]", SelectNextFile, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("[", SelectPreviousFile, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("shift-]", SelectNextHunk, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("shift-[", SelectPreviousHunk, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("y", CopyActiveFilePath, Some(KEY_BINDING_CONTEXT)),
-        KeyBinding::new("g", OpenActiveFileOnGitHub, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("down", SelectNextPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("up", SelectPreviousPullRequest, Some(KEY_BINDING_CONTEXT)),
     ]);
 }
 
@@ -106,12 +83,6 @@ impl PanelTab {
             .expect("active tab must be present");
         Self::ALL[(index + 1) % Self::ALL.len()]
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct CommandSpec {
-    pub(crate) shortcut: &'static str,
-    pub(crate) title: &'static str,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -239,78 +210,3 @@ impl PullRequestActionRequest {
 }
 
 pub(crate) const DEFAULT_REQUEST_CHANGES_BODY: &str = "Changes requested from Harbor.";
-
-pub(crate) const COMMANDS: &[CommandSpec] = &[
-    CommandSpec {
-        shortcut: "cmd+k",
-        title: "Open command palette",
-    },
-    CommandSpec {
-        shortcut: "cmd+p",
-        title: "Search repositories",
-    },
-    CommandSpec {
-        shortcut: "j/k",
-        title: "Move pull request selection",
-    },
-    CommandSpec {
-        shortcut: "enter",
-        title: "Open selected pull request",
-    },
-    CommandSpec {
-        shortcut: "tab",
-        title: "Cycle right panel",
-    },
-    CommandSpec {
-        shortcut: "cmd+b",
-        title: "Toggle pull request inbox",
-    },
-    CommandSpec {
-        shortcut: "r",
-        title: "Refresh selected pull request",
-    },
-    CommandSpec {
-        shortcut: "c",
-        title: "Prepare selected pull request worktree",
-    },
-    CommandSpec {
-        shortcut: "o",
-        title: "Open selected pull request in browser",
-    },
-    CommandSpec {
-        shortcut: "l",
-        title: "Open logs",
-    },
-    CommandSpec {
-        shortcut: "shift+r",
-        title: "Rerun failed jobs",
-    },
-    CommandSpec {
-        shortcut: "/",
-        title: "Filter changed files",
-    },
-    CommandSpec {
-        shortcut: "[ / ]",
-        title: "Move between changed files",
-    },
-    CommandSpec {
-        shortcut: "shift+[ / shift+]",
-        title: "Move between diff hunks",
-    },
-    CommandSpec {
-        shortcut: "y",
-        title: "Copy active file path",
-    },
-    CommandSpec {
-        shortcut: "g",
-        title: "Open active file on GitHub",
-    },
-    CommandSpec {
-        shortcut: "menu",
-        title: "Choose local checkout",
-    },
-    CommandSpec {
-        shortcut: "menu",
-        title: "Open active file or PR worktree with local app",
-    },
-];
