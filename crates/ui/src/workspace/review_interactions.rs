@@ -1,15 +1,16 @@
 use gpui::{Context, Entity, Window};
 use gpui_component::input::{InputEvent, InputState};
+use harbor_domain::{ReactionContent, ReviewThreadState};
 use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::{
     actions::PanelTab,
     workspace::{
-        AppView, PullRequestDetailCacheKey, ReviewLineSelection, ReviewLineTarget,
-        ReviewThreadUiError,
+        AppView, PullRequestDetailCacheKey, ReviewCommentUiError, ReviewLineSelection,
+        ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
         reviews::{
-            increment_pending_review_comment_count, is_local_review_thread_id,
-            review_comment_range_label, review_composer_from_selection,
+            ReviewReactionKey, increment_pending_review_comment_count, is_local_review_thread_id,
+            review_comment_range_label, review_composer_from_selection, review_reaction,
         },
     },
 };
@@ -237,6 +238,405 @@ impl AppView {
                 cx.notify();
             }) {
                 eprintln!("failed to update review thread reply state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn set_review_thread_resolved(
+        &mut self,
+        thread_id: String,
+        resolved: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.review_thread_action_thread_id.is_some() {
+            self.status = "A review thread action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_thread_action_error = Some(ReviewThreadUiError {
+                thread_id,
+                message: "Select a pull request before updating a thread".to_string(),
+            });
+            self.status = "Select a pull request before updating a thread".to_string();
+            cx.notify();
+            return;
+        };
+
+        let desired_state = if resolved {
+            ReviewThreadState::Resolved
+        } else {
+            ReviewThreadState::Unresolved
+        };
+        let previous_state = self
+            .review_threads
+            .iter()
+            .find(|thread| thread.id == thread_id)
+            .map(|thread| thread.state);
+        self.set_review_thread_state(&thread_id, desired_state);
+        self.review_thread_state_overrides
+            .insert(thread_id.clone(), desired_state);
+        self.sync_unresolved_thread_count();
+        self.review_thread_action_thread_id = Some(thread_id.clone());
+        self.review_thread_action_error = None;
+        self.status = if resolved {
+            format!("Resolving review thread on PR #{}", pr.number)
+        } else {
+            format!("Reopening review thread on PR #{}", pr.number)
+        };
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = if resolved {
+                client.resolve_review_thread(&thread_id).await
+            } else {
+                client.unresolve_review_thread(&thread_id).await
+            };
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.review_thread_action_thread_id = None;
+
+                match result {
+                    Ok(()) => {
+                        view.set_review_thread_state(&thread_id, desired_state);
+                        view.sync_unresolved_thread_count();
+                        view.review_thread_action_error = None;
+                        view.status = if resolved {
+                            format!("Resolved review thread on PR #{}", pr.number)
+                        } else {
+                            format!("Reopened review thread on PR #{}", pr.number)
+                        };
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        view.review_thread_state_overrides.remove(&thread_id);
+                        if let Some(previous_state) = previous_state {
+                            view.set_review_thread_state(&thread_id, previous_state);
+                            view.sync_unresolved_thread_count();
+                        }
+                        let message = if resolved {
+                            format!("Failed to resolve review thread: {error}")
+                        } else {
+                            format!("Failed to reopen review thread: {error}")
+                        };
+                        view.review_thread_action_error = Some(ReviewThreadUiError {
+                            thread_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review thread action state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn open_review_comment_edit(
+        &mut self,
+        comment_id: String,
+        body: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_comment_edit_comment_id = Some(comment_id);
+        self.review_comment_edit_error = None;
+        self.review_comment_edit_input.update(cx, |input, cx| {
+            input.set_value(body, window, cx);
+            input.focus(window, cx);
+        });
+        self.status = "Opened review comment editor".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_review_comment_edit(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_comment_edit_comment_id = None;
+        self.review_comment_edit_error = None;
+        self.review_comment_edit_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.status = "Cancelled review comment edit".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn submit_review_comment_edit(
+        &mut self,
+        comment_id: String,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_submitting_review_comment_edit {
+            self.status = "A review comment edit is already being submitted".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Select a pull request before editing".to_string(),
+            });
+            self.status = "Select a pull request before editing".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(comment) = self.review_comment(&comment_id) else {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Review comment is no longer loaded".to_string(),
+            });
+            self.status = "Review comment is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        if !comment.viewer_can_update {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "GitHub does not allow you to edit this comment".to_string(),
+            });
+            self.status = "GitHub does not allow you to edit this comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        let body = self.review_comment_edit_input.read(cx).value().to_string();
+        let body = body.trim().to_string();
+        if body.is_empty() {
+            self.review_comment_edit_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Enter a comment before saving".to_string(),
+            });
+            self.status = "Enter a comment before saving".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.is_submitting_review_comment_edit = true;
+        self.review_comment_edit_comment_id = Some(comment_id.clone());
+        self.review_comment_edit_error = None;
+        self.status = format!("Updating review comment on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = GitHubClient::new(GhCliTransport)
+                .update_review_comment(&comment_id, &body)
+                .await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.is_submitting_review_comment_edit = false;
+
+                match result {
+                    Ok(()) => {
+                        if let Some(comment) = view.review_comment_mut(&comment_id) {
+                            comment.body = body;
+                        }
+                        view.review_comment_edit_comment_id = None;
+                        view.review_comment_edit_error = None;
+                        view.status = format!("Updated review comment on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to update review comment: {error}");
+                        view.review_comment_edit_error = Some(ReviewCommentUiError {
+                            comment_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review comment edit state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn delete_review_comment(&mut self, comment_id: String, cx: &mut Context<Self>) {
+        if self.review_comment_action_comment_id.is_some() {
+            self.status = "A review comment action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_comment_action_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Select a pull request before deleting".to_string(),
+            });
+            self.status = "Select a pull request before deleting".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(comment) = self.review_comment(&comment_id) else {
+            self.review_comment_action_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Review comment is no longer loaded".to_string(),
+            });
+            self.status = "Review comment is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        if !comment.viewer_can_delete {
+            self.review_comment_action_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "GitHub does not allow you to delete this comment".to_string(),
+            });
+            self.status = "GitHub does not allow you to delete this comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.review_comment_action_comment_id = Some(comment_id.clone());
+        self.review_comment_action_error = None;
+        self.status = format!("Deleting review comment on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = GitHubClient::new(GhCliTransport)
+                .delete_review_comment(&comment_id)
+                .await;
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.review_comment_action_comment_id = None;
+
+                match result {
+                    Ok(()) => {
+                        view.remove_review_comment(&comment_id);
+                        view.review_comment_edit_comment_id = view
+                            .review_comment_edit_comment_id
+                            .take()
+                            .filter(|active_id| active_id != &comment_id);
+                        view.review_comment_action_error = None;
+                        view.sync_unresolved_thread_count();
+                        view.status = format!("Deleted review comment on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        let message = format!("Failed to delete review comment: {error}");
+                        view.review_comment_action_error = Some(ReviewCommentUiError {
+                            comment_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review comment action state: {error}");
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn toggle_review_comment_reaction(
+        &mut self,
+        comment_id: String,
+        content: ReactionContent,
+        cx: &mut Context<Self>,
+    ) {
+        if self.review_reaction_action.is_some() {
+            self.status = "A review reaction action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_reaction_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Select a pull request before reacting".to_string(),
+            });
+            self.status = "Select a pull request before reacting".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(comment) = self.review_comment(&comment_id) else {
+            self.review_reaction_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "Review comment is no longer loaded".to_string(),
+            });
+            self.status = "Review comment is no longer loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        if !comment.viewer_can_react {
+            self.review_reaction_error = Some(ReviewCommentUiError {
+                comment_id,
+                message: "GitHub does not allow you to react to this comment".to_string(),
+            });
+            self.status = "GitHub does not allow you to react to this comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        let had_reacted =
+            review_reaction(comment, content).is_some_and(|reaction| reaction.viewer_has_reacted);
+        let viewer_has_reacted = !had_reacted;
+        let reaction_key = ReviewReactionKey::new(comment_id.clone(), content);
+        self.set_review_comment_reaction(&comment_id, content, viewer_has_reacted);
+        self.review_reaction_overrides
+            .insert(reaction_key.clone(), viewer_has_reacted);
+        self.review_reaction_action = Some(ReviewReactionAction {
+            comment_id: comment_id.clone(),
+            content,
+        });
+        self.review_reaction_error = None;
+        self.status = format!("Updating reaction on PR #{}", pr.number);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = if had_reacted {
+                client
+                    .remove_review_comment_reaction(&comment_id, content)
+                    .await
+            } else {
+                client
+                    .add_review_comment_reaction(&comment_id, content)
+                    .await
+            };
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                view.review_reaction_action = None;
+
+                match result {
+                    Ok(()) => {
+                        view.review_reaction_error = None;
+                        view.status = format!("Updated reaction on PR #{}", pr.number);
+                        view.load_selected_review_data(cx);
+                    }
+                    Err(error) => {
+                        view.review_reaction_overrides.remove(&reaction_key);
+                        view.set_review_comment_reaction(&comment_id, content, had_reacted);
+                        let message = format!("Failed to update reaction: {error}");
+                        view.review_reaction_error = Some(ReviewCommentUiError {
+                            comment_id,
+                            message: message.clone(),
+                        });
+                        view.status = message;
+                    }
+                }
+
+                cx.notify();
+            }) {
+                eprintln!("failed to update review reaction state: {error}");
             }
         })
         .detach();
