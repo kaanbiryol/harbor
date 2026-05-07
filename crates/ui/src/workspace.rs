@@ -4,6 +4,7 @@ mod changed_files;
 mod commands;
 mod loaders;
 mod local_commands;
+mod pull_request_detail_loaders;
 mod render;
 mod review_data_loaders;
 mod review_interactions;
