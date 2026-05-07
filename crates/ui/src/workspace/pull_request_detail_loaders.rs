@@ -1,6 +1,6 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
-use harbor_domain::ReviewThreadState;
+use harbor_domain::{RepoId, ReviewThreadState};
 use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::{
@@ -17,6 +17,15 @@ use crate::{
 enum PullRequestDetailFetchPolicy {
     PreferCache,
     Refresh,
+}
+
+#[derive(Clone, Debug)]
+struct SelectedPullRequestLoad {
+    repo: RepoId,
+    owner: String,
+    name: String,
+    number: u64,
+    head_sha: String,
 }
 
 impl AppView {
@@ -37,8 +46,13 @@ impl AppView {
             return;
         };
         let repo = pull_request.repo;
-        let number = pull_request.number;
-        let head_sha = pull_request.head_sha;
+        let load = SelectedPullRequestLoad {
+            owner: repo.owner.clone(),
+            name: repo.name.clone(),
+            repo,
+            number: pull_request.number,
+            head_sha: pull_request.head_sha,
+        };
 
         if fetch_policy == PullRequestDetailFetchPolicy::PreferCache
             && self.restore_selected_pull_request_detail_snapshot(cx)
@@ -46,6 +60,17 @@ impl AppView {
             return;
         }
 
+        self.reset_selected_pull_request_detail_state(load.number);
+        let review_data_generation = self.next_review_data_generation();
+
+        self.spawn_pull_request_metadata_loader(load.clone(), cx);
+        self.spawn_pull_request_files_loader(load.clone(), cx);
+        self.spawn_pull_request_checks_loader(load.clone(), cx);
+        self.spawn_pull_request_workflows_loader(load.clone(), cx);
+        self.spawn_pull_request_initial_review_loader(load, review_data_generation, cx);
+    }
+
+    fn reset_selected_pull_request_detail_state(&mut self, number: u64) {
         self.is_loading_details = true;
         self.is_loading_files = true;
         self.is_loading_checks = true;
@@ -83,16 +108,18 @@ impl AppView {
             .scroll_to_item(0, ScrollStrategy::Top);
         self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Loading PR #{number} details and changed files");
+    }
 
-        let owner = repo.owner.clone();
-        let name = repo.name.clone();
-
-        let review_data_generation = self.next_review_data_generation();
-
+    fn spawn_pull_request_metadata_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        cx: &mut Context<Self>,
+    ) {
         self.pr_detail_tasks.push(cx.spawn({
-            let owner = owner.clone();
-            let name = name.clone();
-            let repo = repo.clone();
+            let repo = load.repo;
+            let owner = load.owner;
+            let name = load.name;
+            let number = load.number;
 
             async move |this, cx| {
                 let result = GitHubClient::new(GhCliTransport)
@@ -130,11 +157,18 @@ impl AppView {
                 }
             }
         }));
+    }
 
+    fn spawn_pull_request_files_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        cx: &mut Context<Self>,
+    ) {
         self.pr_detail_tasks.push(cx.spawn({
-            let owner = owner.clone();
-            let name = name.clone();
-            let repo = repo.clone();
+            let repo = load.repo;
+            let owner = load.owner;
+            let name = load.name;
+            let number = load.number;
             let highlight_theme = cx.theme().highlight_theme.clone();
 
             async move |this, cx| {
@@ -236,12 +270,19 @@ impl AppView {
                 }
             }
         }));
+    }
 
+    fn spawn_pull_request_checks_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        cx: &mut Context<Self>,
+    ) {
         self.pr_detail_tasks.push(cx.spawn({
-            let owner = owner.clone();
-            let name = name.clone();
-            let repo = repo.clone();
-            let head_sha = head_sha.clone();
+            let repo = load.repo;
+            let owner = load.owner;
+            let name = load.name;
+            let number = load.number;
+            let head_sha = load.head_sha;
 
             async move |this, cx| {
                 let result = if head_sha.is_empty() {
@@ -285,12 +326,19 @@ impl AppView {
                 }
             }
         }));
+    }
 
+    fn spawn_pull_request_workflows_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        cx: &mut Context<Self>,
+    ) {
         self.pr_detail_tasks.push(cx.spawn({
-            let owner = owner.clone();
-            let name = name.clone();
-            let repo = repo.clone();
-            let head_sha = head_sha.clone();
+            let repo = load.repo;
+            let owner = load.owner;
+            let name = load.name;
+            let number = load.number;
+            let head_sha = load.head_sha;
 
             async move |this, cx| {
                 let result = if head_sha.is_empty() {
@@ -335,11 +383,19 @@ impl AppView {
                 }
             }
         }));
+    }
 
+    fn spawn_pull_request_initial_review_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        review_data_generation: u64,
+        cx: &mut Context<Self>,
+    ) {
         self.pr_detail_tasks.push(cx.spawn({
-            let owner = owner.clone();
-            let name = name.clone();
-            let repo = repo.clone();
+            let repo = load.repo;
+            let owner = load.owner;
+            let name = load.name;
+            let number = load.number;
 
             async move |this, cx| {
                 let client = GitHubClient::new(GhCliTransport);
