@@ -1,3 +1,8 @@
+#![expect(
+    clippy::too_many_arguments,
+    reason = "diff row layout helpers share explicit review state to keep row math pure and testable"
+)]
+
 use std::{collections::HashSet, ops::Range};
 
 use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide, ReviewThread};

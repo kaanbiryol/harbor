@@ -1,3 +1,8 @@
+#![expect(
+    clippy::too_many_arguments,
+    reason = "review row rendering receives explicit interaction state from the owning workspace"
+)]
+
 use gpui::{
     AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px, rgb,
     uniform_list,

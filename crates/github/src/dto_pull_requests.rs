@@ -314,9 +314,7 @@ fn required_graphql_field<T>(value: Option<T>, label: &str) -> Result<T> {
 }
 
 fn map_pull_request_state(state: &str, merged: Option<bool>) -> PullRequestState {
-    if merged.unwrap_or(false) {
-        PullRequestState::Merged
-    } else if state.eq_ignore_ascii_case("merged") {
+    if merged.unwrap_or(false) || state.eq_ignore_ascii_case("merged") {
         PullRequestState::Merged
     } else if state.eq_ignore_ascii_case("closed") {
         PullRequestState::Closed

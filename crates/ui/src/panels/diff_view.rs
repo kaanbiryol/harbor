@@ -1,3 +1,8 @@
+#![expect(
+    clippy::too_many_arguments,
+    reason = "diff render helpers pass explicit immutable row state to keep virtualized row rendering local"
+)]
+
 #[path = "diff_view/inline_reviews.rs"]
 mod inline_reviews;
 #[path = "diff_view/layout.rs"]

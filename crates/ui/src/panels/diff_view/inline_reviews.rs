@@ -1,3 +1,8 @@
+#![expect(
+    clippy::too_many_arguments,
+    reason = "inline review render helpers pass explicit interaction state for each virtualized row"
+)]
+
 use gpui::{Anchor, AnyElement, Entity, IntoElement, div, img, prelude::*, px, rgb};
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
