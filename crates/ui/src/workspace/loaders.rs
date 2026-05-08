@@ -58,7 +58,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update repository store state: {error}");
+                tracing::warn!(%error, "failed to update repository store state");
             }
         }));
     }
@@ -116,7 +116,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update repository refresh state: {error}");
+                tracing::warn!(%error, "failed to update repository refresh state");
             }
         }));
     }
@@ -154,7 +154,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update repository write state: {error}");
+                tracing::warn!(%error, "failed to update repository write state");
             }
         })
         .detach();

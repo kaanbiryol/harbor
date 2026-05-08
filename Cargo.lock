@@ -2670,6 +2670,7 @@ dependencies = [
  "harbor-github",
  "harbor-logs",
  "harbor-storage",
+ "tracing",
 ]
 
 [[package]]

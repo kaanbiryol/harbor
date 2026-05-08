@@ -46,7 +46,7 @@ impl AppView {
                     view.validate_and_store_local_checkout(repository, path, cx);
                 })
             }) {
-                eprintln!("failed to start local checkout validation: {error}");
+                tracing::warn!(%error, "failed to start local checkout validation");
             }
         })
         .detach();
@@ -180,7 +180,7 @@ impl AppView {
                 view.local_task = None;
                 cx.notify();
             }) {
-                eprintln!("failed to update local checkout state: {error}");
+                tracing::warn!(%error, "failed to update local checkout state");
             }
         }));
     }
@@ -245,7 +245,7 @@ impl AppView {
                 view.local_task = None;
                 cx.notify();
             }) {
-                eprintln!("failed to update open-with state: {error}");
+                tracing::warn!(%error, "failed to update open-with state");
             }
         }));
     }
@@ -296,7 +296,7 @@ impl AppView {
                 view.local_task = None;
                 cx.notify();
             }) {
-                eprintln!("failed to update checkout state: {error}");
+                tracing::warn!(%error, "failed to update checkout state");
             }
         }));
     }

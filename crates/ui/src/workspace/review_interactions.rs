@@ -237,7 +237,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update review thread reply state: {error}");
+                tracing::warn!(%error, "failed to update review thread reply state");
             }
         })
         .detach();
@@ -332,7 +332,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update review thread action state: {error}");
+                tracing::warn!(%error, "failed to update review thread action state");
             }
         })
         .detach();
@@ -458,7 +458,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update review comment edit state: {error}");
+                tracing::warn!(%error, "failed to update review comment edit state");
             }
         })
         .detach();
@@ -538,7 +538,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update review comment action state: {error}");
+                tracing::warn!(%error, "failed to update review comment action state");
             }
         })
         .detach();
@@ -636,7 +636,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update review reaction state: {error}");
+                tracing::warn!(%error, "failed to update review reaction state");
             }
         })
         .detach();

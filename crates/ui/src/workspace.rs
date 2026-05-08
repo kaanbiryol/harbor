@@ -816,7 +816,7 @@ impl AppView {
                 view.ensure_active_file_visible(cx);
                 cx.notify();
             }) {
-                eprintln!("failed to update file ownership filters: {error}");
+                tracing::warn!(%error, "failed to update file ownership filters");
             }
         })
         .detach();

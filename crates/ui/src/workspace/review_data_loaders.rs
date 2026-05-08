@@ -140,7 +140,7 @@ impl AppView {
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             }) {
-                eprintln!("failed to update refreshed review state: {error}");
+                tracing::warn!(%error, "failed to update refreshed review state");
             }
         }));
     }

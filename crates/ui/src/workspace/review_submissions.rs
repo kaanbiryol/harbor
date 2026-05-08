@@ -195,7 +195,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update review comment submission state: {error}");
+                tracing::warn!(%error, "failed to update review comment submission state");
             }
         })
         .detach();
@@ -283,7 +283,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                eprintln!("failed to update pending review submission state: {error}");
+                tracing::warn!(%error, "failed to update pending review submission state");
             }
         })
         .detach();

@@ -153,7 +153,7 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    eprintln!("failed to update pull request detail state: {error}");
+                    tracing::warn!(%error, "failed to update pull request detail state");
                 }
             }
         }));
@@ -229,7 +229,7 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    eprintln!("failed to update pull request file state: {error}");
+                    tracing::warn!(%error, "failed to update pull request file state");
                 }
 
                 let Some(files_for_syntax) = files_for_syntax else {
@@ -265,7 +265,7 @@ impl AppView {
                         view.cache_current_pull_request_detail_snapshot();
                         cx.notify();
                     }) {
-                        eprintln!("failed to update pull request syntax highlight state: {error}");
+                        tracing::warn!(%error, "failed to update pull request syntax highlight state");
                     }
                 }
             }
@@ -322,7 +322,7 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    eprintln!("failed to update pull request checks state: {error}");
+                    tracing::warn!(%error, "failed to update pull request checks state");
                 }
             }
         }));
@@ -379,7 +379,7 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    eprintln!("failed to update pull request workflow state: {error}");
+                    tracing::warn!(%error, "failed to update pull request workflow state");
                 }
             }
         }));
@@ -535,7 +535,7 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    eprintln!("failed to update pull request review state: {error}");
+                    tracing::warn!(%error, "failed to update pull request review state");
                 }
             }
         }));
