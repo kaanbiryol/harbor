@@ -6,37 +6,69 @@ const KEY_BINDING_CONTEXT: &str = "HarborWorkspace && !Input";
 actions!(
     harbor,
     [
+        /// Selects the next pull request in the current list.
         SelectNextPullRequest,
+        /// Selects the previous pull request in the current list.
         SelectPreviousPullRequest,
+        /// Opens the selected pull request details.
         OpenSelectedPullRequest,
+        /// Advances to the next workspace panel tab.
         CyclePanelTab,
+        /// Toggles the pull request inbox panel.
         TogglePullRequestInbox,
+        /// Toggles the repository switcher.
         ToggleRepositorySwitcher,
+        /// Closes the active panel or popover.
         ClosePanel,
+        /// Refreshes the selected pull request and related data.
         RefreshSelectedPullRequest,
+        /// Checks out the selected pull request into a local worktree.
         CheckoutPullRequest,
+        /// Opens the selected pull request in the browser.
         OpenPullRequestInBrowser,
+        /// Approves the selected pull request.
         ApprovePullRequest,
+        /// Requests changes on the selected pull request.
         RequestChanges,
+        /// Merges the selected pull request.
         MergePullRequest,
+        /// Opens logs for the selected workflow run.
         OpenLogs,
+        /// Dispatches the selected workflow build.
         TriggerBuild,
+        /// Reruns failed jobs for the selected workflow run.
         RerunFailedJobs,
+        /// Focuses filtering for the current list.
         FilterCurrentList,
+        /// Selects the next changed file.
         SelectNextFile,
+        /// Selects the previous changed file.
         SelectPreviousFile,
+        /// Selects the next diff hunk.
         SelectNextHunk,
+        /// Selects the previous diff hunk.
         SelectPreviousHunk,
+        /// Copies the active changed file path.
         CopyActiveFilePath,
+        /// Opens the active changed file on GitHub.
         OpenActiveFileOnGitHub,
+        /// Chooses a local checkout for the current repository.
         ChooseLocalCheckout,
+        /// Opens the current target in VS Code.
         OpenWithVsCode,
+        /// Opens the current target in Cursor.
         OpenWithCursor,
+        /// Opens the current target in Zed.
         OpenWithZed,
+        /// Opens or reveals the current target in Finder.
         OpenWithFinder,
+        /// Opens the current target in Terminal.
         OpenWithTerminal,
+        /// Opens the current target in Ghostty.
         OpenWithGhostty,
+        /// Opens the current target in Warp.
         OpenWithWarp,
+        /// Opens the current target in Xcode.
         OpenWithXcode
     ]
 );
