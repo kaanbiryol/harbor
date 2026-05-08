@@ -7,8 +7,6 @@ rust-version.workspace = true
 
 [dependencies]
 harbor-domain = { path = "../domain" }
+smol.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-smol.workspace = true

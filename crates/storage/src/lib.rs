@@ -57,7 +57,7 @@ pub struct SqliteStore {
 impl SqliteStore {
     pub async fn connect(config: StorageConfig) -> Result<Self> {
         if let Some(parent) = config.database_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| {
+            smol::fs::create_dir_all(parent).await.map_err(|error| {
                 StorageError::Operation(format!("failed to create storage directory: {error}"))
             })?;
         }
