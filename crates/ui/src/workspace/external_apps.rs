@@ -63,7 +63,10 @@ impl AppView {
                 view.external_app_availability_task = None;
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update external app availability");
+                crate::workspace::log_entity_update_error(
+                    "failed to update external app availability",
+                    error,
+                );
             }
         }));
     }

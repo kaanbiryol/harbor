@@ -159,7 +159,10 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    tracing::warn!(%error, "failed to update pull request detail state");
+                    crate::workspace::log_entity_update_error(
+                        "failed to update pull request detail state",
+                        error,
+                    );
                 }
             }
         }));
@@ -235,7 +238,10 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    tracing::warn!(%error, "failed to update pull request file state");
+                    crate::workspace::log_entity_update_error(
+                        "failed to update pull request file state",
+                        error,
+                    );
                 }
 
                 let Some(files_for_syntax) = files_for_syntax else {
@@ -271,7 +277,10 @@ impl AppView {
                         view.cache_current_pull_request_detail_snapshot();
                         cx.notify();
                     }) {
-                        tracing::warn!(%error, "failed to update pull request syntax highlight state");
+                        crate::workspace::log_entity_update_error(
+                            "failed to update pull request syntax highlight state",
+                            error,
+                        );
                     }
                 }
             }
@@ -328,7 +337,10 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    tracing::warn!(%error, "failed to update pull request checks state");
+                    crate::workspace::log_entity_update_error(
+                        "failed to update pull request checks state",
+                        error,
+                    );
                 }
             }
         }));
@@ -385,7 +397,10 @@ impl AppView {
                     view.cache_current_pull_request_detail_snapshot();
                     cx.notify();
                 }) {
-                    tracing::warn!(%error, "failed to update pull request workflow state");
+                    crate::workspace::log_entity_update_error(
+                        "failed to update pull request workflow state",
+                        error,
+                    );
                 }
             }
         }));

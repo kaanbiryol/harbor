@@ -237,7 +237,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update review thread reply state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update review thread reply state",
+                    error,
+                );
             }
         })
         .detach();
@@ -332,7 +335,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update review thread action state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update review thread action state",
+                    error,
+                );
             }
         })
         .detach();
@@ -458,7 +464,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update review comment edit state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update review comment edit state",
+                    error,
+                );
             }
         })
         .detach();
@@ -538,7 +547,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update review comment action state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update review comment action state",
+                    error,
+                );
             }
         })
         .detach();
@@ -636,7 +648,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update review reaction state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update review reaction state",
+                    error,
+                );
             }
         })
         .detach();

@@ -64,6 +64,10 @@ pub(crate) use switchers::{
 };
 pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 
+pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {
+    tracing::warn!(%error, "{}", context);
+}
+
 #[cfg(test)]
 pub(crate) use commands::github_file_url;
 #[cfg(test)]

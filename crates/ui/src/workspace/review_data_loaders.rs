@@ -243,7 +243,7 @@ impl AppView {
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             }) {
-                tracing::warn!(%error, "{}", mode.update_error_log_message());
+                crate::workspace::log_entity_update_error(mode.update_error_log_message(), error);
             }
         }));
     }

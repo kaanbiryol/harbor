@@ -46,7 +46,10 @@ impl AppView {
                     view.validate_and_store_local_checkout(repository, path, cx);
                 })
             }) {
-                tracing::warn!(%error, "failed to start local checkout validation");
+                crate::workspace::log_entity_update_error(
+                    "failed to start local checkout validation",
+                    error,
+                );
             }
         })
         .detach();
@@ -180,7 +183,10 @@ impl AppView {
                 view.local_task = None;
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update local checkout state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update local checkout state",
+                    error,
+                );
             }
         }));
     }
@@ -249,7 +255,10 @@ impl AppView {
                 view.local_task = None;
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update open-with state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update open-with state",
+                    error,
+                );
             }
         }));
     }
@@ -300,7 +309,7 @@ impl AppView {
                 view.local_task = None;
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update checkout state");
+                crate::workspace::log_entity_update_error("failed to update checkout state", error);
             }
         }));
     }

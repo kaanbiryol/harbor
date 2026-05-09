@@ -195,7 +195,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update review comment submission state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update review comment submission state",
+                    error,
+                );
             }
         })
         .detach();
@@ -283,7 +286,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update pending review submission state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update pending review submission state",
+                    error,
+                );
             }
         })
         .detach();

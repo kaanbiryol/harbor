@@ -132,7 +132,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update workflow action state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update workflow action state",
+                    error,
+                );
             }
         })
         .detach();
@@ -284,7 +287,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update pull request action state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update pull request action state",
+                    error,
+                );
             }
         })
         .detach();

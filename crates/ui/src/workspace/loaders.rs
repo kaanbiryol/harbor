@@ -58,7 +58,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update repository store state");
+                crate::workspace::log_entity_update_error("failed to update repository store state", error);
             }
         }));
     }
@@ -116,7 +116,7 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update repository refresh state");
+                crate::workspace::log_entity_update_error("failed to update repository refresh state", error);
             }
         }));
     }
@@ -154,7 +154,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update repository write state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update repository write state",
+                    error,
+                );
             }
         })
         .detach();
@@ -333,7 +336,10 @@ impl AppView {
 
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update pull request inbox state");
+                crate::workspace::log_entity_update_error(
+                    "failed to update pull request inbox state",
+                    error,
+                );
             }
         }));
     }
