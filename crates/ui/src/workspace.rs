@@ -5,6 +5,8 @@ mod commands;
 mod external_apps;
 mod loaders;
 mod local_commands;
+mod navigation_commands;
+mod panel_commands;
 mod pull_request_detail_loaders;
 mod render;
 mod review_data_loaders;
@@ -69,11 +71,11 @@ pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fm
 }
 
 #[cfg(test)]
-pub(crate) use commands::github_file_url;
-#[cfg(test)]
 pub(crate) use commands::{OpenSelectedPullRequestBehavior, open_selected_pull_request_behavior};
 #[cfg(test)]
 pub(crate) use local_commands::{OpenTargetStatus, open_target_for_app};
+#[cfg(test)]
+pub(crate) use navigation_commands::github_file_url;
 #[cfg(test)]
 pub(crate) use render::header::open_with_app_disabled;
 
