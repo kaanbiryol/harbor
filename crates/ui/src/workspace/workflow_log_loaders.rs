@@ -10,31 +10,34 @@ impl AppView {
             .selected_pull_request()
             .map(|pull_request| pull_request.repo.clone())
         else {
-            self.logs_error =
+            self.log_state.error =
                 Some("Workflow logs require a selected pull request and GitHub CLI auth".into());
-            self.status = self.logs_error.clone().unwrap_or_default();
+            self.status = self.log_state.error.clone().unwrap_or_default();
             cx.notify();
             return;
         };
         let Some(run) = self.selected_workflow_run_for_logs().cloned() else {
-            self.logs_error = Some("No workflow run is available for the selected PR head".into());
-            self.status = self.logs_error.clone().unwrap_or_default();
+            self.log_state.error =
+                Some("No workflow run is available for the selected PR head".into());
+            self.status = self.log_state.error.clone().unwrap_or_default();
             cx.notify();
             return;
         };
 
-        if self.is_loading_logs {
+        if self.log_state.is_loading {
             self.status = format!("Already loading logs for {}", workflow_run_label(&run));
             cx.notify();
             return;
         }
 
         self.active_tab = PanelTab::Logs;
-        self.is_loading_logs = true;
-        self.logs_error = None;
+        self.log_state.is_loading = true;
+        self.log_state.error = None;
         self.workflow_jobs.clear();
-        self.log_chunk = None;
-        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.log_state.chunk = None;
+        self.log_state
+            .list_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Loading logs for {}", workflow_run_label(&run));
 
         let owner = repo.owner.clone();
@@ -42,7 +45,7 @@ impl AppView {
         let run_id = run.id;
         let run_label = workflow_run_label(&run);
 
-        self.log_task = Some(cx.spawn(async move |this, cx| {
+        self.log_state.task = Some(cx.spawn(async move |this, cx| {
             let client = GitHubClient::new(GhCliTransport);
             let jobs_result = client
                 .list_workflow_jobs_for_run(&owner, &name, run_id)
@@ -54,7 +57,7 @@ impl AppView {
                     return;
                 }
 
-                view.is_loading_logs = false;
+                view.log_state.is_loading = false;
 
                 match jobs_result {
                     Ok(jobs) => {
@@ -62,28 +65,31 @@ impl AppView {
                     }
                     Err(error) => {
                         view.workflow_jobs.clear();
-                        view.logs_error = Some(format!("Failed to load workflow jobs: {error}"));
+                        view.log_state.error =
+                            Some(format!("Failed to load workflow jobs: {error}"));
                     }
                 }
 
                 match log_result {
                     Ok(text) => {
-                        view.log_chunk = Some(parse_workflow_log(run_id, &text));
-                        if view.logs_error.is_none() {
+                        view.log_state.chunk = Some(parse_workflow_log(run_id, &text));
+                        if view.log_state.error.is_none() {
                             view.status = format!("Loaded logs for {run_label}");
                         } else {
                             view.status = format!("Loaded logs for {run_label}, but jobs failed");
                         }
                     }
                     Err(error) => {
-                        view.log_chunk = None;
+                        view.log_state.chunk = None;
                         let message = format!("Failed to load workflow logs: {error}");
-                        view.logs_error = Some(message.clone());
+                        view.log_state.error = Some(message.clone());
                         view.status = message;
                     }
                 }
 
-                view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                view.log_state
+                    .list_scroll
+                    .scroll_to_item(0, ScrollStrategy::Top);
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             }) {

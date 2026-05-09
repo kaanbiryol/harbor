@@ -233,10 +233,10 @@ impl AppView {
                         PanelTab::Logs => render_logs_panel(
                             self.selected_workflow_run_for_logs(),
                             &self.workflow_jobs,
-                            self.log_chunk.as_ref(),
-                            self.is_loading_logs,
-                            self.logs_error.as_deref(),
-                            self.log_list_scroll.clone(),
+                            self.log_state.chunk.as_ref(),
+                            self.log_state.is_loading,
+                            self.log_state.error.as_deref(),
+                            self.log_state.list_scroll.clone(),
                             cx,
                         )
                         .into_any_element(),

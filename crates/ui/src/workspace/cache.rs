@@ -162,7 +162,7 @@ impl AppView {
             pull_request_reviews: self.pull_request_reviews.clone(),
             review_threads: self.review_threads.clone(),
             pending_review: self.pending_review.clone(),
-            log_chunk: self.log_chunk.clone(),
+            log_chunk: self.log_state.chunk.clone(),
             current_user_login: self.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
@@ -192,13 +192,13 @@ impl AppView {
         self.detail_loading.checks = false;
         self.detail_loading.workflows = false;
         self.detail_loading.reviews = false;
-        self.is_loading_logs = false;
+        self.log_state.is_loading = false;
         self.details_error = None;
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
         self.reviews_error = None;
-        self.logs_error = None;
+        self.log_state.error = None;
         self.action_error = None;
         self.pr_action_error = None;
         self.review_comment_error = None;
@@ -216,7 +216,7 @@ impl AppView {
         self.pull_request_reviews = snapshot.pull_request_reviews;
         self.review_threads = snapshot.review_threads;
         self.pending_review = snapshot.pending_review;
-        self.log_chunk = snapshot.log_chunk;
+        self.log_state.chunk = snapshot.log_chunk;
         self.current_user_login = snapshot.current_user_login;
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
@@ -234,7 +234,9 @@ impl AppView {
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.review_list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
-        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.log_state
+            .list_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Showing cached PR #{} details", key.number);
         cx.notify();
         true
@@ -251,7 +253,7 @@ impl AppView {
             pull_request_reviews: self.pull_request_reviews.clone(),
             review_threads: self.review_threads.clone(),
             pending_review: self.pending_review.clone(),
-            log_chunk: self.log_chunk.clone(),
+            log_chunk: self.log_state.chunk.clone(),
             current_user_login: self.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
@@ -284,14 +286,14 @@ impl AppView {
         self.detail_loading.checks = false;
         self.detail_loading.workflows = false;
         self.detail_loading.reviews = false;
-        self.is_loading_logs = false;
+        self.log_state.is_loading = false;
         self.load_error = None;
         self.details_error = None;
         self.files_error = None;
         self.checks_error = None;
         self.workflows_error = None;
         self.reviews_error = None;
-        self.logs_error = None;
+        self.log_state.error = None;
         self.action_error = None;
         self.pr_action_error = None;
         self.review_comment_error = None;
@@ -307,7 +309,7 @@ impl AppView {
         self.pull_request_reviews = snapshot.pull_request_reviews;
         self.review_threads = snapshot.review_threads;
         self.pending_review = snapshot.pending_review;
-        self.log_chunk = snapshot.log_chunk;
+        self.log_state.chunk = snapshot.log_chunk;
         self.current_user_login = snapshot.current_user_login;
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
@@ -328,7 +330,9 @@ impl AppView {
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.review_list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
-        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.log_state
+            .list_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!(
             "Showing cached {} from {}",
             key.mode.status_label(),

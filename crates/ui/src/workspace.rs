@@ -165,6 +165,26 @@ pub(crate) struct ReviewComposerState {
     pub(crate) pending_review_body_input: Entity<InputState>,
 }
 
+pub(crate) struct WorkflowLogState {
+    pub(crate) chunk: Option<LogChunk>,
+    pub(crate) task: Option<Task<()>>,
+    pub(crate) list_scroll: UniformListScrollHandle,
+    pub(crate) is_loading: bool,
+    pub(crate) error: Option<String>,
+}
+
+impl WorkflowLogState {
+    fn new() -> Self {
+        Self {
+            chunk: None,
+            task: None,
+            list_scroll: UniformListScrollHandle::new(),
+            is_loading: false,
+            error: None,
+        }
+    }
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -178,10 +198,9 @@ pub struct AppView {
     pub(crate) review_threads: Vec<ReviewThread>,
     pub(crate) review_composer_state: ReviewComposerState,
     pub(crate) pending_review: Option<PendingReviewSession>,
-    pub(crate) log_chunk: Option<LogChunk>,
+    pub(crate) log_state: WorkflowLogState,
     pr_list_task: Option<Task<()>>,
     pr_detail_tasks: Vec<Task<()>>,
-    log_task: Option<Task<()>>,
     repository_task: Option<Task<()>>,
     local_task: Option<Task<()>>,
     external_app_availability_task: Option<Task<()>>,
@@ -189,7 +208,6 @@ pub struct AppView {
     file_list_scroll: UniformListScrollHandle,
     diff_list_scroll: UniformListScrollHandle,
     review_list_scroll: UniformListScrollHandle,
-    log_list_scroll: UniformListScrollHandle,
     selected_pr: usize,
     diff_selection: DiffSelectionState,
     active_tab: PanelTab,
@@ -214,7 +232,6 @@ pub struct AppView {
     is_loading_repositories: bool,
     is_loading_prs: bool,
     detail_loading: PullRequestDetailLoadingState,
-    is_loading_logs: bool,
     is_running_action: bool,
     is_running_pr_action: bool,
     pub(crate) is_submitting_review_comment: bool,
@@ -232,7 +249,6 @@ pub struct AppView {
     checks_error: Option<String>,
     workflows_error: Option<String>,
     reviews_error: Option<String>,
-    logs_error: Option<String>,
     repository_error: Option<String>,
     action_error: Option<String>,
     pr_action_error: Option<String>,
@@ -362,10 +378,9 @@ impl AppView {
                 pending_review_body_input,
             },
             pending_review: None,
-            log_chunk: None,
+            log_state: WorkflowLogState::new(),
             pr_list_task: None,
             pr_detail_tasks: Vec::new(),
-            log_task: None,
             repository_task: None,
             local_task: None,
             external_app_availability_task: None,
@@ -373,7 +388,6 @@ impl AppView {
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_scroll: UniformListScrollHandle::new(),
             review_list_scroll: UniformListScrollHandle::new(),
-            log_list_scroll: UniformListScrollHandle::new(),
             selected_pr: 0,
             diff_selection: DiffSelectionState::default(),
             active_tab: PanelTab::Diff,
@@ -398,7 +412,6 @@ impl AppView {
             is_loading_repositories: start_startup_tasks,
             is_loading_prs: false,
             detail_loading: PullRequestDetailLoadingState::default(),
-            is_loading_logs: false,
             is_running_action: false,
             is_running_pr_action: false,
             is_submitting_review_comment: false,
@@ -416,7 +429,6 @@ impl AppView {
             checks_error: None,
             workflows_error: None,
             reviews_error: None,
-            logs_error: None,
             repository_error: None,
             action_error: None,
             pr_action_error: None,
@@ -626,13 +638,13 @@ impl AppView {
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
         self.workflow_jobs.clear();
-        self.log_chunk = None;
+        self.log_state.chunk = None;
         self.pull_request_reviews.clear();
         self.review_threads.clear();
         self.clear_review_composer_state();
         self.pending_review = None;
         self.reviews_error = None;
-        self.logs_error = None;
+        self.log_state.error = None;
         self.pr_action_error = None;
         self.review_comment_error = None;
         self.pending_review_error = None;
@@ -674,7 +686,7 @@ impl AppView {
             self.review_threads.clear();
             self.clear_review_composer_state();
             self.pending_review = None;
-            self.log_chunk = None;
+            self.log_state.chunk = None;
             self.selected_pr = 0;
             self.diff_selection.file_index = 0;
             self.diff_selection.hunk_index = 0;

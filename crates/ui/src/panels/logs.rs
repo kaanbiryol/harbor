@@ -113,7 +113,7 @@ pub(crate) fn render_logs_panel(
                             "workflow-log-lines",
                             line_count,
                             cx.processor(|view, range: std::ops::Range<usize>, _window, _cx| {
-                                let Some(chunk) = view.log_chunk.as_ref() else {
+                                let Some(chunk) = view.log_state.chunk.as_ref() else {
                                     return Vec::new();
                                 };
                                 let mut rows = Vec::with_capacity(range.len());

@@ -87,7 +87,7 @@ impl AppView {
         self.checks_error = None;
         self.workflows_error = None;
         self.reviews_error = None;
-        self.logs_error = None;
+        self.log_state.error = None;
         self.action_error = None;
         self.pr_action_error = None;
         self.pr_detail_tasks.clear();
@@ -105,14 +105,16 @@ impl AppView {
         self.clear_review_composer_state();
         self.review_comment_error = None;
         self.pending_review_error = None;
-        self.log_chunk = None;
+        self.log_state.chunk = None;
         self.diff_selection.file_index = 0;
         self.diff_selection.hunk_index = 0;
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.review_list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
-        self.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.log_state
+            .list_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Loading PR #{number} details and changed files");
     }
 
@@ -381,7 +383,7 @@ impl AppView {
                             view.status = format!("Loaded {count} workflow runs for PR #{number}");
 
                             if view.active_tab == PanelTab::Logs
-                                && view.logs_error.is_none()
+                                && view.log_state.error.is_none()
                                 && !view.workflow_runs.is_empty()
                             {
                                 view.load_selected_workflow_logs(cx);

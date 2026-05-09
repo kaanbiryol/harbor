@@ -228,7 +228,7 @@ impl AppView {
         self.checks_error = None;
         self.workflows_error = None;
         self.reviews_error = None;
-        self.logs_error = None;
+        self.log_state.error = None;
         self.action_error = None;
         self.pr_action_error = None;
         self.pr_detail_tasks.clear();
@@ -245,7 +245,7 @@ impl AppView {
         self.detail_loading.checks = false;
         self.detail_loading.workflows = false;
         self.detail_loading.reviews = false;
-        self.is_loading_logs = false;
+        self.log_state.is_loading = false;
         self.status = pull_request_inbox_loading_status(&repo, mode);
 
         self.pr_list_task = Some(cx.spawn(async move |this, cx| {
@@ -280,7 +280,7 @@ impl AppView {
                         view.pending_review = None;
                         view.review_comment_error = None;
                         view.pending_review_error = None;
-                        view.log_chunk = None;
+                        view.log_state.chunk = None;
                         view.selected_pr = 0;
                         view.diff_selection.file_index = 0;
                         view.diff_selection.hunk_index = 0;
@@ -289,7 +289,9 @@ impl AppView {
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.review_list_scroll
                             .scroll_to_item(0, ScrollStrategy::Top);
-                        view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                        view.log_state
+                            .list_scroll
+                            .scroll_to_item(0, ScrollStrategy::Top);
                         view.load_error = None;
                         view.status = status;
                         view.refresh_selected_pull_request(cx);
@@ -312,7 +314,7 @@ impl AppView {
                         view.pending_review = None;
                         view.review_comment_error = None;
                         view.pending_review_error = None;
-                        view.log_chunk = None;
+                        view.log_state.chunk = None;
                         view.selected_pr = 0;
                         view.diff_selection.file_index = 0;
                         view.diff_selection.hunk_index = 0;
@@ -326,7 +328,7 @@ impl AppView {
                         view.detail_loading.checks = false;
                         view.detail_loading.workflows = false;
                         view.detail_loading.reviews = false;
-                        view.is_loading_logs = false;
+                        view.log_state.is_loading = false;
                         view.is_running_action = false;
                         view.is_running_pr_action = false;
                         view.load_error = Some(error.to_string());
