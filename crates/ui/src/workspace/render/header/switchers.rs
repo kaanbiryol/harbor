@@ -422,7 +422,7 @@ impl AppView {
         let pull_request_query =
             normalized_search_query(&self.pull_request_search_input.read(cx).value());
         let pull_requests = self.filtered_switcher_pull_requests(cx);
-        let inbox_mode = self.pull_request_inbox_mode;
+        let inbox_mode = self.pull_request_inbox.mode;
         let selected_pull_request = self.selected_pr;
         let pull_request_selection = self
             .pull_request_switcher_selection

@@ -100,7 +100,7 @@ impl Render for AppView {
                     .overflow_hidden()
                     .gap_2()
                     .p_2()
-                    .when(self.pull_request_inbox_visible, |element| {
+                    .when(self.pull_request_inbox.visible, |element| {
                         element.child(self.render_inbox(cx))
                     })
                     .child(self.render_details(selected_pr.as_ref(), cx))

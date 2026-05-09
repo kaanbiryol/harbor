@@ -92,7 +92,7 @@ pub(crate) struct PullRequestInboxSnapshot {
 impl AppView {
     pub(crate) fn current_pull_request_inbox_key(&self) -> Option<PullRequestInboxCacheKey> {
         self.configured_repo.clone().map(|repository| {
-            PullRequestInboxCacheKey::new(repository, self.pull_request_inbox_mode)
+            PullRequestInboxCacheKey::new(repository, self.pull_request_inbox.mode)
         })
     }
 
@@ -112,7 +112,8 @@ impl AppView {
             return;
         }
 
-        self.pull_request_inbox_cache
+        self.pull_request_inbox
+            .cache
             .insert(key, self.current_pull_request_inbox_snapshot());
     }
 
@@ -268,12 +269,12 @@ impl AppView {
         key: PullRequestInboxCacheKey,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(snapshot) = self.pull_request_inbox_cache.get(&key).cloned() else {
+        let Some(snapshot) = self.pull_request_inbox.cache.get(&key).cloned() else {
             return false;
         };
 
         self.configured_repo = Some(key.repository.clone());
-        self.pull_request_inbox_mode = key.mode;
+        self.pull_request_inbox.mode = key.mode;
         self.pr_list_task = None;
         self.pr_detail_tasks.clear();
         self.is_loading_prs = false;

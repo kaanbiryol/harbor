@@ -37,12 +37,12 @@ impl AppView {
     }
 
     pub(super) fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let inbox_toggle_icon = if self.pull_request_inbox_visible {
+        let inbox_toggle_icon = if self.pull_request_inbox.visible {
             IconName::PanelLeft
         } else {
             IconName::PanelLeftOpen
         };
-        let inbox_toggle_tooltip = if self.pull_request_inbox_visible {
+        let inbox_toggle_tooltip = if self.pull_request_inbox.visible {
             "Hide pull request inbox"
         } else {
             "Show pull request inbox"

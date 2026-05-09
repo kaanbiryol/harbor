@@ -123,6 +123,22 @@ impl PullRequestInboxMode {
     }
 }
 
+#[derive(Default)]
+struct PullRequestInboxState {
+    visible: bool,
+    mode: PullRequestInboxMode,
+    cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
+}
+
+impl PullRequestInboxState {
+    fn visible_by_default() -> Self {
+        Self {
+            visible: true,
+            ..Self::default()
+        }
+    }
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -159,7 +175,7 @@ pub struct AppView {
     active_file: usize,
     pub(crate) active_hunk: usize,
     active_tab: PanelTab,
-    pull_request_inbox_visible: bool,
+    pull_request_inbox: PullRequestInboxState,
     repository_switcher_open: bool,
     pull_request_switcher_open: bool,
     file_filter_popover_open: bool,
@@ -167,8 +183,6 @@ pub struct AppView {
     pull_request_switcher_selection: usize,
     repository_search_input: Entity<InputState>,
     pull_request_search_input: Entity<InputState>,
-    pull_request_inbox_mode: PullRequestInboxMode,
-    pull_request_inbox_cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
     pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
     configured_repo: Option<RepoId>,
     repository_store: Option<SqliteStore>,
@@ -348,7 +362,7 @@ impl AppView {
             active_file: 0,
             active_hunk: 0,
             active_tab: PanelTab::Diff,
-            pull_request_inbox_visible: true,
+            pull_request_inbox: PullRequestInboxState::visible_by_default(),
             repository_switcher_open: true,
             pull_request_switcher_open: false,
             file_filter_popover_open: false,
@@ -356,8 +370,6 @@ impl AppView {
             pull_request_switcher_selection: 0,
             repository_search_input,
             pull_request_search_input,
-            pull_request_inbox_mode: PullRequestInboxMode::default(),
-            pull_request_inbox_cache: HashMap::new(),
             pull_request_detail_cache: HashMap::new(),
             configured_repo: None,
             repository_store: None,
@@ -623,14 +635,14 @@ impl AppView {
         mode: PullRequestInboxMode,
         cx: &mut Context<Self>,
     ) {
-        if self.pull_request_inbox_mode == mode {
+        if self.pull_request_inbox.mode == mode {
             return;
         }
 
         if let Some(repository) = self.configured_repo.clone() {
             self.load_repository_pull_requests_from_cache(repository, mode, cx);
         } else {
-            self.pull_request_inbox_mode = mode;
+            self.pull_request_inbox.mode = mode;
             self.pull_requests.clear();
             self.files.clear();
             self.diffs.clear();

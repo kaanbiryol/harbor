@@ -166,7 +166,7 @@ impl AppView {
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,
-            self.pull_request_inbox_mode,
+            self.pull_request_inbox.mode,
             PullRequestFetchPolicy::PreferCache,
             cx,
         );
@@ -184,7 +184,7 @@ impl AppView {
     pub(super) fn refresh_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,
-            self.pull_request_inbox_mode,
+            self.pull_request_inbox.mode,
             PullRequestFetchPolicy::Refresh,
             cx,
         );
@@ -219,7 +219,7 @@ impl AppView {
         }
 
         self.configured_repo = Some(repo.clone());
-        self.pull_request_inbox_mode = mode;
+        self.pull_request_inbox.mode = mode;
         self.record_recent_repository(repo.clone(), cx);
         self.is_loading_prs = true;
         self.load_error = None;

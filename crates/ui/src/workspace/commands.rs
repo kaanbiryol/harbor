@@ -61,7 +61,7 @@ impl AppView {
                 self.repository_switcher_open = false;
                 self.pull_request_switcher_open = false;
                 self.file_filter_popover_open = false;
-                self.pull_request_inbox_visible = false;
+                self.pull_request_inbox.visible = false;
                 self.active_tab = PanelTab::Diff;
                 self.status = format!("Opened PR #{number} details");
 

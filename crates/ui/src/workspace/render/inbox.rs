@@ -14,7 +14,7 @@ impl AppView {
     pub(super) fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let show_list =
             !self.is_loading_prs && self.load_error.is_none() && !self.pull_requests.is_empty();
-        let current_mode = self.pull_request_inbox_mode;
+        let current_mode = self.pull_request_inbox.mode;
         let repository_label = self
             .configured_repo
             .as_ref()

@@ -20,11 +20,11 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.pull_request_inbox_visible = !self.pull_request_inbox_visible;
+        self.pull_request_inbox.visible = !self.pull_request_inbox.visible;
         self.repository_switcher_open = false;
         self.pull_request_switcher_open = false;
         self.file_filter_popover_open = false;
-        self.status = if self.pull_request_inbox_visible {
+        self.status = if self.pull_request_inbox.visible {
             "Pull request inbox shown".to_string()
         } else {
             "Pull request inbox hidden".to_string()
