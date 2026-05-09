@@ -15,6 +15,8 @@ pub enum GitHubError {
     UnauthenticatedCli,
     #[error("github transport failed: {0}")]
     Transport(String),
+    #[error("github request budget exceeded: {0}")]
+    RequestBudget(String),
     #[error("github response could not be mapped into the domain model: {0}")]
     Mapping(String),
 }

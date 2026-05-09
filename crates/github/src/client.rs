@@ -53,6 +53,7 @@ mod tests {
     use crate::{GitHubError, GitHubTransport, Result};
 
     type RecordedGet = (String, Vec<(String, String)>);
+    const FIXTURE_REVIEW_COMMENT_CREATED_AT: &str = "2026-05-01T10:00:00Z";
 
     #[derive(Clone, Default)]
     struct RecordingTransport {
@@ -149,7 +150,7 @@ mod tests {
                 "login": "reviewer",
                 "avatarUrl": null
             },
-            "createdAt": "2026-05-01T10:00:00Z",
+            "createdAt": FIXTURE_REVIEW_COMMENT_CREATED_AT,
             "updatedAt": null,
             "path": "src/app.rs",
             "line": 42,
@@ -587,6 +588,26 @@ mod tests {
                                                 review_thread_comment_json("comment-1", "First comment")
                                             ]
                                         }
+                                    },
+                                    {
+                                        "id": "thread-2",
+                                        "path": "src/app.rs",
+                                        "line": 44,
+                                        "diffSide": "RIGHT",
+                                        "startLine": null,
+                                        "startDiffSide": null,
+                                        "originalLine": 44,
+                                        "isResolved": false,
+                                        "isOutdated": false,
+                                        "comments": {
+                                            "pageInfo": {
+                                                "hasNextPage": true,
+                                                "endCursor": "comment-cursor-2"
+                                            },
+                                            "nodes": [
+                                                review_thread_comment_json("comment-3", "Third comment")
+                                            ]
+                                        }
                                     }
                                 ]
                             }
@@ -609,12 +630,27 @@ mod tests {
                     }
                 }
             }),
+            json!({
+                "data": {
+                    "node": {
+                        "comments": {
+                            "pageInfo": {
+                                "hasNextPage": false,
+                                "endCursor": null
+                            },
+                            "nodes": [
+                                review_thread_comment_json("comment-4", "Fourth comment")
+                            ]
+                        }
+                    }
+                }
+            }),
         ];
         let client = GitHubClient::new(transport.clone());
 
         let threads = smol::block_on(client.list_review_threads("acme", "app", 7)).unwrap();
 
-        assert_eq!(threads.len(), 1);
+        assert_eq!(threads.len(), 2);
         assert_eq!(
             threads[0]
                 .comments
@@ -623,17 +659,32 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["comment-1", "comment-2"]
         );
+        assert_eq!(
+            threads[1]
+                .comments
+                .iter()
+                .map(|comment| comment.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["comment-3", "comment-4"]
+        );
         let calls = transport
             .graphql_calls
             .lock()
             .expect("graphql calls mutex should not be poisoned");
-        assert_eq!(calls.len(), 2);
+        assert_eq!(calls.len(), 3);
         assert!(calls[1].0.contains("HarborPullRequestReviewThreadComments"));
         assert_eq!(
             calls[1].1,
             json!({
                 "threadId": "thread-1",
                 "after": "comment-cursor-1",
+            })
+        );
+        assert_eq!(
+            calls[2].1,
+            json!({
+                "threadId": "thread-2",
+                "after": "comment-cursor-2",
             })
         );
     }

@@ -484,10 +484,12 @@ pub(super) fn line_number_width_for_diff(diff: &ParsedDiff) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use harbor_domain::{FileStatus, ReviewComment, ReviewThreadState};
 
     use crate::{
-        diff::parse_unified_diff,
+        diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff, parse_unified_diff},
         workspace::{ReviewComposer, review_range_from_targets},
     };
 
@@ -607,6 +609,77 @@ mod tests {
                 None
             ),
             12
+        );
+    }
+
+    #[test]
+    fn calculates_large_diff_rows_with_linear_cost() {
+        let file_count = 200;
+        let hunk_count = 4;
+        let lines_per_hunk = 25;
+        let files = (0..file_count)
+            .map(|index| test_file(&format!("src/file_{index}.rs")))
+            .collect::<Vec<_>>();
+        let diffs = (0..file_count)
+            .map(|_| Some(large_test_diff(hunk_count, lines_per_hunk)))
+            .collect::<Vec<_>>();
+        let visible_file_indices = (0..file_count).collect::<Vec<_>>();
+        let reviewed_file_paths = HashSet::new();
+        let rows_per_file = DIFF_FILE_HEADER_ROWS + hunk_count * (lines_per_hunk + 1);
+
+        let started_at = Instant::now();
+        let row_count = continuous_diff_row_count(
+            &files,
+            &diffs,
+            &visible_file_indices,
+            &reviewed_file_paths,
+            &[],
+            None,
+            None,
+            None,
+            None,
+        );
+        let elapsed = started_at.elapsed();
+
+        assert_eq!(row_count, file_count * rows_per_file);
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "large diff row counting took {elapsed:?}"
+        );
+        assert_eq!(
+            continuous_diff_file_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                file_count - 1,
+                &[],
+                None,
+                None,
+                None,
+                None,
+            ),
+            Some((file_count - 1) * rows_per_file)
+        );
+        assert_eq!(
+            continuous_diff_hunk_row_index(
+                &files,
+                &diffs,
+                &visible_file_indices,
+                &reviewed_file_paths,
+                file_count - 1,
+                hunk_count - 1,
+                &[],
+                None,
+                None,
+                None,
+                None,
+            ),
+            Some(
+                (file_count - 1) * rows_per_file
+                    + DIFF_FILE_HEADER_ROWS
+                    + (hunk_count - 1) * (lines_per_hunk + 1)
+            )
         );
     }
 
@@ -912,6 +985,39 @@ mod tests {
             changes: 2,
             patch: None,
         }
+    }
+
+    fn large_test_diff(hunk_count: usize, lines_per_hunk: usize) -> ParsedDiff {
+        let mut hunks = Vec::new();
+
+        for hunk_index in 0..hunk_count {
+            let line_start = (hunk_index * lines_per_hunk + 1) as u32;
+            let lines = (0..lines_per_hunk)
+                .map(|line_index| {
+                    let line_number = line_start + line_index as u32;
+                    DiffLine {
+                        kind: DiffLineKind::Context,
+                        old_line: Some(line_number),
+                        new_line: Some(line_number),
+                        text: format!("line {line_number}"),
+                        syntax_highlights: Vec::new(),
+                    }
+                })
+                .collect();
+
+            hunks.push(DiffHunk {
+                header: format!(
+                    "@@ -{line_start},{lines_per_hunk} +{line_start},{lines_per_hunk} @@"
+                ),
+                old_start: line_start,
+                old_lines: lines_per_hunk as u32,
+                new_start: line_start,
+                new_lines: lines_per_hunk as u32,
+                lines,
+            });
+        }
+
+        ParsedDiff { hunks }
     }
 
     fn test_review_thread(thread_id: &str, comment_id: &str) -> ReviewThread {

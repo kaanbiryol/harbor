@@ -13,11 +13,12 @@ use crate::panels::{
     review_reaction_emoji, review_thread_counts, visible_review_reaction_contents,
 };
 use crate::workspace::{
-    ChangedFileFilters, ChangedFileTreeRow, OpenTargetStatus, PullRequestInboxMode,
-    changed_file_matches_filters, changed_file_matches_query, changed_file_tree_rows,
-    changed_file_type_filters, changed_file_type_key, github_file_url, next_switcher_index,
-    normalized_search_query, open_target_for_app, open_with_app_disabled, parse_repo_id,
-    pull_request_matches_query, repository_matches_query, repository_switcher_accepted_repository,
+    ChangedFileFilters, ChangedFileTreeRow, OpenSelectedPullRequestBehavior, OpenTargetStatus,
+    PullRequestInboxMode, changed_file_matches_filters, changed_file_matches_query,
+    changed_file_tree_rows, changed_file_type_filters, changed_file_type_key, github_file_url,
+    next_switcher_index, normalized_search_query, open_selected_pull_request_behavior,
+    open_target_for_app, open_with_app_disabled, parse_repo_id, pull_request_matches_query,
+    repository_matches_query, repository_switcher_accepted_repository,
 };
 
 #[test]
@@ -440,6 +441,57 @@ fn disables_open_with_apps_without_local_path() {
     assert!(open_with_app_disabled(true, true, true));
     assert!(open_with_app_disabled(true, false, false));
     assert!(!open_with_app_disabled(true, false, true));
+}
+
+#[test]
+fn opens_selected_pull_request_details_without_selection() {
+    assert_eq!(
+        open_selected_pull_request_behavior(None, false, false, false, false),
+        OpenSelectedPullRequestBehavior::NoSelection
+    );
+}
+
+#[test]
+fn opens_selected_pull_request_details_and_refreshes_when_empty() {
+    assert_eq!(
+        open_selected_pull_request_behavior(Some(7), false, false, false, false),
+        OpenSelectedPullRequestBehavior::ShowDetails {
+            number: 7,
+            refresh: true
+        }
+    );
+}
+
+#[test]
+fn opens_selected_pull_request_details_without_duplicate_refresh() {
+    assert_eq!(
+        open_selected_pull_request_behavior(Some(7), true, false, false, false),
+        OpenSelectedPullRequestBehavior::ShowDetails {
+            number: 7,
+            refresh: false
+        }
+    );
+    assert_eq!(
+        open_selected_pull_request_behavior(Some(7), false, true, false, false),
+        OpenSelectedPullRequestBehavior::ShowDetails {
+            number: 7,
+            refresh: false
+        }
+    );
+    assert_eq!(
+        open_selected_pull_request_behavior(Some(7), false, false, true, false),
+        OpenSelectedPullRequestBehavior::ShowDetails {
+            number: 7,
+            refresh: false
+        }
+    );
+    assert_eq!(
+        open_selected_pull_request_behavior(Some(7), false, false, false, true),
+        OpenSelectedPullRequestBehavior::ShowDetails {
+            number: 7,
+            refresh: false
+        }
+    );
 }
 
 fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckRun {

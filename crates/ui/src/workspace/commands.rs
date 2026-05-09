@@ -314,27 +314,33 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(number) = self.selected_pull_request_number() else {
-            self.status = "No pull request selected".to_string();
-            cx.notify();
-            return;
-        };
+        let behavior = open_selected_pull_request_behavior(
+            self.selected_pull_request_number(),
+            !self.files.is_empty(),
+            self.is_loading_details,
+            self.is_loading_files,
+            self.is_loading_reviews,
+        );
 
-        self.repository_switcher_open = false;
-        self.pull_request_switcher_open = false;
-        self.file_filter_popover_open = false;
-        self.pull_request_inbox_visible = false;
-        self.active_tab = PanelTab::Diff;
-        self.status = format!("Opened PR #{number} details");
+        match behavior {
+            OpenSelectedPullRequestBehavior::NoSelection => {
+                self.status = "No pull request selected".to_string();
+                cx.notify();
+            }
+            OpenSelectedPullRequestBehavior::ShowDetails { number, refresh } => {
+                self.repository_switcher_open = false;
+                self.pull_request_switcher_open = false;
+                self.file_filter_popover_open = false;
+                self.pull_request_inbox_visible = false;
+                self.active_tab = PanelTab::Diff;
+                self.status = format!("Opened PR #{number} details");
 
-        if self.files.is_empty()
-            && !self.is_loading_details
-            && !self.is_loading_files
-            && !self.is_loading_reviews
-        {
-            self.refresh_selected_pull_request(cx);
-        } else {
-            cx.notify();
+                if refresh {
+                    self.refresh_selected_pull_request(cx);
+                } else {
+                    cx.notify();
+                }
+            }
         }
     }
 
@@ -491,6 +497,28 @@ impl AppView {
         };
         cx.notify();
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum OpenSelectedPullRequestBehavior {
+    NoSelection,
+    ShowDetails { number: u64, refresh: bool },
+}
+
+pub(crate) fn open_selected_pull_request_behavior(
+    selected_pull_request_number: Option<u64>,
+    has_loaded_files: bool,
+    is_loading_details: bool,
+    is_loading_files: bool,
+    is_loading_reviews: bool,
+) -> OpenSelectedPullRequestBehavior {
+    let Some(number) = selected_pull_request_number else {
+        return OpenSelectedPullRequestBehavior::NoSelection;
+    };
+    let refresh =
+        !has_loaded_files && !is_loading_details && !is_loading_files && !is_loading_reviews;
+
+    OpenSelectedPullRequestBehavior::ShowDetails { number, refresh }
 }
 
 pub(crate) fn github_file_url(pr: &PullRequest, file: &DiffFile) -> Option<String> {

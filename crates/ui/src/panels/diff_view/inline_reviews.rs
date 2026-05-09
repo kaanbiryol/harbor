@@ -3,21 +3,25 @@
     reason = "inline review render helpers pass explicit interaction state for each virtualized row"
 )]
 
-use gpui::{Anchor, AnyElement, Entity, IntoElement, div, img, prelude::*, px, rgb};
+#[path = "inline_review_avatars.rs"]
+mod avatars;
+#[path = "inline_review_reactions.rs"]
+mod reactions;
+
+use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px, rgb};
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
-    popover::{Popover, PopoverState},
+    popover::Popover,
 };
-use harbor_domain::{ReactionContent, ReviewComment, ReviewThread, ReviewThreadState};
+use harbor_domain::{ReviewComment, ReviewThread, ReviewThreadState};
 
 use crate::{
     diff_reviews::review_thread_inline_rows,
     workspace::{
         AppView, PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError,
         ReviewComposer, ReviewReactionAction, ReviewThreadUiError, review_comment_pending_sync,
-        review_reaction,
     },
 };
 
@@ -26,6 +30,14 @@ use super::{
     layout::review_comment_range_label, render_line_number,
 };
 use crate::panels::review::review_thread_state_label;
+use avatars::render_review_comment_avatar;
+#[cfg(test)]
+pub(crate) use avatars::{github_avatar_url_for_login, review_comment_avatar_url};
+use reactions::render_review_reactions;
+#[cfg(test)]
+pub(crate) use reactions::{
+    review_reaction_button_label, review_reaction_emoji, visible_review_reaction_contents,
+};
 
 pub(super) fn render_review_composer_inline(
     composer: ReviewComposer,
@@ -702,77 +714,6 @@ fn render_review_comment_inline(
         .into_any_element()
 }
 
-fn render_review_comment_avatar(comment: &ReviewComment) -> impl IntoElement {
-    let initial = author_initial(&comment.author);
-    let avatar = div()
-        .mt(px(1.0))
-        .w(px(20.0))
-        .h(px(20.0))
-        .flex_none()
-        .rounded_xs()
-        .border_1()
-        .border_color(rgb(0x334155))
-        .bg(rgb(0x1d2734))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_xs()
-        .font_medium()
-        .text_color(rgb(0xcbd5e1));
-
-    if let Some(avatar_url) = review_comment_avatar_url(comment) {
-        let loading_initial = initial.clone();
-        let fallback_initial = initial.clone();
-        avatar
-            .overflow_hidden()
-            .child(
-                img(avatar_url)
-                    .w(px(20.0))
-                    .h(px(20.0))
-                    .with_loading(move || render_review_comment_avatar_initial(&loading_initial))
-                    .with_fallback(move || render_review_comment_avatar_initial(&fallback_initial)),
-            )
-            .into_any_element()
-    } else {
-        avatar.child(initial).into_any_element()
-    }
-}
-
-fn render_review_comment_avatar_initial(initial: &str) -> AnyElement {
-    div()
-        .w(px(20.0))
-        .h(px(20.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_xs()
-        .font_medium()
-        .text_color(rgb(0xcbd5e1))
-        .child(initial.to_string())
-        .into_any_element()
-}
-
-pub(crate) fn review_comment_avatar_url(comment: &ReviewComment) -> Option<String> {
-    comment
-        .author_avatar_url
-        .clone()
-        .or_else(|| github_avatar_url_for_login(&comment.author))
-}
-
-pub(crate) fn github_avatar_url_for_login(login: &str) -> Option<String> {
-    let login = login.trim();
-
-    if login.is_empty()
-        || login.eq_ignore_ascii_case("ghost")
-        || login.eq_ignore_ascii_case("you")
-        || login.chars().any(char::is_whitespace)
-    {
-        None
-    } else {
-        Some(format!("https://github.com/{login}.png?size=48"))
-    }
-}
-
 fn render_review_comment_actions_menu(
     comment_id: String,
     comment_body: String,
@@ -946,14 +887,6 @@ fn render_review_comment_edit_composer(
         )
 }
 
-fn author_initial(author: &str) -> String {
-    author
-        .chars()
-        .find(|character| character.is_alphanumeric())
-        .map(|character| character.to_uppercase().to_string())
-        .unwrap_or_else(|| "?".to_string())
-}
-
 fn render_review_comment_body(body: &str, color: gpui::Rgba) -> impl IntoElement {
     let lines: Vec<String> = body.lines().map(str::to_string).collect::<Vec<_>>();
     let lines = if lines.is_empty() {
@@ -975,203 +908,8 @@ fn render_review_comment_body(body: &str, color: gpui::Rgba) -> impl IntoElement
         }))
 }
 
-fn render_review_reactions(
-    comment: &ReviewComment,
-    reaction_action: Option<&ReviewReactionAction>,
-    view_entity: Entity<AppView>,
-) -> impl IntoElement {
-    let visible_reactions = visible_review_reaction_contents(comment);
-    let has_visible_reactions = !visible_reactions.is_empty();
-    let can_add_reaction = comment.viewer_can_react;
-
-    div().when(has_visible_reactions || can_add_reaction, |element| {
-        element
-            .pt_2()
-            .flex()
-            .items_center()
-            .gap_1()
-            .children(visible_reactions.into_iter().map(|content| {
-                render_review_reaction_button(
-                    comment,
-                    content,
-                    reaction_action,
-                    view_entity.clone(),
-                )
-            }))
-            .when(can_add_reaction, |element| {
-                element.child(render_add_reaction_popover(comment, view_entity.clone()))
-            })
-    })
-}
-
-fn render_review_reaction_button(
-    comment: &ReviewComment,
-    content: ReactionContent,
-    reaction_action: Option<&ReviewReactionAction>,
-    view_entity: Entity<AppView>,
-) -> AnyElement {
-    let reaction = review_reaction(comment, content);
-    let count = reaction.map_or(0, |reaction| reaction.count);
-    let viewer_has_reacted = reaction.is_some_and(|reaction| reaction.viewer_has_reacted);
-    let running = reaction_action
-        .is_some_and(|action| action.comment_id == comment.id && action.content == content);
-    let comment_id = comment.id.clone();
-    let label = review_reaction_button_label(content, count);
-    let button = Button::new(format!("reaction-{comment_id}-{}", content.label()))
-        .label(label)
-        .xsmall()
-        .disabled(!comment.viewer_can_react || running)
-        .on_click({
-            let view_entity = view_entity.clone();
-            let comment_id = comment_id.clone();
-            move |_, _, cx| {
-                view_entity.update(cx, |view, cx| {
-                    view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
-                });
-            }
-        });
-
-    if viewer_has_reacted {
-        button.primary().into_any_element()
-    } else {
-        button.ghost().into_any_element()
-    }
-}
-
-fn render_add_reaction_popover(
-    comment: &ReviewComment,
-    view_entity: Entity<AppView>,
-) -> impl IntoElement {
-    let comment_id = comment.id.clone();
-
-    Popover::new(format!("add-reaction-{comment_id}"))
-        .appearance(false)
-        .anchor(Anchor::TopRight)
-        .trigger(
-            Button::new(format!("add-reaction-trigger-{comment_id}"))
-                .icon(IconName::Plus)
-                .xsmall()
-                .compact()
-                .ghost()
-                .tooltip("Add reaction"),
-        )
-        .content({
-            let view_entity = view_entity.clone();
-            move |_, _window, popover_cx| {
-                let popover = popover_cx.entity().clone();
-                let (comment, reaction_action) = {
-                    let view = view_entity.read(popover_cx);
-                    (
-                        view.review_comment(&comment_id).cloned(),
-                        view.review_reaction_action.clone(),
-                    )
-                };
-                let Some(comment) = comment else {
-                    return div()
-                        .w(px(256.0))
-                        .border_1()
-                        .border_color(rgb(0x343b44))
-                        .bg(rgb(0x171b20))
-                        .p_2()
-                        .text_xs()
-                        .text_color(rgb(0x9aa4b2))
-                        .child("Comment is no longer loaded")
-                        .into_any_element();
-                };
-
-                div()
-                    .w(px(256.0))
-                    .border_1()
-                    .border_color(rgb(0x343b44))
-                    .bg(rgb(0x171b20))
-                    .p_2()
-                    .shadow_lg()
-                    .child(div().grid().grid_cols(4).gap_1().children(
-                        ReactionContent::ALL.into_iter().map(|content| {
-                            render_review_reaction_picker_button(
-                                &comment,
-                                content,
-                                reaction_action.as_ref(),
-                                popover.clone(),
-                                view_entity.clone(),
-                            )
-                        }),
-                    ))
-                    .into_any_element()
-            }
-        })
-}
-
-fn render_review_reaction_picker_button(
-    comment: &ReviewComment,
-    content: ReactionContent,
-    reaction_action: Option<&ReviewReactionAction>,
-    popover: Entity<PopoverState>,
-    view_entity: Entity<AppView>,
-) -> AnyElement {
-    let reaction = review_reaction(comment, content);
-    let viewer_has_reacted = reaction.is_some_and(|reaction| reaction.viewer_has_reacted);
-    let running = reaction_action
-        .is_some_and(|action| action.comment_id == comment.id && action.content == content);
-    let comment_id = comment.id.clone();
-    let button = Button::new(format!("reaction-picker-{comment_id}-{}", content.label()))
-        .label(review_reaction_emoji(content))
-        .xsmall()
-        .disabled(!comment.viewer_can_react || running)
-        .on_click({
-            let view_entity = view_entity.clone();
-            let comment_id = comment_id.clone();
-            let popover = popover.clone();
-            move |_, window, cx| {
-                view_entity.update(cx, |view, cx| {
-                    view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
-                });
-                popover.update(cx, |popover, cx| {
-                    popover.dismiss(window, cx);
-                });
-            }
-        });
-
-    if viewer_has_reacted {
-        button.primary().into_any_element()
-    } else {
-        button.ghost().into_any_element()
-    }
-}
-
 pub(crate) fn review_comment_action_visibility(comment: &ReviewComment) -> (bool, bool) {
     (comment.viewer_can_update, comment.viewer_can_delete)
-}
-
-pub(crate) fn visible_review_reaction_contents(comment: &ReviewComment) -> Vec<ReactionContent> {
-    ReactionContent::ALL
-        .into_iter()
-        .filter(|content| {
-            review_reaction(comment, *content)
-                .is_some_and(|reaction| reaction.count > 0 || reaction.viewer_has_reacted)
-        })
-        .collect()
-}
-
-pub(crate) fn review_reaction_button_label(content: ReactionContent, count: usize) -> String {
-    if count == 0 {
-        review_reaction_emoji(content).to_string()
-    } else {
-        format!("{} {count}", review_reaction_emoji(content))
-    }
-}
-
-pub(crate) fn review_reaction_emoji(content: ReactionContent) -> &'static str {
-    match content {
-        ReactionContent::ThumbsUp => "👍",
-        ReactionContent::ThumbsDown => "👎",
-        ReactionContent::Laugh => "😄",
-        ReactionContent::Confused => "😕",
-        ReactionContent::Heart => "❤️",
-        ReactionContent::Hooray => "🎉",
-        ReactionContent::Rocket => "🚀",
-        ReactionContent::Eyes => "👀",
-    }
 }
 
 fn review_comment_time_label(comment: &ReviewComment) -> String {

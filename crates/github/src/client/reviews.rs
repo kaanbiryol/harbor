@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use harbor_domain::{PullRequestReview, ReactionContent, ReviewCommentRange, ReviewThread};
 use serde_json::{Value, json};
 
@@ -16,6 +18,9 @@ use super::{
         rest_review_comment_body, submit_pull_request_review_input,
     },
 };
+
+const REVIEW_THREAD_COMMENT_PAGE_BATCH_SIZE: usize = 8;
+const REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT: usize = 64;
 
 impl<T> GitHubClient<T>
 where
@@ -85,6 +90,7 @@ where
     ) -> Result<Vec<ReviewThread>> {
         let mut threads = Vec::new();
         let mut after = None;
+        let mut extra_comment_pages_loaded = 0;
 
         loop {
             let response = self
@@ -100,24 +106,13 @@ where
                 )
                 .await?;
             let page = dto::review_threads_page_from_graphql_value(response)?;
-            let page_start = threads.len();
             threads.extend(page.threads);
-
-            for cursor in page.comment_cursors {
-                let thread_index = threads[page_start..]
-                    .iter()
-                    .position(|thread| thread.id == cursor.thread_id)
-                    .map(|index| page_start + index)
-                    .ok_or_else(|| {
-                        GitHubError::Mapping(format!(
-                            "review thread {} was missing from its GraphQL page",
-                            cursor.thread_id
-                        ))
-                    })?;
-
-                self.append_review_thread_comments(&mut threads[thread_index], cursor)
-                    .await?;
-            }
+            self.append_review_thread_comment_pages(
+                &mut threads,
+                page.comment_cursors,
+                &mut extra_comment_pages_loaded,
+            )
+            .await?;
 
             if !page.has_next_page {
                 break;
@@ -131,35 +126,63 @@ where
         Ok(threads)
     }
 
-    async fn append_review_thread_comments(
+    async fn append_review_thread_comment_pages(
         &self,
-        thread: &mut ReviewThread,
-        mut cursor: dto::ReviewThreadCommentCursor,
+        threads: &mut [ReviewThread],
+        cursors: Vec<dto::ReviewThreadCommentCursor>,
+        loaded_pages: &mut usize,
     ) -> Result<()> {
-        loop {
-            let after = cursor.after.clone().ok_or_else(|| {
-                GitHubError::Mapping("review thread comments page was missing an end cursor".into())
-            })?;
-            let response = self
-                .transport
-                .graphql(
-                    REVIEW_THREAD_COMMENTS_QUERY,
-                    json!({
-                        "threadId": cursor.thread_id.clone(),
-                        "after": after,
-                    }),
-                )
-                .await?;
-            let page = dto::review_thread_comments_page_from_graphql_value(response, &cursor)?;
-            thread.comments.extend(page.comments);
+        let mut pending = cursors.into_iter().collect::<VecDeque<_>>();
 
-            if !page.has_next_page {
-                break;
+        while !pending.is_empty() {
+            let batch_size = pending.len().min(REVIEW_THREAD_COMMENT_PAGE_BATCH_SIZE);
+            for _ in 0..batch_size {
+                if *loaded_pages >= REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT {
+                    return Err(GitHubError::RequestBudget(format!(
+                        "stopped loading review thread comments after {REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT} extra pages"
+                    )));
+                }
+
+                *loaded_pages += 1;
+                let mut cursor = pending.pop_front().ok_or_else(|| {
+                    GitHubError::Mapping("review thread comment cursor queue was empty".into())
+                })?;
+                let after = cursor.after.clone().ok_or_else(|| {
+                    GitHubError::Mapping(
+                        "review thread comments page was missing an end cursor".into(),
+                    )
+                })?;
+                let response = self
+                    .transport
+                    .graphql(
+                        REVIEW_THREAD_COMMENTS_QUERY,
+                        json!({
+                            "threadId": cursor.thread_id.clone(),
+                            "after": after,
+                        }),
+                    )
+                    .await?;
+                let page = dto::review_thread_comments_page_from_graphql_value(response, &cursor)?;
+                let thread = threads
+                    .iter_mut()
+                    .find(|thread| thread.id == cursor.thread_id)
+                    .ok_or_else(|| {
+                        GitHubError::Mapping(format!(
+                            "review thread {} was missing from its GraphQL page",
+                            cursor.thread_id
+                        ))
+                    })?;
+                thread.comments.extend(page.comments);
+
+                if page.has_next_page {
+                    cursor.after = Some(page.end_cursor.ok_or_else(|| {
+                        GitHubError::Mapping(
+                            "review thread comments page was missing an end cursor".into(),
+                        )
+                    })?);
+                    pending.push_back(cursor);
+                }
             }
-
-            cursor.after = Some(page.end_cursor.ok_or_else(|| {
-                GitHubError::Mapping("review thread comments page was missing an end cursor".into())
-            })?);
         }
 
         Ok(())
