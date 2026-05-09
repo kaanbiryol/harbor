@@ -430,3 +430,172 @@ pub(crate) fn review_time_label(review: &PullRequestReview) -> String {
         .map(|submitted_at| submitted_at.format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| "not submitted".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Utc};
+    use gpui::{
+        Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
+    };
+    use gpui_component::{Root, Theme, ThemeMode, input::InputState};
+    use harbor_domain::{ReviewComment, ReviewCommentPosition, ReviewSide};
+
+    use super::*;
+
+    #[gpui::test]
+    async fn review_panel_reply_button_opens_and_cancel_clears_reply_mode(cx: &mut TestAppContext) {
+        let (view_entity, cx) = init_visual_review_panel_test(cx);
+
+        render_review_panel_row_harness(cx);
+        let reply_bounds = cx
+            .debug_bounds("review-panel-reply-thread-thread-1")
+            .expect("review panel reply button should render");
+        cx.simulate_click(reply_bounds.center(), Modifiers::none());
+
+        assert_eq!(
+            view_entity.read_with(cx, |view, _| view.review_thread_reply_thread_id.clone()),
+            Some("thread-1".to_string())
+        );
+
+        render_review_panel_row_harness(cx);
+        let cancel_bounds = cx
+            .debug_bounds("review-panel-cancel-thread-reply-thread-1")
+            .expect("review panel reply cancel button should render");
+        cx.simulate_click(cancel_bounds.center(), Modifiers::none());
+
+        assert!(view_entity.read_with(cx, |view, _| view.review_thread_reply_thread_id.is_none()));
+    }
+
+    #[gpui::test]
+    async fn review_panel_toggle_reports_missing_selected_pull_request(cx: &mut TestAppContext) {
+        let (view_entity, cx) = init_visual_review_panel_test(cx);
+
+        render_review_panel_row_harness(cx);
+        let toggle_bounds = cx
+            .debug_bounds("review-panel-toggle-thread-thread-1")
+            .expect("review panel toggle button should render");
+        cx.simulate_click(toggle_bounds.center(), Modifiers::none());
+
+        assert_eq!(
+            view_entity.read_with(cx, |view, _| {
+                view.review_thread_action_error
+                    .as_ref()
+                    .map(|error| (error.thread_id.clone(), error.message.clone()))
+            }),
+            Some((
+                "thread-1".to_string(),
+                "Select a pull request before updating a thread".to_string()
+            ))
+        );
+    }
+
+    fn init_visual_review_panel_test(
+        cx: &mut TestAppContext,
+    ) -> (Entity<AppView>, &mut VisualTestContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+        });
+
+        let mut view_entity = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            let harness = cx.new(|_| ReviewPanelRowHarness {
+                view_entity: view.clone(),
+                thread: review_thread(),
+            });
+            view_entity = Some(view);
+            Root::new(harness, window, cx)
+        });
+
+        (view_entity.expect("test AppView should be created"), cx)
+    }
+
+    fn render_review_panel_row_harness(cx: &mut VisualTestContext) {
+        cx.refresh().expect("test window should refresh");
+        cx.run_until_parked();
+    }
+
+    struct ReviewPanelRowHarness {
+        view_entity: Entity<AppView>,
+        thread: ReviewThread,
+    }
+
+    impl Render for ReviewPanelRowHarness {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let render_state =
+                self.view_entity
+                    .read_with(cx, |view, app| ReviewPanelRowTestState {
+                        active_reply_thread_id: view.review_thread_reply_thread_id.clone(),
+                        reply_input: view.review_thread_reply_input.clone(),
+                        reply_body_empty: view
+                            .review_thread_reply_input
+                            .read(app)
+                            .value()
+                            .trim()
+                            .is_empty(),
+                        is_submitting_reply: view.is_submitting_review_thread_reply,
+                        reply_error: view.review_thread_reply_error.as_ref().cloned(),
+                        action_thread_id: view.review_thread_action_thread_id.clone(),
+                        action_error: view.review_thread_action_error.as_ref().cloned(),
+                    });
+
+            render_review_thread_row(ReviewThreadRowRenderState {
+                index: 0,
+                thread: &self.thread,
+                active_review_thread_reply: render_state.active_reply_thread_id.as_deref(),
+                review_thread_reply_input: render_state.reply_input.clone(),
+                reply_body_empty: render_state.reply_body_empty,
+                is_submitting_reply: render_state.is_submitting_reply,
+                reply_error: render_state.reply_error.as_ref(),
+                action_thread_id: render_state.action_thread_id.as_deref(),
+                action_error: render_state.action_error.as_ref(),
+                view_entity: self.view_entity.clone(),
+            })
+        }
+    }
+
+    struct ReviewPanelRowTestState {
+        active_reply_thread_id: Option<String>,
+        reply_input: Entity<InputState>,
+        reply_body_empty: bool,
+        is_submitting_reply: bool,
+        reply_error: Option<ReviewThreadUiError>,
+        action_thread_id: Option<String>,
+        action_error: Option<ReviewThreadUiError>,
+    }
+
+    fn review_thread() -> ReviewThread {
+        ReviewThread {
+            id: "thread-1".to_string(),
+            path: "src/lib.rs".to_string(),
+            range: None,
+            state: ReviewThreadState::Unresolved,
+            comments: vec![ReviewComment {
+                id: "comment-1".to_string(),
+                author: "maria".to_string(),
+                author_avatar_url: None,
+                body: "Please check this line.".to_string(),
+                created_at: test_time(),
+                updated_at: None,
+                position: Some(ReviewCommentPosition {
+                    path: "src/lib.rs".to_string(),
+                    line: Some(12),
+                    original_line: Some(11),
+                    side: ReviewSide::Right,
+                }),
+                viewer_did_author: true,
+                viewer_can_update: true,
+                viewer_can_delete: false,
+                viewer_can_react: true,
+                reactions: Vec::new(),
+            }],
+        }
+    }
+
+    fn test_time() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
+            .expect("valid test timestamp")
+            .with_timezone(&Utc)
+    }
+}
