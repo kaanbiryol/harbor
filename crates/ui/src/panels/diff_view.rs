@@ -5,6 +5,8 @@
 
 #[path = "diff_view/file_section.rs"]
 mod file_section;
+#[path = "diff_view/inline_review_layout.rs"]
+mod inline_review_layout;
 #[path = "diff_view/inline_reviews.rs"]
 mod inline_reviews;
 #[path = "diff_view/layout.rs"]
@@ -29,6 +31,11 @@ use file_section::{
     render_diff_file_section_header, render_diff_file_section_header_spacer,
     render_diff_unavailable_row,
 };
+use inline_review_layout::{
+    review_comment_range_matches_file, review_comment_range_matches_line,
+    review_composer_row_count, review_line_target_for_line,
+    review_thread_inline_rows_with_controls,
+};
 use inline_reviews::{
     ReviewCommentListRenderState, ReviewComposerRenderState, ReviewThreadRenderState,
     render_review_composer_inline, render_review_composer_spacer, render_review_marker,
@@ -44,9 +51,7 @@ pub(crate) use layout::{continuous_diff_file_row_index, continuous_diff_hunk_row
 use layout::{
     continuous_diff_row_count, continuous_diff_section_body_row_count,
     continuous_diff_section_for_row, file_is_reviewed, inline_block_render_anchor,
-    line_number_width_for_diff, parsed_diff_for_file, review_comment_range_matches_file,
-    review_comment_range_matches_line, review_composer_row_count, review_line_target_for_line,
-    review_thread_inline_rows_with_controls, row_in_range,
+    line_number_width_for_diff, parsed_diff_for_file, row_in_range,
 };
 use row_state::DiffRowRenderState;
 

@@ -24,7 +24,7 @@ use crate::{
 
 use super::{
     DIFF_ROW_HEIGHT, REVIEW_COMPOSER_MAX_WIDTH, REVIEW_MARKER_WIDTH,
-    layout::review_comment_range_label, render_line_number,
+    inline_review_layout::review_comment_range_label, render_line_number,
 };
 #[cfg(test)]
 pub(crate) use avatars::{github_avatar_url_for_login, review_comment_avatar_url};
