@@ -9,10 +9,11 @@ use super::{
         ADD_PULL_REQUEST_REVIEW_MUTATION, ADD_PULL_REQUEST_REVIEW_THREAD_MUTATION,
         ADD_PULL_REQUEST_REVIEW_THREAD_REPLY_MUTATION, ADD_REACTION_MUTATION,
         DELETE_REVIEW_COMMENT_MUTATION, REMOVE_REACTION_MUTATION, RESOLVE_REVIEW_THREAD_MUTATION,
-        REVIEW_COMMENT_PAGE_SIZE, REVIEW_COMMENT_PAGE_SIZE_QUERY, REVIEW_THREADS_QUERY,
-        SUBMIT_PULL_REQUEST_REVIEW_MUTATION, UNRESOLVE_REVIEW_THREAD_MUTATION,
-        UPDATE_REVIEW_COMMENT_MUTATION, add_review_thread_reply_input, graphql_review_thread_input,
-        graphql_string_at, rest_review_comment_body, submit_pull_request_review_input,
+        REVIEW_COMMENT_PAGE_SIZE, REVIEW_COMMENT_PAGE_SIZE_QUERY, REVIEW_THREAD_COMMENTS_QUERY,
+        REVIEW_THREADS_QUERY, SUBMIT_PULL_REQUEST_REVIEW_MUTATION,
+        UNRESOLVE_REVIEW_THREAD_MUTATION, UPDATE_REVIEW_COMMENT_MUTATION,
+        add_review_thread_reply_input, graphql_review_thread_input, graphql_string_at,
+        rest_review_comment_body, submit_pull_request_review_input,
     },
 };
 
@@ -99,7 +100,24 @@ where
                 )
                 .await?;
             let page = dto::review_threads_page_from_graphql_value(response)?;
+            let page_start = threads.len();
             threads.extend(page.threads);
+
+            for cursor in page.comment_cursors {
+                let thread_index = threads[page_start..]
+                    .iter()
+                    .position(|thread| thread.id == cursor.thread_id)
+                    .map(|index| page_start + index)
+                    .ok_or_else(|| {
+                        GitHubError::Mapping(format!(
+                            "review thread {} was missing from its GraphQL page",
+                            cursor.thread_id
+                        ))
+                    })?;
+
+                self.append_review_thread_comments(&mut threads[thread_index], cursor)
+                    .await?;
+            }
 
             if !page.has_next_page {
                 break;
@@ -111,6 +129,40 @@ where
         }
 
         Ok(threads)
+    }
+
+    async fn append_review_thread_comments(
+        &self,
+        thread: &mut ReviewThread,
+        mut cursor: dto::ReviewThreadCommentCursor,
+    ) -> Result<()> {
+        loop {
+            let after = cursor.after.clone().ok_or_else(|| {
+                GitHubError::Mapping("review thread comments page was missing an end cursor".into())
+            })?;
+            let response = self
+                .transport
+                .graphql(
+                    REVIEW_THREAD_COMMENTS_QUERY,
+                    json!({
+                        "threadId": cursor.thread_id.clone(),
+                        "after": after,
+                    }),
+                )
+                .await?;
+            let page = dto::review_thread_comments_page_from_graphql_value(response, &cursor)?;
+            thread.comments.extend(page.comments);
+
+            if !page.has_next_page {
+                break;
+            }
+
+            cursor.after = Some(page.end_cursor.ok_or_else(|| {
+                GitHubError::Mapping("review thread comments page was missing an end cursor".into())
+            })?);
+        }
+
+        Ok(())
     }
 
     pub async fn create_pull_request_review_comment(

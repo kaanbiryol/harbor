@@ -92,6 +92,49 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
+pub(super) const REVIEW_THREAD_COMMENTS_QUERY: &str = r#"
+query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String) {
+  node(id: $threadId) {
+    ... on PullRequestReviewThread {
+      comments(first: 100, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          body
+          author {
+            login
+            avatarUrl(size: 48)
+          }
+          createdAt
+          updatedAt
+          path
+          line
+          originalLine
+          viewerDidAuthor
+          viewerCanUpdate
+          viewerCanDelete
+          viewerCanReact
+          reactionGroups {
+            content
+            viewerHasReacted
+            users(first: 1) {
+              totalCount
+            }
           }
         }
       }

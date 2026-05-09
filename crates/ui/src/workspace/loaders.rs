@@ -250,7 +250,7 @@ impl AppView {
                 .list_repository_pull_requests(&repo, pull_request_list_filter(mode))
                 .await;
 
-            _ = this.update(cx, |view, cx| {
+            if let Err(error) = this.update(cx, |view, cx| {
                 if view.current_pull_request_inbox_key().as_ref() != Some(&key) {
                     return;
                 }
@@ -332,7 +332,9 @@ impl AppView {
                 }
 
                 cx.notify();
-            });
+            }) {
+                tracing::warn!(%error, "failed to update pull request inbox state");
+            }
         }));
     }
 }

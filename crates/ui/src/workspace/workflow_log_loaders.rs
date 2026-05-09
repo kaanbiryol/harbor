@@ -49,7 +49,7 @@ impl AppView {
                 .await;
             let log_result = client.workflow_run_log(&owner, &name, run_id).await;
 
-            _ = this.update(cx, move |view, cx| {
+            if let Err(error) = this.update(cx, move |view, cx| {
                 if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
                     return;
                 }
@@ -86,7 +86,9 @@ impl AppView {
                 view.log_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
-            });
+            }) {
+                tracing::warn!(%error, "failed to update workflow log state");
+            }
         }));
     }
 }

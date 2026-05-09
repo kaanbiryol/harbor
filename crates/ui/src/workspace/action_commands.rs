@@ -114,7 +114,7 @@ impl AppView {
                 } => client.rerun_failed_jobs(owner, repo, *run_id).await,
             };
 
-            _ = this.update(cx, move |view, cx| {
+            if let Err(error) = this.update(cx, move |view, cx| {
                 view.is_running_action = false;
 
                 match result {
@@ -131,7 +131,9 @@ impl AppView {
                 }
 
                 cx.notify();
-            });
+            }) {
+                tracing::warn!(%error, "failed to update workflow action state");
+            }
         })
         .detach();
     }
@@ -263,7 +265,7 @@ impl AppView {
                 }
             };
 
-            _ = this.update(cx, move |view, cx| {
+            if let Err(error) = this.update(cx, move |view, cx| {
                 view.is_running_pr_action = false;
 
                 match result {
@@ -281,7 +283,9 @@ impl AppView {
                 }
 
                 cx.notify();
-            });
+            }) {
+                tracing::warn!(%error, "failed to update pull request action state");
+            }
         })
         .detach();
     }

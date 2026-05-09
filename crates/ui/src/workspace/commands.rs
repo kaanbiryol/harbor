@@ -314,8 +314,28 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.status = format!("Opened {} in the local shell", self.selected_pr_label());
-        cx.notify();
+        let Some(number) = self.selected_pull_request_number() else {
+            self.status = "No pull request selected".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.repository_switcher_open = false;
+        self.pull_request_switcher_open = false;
+        self.file_filter_popover_open = false;
+        self.pull_request_inbox_visible = false;
+        self.active_tab = PanelTab::Diff;
+        self.status = format!("Opened PR #{number} details");
+
+        if self.files.is_empty()
+            && !self.is_loading_details
+            && !self.is_loading_files
+            && !self.is_loading_reviews
+        {
+            self.refresh_selected_pull_request(cx);
+        } else {
+            cx.notify();
+        }
     }
 
     pub(super) fn cycle_panel_tab(

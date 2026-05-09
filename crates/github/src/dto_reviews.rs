@@ -68,14 +68,19 @@ struct GraphQlPageInfo {
 
 #[derive(Debug, Deserialize)]
 #[serde(bound(deserialize = "T: Deserialize<'de>"))]
-struct GraphQlNodes<T> {
+struct GraphQlConnection<T> {
     #[serde(default)]
     nodes: Vec<Option<T>>,
+    #[serde(default, rename = "pageInfo")]
+    page_info: GraphQlPageInfo,
 }
 
-impl<T> Default for GraphQlNodes<T> {
+impl<T> Default for GraphQlConnection<T> {
     fn default() -> Self {
-        Self { nodes: Vec::new() }
+        Self {
+            nodes: Vec::new(),
+            page_info: GraphQlPageInfo::default(),
+        }
     }
 }
 
@@ -83,6 +88,28 @@ pub(crate) struct ReviewThreadsPage {
     pub(crate) threads: Vec<ReviewThread>,
     pub(crate) has_next_page: bool,
     pub(crate) end_cursor: Option<String>,
+    pub(crate) comment_cursors: Vec<ReviewThreadCommentCursor>,
+}
+
+pub(crate) struct ReviewThreadCommentsPage {
+    pub(crate) comments: Vec<ReviewComment>,
+    pub(crate) has_next_page: bool,
+    pub(crate) end_cursor: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ReviewThreadCommentCursor {
+    pub(crate) thread_id: String,
+    pub(crate) after: Option<String>,
+    context: ReviewThreadCommentContext,
+}
+
+#[derive(Clone)]
+struct ReviewThreadCommentContext {
+    path: String,
+    line: Option<u32>,
+    original_line: Option<u32>,
+    side: ReviewSide,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,7 +131,22 @@ struct GraphQlReviewThread {
     is_resolved: bool,
     #[serde(default, rename = "isOutdated")]
     is_outdated: bool,
-    comments: GraphQlNodes<GraphQlReviewComment>,
+    comments: GraphQlConnection<GraphQlReviewComment>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadCommentsResponse {
+    data: Option<GraphQlReviewThreadCommentsData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadCommentsData {
+    node: Option<GraphQlReviewThreadCommentsNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlReviewThreadCommentsNode {
+    comments: GraphQlConnection<GraphQlReviewComment>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -184,15 +226,59 @@ pub(crate) fn review_threads_page_from_graphql_value(value: Value) -> Result<Rev
         .ok_or_else(|| GitHubError::Mapping("missing GraphQL pull request".to_string()))?;
     let review_threads = pull_request.review_threads;
 
+    let mut comment_cursors = Vec::new();
+    let threads = review_threads
+        .nodes
+        .into_iter()
+        .flatten()
+        .map(|thread| {
+            let cursor = thread.next_comment_cursor();
+            let thread = thread.into_domain();
+            if let Some(cursor) = cursor {
+                comment_cursors.push(cursor);
+            }
+            thread
+        })
+        .collect();
+
     Ok(ReviewThreadsPage {
-        threads: review_threads
+        threads,
+        has_next_page: review_threads.page_info.has_next_page,
+        end_cursor: review_threads.page_info.end_cursor,
+        comment_cursors,
+    })
+}
+
+pub(crate) fn review_thread_comments_page_from_graphql_value(
+    value: Value,
+    cursor: &ReviewThreadCommentCursor,
+) -> Result<ReviewThreadCommentsPage> {
+    let response: GraphQlReviewThreadCommentsResponse =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let data = response
+        .data
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL response data".to_string()))?;
+    let node = data
+        .node
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL review thread node".to_string()))?;
+    let comments = node.comments;
+
+    Ok(ReviewThreadCommentsPage {
+        comments: comments
             .nodes
             .into_iter()
             .flatten()
-            .map(GraphQlReviewThread::into_domain)
+            .map(|comment| {
+                comment.into_domain(
+                    cursor.context.path.clone(),
+                    cursor.context.line,
+                    cursor.context.original_line,
+                    cursor.context.side,
+                )
+            })
             .collect(),
-        has_next_page: review_threads.page_info.has_next_page,
-        end_cursor: review_threads.page_info.end_cursor,
+        has_next_page: comments.page_info.has_next_page,
+        end_cursor: comments.page_info.end_cursor,
     })
 }
 
@@ -213,6 +299,26 @@ impl ApiPullRequestReview {
 }
 
 impl GraphQlReviewThread {
+    fn next_comment_cursor(&self) -> Option<ReviewThreadCommentCursor> {
+        if !self.comments.page_info.has_next_page {
+            return None;
+        }
+
+        let fallback_side =
+            review_thread_side(self.diff_side.as_deref(), self.line, self.original_line);
+
+        Some(ReviewThreadCommentCursor {
+            thread_id: self.id.clone(),
+            after: self.comments.page_info.end_cursor.clone(),
+            context: ReviewThreadCommentContext {
+                path: self.path.clone().unwrap_or_default(),
+                line: self.line,
+                original_line: self.original_line,
+                side: fallback_side,
+            },
+        })
+    }
+
     fn into_domain(self) -> ReviewThread {
         let fallback_side =
             review_thread_side(self.diff_side.as_deref(), self.line, self.original_line);
