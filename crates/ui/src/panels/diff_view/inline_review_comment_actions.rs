@@ -43,6 +43,10 @@ pub(super) fn render_review_comment_actions_menu(
                 .xsmall()
                 .compact()
                 .ghost()
+                .debug_selector({
+                    let selector = format!("inline-review-comment-actions-{comment_id}");
+                    move || selector.clone()
+                })
                 .tooltip("Comment actions"),
         )
         .content(move |_, _window, _popover_cx| {
@@ -70,6 +74,11 @@ pub(super) fn render_review_comment_actions_menu(
                                         .small()
                                         .ghost()
                                         .disabled(edit_submitting || action_running)
+                                        .debug_selector({
+                                            let selector =
+                                                format!("inline-review-comment-edit-{comment_id}");
+                                            move || selector.clone()
+                                        })
                                         .on_click({
                                             let view_entity = view_entity.clone();
                                             let comment_id = comment_id.clone();
@@ -168,6 +177,11 @@ pub(super) fn render_review_comment_edit_composer(
                         .xsmall()
                         .ghost()
                         .disabled(edit_submitting)
+                        .debug_selector({
+                            let selector =
+                                format!("inline-review-comment-edit-cancel-{comment_id}");
+                            move || selector.clone()
+                        })
                         .on_click({
                             let view_entity = view_entity.clone();
                             move |_, window, cx| {
@@ -184,6 +198,10 @@ pub(super) fn render_review_comment_edit_composer(
                         .primary()
                         .loading(edit_submitting)
                         .disabled(edit_body_empty || edit_submitting)
+                        .debug_selector({
+                            let selector = format!("inline-review-comment-edit-save-{comment_id}");
+                            move || selector.clone()
+                        })
                         .on_click({
                             let view_entity = view_entity.clone();
                             let comment_id = comment_id.clone();

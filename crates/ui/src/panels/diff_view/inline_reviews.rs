@@ -246,7 +246,9 @@ pub(super) fn render_review_composer_spacer() -> impl IntoElement {
     div().h(px(DIFF_ROW_HEIGHT)).w_full()
 }
 
-pub(super) fn render_review_thread_inline(state: ReviewThreadRenderState<'_>) -> impl IntoElement {
+pub(super) fn render_review_thread_inline(
+    state: ReviewThreadRenderState<'_>,
+) -> impl IntoElement + use<> {
     let ReviewThreadRenderState {
         thread,
         line_number_width,
@@ -415,4 +417,247 @@ fn render_review_menu_marker(width: f32) -> impl IntoElement {
         .text_center()
         .text_color(rgb(0x93c5fd))
         .child("")
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Utc};
+    use gpui::{
+        Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
+    };
+    use gpui_component::{Root, Theme, ThemeMode, input::InputState};
+    use harbor_domain::{
+        ReviewComment, ReviewCommentPosition, ReviewSide, ReviewThread, ReviewThreadState,
+    };
+
+    use crate::workspace::{
+        AppView, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError,
+    };
+
+    use super::*;
+
+    #[gpui::test]
+    async fn renders_comment_actions_only_when_available(cx: &mut TestAppContext) {
+        let (_, harness_entity, cx) = init_visual_review_test(cx);
+
+        render_inline_review_harness(cx);
+        assert!(
+            cx.debug_bounds("inline-review-comment-actions-comment-1")
+                .is_none()
+        );
+
+        harness_entity.update(cx, |harness, cx| {
+            harness.thread.comments[0].viewer_can_update = true;
+            cx.notify();
+        });
+        render_inline_review_harness(cx);
+        assert!(
+            cx.debug_bounds("inline-review-comment-actions-comment-1")
+                .is_some()
+        );
+    }
+
+    #[gpui::test]
+    async fn reply_button_opens_thread_reply_mode(cx: &mut TestAppContext) {
+        let (view_entity, _, cx) = init_visual_review_test(cx);
+
+        render_inline_review_harness(cx);
+        let reply_bounds = cx
+            .debug_bounds("inline-review-reply-thread-1")
+            .expect("reply button should render");
+        cx.simulate_click(reply_bounds.center(), Modifiers::none());
+
+        assert_eq!(
+            view_entity.read_with(cx, |view, _| view.review_thread_reply_thread_id.clone()),
+            Some("thread-1".to_string())
+        );
+    }
+
+    #[gpui::test]
+    async fn comment_edit_cancel_exits_edit_mode(cx: &mut TestAppContext) {
+        let (view_entity, harness_entity, cx) = init_visual_review_test(cx);
+        harness_entity.update(cx, |harness, cx| {
+            harness.thread.comments[0].viewer_can_update = true;
+            cx.notify();
+        });
+
+        cx.update(|window, app| {
+            view_entity.update(app, |view, cx| {
+                view.open_review_comment_edit(
+                    "comment-1".to_string(),
+                    "Please check this line.".to_string(),
+                    window,
+                    cx,
+                );
+            });
+        });
+        render_inline_review_harness(cx);
+        let cancel_bounds = cx
+            .debug_bounds("inline-review-comment-edit-cancel-comment-1")
+            .expect("edit cancel button should render");
+        cx.simulate_click(cancel_bounds.center(), Modifiers::none());
+
+        assert!(view_entity.read_with(cx, |view, _| view.review_comment_edit_comment_id.is_none()));
+    }
+
+    fn init_visual_review_test(
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<AppView>,
+        Entity<InlineReviewThreadHarness>,
+        &mut VisualTestContext,
+    ) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+        });
+
+        let mut view_entity = None;
+        let mut harness_entity = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            let harness = cx.new(|_| InlineReviewThreadHarness {
+                view_entity: view.clone(),
+                thread: review_thread(),
+            });
+            view_entity = Some(view.clone());
+            harness_entity = Some(harness.clone());
+            Root::new(harness, window, cx)
+        });
+
+        (
+            view_entity.expect("test AppView should be created"),
+            harness_entity.expect("test inline review harness should be created"),
+            cx,
+        )
+    }
+
+    fn render_inline_review_harness(cx: &mut VisualTestContext) {
+        cx.refresh().expect("test window should refresh");
+        cx.run_until_parked();
+    }
+
+    struct InlineReviewThreadHarness {
+        view_entity: Entity<AppView>,
+        thread: ReviewThread,
+    }
+
+    impl Render for InlineReviewThreadHarness {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let render_state = self
+                .view_entity
+                .read_with(cx, |view, app| ReviewThreadTestState {
+                    active_reply_thread_id: view.review_thread_reply_thread_id.clone(),
+                    reply_input: view.review_thread_reply_input.clone(),
+                    reply_body_empty: view
+                        .review_thread_reply_input
+                        .read(app)
+                        .value()
+                        .trim()
+                        .is_empty(),
+                    is_submitting_reply: view.is_submitting_review_thread_reply,
+                    review_thread_reply_error: view.review_thread_reply_error.as_ref().cloned(),
+                    action_thread_id: view.review_thread_action_thread_id.clone(),
+                    action_error: view.review_thread_action_error.as_ref().cloned(),
+                    active_comment_edit_id: view.review_comment_edit_comment_id.clone(),
+                    comment_edit_input: view.review_comment_edit_input.clone(),
+                    edit_body_empty: view
+                        .review_comment_edit_input
+                        .read(app)
+                        .value()
+                        .trim()
+                        .is_empty(),
+                    is_submitting_edit: view.is_submitting_review_comment_edit,
+                    review_comment_edit_error: view.review_comment_edit_error.as_ref().cloned(),
+                    action_comment_id: view.review_comment_action_comment_id.clone(),
+                    comment_action_error: view.review_comment_action_error.as_ref().cloned(),
+                    reaction_action: view.review_reaction_action.clone(),
+                    reaction_error: view.review_reaction_error.as_ref().cloned(),
+                });
+            let active_reply_thread_id = render_state.active_reply_thread_id.as_deref();
+            let action_thread_id = render_state.action_thread_id.as_deref();
+            let active_comment_edit_id = render_state.active_comment_edit_id.as_deref();
+            let action_comment_id = render_state.action_comment_id.as_deref();
+            let comments = ReviewCommentListRenderState {
+                active_review_comment_edit: active_comment_edit_id,
+                review_comment_edit_input: render_state.comment_edit_input.clone(),
+                edit_body_empty: render_state.edit_body_empty,
+                is_submitting_edit: render_state.is_submitting_edit,
+                edit_error: render_state.review_comment_edit_error.as_ref(),
+                action_comment_id,
+                comment_action_error: render_state.comment_action_error.as_ref(),
+                reaction_action: render_state.reaction_action.as_ref(),
+                reaction_error: render_state.reaction_error.as_ref(),
+                view_entity: self.view_entity.clone(),
+            };
+
+            render_review_thread_inline(ReviewThreadRenderState {
+                thread: &self.thread,
+                line_number_width: 44.0,
+                active_review_thread_reply: active_reply_thread_id,
+                review_thread_reply_input: render_state.reply_input.clone(),
+                reply_body_empty: render_state.reply_body_empty,
+                is_submitting_reply: render_state.is_submitting_reply,
+                reply_error: render_state.review_thread_reply_error.as_ref(),
+                action_thread_id,
+                action_error: render_state.action_error.as_ref(),
+                comments: comments.clone(),
+                view_entity: self.view_entity.clone(),
+            })
+            .into_element()
+        }
+    }
+
+    struct ReviewThreadTestState {
+        active_reply_thread_id: Option<String>,
+        reply_input: Entity<InputState>,
+        reply_body_empty: bool,
+        is_submitting_reply: bool,
+        review_thread_reply_error: Option<ReviewThreadUiError>,
+        action_thread_id: Option<String>,
+        action_error: Option<ReviewThreadUiError>,
+        active_comment_edit_id: Option<String>,
+        comment_edit_input: Entity<InputState>,
+        edit_body_empty: bool,
+        is_submitting_edit: bool,
+        review_comment_edit_error: Option<ReviewCommentUiError>,
+        action_comment_id: Option<String>,
+        comment_action_error: Option<ReviewCommentUiError>,
+        reaction_action: Option<ReviewReactionAction>,
+        reaction_error: Option<ReviewCommentUiError>,
+    }
+
+    fn review_thread() -> ReviewThread {
+        ReviewThread {
+            id: "thread-1".to_string(),
+            path: "src/lib.rs".to_string(),
+            range: None,
+            state: ReviewThreadState::Unresolved,
+            comments: vec![ReviewComment {
+                id: "comment-1".to_string(),
+                author: "maria".to_string(),
+                author_avatar_url: None,
+                body: "Please check this line.".to_string(),
+                created_at: test_time(),
+                updated_at: None,
+                position: Some(ReviewCommentPosition {
+                    path: "src/lib.rs".to_string(),
+                    line: Some(12),
+                    original_line: Some(11),
+                    side: ReviewSide::Right,
+                }),
+                viewer_did_author: true,
+                viewer_can_update: false,
+                viewer_can_delete: false,
+                viewer_can_react: true,
+                reactions: Vec::new(),
+            }],
+        }
+    }
+
+    fn test_time() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
+            .expect("valid test timestamp")
+            .with_timezone(&Utc)
+    }
 }

@@ -1,22 +1,32 @@
-#![expect(
-    clippy::too_many_arguments,
-    reason = "review row rendering receives explicit interaction state from the owning workspace"
-)]
-
 use gpui::{
     AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px, rgb,
     uniform_list,
 };
-use gpui_component::{
-    Disableable, Sizable,
-    button::{Button, ButtonVariants},
-    input::{Input, InputState},
-};
+use gpui_component::input::InputState;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, ReviewThread, ReviewThreadState};
 
 use crate::workspace::{AppView, ReviewThreadUiError};
 
+use super::review_thread_chrome::{
+    ReviewThreadActionIds, ReviewThreadActionsState, ReviewThreadReplyComposerChrome,
+    ReviewThreadReplyComposerIds, ReviewThreadReplyComposerState, render_review_thread_actions,
+    render_review_thread_reply_composer, review_thread_ui_state,
+};
+
 const REVIEW_THREAD_ROW_HEIGHT: f32 = 224.0;
+
+pub(crate) struct ReviewThreadRowRenderState<'a> {
+    pub(crate) index: usize,
+    pub(crate) thread: &'a ReviewThread,
+    pub(crate) active_review_thread_reply: Option<&'a str>,
+    pub(crate) review_thread_reply_input: Entity<InputState>,
+    pub(crate) reply_body_empty: bool,
+    pub(crate) is_submitting_reply: bool,
+    pub(crate) reply_error: Option<&'a ReviewThreadUiError>,
+    pub(crate) action_thread_id: Option<&'a str>,
+    pub(crate) action_error: Option<&'a ReviewThreadUiError>,
+    pub(crate) view_entity: Entity<AppView>,
+}
 
 pub(crate) fn render_review_panel(
     reviews: &[PullRequestReview],
@@ -131,20 +141,34 @@ pub(crate) fn render_review_panel(
                                             continue;
                                         };
                                         rows.push(render_review_thread_row(
-                                            index,
-                                            thread,
-                                            view.review_thread_reply_thread_id.as_deref(),
-                                            view.review_thread_reply_input.clone(),
-                                            view.review_thread_reply_input
-                                                .read(_cx)
-                                                .value()
-                                                .trim()
-                                                .is_empty(),
-                                            view.is_submitting_review_thread_reply,
-                                            view.review_thread_reply_error.as_ref(),
-                                            view.review_thread_action_thread_id.as_deref(),
-                                            view.review_thread_action_error.as_ref(),
-                                            view_entity.clone(),
+                                            ReviewThreadRowRenderState {
+                                                index,
+                                                thread,
+                                                active_review_thread_reply: view
+                                                    .review_thread_reply_thread_id
+                                                    .as_deref(),
+                                                review_thread_reply_input: view
+                                                    .review_thread_reply_input
+                                                    .clone(),
+                                                reply_body_empty: view
+                                                    .review_thread_reply_input
+                                                    .read(_cx)
+                                                    .value()
+                                                    .trim()
+                                                    .is_empty(),
+                                                is_submitting_reply: view
+                                                    .is_submitting_review_thread_reply,
+                                                reply_error: view
+                                                    .review_thread_reply_error
+                                                    .as_ref(),
+                                                action_thread_id: view
+                                                    .review_thread_action_thread_id
+                                                    .as_deref(),
+                                                action_error: view
+                                                    .review_thread_action_error
+                                                    .as_ref(),
+                                                view_entity: view_entity.clone(),
+                                            },
                                         ));
                                     }
 
@@ -201,30 +225,33 @@ pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl Int
         )
 }
 
-pub(crate) fn render_review_thread_row(
-    index: usize,
-    thread: &ReviewThread,
-    active_review_thread_reply: Option<&str>,
-    review_thread_reply_input: Entity<InputState>,
-    reply_body_empty: bool,
-    is_submitting_reply: bool,
-    reply_error: Option<&ReviewThreadUiError>,
-    action_thread_id: Option<&str>,
-    action_error: Option<&ReviewThreadUiError>,
-    view_entity: Entity<AppView>,
-) -> AnyElement {
+pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) -> AnyElement {
+    let ReviewThreadRowRenderState {
+        index,
+        thread,
+        active_review_thread_reply,
+        review_thread_reply_input,
+        reply_body_empty,
+        is_submitting_reply,
+        reply_error,
+        action_thread_id,
+        action_error,
+        view_entity,
+    } = state;
     let (label, color) = review_thread_state_label(thread.state);
     let latest_comment = thread.comments.last();
     let location = review_thread_location(thread);
     let preview = latest_comment
         .map(|comment| single_line(&comment.body))
         .unwrap_or_else(|| "No comments in this thread".to_string());
-    let active_reply = active_review_thread_reply == Some(thread.id.as_str());
-    let thread_action_running = action_thread_id == Some(thread.id.as_str());
-    let thread_reply_submitting = active_reply && is_submitting_reply;
-    let reply_disabled = reply_body_empty || thread_reply_submitting;
-    let is_resolved = thread.state == ReviewThreadState::Resolved;
-    let can_toggle_resolution = thread.state != ReviewThreadState::Outdated;
+    let ui_state = review_thread_ui_state(
+        thread,
+        active_review_thread_reply,
+        reply_body_empty,
+        is_submitting_reply,
+        action_thread_id,
+    );
+    let is_resolved = ui_state.is_resolved;
     let row_border_color = if is_resolved {
         rgb(0x1f2d3a)
     } else {
@@ -257,7 +284,6 @@ pub(crate) fn render_review_thread_row(
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
     let thread_id = thread.id.clone();
-    let toggle_label = if is_resolved { "Reopen" } else { "Resolve" };
 
     div()
         .id(("review-thread-row", index))
@@ -306,114 +332,35 @@ pub(crate) fn render_review_thread_row(
                 .flex()
                 .items_center()
                 .justify_end()
-                .gap_2()
-                .child(
-                    Button::new(format!("review-panel-reply-thread-{thread_id}"))
-                        .label(if active_reply { "Replying" } else { "Reply" })
-                        .xsmall()
-                        .outline()
-                        .disabled(is_submitting_reply)
-                        .on_click({
-                            let view_entity = view_entity.clone();
-                            let thread_id = thread_id.clone();
-                            move |_, window, cx| {
-                                view_entity.update(cx, |view, cx| {
-                                    view.open_review_thread_reply(thread_id.clone(), window, cx);
-                                });
-                            }
-                        }),
-                )
-                .child(
-                    Button::new(format!("review-panel-toggle-thread-{thread_id}"))
-                        .label(toggle_label)
-                        .xsmall()
-                        .ghost()
-                        .loading(thread_action_running)
-                        .disabled(!can_toggle_resolution || thread_action_running)
-                        .on_click({
-                            let view_entity = view_entity.clone();
-                            let thread_id = thread_id.clone();
-                            move |_, _, cx| {
-                                view_entity.update(cx, |view, cx| {
-                                    view.set_review_thread_resolved(
-                                        thread_id.clone(),
-                                        !is_resolved,
-                                        cx,
-                                    );
-                                });
-                            }
-                        }),
-                ),
+                .child(render_review_thread_actions(ReviewThreadActionsState {
+                    ids: ReviewThreadActionIds::review_panel(&thread_id),
+                    thread_id: thread_id.clone(),
+                    active_reply: ui_state.active_reply,
+                    reply_button_disabled: ui_state.reply_button_disabled,
+                    is_resolved,
+                    action_running: ui_state.action_running,
+                    can_toggle_resolution: ui_state.can_toggle_resolution,
+                    show_toggle_icon: false,
+                    view_entity: view_entity.clone(),
+                })),
         )
-        .when(active_reply, {
+        .when(ui_state.active_reply, {
             let view_entity = view_entity.clone();
             let thread_id = thread_id.clone();
             move |element| {
-                element
-                    .child(
-                        div()
-                            .w_full()
-                            .border_1()
-                            .border_color(rgb(0x354252))
-                            .bg(rgb(0x0b1118))
-                            .px_2()
-                            .py_1()
-                            .child(
-                                Input::new(&review_thread_reply_input)
-                                    .w_full()
-                                    .small()
-                                    .h(px(48.))
-                                    .appearance(false)
-                                    .bordered(false)
-                                    .focus_bordered(false),
-                            ),
-                    )
-                    .when_some(reply_error.clone(), |element, error| {
-                        element.child(div().text_xs().text_color(rgb(0xf87171)).child(error))
-                    })
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_end()
-                            .gap_2()
-                            .child(
-                                Button::new(format!(
-                                    "review-panel-cancel-thread-reply-{thread_id}"
-                                ))
-                                .label("Cancel")
-                                .xsmall()
-                                .ghost()
-                                .disabled(thread_reply_submitting)
-                                .on_click({
-                                    let view_entity = view_entity.clone();
-                                    move |_, window, cx| {
-                                        view_entity.update(cx, |view, cx| {
-                                            view.cancel_review_thread_reply(window, cx);
-                                        });
-                                    }
-                                }),
-                            )
-                            .child(
-                                Button::new(format!(
-                                    "review-panel-submit-thread-reply-{thread_id}"
-                                ))
-                                .label("Send reply")
-                                .xsmall()
-                                .primary()
-                                .loading(thread_reply_submitting)
-                                .disabled(reply_disabled)
-                                .on_click({
-                                    let view_entity = view_entity.clone();
-                                    let thread_id = thread_id.clone();
-                                    move |_, _, cx| {
-                                        view_entity.update(cx, |view, cx| {
-                                            view.submit_review_thread_reply(thread_id.clone(), cx);
-                                        });
-                                    }
-                                }),
-                            ),
-                    )
+                element.child(render_review_thread_reply_composer(
+                    ReviewThreadReplyComposerState {
+                        ids: ReviewThreadReplyComposerIds::review_panel(&thread_id),
+                        thread_id: thread_id.clone(),
+                        input: review_thread_reply_input.clone(),
+                        input_height: px(48.),
+                        disabled: ui_state.reply_disabled,
+                        submitting: ui_state.reply_submitting,
+                        error: reply_error.clone(),
+                        chrome: ReviewThreadReplyComposerChrome::Panel,
+                        view_entity: view_entity.clone(),
+                    },
+                ))
             }
         })
         .when_some(action_error, |element, error| {

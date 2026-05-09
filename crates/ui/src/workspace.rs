@@ -219,6 +219,19 @@ pub struct AppView {
 
 impl AppView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_startup_tasks(window, cx, true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_without_startup_tasks(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_startup_tasks(window, cx, false)
+    }
+
+    fn new_with_startup_tasks(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        start_startup_tasks: bool,
+    ) -> Self {
         let pull_requests = Vec::new();
         let files = Vec::new();
         let pull_request_reviews = Vec::new();
@@ -287,7 +300,11 @@ impl AppView {
         ];
         let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
         let repositories = Vec::new();
-        let status = "Fetching repositories from GitHub...".to_string();
+        let status = if start_startup_tasks {
+            "Fetching repositories from GitHub...".to_string()
+        } else {
+            "Ready".to_string()
+        };
 
         let mut view = Self {
             focus_handle: cx.focus_handle(),
@@ -345,7 +362,7 @@ impl AppView {
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
-            is_loading_repositories: true,
+            is_loading_repositories: start_startup_tasks,
             is_loading_prs: false,
             is_loading_details: false,
             is_loading_files: false,
@@ -389,8 +406,10 @@ impl AppView {
             _subscriptions: subscriptions,
         };
 
-        view.load_recent_repositories(cx);
-        view.refresh_external_app_availability(cx);
+        if start_startup_tasks {
+            view.load_recent_repositories(cx);
+            view.refresh_external_app_availability(cx);
+        }
 
         view
     }

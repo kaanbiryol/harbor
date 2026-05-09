@@ -8,6 +8,8 @@ mod logs;
 mod pull_request;
 #[path = "panels/review.rs"]
 mod review;
+#[path = "panels/review_thread_chrome.rs"]
+pub(crate) mod review_thread_chrome;
 #[path = "panels/workflows.rs"]
 mod workflows;
 
