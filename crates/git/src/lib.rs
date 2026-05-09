@@ -38,7 +38,7 @@ pub struct LocalCheckout {
     pub branch: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExternalApp {
     VsCode,
     Cursor,

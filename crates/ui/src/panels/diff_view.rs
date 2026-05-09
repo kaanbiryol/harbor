@@ -7,6 +7,8 @@
 mod inline_reviews;
 #[path = "diff_view/layout.rs"]
 mod layout;
+#[path = "diff_view/row_state.rs"]
+mod row_state;
 
 use std::{collections::HashSet, ops::Range};
 
@@ -18,16 +20,12 @@ use gpui::{
 use gpui_component::{
     IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::InputState,
 };
 use harbor_domain::{DiffFile, ReviewThread, ReviewThreadState};
 
 use crate::diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff};
 use crate::diff_reviews::{anchored_review_threads, review_threads_for_line};
-use crate::workspace::{
-    AppView, PendingReviewSession, ReviewCommentUiError, ReviewComposer, ReviewLineSelection,
-    ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
-};
+use crate::workspace::{AppView, ReviewComposer, ReviewLineTarget};
 
 #[cfg(test)]
 pub(crate) use inline_reviews::{
@@ -46,6 +44,7 @@ use layout::{
     review_comment_range_matches_line, review_composer_row_count, review_line_target_for_line,
     review_thread_inline_rows_with_controls, row_in_range,
 };
+use row_state::DiffRowRenderState;
 
 const MIN_LINE_NUMBER_WIDTH: f32 = 28.0;
 const LINE_NUMBER_PADDING: f32 = 8.0;
@@ -208,50 +207,18 @@ pub(crate) fn render_diff_panel(
                         cx.processor(move |view, range: std::ops::Range<usize>, _window, _cx| {
                             let visible_file_indices = view.visible_file_indices(_cx);
 
+                            let row_state = DiffRowRenderState::from_view(
+                                view,
+                                _cx,
+                                processor_view_entity.clone(),
+                            );
+
                             render_continuous_diff_rows(
                                 view.diff_files(),
                                 view.parsed_diffs(),
                                 &visible_file_indices,
                                 view.reviewed_file_paths(),
-                                &view.review_threads,
-                                view.review_composer.as_ref(),
-                                view.review_line_selection.as_ref(),
-                                view.pending_review.as_ref(),
-                                view.review_comment_input.clone(),
-                                view.review_comment_input
-                                    .read(_cx)
-                                    .value()
-                                    .trim()
-                                    .is_empty(),
-                                view.is_submitting_review_comment,
-                                view.review_comment_error.as_deref(),
-                                view.review_thread_reply_thread_id.as_deref(),
-                                view.review_thread_reply_input.clone(),
-                                view.review_thread_reply_input
-                                    .read(_cx)
-                                    .value()
-                                    .trim()
-                                    .is_empty(),
-                                view.is_submitting_review_thread_reply,
-                                view.review_thread_reply_error.as_ref(),
-                                view.review_thread_action_thread_id.as_deref(),
-                                view.review_thread_action_error.as_ref(),
-                                view.review_comment_edit_comment_id.as_deref(),
-                                view.review_comment_edit_input.clone(),
-                                view.review_comment_edit_input
-                                    .read(_cx)
-                                    .value()
-                                    .trim()
-                                    .is_empty(),
-                                view.is_submitting_review_comment_edit,
-                                view.review_comment_edit_error.as_ref(),
-                                view.review_comment_action_comment_id.as_deref(),
-                                view.review_comment_action_error.as_ref(),
-                                view.review_reaction_action.as_ref(),
-                                view.review_reaction_error.as_ref(),
-                                view.active_file_index(),
-                                view.active_hunk,
-                                processor_view_entity.clone(),
+                                &row_state,
                                 range,
                             )
                         }),
@@ -346,33 +313,7 @@ fn render_continuous_diff_rows(
     diffs: &[Option<ParsedDiff>],
     visible_file_indices: &[usize],
     reviewed_file_paths: &HashSet<String>,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_line_selection: Option<&ReviewLineSelection>,
-    pending_review: Option<&PendingReviewSession>,
-    review_comment_input: Entity<InputState>,
-    review_comment_body_empty: bool,
-    is_submitting_review_comment: bool,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    review_thread_reply_input: Entity<InputState>,
-    review_thread_reply_body_empty: bool,
-    is_submitting_review_thread_reply: bool,
-    review_thread_reply_error: Option<&ReviewThreadUiError>,
-    review_thread_action_thread_id: Option<&str>,
-    review_thread_action_error: Option<&ReviewThreadUiError>,
-    active_review_comment_edit: Option<&str>,
-    review_comment_edit_input: Entity<InputState>,
-    review_comment_edit_body_empty: bool,
-    is_submitting_review_comment_edit: bool,
-    review_comment_edit_error: Option<&ReviewCommentUiError>,
-    review_comment_action_comment_id: Option<&str>,
-    review_comment_action_error: Option<&ReviewCommentUiError>,
-    review_reaction_action: Option<&ReviewReactionAction>,
-    review_reaction_error: Option<&ReviewCommentUiError>,
-    active_file: usize,
-    active_hunk: usize,
-    view_entity: Entity<AppView>,
+    row_state: &DiffRowRenderState<'_>,
     range: std::ops::Range<usize>,
 ) -> Vec<AnyElement> {
     let mut rows = Vec::with_capacity(range.len());
@@ -394,11 +335,11 @@ fn render_continuous_diff_rows(
             file,
             diffs,
             reviewed_file_paths,
-            review_threads,
-            review_composer,
-            review_comment_error,
-            active_review_thread_reply,
-            active_review_comment_edit,
+            row_state.review_threads,
+            row_state.review_composer,
+            row_state.review_comment_error,
+            row_state.active_review_thread_reply,
+            row_state.active_review_comment_edit,
         );
         let section_row_count = DIFF_FILE_HEADER_ROWS + body_row_count;
 
@@ -426,10 +367,10 @@ fn render_continuous_diff_rows(
                             *file_index,
                             file.clone(),
                             hunk_count,
-                            *file_index == active_file,
+                            *file_index == row_state.active_file,
                             reviewed,
                             false,
-                            view_entity.clone(),
+                            row_state.view_entity.clone(),
                         ),
                         visible_row_offset,
                     ));
@@ -450,33 +391,9 @@ fn render_continuous_diff_rows(
             render_diff_rows(
                 parsed_diff,
                 file,
-                review_threads,
-                review_composer,
-                review_line_selection,
-                pending_review,
-                review_comment_input.clone(),
-                review_comment_body_empty,
-                is_submitting_review_comment,
-                review_comment_error,
-                active_review_thread_reply,
-                review_thread_reply_input.clone(),
-                review_thread_reply_body_empty,
-                is_submitting_review_thread_reply,
-                review_thread_reply_error,
-                review_thread_action_thread_id,
-                review_thread_action_error,
-                active_review_comment_edit,
-                review_comment_edit_input.clone(),
-                review_comment_edit_body_empty,
-                is_submitting_review_comment_edit,
-                review_comment_edit_error,
-                review_comment_action_comment_id,
-                review_comment_action_error,
-                review_reaction_action,
-                review_reaction_error,
-                (*file_index == active_file).then_some(active_hunk),
+                row_state,
+                (*file_index == row_state.active_file).then_some(row_state.active_hunk),
                 line_number_width,
-                view_entity.clone(),
                 &mut row_index,
                 &range,
                 &mut rows,
@@ -671,40 +588,16 @@ fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {
 fn render_diff_rows(
     diff: &ParsedDiff,
     file: &DiffFile,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_line_selection: Option<&ReviewLineSelection>,
-    pending_review: Option<&PendingReviewSession>,
-    review_comment_input: Entity<InputState>,
-    review_comment_body_empty: bool,
-    is_submitting_review_comment: bool,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    review_thread_reply_input: Entity<InputState>,
-    review_thread_reply_body_empty: bool,
-    is_submitting_review_thread_reply: bool,
-    review_thread_reply_error: Option<&ReviewThreadUiError>,
-    review_thread_action_thread_id: Option<&str>,
-    review_thread_action_error: Option<&ReviewThreadUiError>,
-    active_review_comment_edit: Option<&str>,
-    review_comment_edit_input: Entity<InputState>,
-    review_comment_edit_body_empty: bool,
-    is_submitting_review_comment_edit: bool,
-    review_comment_edit_error: Option<&ReviewCommentUiError>,
-    review_comment_action_comment_id: Option<&str>,
-    review_comment_action_error: Option<&ReviewCommentUiError>,
-    review_reaction_action: Option<&ReviewReactionAction>,
-    review_reaction_error: Option<&ReviewCommentUiError>,
+    row_state: &DiffRowRenderState<'_>,
     active_hunk: Option<usize>,
     line_number_width: f32,
-    view_entity: Entity<AppView>,
     row_index: &mut usize,
     range: &std::ops::Range<usize>,
     rows: &mut Vec<AnyElement>,
 ) {
-    let anchored_threads = anchored_review_threads(file, review_threads);
+    let anchored_threads = anchored_review_threads(file, row_state.review_threads);
     let review_marker_width = REVIEW_MARKER_WIDTH;
-    let active_selection_range = review_line_selection.and_then(|selection| {
+    let active_selection_range = row_state.review_line_selection.and_then(|selection| {
         crate::workspace::review_range_from_targets(&selection.anchor, &selection.current).ok()
     });
 
@@ -729,7 +622,7 @@ fn render_diff_rows(
             let matching_threads = review_threads_for_line(&anchored_threads, line);
             let review_line_target =
                 review_line_target_for_line(file, hunk_index, line_index, line);
-            let selected_for_comment = review_composer.is_some_and(|composer| {
+            let selected_for_comment = row_state.review_composer.is_some_and(|composer| {
                 review_comment_range_matches_line(file, &composer.range, line)
             });
             let dragging_for_comment = active_selection_range
@@ -738,7 +631,8 @@ fn render_diff_rows(
             let has_unresolved_thread = matching_threads
                 .iter()
                 .any(|thread| thread.state == ReviewThreadState::Unresolved);
-            let has_thread_range = review_threads
+            let has_thread_range = row_state
+                .review_threads
                 .iter()
                 .filter_map(|thread| thread.range.as_ref())
                 .any(|range| review_comment_range_matches_line(file, range, line));
@@ -756,21 +650,21 @@ fn render_diff_rows(
                         review_line_target.clone(),
                         line_number_width,
                         review_marker_width,
-                        view_entity.clone(),
+                        row_state.view_entity.clone(),
                     )
                     .into_any_element(),
                 );
             }
             *row_index += 1;
 
-            let composer_ends_here = review_composer.is_some_and(|composer| {
+            let composer_ends_here = row_state.review_composer.is_some_and(|composer| {
                 review_comment_range_matches_file(file, &composer.range)
                     && composer.anchor.hunk_index == hunk_index
                     && composer.anchor.line_index == line_index
             });
 
             if composer_ends_here {
-                let composer_row_count = review_composer_row_count(review_comment_error);
+                let composer_row_count = review_composer_row_count(row_state.review_comment_error);
                 let composer_start_row = *row_index;
                 let visible_composer_row =
                     inline_block_render_anchor(composer_start_row, composer_row_count, range);
@@ -785,19 +679,19 @@ fn render_diff_rows(
                         if let Some((render_row, visible_row_offset)) = visible_composer_row
                             && render_row == *row_index
                         {
-                            if let Some(composer) = review_composer.cloned() {
+                            if let Some(composer) = row_state.review_composer.cloned() {
                                 rows.push(render_virtualized_inline_block(
                                     render_review_composer_inline(
                                         composer,
-                                        pending_review.cloned(),
-                                        review_comment_input.clone(),
-                                        review_comment_body_empty,
-                                        is_submitting_review_comment,
-                                        review_comment_error,
+                                        row_state.pending_review.cloned(),
+                                        row_state.review_comment_input.clone(),
+                                        row_state.review_comment_body_empty,
+                                        row_state.is_submitting_review_comment,
+                                        row_state.review_comment_error,
                                         composer_row_count,
                                         line_number_width,
                                         review_marker_width,
-                                        view_entity.clone(),
+                                        row_state.view_entity.clone(),
                                     )
                                     .into_any_element(),
                                     visible_row_offset,
@@ -815,8 +709,8 @@ fn render_diff_rows(
             for thread in matching_threads {
                 let thread_row_count = review_thread_inline_rows_with_controls(
                     thread,
-                    active_review_thread_reply,
-                    active_review_comment_edit,
+                    row_state.active_review_thread_reply,
+                    row_state.active_review_comment_edit,
                 );
                 let thread_start_row = *row_index;
                 let visible_thread_row =
@@ -836,23 +730,23 @@ fn render_diff_rows(
                                 render_review_thread_inline(
                                     thread,
                                     line_number_width,
-                                    active_review_thread_reply,
-                                    review_thread_reply_input.clone(),
-                                    review_thread_reply_body_empty,
-                                    is_submitting_review_thread_reply,
-                                    review_thread_reply_error,
-                                    review_thread_action_thread_id,
-                                    review_thread_action_error,
-                                    active_review_comment_edit,
-                                    review_comment_edit_input.clone(),
-                                    review_comment_edit_body_empty,
-                                    is_submitting_review_comment_edit,
-                                    review_comment_edit_error,
-                                    review_comment_action_comment_id,
-                                    review_comment_action_error,
-                                    review_reaction_action,
-                                    review_reaction_error,
-                                    view_entity.clone(),
+                                    row_state.active_review_thread_reply,
+                                    row_state.review_thread_reply_input.clone(),
+                                    row_state.review_thread_reply_body_empty,
+                                    row_state.is_submitting_review_thread_reply,
+                                    row_state.review_thread_reply_error,
+                                    row_state.review_thread_action_thread_id,
+                                    row_state.review_thread_action_error,
+                                    row_state.active_review_comment_edit,
+                                    row_state.review_comment_edit_input.clone(),
+                                    row_state.review_comment_edit_body_empty,
+                                    row_state.is_submitting_review_comment_edit,
+                                    row_state.review_comment_edit_error,
+                                    row_state.review_comment_action_comment_id,
+                                    row_state.review_comment_action_error,
+                                    row_state.review_reaction_action,
+                                    row_state.review_reaction_error,
+                                    row_state.view_entity.clone(),
                                 )
                                 .into_any_element(),
                                 visible_row_offset,

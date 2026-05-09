@@ -2,6 +2,7 @@ mod action_commands;
 mod cache;
 mod changed_files;
 mod commands;
+mod external_apps;
 mod loaders;
 mod local_commands;
 mod pull_request_detail_loaders;
@@ -49,6 +50,7 @@ pub(crate) use changed_files::{
 pub(crate) use changed_files::{
     changed_file_matches_filters, changed_file_matches_query, changed_file_type_key,
 };
+use external_apps::ExternalAppAvailability;
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
@@ -139,6 +141,7 @@ pub struct AppView {
     log_task: Option<Task<()>>,
     repository_task: Option<Task<()>>,
     local_task: Option<Task<()>>,
+    external_app_availability_task: Option<Task<()>>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_scroll: UniformListScrollHandle,
@@ -162,6 +165,7 @@ pub struct AppView {
     configured_repo: Option<RepoId>,
     repository_store: Option<SqliteStore>,
     repository_local_paths: HashMap<RepoId, PathBuf>,
+    external_app_availability: ExternalAppAvailability,
     collapsed_file_tree_folders: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
     excluded_file_type_filters: HashSet<String>,
@@ -309,6 +313,7 @@ impl AppView {
             log_task: None,
             repository_task: None,
             local_task: None,
+            external_app_availability_task: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_scroll: UniformListScrollHandle::new(),
@@ -332,6 +337,7 @@ impl AppView {
             configured_repo: None,
             repository_store: None,
             repository_local_paths: HashMap::new(),
+            external_app_availability: ExternalAppAvailability::default(),
             collapsed_file_tree_folders: HashSet::new(),
             reviewed_file_paths: HashSet::new(),
             excluded_file_type_filters: HashSet::new(),
@@ -382,6 +388,7 @@ impl AppView {
         };
 
         view.load_recent_repositories(cx);
+        view.refresh_external_app_availability(cx);
 
         view
     }

@@ -436,8 +436,10 @@ fn opens_worktree_root_for_removed_local_files() {
 
 #[test]
 fn disables_open_with_apps_without_local_path() {
-    assert!(open_with_app_disabled(false, false, ExternalApp::Finder));
-    assert!(open_with_app_disabled(true, true, ExternalApp::Finder));
+    assert!(open_with_app_disabled(false, false, true));
+    assert!(open_with_app_disabled(true, true, true));
+    assert!(open_with_app_disabled(true, false, false));
+    assert!(!open_with_app_disabled(true, false, true));
 }
 
 fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckRun {

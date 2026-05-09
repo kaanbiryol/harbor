@@ -202,8 +202,12 @@ impl AppView {
             return;
         };
 
-        if !app.is_available() {
-            self.status = format!("{} is not installed", app.label());
+        if !self.external_app_is_available(app) {
+            self.status = if self.is_loading_external_app_availability() {
+                "Detecting installed applications before opening".to_string()
+            } else {
+                format!("{} is not installed", app.label())
+            };
             cx.notify();
             return;
         }

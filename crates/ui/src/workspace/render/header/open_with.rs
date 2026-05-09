@@ -36,9 +36,9 @@ pub(super) fn open_with_icon(app: ExternalApp) -> IconName {
 pub(crate) fn open_with_app_disabled(
     has_local_path: bool,
     local_action_running: bool,
-    app: ExternalApp,
+    app_available: bool,
 ) -> bool {
-    !has_local_path || local_action_running || !app.is_available()
+    !has_local_path || local_action_running || !app_available
 }
 
 impl AppView {
@@ -47,6 +47,7 @@ impl AppView {
         let local_path = self.current_repository_local_path().cloned();
         let has_local_path = local_path.is_some();
         let local_action_running = self.local_task.is_some();
+        let app_availability = ExternalApp::ALL.map(|app| self.external_app_is_available(app));
 
         DropdownButton::new("open-with")
             .button(
@@ -75,9 +76,12 @@ impl AppView {
 
                 menu = menu.separator();
 
-                for app in ExternalApp::ALL {
-                    let disabled =
-                        open_with_app_disabled(has_local_path, local_action_running, app);
+                for (app_index, app) in ExternalApp::ALL.into_iter().enumerate() {
+                    let disabled = open_with_app_disabled(
+                        has_local_path,
+                        local_action_running,
+                        app_availability[app_index],
+                    );
                     menu = menu.menu_with_icon_and_disabled(
                         app.label(),
                         open_with_icon(app),
