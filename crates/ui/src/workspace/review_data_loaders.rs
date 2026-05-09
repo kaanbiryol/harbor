@@ -105,7 +105,7 @@ impl AppView {
         let repo = pull_request.repo;
         let number = pull_request.number;
 
-        self.is_loading_reviews = true;
+        self.detail_loading.reviews = true;
         self.reviews_error = None;
         self.status = format!("Refreshing review data for PR #{number}");
         cx.notify();
@@ -162,7 +162,7 @@ impl AppView {
                     return;
                 }
 
-                view.is_loading_reviews = false;
+                view.detail_loading.reviews = false;
                 view.reviews_error = None;
                 let current_user_login = match current_user_result {
                     Ok(login) => Some(login),

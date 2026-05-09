@@ -195,7 +195,7 @@ impl AppView {
                                 self.review_comment_error.as_deref(),
                                 self.review_thread_reply_thread_id.as_deref(),
                                 self.review_comment_edit_comment_id.as_deref(),
-                                self.is_loading_files,
+                                self.detail_loading.files,
                                 self.files_error.as_deref(),
                                 self.diff_list_scroll.clone(),
                                 cx,
@@ -205,7 +205,7 @@ impl AppView {
                         PanelTab::Review => render_review_panel(
                             &self.pull_request_reviews,
                             &self.review_threads,
-                            self.is_loading_reviews,
+                            self.detail_loading.reviews,
                             self.reviews_error.as_deref(),
                             self.review_list_scroll.clone(),
                             cx,
@@ -214,14 +214,14 @@ impl AppView {
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             &self.check_runs,
-                            self.is_loading_checks,
+                            self.detail_loading.checks,
                             self.checks_error.as_deref(),
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
                             pr,
                             &self.workflow_runs,
-                            self.is_loading_workflows,
+                            self.detail_loading.workflows,
                             self.workflows_error.as_deref(),
                             self.action_error.as_deref(),
                             self.is_running_action,

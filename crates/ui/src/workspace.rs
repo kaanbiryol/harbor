@@ -145,6 +145,15 @@ struct DiffSelectionState {
     hunk_index: usize,
 }
 
+#[derive(Default)]
+struct PullRequestDetailLoadingState {
+    details: bool,
+    files: bool,
+    checks: bool,
+    workflows: bool,
+    reviews: bool,
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -200,11 +209,7 @@ pub struct AppView {
     owned_file_paths: HashSet<String>,
     is_loading_repositories: bool,
     is_loading_prs: bool,
-    is_loading_details: bool,
-    is_loading_files: bool,
-    is_loading_checks: bool,
-    is_loading_workflows: bool,
-    is_loading_reviews: bool,
+    detail_loading: PullRequestDetailLoadingState,
     is_loading_logs: bool,
     is_running_action: bool,
     is_running_pr_action: bool,
@@ -386,11 +391,7 @@ impl AppView {
             owned_file_paths: HashSet::new(),
             is_loading_repositories: start_startup_tasks,
             is_loading_prs: false,
-            is_loading_details: false,
-            is_loading_files: false,
-            is_loading_checks: false,
-            is_loading_workflows: false,
-            is_loading_reviews: false,
+            detail_loading: PullRequestDetailLoadingState::default(),
             is_loading_logs: false,
             is_running_action: false,
             is_running_pr_action: false,

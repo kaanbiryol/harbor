@@ -47,9 +47,9 @@ impl AppView {
         let behavior = open_selected_pull_request_behavior(
             self.selected_pull_request_number(),
             !self.files.is_empty(),
-            self.is_loading_details,
-            self.is_loading_files,
-            self.is_loading_reviews,
+            self.detail_loading.details,
+            self.detail_loading.files,
+            self.detail_loading.reviews,
         );
 
         match behavior {

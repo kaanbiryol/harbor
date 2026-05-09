@@ -77,11 +77,11 @@ impl AppView {
     }
 
     fn reset_selected_pull_request_detail_state(&mut self, number: u64) {
-        self.is_loading_details = true;
-        self.is_loading_files = true;
-        self.is_loading_checks = true;
-        self.is_loading_workflows = true;
-        self.is_loading_reviews = true;
+        self.detail_loading.details = true;
+        self.detail_loading.files = true;
+        self.detail_loading.checks = true;
+        self.detail_loading.workflows = true;
+        self.detail_loading.reviews = true;
         self.details_error = None;
         self.files_error = None;
         self.checks_error = None;
@@ -137,7 +137,7 @@ impl AppView {
                         return;
                     }
 
-                    view.is_loading_details = false;
+                    view.detail_loading.details = false;
                     match result {
                         Ok(detail) => {
                             if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
@@ -196,7 +196,7 @@ impl AppView {
                         return;
                     }
 
-                    view.is_loading_files = false;
+                    view.detail_loading.files = false;
                     match result {
                         Ok((files, diffs)) => {
                             let count = files.len();
@@ -313,7 +313,7 @@ impl AppView {
                         return;
                     }
 
-                    view.is_loading_checks = false;
+                    view.detail_loading.checks = false;
                     match result {
                         Ok(check_runs) => {
                             let count = check_runs.len();
@@ -372,7 +372,7 @@ impl AppView {
                         return;
                     }
 
-                    view.is_loading_workflows = false;
+                    view.detail_loading.workflows = false;
                     match result {
                         Ok(workflow_runs) => {
                             let count = workflow_runs.len();

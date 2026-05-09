@@ -240,11 +240,11 @@ impl AppView {
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
-        self.is_loading_details = false;
-        self.is_loading_files = false;
-        self.is_loading_checks = false;
-        self.is_loading_workflows = false;
-        self.is_loading_reviews = false;
+        self.detail_loading.details = false;
+        self.detail_loading.files = false;
+        self.detail_loading.checks = false;
+        self.detail_loading.workflows = false;
+        self.detail_loading.reviews = false;
         self.is_loading_logs = false;
         self.status = pull_request_inbox_loading_status(&repo, mode);
 
@@ -321,11 +321,11 @@ impl AppView {
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.review_list_scroll
                             .scroll_to_item(0, ScrollStrategy::Top);
-                        view.is_loading_details = false;
-                        view.is_loading_files = false;
-                        view.is_loading_checks = false;
-                        view.is_loading_workflows = false;
-                        view.is_loading_reviews = false;
+                        view.detail_loading.details = false;
+                        view.detail_loading.files = false;
+                        view.detail_loading.checks = false;
+                        view.detail_loading.workflows = false;
+                        view.detail_loading.reviews = false;
                         view.is_loading_logs = false;
                         view.is_running_action = false;
                         view.is_running_pr_action = false;

@@ -102,11 +102,11 @@ impl AppView {
         };
 
         if self.is_loading_prs
-            || self.is_loading_details
-            || self.is_loading_files
-            || self.is_loading_checks
-            || self.is_loading_workflows
-            || self.is_loading_reviews
+            || self.detail_loading.details
+            || self.detail_loading.files
+            || self.detail_loading.checks
+            || self.detail_loading.workflows
+            || self.detail_loading.reviews
             || self.load_error.is_some()
         {
             return;
@@ -132,11 +132,11 @@ impl AppView {
             return;
         };
 
-        if self.is_loading_details
-            || self.is_loading_files
-            || self.is_loading_checks
-            || self.is_loading_workflows
-            || self.is_loading_reviews
+        if self.detail_loading.details
+            || self.detail_loading.files
+            || self.detail_loading.checks
+            || self.detail_loading.workflows
+            || self.detail_loading.reviews
             || self.details_error.is_some()
             || self.files_error.is_some()
         {
@@ -187,11 +187,11 @@ impl AppView {
         };
 
         self.pr_detail_tasks.clear();
-        self.is_loading_details = false;
-        self.is_loading_files = false;
-        self.is_loading_checks = false;
-        self.is_loading_workflows = false;
-        self.is_loading_reviews = false;
+        self.detail_loading.details = false;
+        self.detail_loading.files = false;
+        self.detail_loading.checks = false;
+        self.detail_loading.workflows = false;
+        self.detail_loading.reviews = false;
         self.is_loading_logs = false;
         self.details_error = None;
         self.files_error = None;
@@ -279,11 +279,11 @@ impl AppView {
         self.pr_list_task = None;
         self.pr_detail_tasks.clear();
         self.is_loading_prs = false;
-        self.is_loading_details = false;
-        self.is_loading_files = false;
-        self.is_loading_checks = false;
-        self.is_loading_workflows = false;
-        self.is_loading_reviews = false;
+        self.detail_loading.details = false;
+        self.detail_loading.files = false;
+        self.detail_loading.checks = false;
+        self.detail_loading.workflows = false;
+        self.detail_loading.reviews = false;
         self.is_loading_logs = false;
         self.load_error = None;
         self.details_error = None;

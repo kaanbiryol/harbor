@@ -76,7 +76,7 @@ impl AppView {
                             .text_color(rgb(0x9aa4b2))
                             .child(format!("{} / {}", pr.repo.full_name(), pr.head_sha)),
                     )
-                    .when(self.is_loading_details, |element| {
+                    .when(self.detail_loading.details, |element| {
                         element.child(
                             div()
                                 .pt_2()
@@ -174,7 +174,7 @@ impl AppView {
                     }),
             )
             .child(self.render_changed_files_header(cx))
-            .when(self.is_loading_files, |element| {
+            .when(self.detail_loading.files, |element| {
                 element.child(
                     div()
                         .flex_1()
@@ -197,7 +197,7 @@ impl AppView {
                 )
             })
             .when(
-                !self.is_loading_files && self.files_error.is_none() && self.files.is_empty(),
+                !self.detail_loading.files && self.files_error.is_none() && self.files.is_empty(),
                 |element| {
                     element.child(
                         div()
@@ -211,7 +211,7 @@ impl AppView {
                 },
             )
             .when(
-                !self.is_loading_files
+                !self.detail_loading.files
                     && self.files_error.is_none()
                     && !self.files.is_empty()
                     && self.changed_file_tree_rows(cx).is_empty(),
@@ -228,7 +228,7 @@ impl AppView {
                 },
             )
             .when(
-                !self.is_loading_files
+                !self.detail_loading.files
                     && self.files_error.is_none()
                     && !self.files.is_empty()
                     && !self.changed_file_tree_rows(cx).is_empty(),
