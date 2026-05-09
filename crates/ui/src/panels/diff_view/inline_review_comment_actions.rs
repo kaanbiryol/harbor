@@ -1,0 +1,187 @@
+use gpui::{Anchor, Entity, IntoElement, div, prelude::*, px, rgb};
+use gpui_component::{
+    Disableable, IconName, Sizable,
+    button::{Button, ButtonVariants},
+    input::{Input, InputState},
+    popover::Popover,
+};
+use harbor_domain::ReviewComment;
+
+use crate::workspace::AppView;
+
+pub(super) fn render_review_comment_actions_menu(
+    comment_id: String,
+    comment_body: String,
+    can_update: bool,
+    can_delete: bool,
+    active_edit: bool,
+    edit_submitting: bool,
+    action_running: bool,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    Popover::new(format!("comment-actions-{comment_id}"))
+        .appearance(false)
+        .anchor(Anchor::TopRight)
+        .trigger(
+            Button::new(format!("comment-actions-trigger-{comment_id}"))
+                .icon(IconName::Ellipsis)
+                .xsmall()
+                .compact()
+                .ghost()
+                .tooltip("Comment actions"),
+        )
+        .content(move |_, _window, _popover_cx| {
+            div()
+                .w(px(160.0))
+                .border_1()
+                .border_color(rgb(0x343b44))
+                .bg(rgb(0x171b20))
+                .p_1()
+                .shadow_lg()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .when(can_update, {
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            let comment_body = comment_body.clone();
+                            move |element| {
+                                element.child(
+                                    Button::new(format!("edit-comment-{comment_id}"))
+                                        .icon(IconName::ALargeSmall)
+                                        .label(if active_edit { "Editing" } else { "Edit" })
+                                        .small()
+                                        .ghost()
+                                        .disabled(edit_submitting || action_running)
+                                        .on_click({
+                                            let view_entity = view_entity.clone();
+                                            let comment_id = comment_id.clone();
+                                            let comment_body = comment_body.clone();
+                                            move |_, window, cx| {
+                                                view_entity.update(cx, |view, cx| {
+                                                    view.open_review_comment_edit(
+                                                        comment_id.clone(),
+                                                        comment_body.clone(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        }),
+                                )
+                            }
+                        })
+                        .when(can_delete, {
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            move |element| {
+                                element.child(
+                                    Button::new(format!("delete-comment-{comment_id}"))
+                                        .icon(IconName::Delete)
+                                        .label("Delete")
+                                        .small()
+                                        .ghost()
+                                        .loading(action_running)
+                                        .disabled(action_running || edit_submitting)
+                                        .on_click({
+                                            let view_entity = view_entity.clone();
+                                            let comment_id = comment_id.clone();
+                                            move |_, _, cx| {
+                                                view_entity.update(cx, |view, cx| {
+                                                    view.delete_review_comment(
+                                                        comment_id.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        }),
+                                )
+                            }
+                        }),
+                )
+        })
+}
+
+pub(super) fn render_review_comment_edit_composer(
+    comment_id: String,
+    review_comment_edit_input: Entity<InputState>,
+    edit_body_empty: bool,
+    edit_submitting: bool,
+    edit_error: Option<String>,
+    view_entity: Entity<AppView>,
+) -> impl IntoElement {
+    div()
+        .child(
+            div()
+                .mt_2()
+                .w_full()
+                .border_1()
+                .border_color(rgb(0x354252))
+                .bg(rgb(0x0b1118))
+                .px_2()
+                .py_1()
+                .child(
+                    Input::new(&review_comment_edit_input)
+                        .w_full()
+                        .small()
+                        .appearance(false)
+                        .bordered(false)
+                        .focus_bordered(false),
+                ),
+        )
+        .when_some(edit_error, |element, error| {
+            element.child(
+                div()
+                    .pt_1()
+                    .text_xs()
+                    .text_color(rgb(0xf87171))
+                    .child(error),
+            )
+        })
+        .child(
+            div()
+                .pt_1()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap_2()
+                .child(
+                    Button::new(format!("cancel-comment-edit-{comment_id}"))
+                        .label("Cancel")
+                        .xsmall()
+                        .ghost()
+                        .disabled(edit_submitting)
+                        .on_click({
+                            let view_entity = view_entity.clone();
+                            move |_, window, cx| {
+                                view_entity.update(cx, |view, cx| {
+                                    view.cancel_review_comment_edit(window, cx);
+                                });
+                            }
+                        }),
+                )
+                .child(
+                    Button::new(format!("save-comment-edit-{comment_id}"))
+                        .label("Save")
+                        .xsmall()
+                        .primary()
+                        .loading(edit_submitting)
+                        .disabled(edit_body_empty || edit_submitting)
+                        .on_click({
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            move |_, _, cx| {
+                                view_entity.update(cx, |view, cx| {
+                                    view.submit_review_comment_edit(comment_id.clone(), cx);
+                                });
+                            }
+                        }),
+                ),
+        )
+}
+
+pub(crate) fn review_comment_action_visibility(comment: &ReviewComment) -> (bool, bool) {
+    (comment.viewer_can_update, comment.viewer_can_delete)
+}
