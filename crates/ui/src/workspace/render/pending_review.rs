@@ -18,9 +18,10 @@ impl AppView {
         pending_review: PendingReviewSession,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let body_input = self.pending_review_body_input.clone();
+        let body_input = self.review_composer_state.pending_review_body_input.clone();
         let submitting = self.is_submitting_pending_review;
         let body_empty = self
+            .review_composer_state
             .pending_review_body_input
             .read(cx)
             .value()

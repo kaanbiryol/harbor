@@ -191,10 +191,12 @@ impl AppView {
                                 &visible_file_indices,
                                 &self.reviewed_file_paths,
                                 &self.review_threads,
-                                self.review_composer.as_ref(),
+                                self.review_composer_state.composer.as_ref(),
                                 self.review_comment_error.as_deref(),
-                                self.review_thread_reply_thread_id.as_deref(),
-                                self.review_comment_edit_comment_id.as_deref(),
+                                self.review_composer_state.thread_reply_thread_id.as_deref(),
+                                self.review_composer_state
+                                    .comment_edit_comment_id
+                                    .as_deref(),
                                 self.detail_loading.files,
                                 self.files_error.as_deref(),
                                 self.diff_list_scroll.clone(),

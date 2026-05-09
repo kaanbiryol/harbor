@@ -145,13 +145,16 @@ pub(crate) fn render_review_panel(
                                                 index,
                                                 thread,
                                                 active_review_thread_reply: view
-                                                    .review_thread_reply_thread_id
+                                                    .review_composer_state
+                                                    .thread_reply_thread_id
                                                     .as_deref(),
                                                 review_thread_reply_input: view
-                                                    .review_thread_reply_input
+                                                    .review_composer_state
+                                                    .thread_reply_input
                                                     .clone(),
                                                 reply_body_empty: view
-                                                    .review_thread_reply_input
+                                                    .review_composer_state
+                                                    .thread_reply_input
                                                     .read(_cx)
                                                     .value()
                                                     .trim()
@@ -453,7 +456,10 @@ mod tests {
         cx.simulate_click(reply_bounds.center(), Modifiers::none());
 
         assert_eq!(
-            view_entity.read_with(cx, |view, _| view.review_thread_reply_thread_id.clone()),
+            view_entity.read_with(cx, |view, _| view
+                .review_composer_state
+                .thread_reply_thread_id
+                .clone()),
             Some("thread-1".to_string())
         );
 
@@ -463,7 +469,9 @@ mod tests {
             .expect("review panel reply cancel button should render");
         cx.simulate_click(cancel_bounds.center(), Modifiers::none());
 
-        assert!(view_entity.read_with(cx, |view, _| view.review_thread_reply_thread_id.is_none()));
+        assert!(view_entity.read_with(cx, |view, _| {
+            view.review_composer_state.thread_reply_thread_id.is_none()
+        }));
     }
 
     #[gpui::test]
@@ -526,10 +534,14 @@ mod tests {
             let render_state =
                 self.view_entity
                     .read_with(cx, |view, app| ReviewPanelRowTestState {
-                        active_reply_thread_id: view.review_thread_reply_thread_id.clone(),
-                        reply_input: view.review_thread_reply_input.clone(),
+                        active_reply_thread_id: view
+                            .review_composer_state
+                            .thread_reply_thread_id
+                            .clone(),
+                        reply_input: view.review_composer_state.thread_reply_input.clone(),
                         reply_body_empty: view
-                            .review_thread_reply_input
+                            .review_composer_state
+                            .thread_reply_input
                             .read(app)
                             .value()
                             .trim()

@@ -275,10 +275,12 @@ impl UniformListDecoration for DiffStickyHeaderDecoration {
             view.reviewed_file_paths(),
             visible_range.start,
             &view.review_threads,
-            view.review_composer.as_ref(),
+            view.review_composer_state.composer.as_ref(),
             view.review_comment_error.as_deref(),
-            view.review_thread_reply_thread_id.as_deref(),
-            view.review_comment_edit_comment_id.as_deref(),
+            view.review_composer_state.thread_reply_thread_id.as_deref(),
+            view.review_composer_state
+                .comment_edit_comment_id
+                .as_deref(),
         ) else {
             return div().into_any_element();
         };

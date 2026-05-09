@@ -21,11 +21,11 @@ impl AppView {
         target: ReviewLineTarget,
         cx: &mut Context<Self>,
     ) {
-        self.review_line_selection = Some(ReviewLineSelection {
+        self.review_composer_state.line_selection = Some(ReviewLineSelection {
             anchor: target.clone(),
             current: target,
         });
-        self.review_composer = None;
+        self.review_composer_state.composer = None;
         self.review_comment_error = None;
         self.active_tab = PanelTab::Diff;
         self.status = "Started review line selection".to_string();
@@ -37,7 +37,7 @@ impl AppView {
         target: ReviewLineTarget,
         cx: &mut Context<Self>,
     ) {
-        if let Some(selection) = self.review_line_selection.as_mut() {
+        if let Some(selection) = self.review_composer_state.line_selection.as_mut() {
             selection.current = target;
         }
         cx.notify();
@@ -48,7 +48,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(selection) = self.review_line_selection.take() else {
+        let Some(selection) = self.review_composer_state.line_selection.take() else {
             return;
         };
 
@@ -56,16 +56,18 @@ impl AppView {
             Ok(composer) => {
                 let range = composer.range.clone();
                 let label = review_comment_range_label(&range);
-                self.review_comment_input.update(cx, |input, cx| {
-                    input.set_value("", window, cx);
-                    input.focus(window, cx);
-                });
-                self.review_composer = Some(composer);
+                self.review_composer_state
+                    .comment_input
+                    .update(cx, |input, cx| {
+                        input.set_value("", window, cx);
+                        input.focus(window, cx);
+                    });
+                self.review_composer_state.composer = Some(composer);
                 self.review_comment_error = None;
                 self.status = format!("Opened review composer for {label}");
             }
             Err(message) => {
-                self.review_composer = None;
+                self.review_composer_state.composer = None;
                 self.review_comment_error = Some(message.clone());
                 self.status = message;
             }
@@ -76,9 +78,11 @@ impl AppView {
 
     pub(crate) fn cancel_review_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.clear_review_composer_state();
-        self.review_comment_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
+        self.review_composer_state
+            .comment_input
+            .update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
         self.status = "Cancelled review comment".to_string();
         cx.notify();
     }
@@ -89,12 +93,14 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.review_thread_reply_thread_id = Some(thread_id);
+        self.review_composer_state.thread_reply_thread_id = Some(thread_id);
         self.review_thread_reply_error = None;
-        self.review_thread_reply_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-            input.focus(window, cx);
-        });
+        self.review_composer_state
+            .thread_reply_input
+            .update(cx, |input, cx| {
+                input.set_value("", window, cx);
+                input.focus(window, cx);
+            });
         self.status = "Opened review thread reply".to_string();
         cx.notify();
     }
@@ -104,11 +110,13 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.review_thread_reply_thread_id = None;
+        self.review_composer_state.thread_reply_thread_id = None;
         self.review_thread_reply_error = None;
-        self.review_thread_reply_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
+        self.review_composer_state
+            .thread_reply_input
+            .update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
         self.status = "Cancelled review thread reply".to_string();
         cx.notify();
     }
@@ -124,7 +132,12 @@ impl AppView {
             return;
         };
 
-        let body = self.review_thread_reply_input.read(cx).value().to_string();
+        let body = self
+            .review_composer_state
+            .thread_reply_input
+            .read(cx)
+            .value()
+            .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
             self.review_thread_reply_error = Some(ReviewThreadUiError {
@@ -190,7 +203,7 @@ impl AppView {
         }
 
         self.is_submitting_review_thread_reply = false;
-        self.review_thread_reply_thread_id = None;
+        self.review_composer_state.thread_reply_thread_id = None;
         self.review_thread_reply_error = None;
         self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
@@ -223,8 +236,9 @@ impl AppView {
 
                         let message = format!("Failed to post reply: {error}");
                         if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            if view.review_thread_reply_thread_id.is_none() {
-                                view.review_thread_reply_thread_id = Some(thread_id.clone());
+                            if view.review_composer_state.thread_reply_thread_id.is_none() {
+                                view.review_composer_state.thread_reply_thread_id =
+                                    Some(thread_id.clone());
                             }
                             view.review_thread_reply_error = Some(ReviewThreadUiError {
                                 thread_id,
@@ -351,12 +365,14 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.review_comment_edit_comment_id = Some(comment_id);
+        self.review_composer_state.comment_edit_comment_id = Some(comment_id);
         self.review_comment_edit_error = None;
-        self.review_comment_edit_input.update(cx, |input, cx| {
-            input.set_value(body, window, cx);
-            input.focus(window, cx);
-        });
+        self.review_composer_state
+            .comment_edit_input
+            .update(cx, |input, cx| {
+                input.set_value(body, window, cx);
+                input.focus(window, cx);
+            });
         self.status = "Opened review comment editor".to_string();
         cx.notify();
     }
@@ -366,11 +382,13 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.review_comment_edit_comment_id = None;
+        self.review_composer_state.comment_edit_comment_id = None;
         self.review_comment_edit_error = None;
-        self.review_comment_edit_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
+        self.review_composer_state
+            .comment_edit_input
+            .update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
         self.status = "Cancelled review comment edit".to_string();
         cx.notify();
     }
@@ -416,7 +434,12 @@ impl AppView {
             return;
         }
 
-        let body = self.review_comment_edit_input.read(cx).value().to_string();
+        let body = self
+            .review_composer_state
+            .comment_edit_input
+            .read(cx)
+            .value()
+            .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
             self.review_comment_edit_error = Some(ReviewCommentUiError {
@@ -429,7 +452,7 @@ impl AppView {
         }
 
         self.is_submitting_review_comment_edit = true;
-        self.review_comment_edit_comment_id = Some(comment_id.clone());
+        self.review_composer_state.comment_edit_comment_id = Some(comment_id.clone());
         self.review_comment_edit_error = None;
         self.status = format!("Updating review comment on PR #{}", pr.number);
         cx.notify();
@@ -447,7 +470,7 @@ impl AppView {
                         if let Some(comment) = view.review_comment_mut(&comment_id) {
                             comment.body = body;
                         }
-                        view.review_comment_edit_comment_id = None;
+                        view.review_composer_state.comment_edit_comment_id = None;
                         view.review_comment_edit_error = None;
                         view.status = format!("Updated review comment on PR #{}", pr.number);
                         view.load_selected_review_data(cx);
@@ -526,8 +549,9 @@ impl AppView {
                 match result {
                     Ok(()) => {
                         view.remove_review_comment(&comment_id);
-                        view.review_comment_edit_comment_id = view
-                            .review_comment_edit_comment_id
+                        view.review_composer_state.comment_edit_comment_id = view
+                            .review_composer_state
+                            .comment_edit_comment_id
                             .take()
                             .filter(|active_id| active_id != &comment_id);
                         view.review_comment_action_error = None;

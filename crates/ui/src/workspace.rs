@@ -154,6 +154,17 @@ struct PullRequestDetailLoadingState {
     reviews: bool,
 }
 
+pub(crate) struct ReviewComposerState {
+    pub(crate) composer: Option<ReviewComposer>,
+    pub(crate) line_selection: Option<ReviewLineSelection>,
+    pub(crate) comment_input: Entity<InputState>,
+    pub(crate) thread_reply_thread_id: Option<String>,
+    pub(crate) thread_reply_input: Entity<InputState>,
+    pub(crate) comment_edit_comment_id: Option<String>,
+    pub(crate) comment_edit_input: Entity<InputState>,
+    pub(crate) pending_review_body_input: Entity<InputState>,
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -165,15 +176,8 @@ pub struct AppView {
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
     pub(crate) review_threads: Vec<ReviewThread>,
-    pub(crate) review_composer: Option<ReviewComposer>,
-    pub(crate) review_line_selection: Option<ReviewLineSelection>,
+    pub(crate) review_composer_state: ReviewComposerState,
     pub(crate) pending_review: Option<PendingReviewSession>,
-    pub(crate) review_comment_input: Entity<InputState>,
-    pub(crate) review_thread_reply_thread_id: Option<String>,
-    pub(crate) review_thread_reply_input: Entity<InputState>,
-    pub(crate) review_comment_edit_comment_id: Option<String>,
-    pub(crate) review_comment_edit_input: Entity<InputState>,
-    pub(crate) pending_review_body_input: Entity<InputState>,
     pub(crate) log_chunk: Option<LogChunk>,
     pr_list_task: Option<Task<()>>,
     pr_detail_tasks: Vec<Task<()>>,
@@ -347,15 +351,17 @@ impl AppView {
             workflow_jobs: Vec::new(),
             pull_request_reviews,
             review_threads,
-            review_composer: None,
-            review_line_selection: None,
+            review_composer_state: ReviewComposerState {
+                composer: None,
+                line_selection: None,
+                comment_input: review_comment_input,
+                thread_reply_thread_id: None,
+                thread_reply_input: review_thread_reply_input,
+                comment_edit_comment_id: None,
+                comment_edit_input: review_comment_edit_input,
+                pending_review_body_input,
+            },
             pending_review: None,
-            review_comment_input,
-            review_thread_reply_thread_id: None,
-            review_thread_reply_input,
-            review_comment_edit_comment_id: None,
-            review_comment_edit_input,
-            pending_review_body_input,
             log_chunk: None,
             pr_list_task: None,
             pr_detail_tasks: Vec::new(),
@@ -543,10 +549,12 @@ impl AppView {
             &self.reviewed_file_paths,
             file_index,
             &self.review_threads,
-            self.review_composer.as_ref(),
+            self.review_composer_state.composer.as_ref(),
             self.review_comment_error.as_deref(),
-            self.review_thread_reply_thread_id.as_deref(),
-            self.review_comment_edit_comment_id.as_deref(),
+            self.review_composer_state.thread_reply_thread_id.as_deref(),
+            self.review_composer_state
+                .comment_edit_comment_id
+                .as_deref(),
         )
     }
 

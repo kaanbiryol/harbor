@@ -21,7 +21,7 @@ impl AppView {
             return;
         }
 
-        let Some(composer) = self.review_composer.clone() else {
+        let Some(composer) = self.review_composer_state.composer.clone() else {
             self.review_comment_error = Some("Select diff lines before commenting".to_string());
             self.status = "Select diff lines before commenting".to_string();
             cx.notify();
@@ -34,7 +34,12 @@ impl AppView {
             return;
         };
 
-        let body = self.review_comment_input.read(cx).value().to_string();
+        let body = self
+            .review_composer_state
+            .comment_input
+            .read(cx)
+            .value()
+            .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
             self.review_comment_error = Some("Enter a comment before sending".to_string());
@@ -80,8 +85,8 @@ impl AppView {
         }
 
         self.is_submitting_review_comment = submission == ReviewCommentSubmission::StartReview;
-        self.review_composer = None;
-        self.review_line_selection = None;
+        self.review_composer_state.composer = None;
+        self.review_composer_state.line_selection = None;
         self.review_comment_error = None;
         self.status = match submission {
             ReviewCommentSubmission::SingleComment => {
@@ -184,8 +189,8 @@ impl AppView {
 
                         let message = format!("Failed to submit review comment: {error}");
                         if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            if view.review_composer.is_none() {
-                                view.review_composer = Some(composer);
+                            if view.review_composer_state.composer.is_none() {
+                                view.review_composer_state.composer = Some(composer);
                             }
                             view.review_comment_error = Some(message.clone());
                             view.status = message;
@@ -230,7 +235,12 @@ impl AppView {
             return;
         };
 
-        let body = self.pending_review_body_input.read(cx).value().to_string();
+        let body = self
+            .review_composer_state
+            .pending_review_body_input
+            .read(cx)
+            .value()
+            .to_string();
         if event == SubmitPullRequestReviewEvent::Comment
             && pending_review.comment_count == 0
             && body.trim().is_empty()
@@ -271,9 +281,12 @@ impl AppView {
                     Ok(()) => {
                         view.pending_review = None;
                         view.pending_review_error = None;
-                        view.pending_review_body_input.update(cx, |input, cx| {
-                            input.set_value("", window, cx);
-                        });
+                        view.review_composer_state.pending_review_body_input.update(
+                            cx,
+                            |input, cx| {
+                                input.set_value("", window, cx);
+                            },
+                        );
                         view.status = format!("Submitted pending review on PR #{}", pr.number);
                         view.reload_pull_request_inbox(cx);
                     }

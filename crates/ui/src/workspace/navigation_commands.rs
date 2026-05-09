@@ -212,10 +212,12 @@ impl AppView {
             file_index,
             hunk_index,
             &self.review_threads,
-            self.review_composer.as_ref(),
+            self.review_composer_state.composer.as_ref(),
             self.review_comment_error.as_deref(),
-            self.review_thread_reply_thread_id.as_deref(),
-            self.review_comment_edit_comment_id.as_deref(),
+            self.review_composer_state.thread_reply_thread_id.as_deref(),
+            self.review_composer_state
+                .comment_edit_comment_id
+                .as_deref(),
         ) {
             self.diff_list_scroll
                 .scroll_to_item(row_index, ScrollStrategy::Center);

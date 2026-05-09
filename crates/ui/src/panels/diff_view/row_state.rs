@@ -41,17 +41,27 @@ impl<'a> DiffRowRenderState<'a> {
     pub(super) fn from_view(view: &'a AppView, cx: &App, view_entity: Entity<AppView>) -> Self {
         Self {
             review_threads: &view.review_threads,
-            review_composer: view.review_composer.as_ref(),
-            review_line_selection: view.review_line_selection.as_ref(),
+            review_composer: view.review_composer_state.composer.as_ref(),
+            review_line_selection: view.review_composer_state.line_selection.as_ref(),
             pending_review: view.pending_review.as_ref(),
-            review_comment_input: view.review_comment_input.clone(),
-            review_comment_body_empty: view.review_comment_input.read(cx).value().trim().is_empty(),
+            review_comment_input: view.review_composer_state.comment_input.clone(),
+            review_comment_body_empty: view
+                .review_composer_state
+                .comment_input
+                .read(cx)
+                .value()
+                .trim()
+                .is_empty(),
             is_submitting_review_comment: view.is_submitting_review_comment,
             review_comment_error: view.review_comment_error.as_deref(),
-            active_review_thread_reply: view.review_thread_reply_thread_id.as_deref(),
-            review_thread_reply_input: view.review_thread_reply_input.clone(),
+            active_review_thread_reply: view
+                .review_composer_state
+                .thread_reply_thread_id
+                .as_deref(),
+            review_thread_reply_input: view.review_composer_state.thread_reply_input.clone(),
             review_thread_reply_body_empty: view
-                .review_thread_reply_input
+                .review_composer_state
+                .thread_reply_input
                 .read(cx)
                 .value()
                 .trim()
@@ -60,10 +70,14 @@ impl<'a> DiffRowRenderState<'a> {
             review_thread_reply_error: view.review_thread_reply_error.as_ref(),
             review_thread_action_thread_id: view.review_thread_action_thread_id.as_deref(),
             review_thread_action_error: view.review_thread_action_error.as_ref(),
-            active_review_comment_edit: view.review_comment_edit_comment_id.as_deref(),
-            review_comment_edit_input: view.review_comment_edit_input.clone(),
+            active_review_comment_edit: view
+                .review_composer_state
+                .comment_edit_comment_id
+                .as_deref(),
+            review_comment_edit_input: view.review_composer_state.comment_edit_input.clone(),
             review_comment_edit_body_empty: view
-                .review_comment_edit_input
+                .review_composer_state
+                .comment_edit_input
                 .read(cx)
                 .value()
                 .trim()

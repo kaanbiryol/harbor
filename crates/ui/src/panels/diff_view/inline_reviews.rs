@@ -468,7 +468,10 @@ mod tests {
         cx.simulate_click(reply_bounds.center(), Modifiers::none());
 
         assert_eq!(
-            view_entity.read_with(cx, |view, _| view.review_thread_reply_thread_id.clone()),
+            view_entity.read_with(cx, |view, _| view
+                .review_composer_state
+                .thread_reply_thread_id
+                .clone()),
             Some("thread-1".to_string())
         );
     }
@@ -497,7 +500,9 @@ mod tests {
             .expect("edit cancel button should render");
         cx.simulate_click(cancel_bounds.center(), Modifiers::none());
 
-        assert!(view_entity.read_with(cx, |view, _| view.review_comment_edit_comment_id.is_none()));
+        assert!(view_entity.read_with(cx, |view, _| {
+            view.review_composer_state.comment_edit_comment_id.is_none()
+        }));
     }
 
     fn init_visual_review_test(
@@ -547,10 +552,14 @@ mod tests {
             let render_state = self
                 .view_entity
                 .read_with(cx, |view, app| ReviewThreadTestState {
-                    active_reply_thread_id: view.review_thread_reply_thread_id.clone(),
-                    reply_input: view.review_thread_reply_input.clone(),
+                    active_reply_thread_id: view
+                        .review_composer_state
+                        .thread_reply_thread_id
+                        .clone(),
+                    reply_input: view.review_composer_state.thread_reply_input.clone(),
                     reply_body_empty: view
-                        .review_thread_reply_input
+                        .review_composer_state
+                        .thread_reply_input
                         .read(app)
                         .value()
                         .trim()
@@ -559,10 +568,14 @@ mod tests {
                     review_thread_reply_error: view.review_thread_reply_error.as_ref().cloned(),
                     action_thread_id: view.review_thread_action_thread_id.clone(),
                     action_error: view.review_thread_action_error.as_ref().cloned(),
-                    active_comment_edit_id: view.review_comment_edit_comment_id.clone(),
-                    comment_edit_input: view.review_comment_edit_input.clone(),
+                    active_comment_edit_id: view
+                        .review_composer_state
+                        .comment_edit_comment_id
+                        .clone(),
+                    comment_edit_input: view.review_composer_state.comment_edit_input.clone(),
                     edit_body_empty: view
-                        .review_comment_edit_input
+                        .review_composer_state
+                        .comment_edit_input
                         .read(app)
                         .value()
                         .trim()
