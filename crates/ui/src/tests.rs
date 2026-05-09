@@ -9,8 +9,9 @@ use harbor_git::{ExternalApp, OpenTarget};
 
 use crate::panels::{
     checks_summary_from_runs, github_avatar_url_for_login, merge_blocker, review_action_blocker,
-    review_comment_action_visibility, review_comment_avatar_url, review_reaction_button_label,
-    review_reaction_emoji, review_thread_counts, visible_review_reaction_contents,
+    review_comment_action_visibility, review_comment_avatar_url, review_comment_body_markdown,
+    review_comment_ui_state, review_reaction_button_label, review_reaction_emoji,
+    review_thread_counts, review_thread_ui_state, visible_review_reaction_contents,
 };
 use crate::workspace::{
     ChangedFileFilters, ChangedFileTreeRow, OpenSelectedPullRequestBehavior, OpenTargetStatus,
@@ -405,6 +406,59 @@ fn exposes_review_comment_action_visibility() {
     comment.viewer_can_delete = true;
 
     assert_eq!(review_comment_action_visibility(&comment), (true, true));
+}
+
+#[test]
+fn derives_inline_review_comment_ui_state() {
+    let mut comment = review_comment();
+    comment.viewer_can_update = true;
+
+    let state = review_comment_ui_state(&comment, Some("comment"), true, Some("other"));
+
+    assert!(state.can_update);
+    assert!(!state.can_delete);
+    assert!(state.show_actions);
+    assert!(state.active_edit);
+    assert!(state.edit_submitting);
+    assert!(!state.action_running);
+
+    let state = review_comment_ui_state(&comment, None, true, Some("comment"));
+
+    assert!(!state.active_edit);
+    assert!(!state.edit_submitting);
+    assert!(state.action_running);
+}
+
+#[test]
+fn derives_inline_review_thread_reply_ui_state() {
+    let thread = review_thread(ReviewThreadState::Unresolved);
+    let state = review_thread_ui_state(&thread, Some("thread"), false, true, Some("thread"));
+
+    assert!(state.active_reply);
+    assert!(state.action_running);
+    assert!(state.reply_submitting);
+    assert!(state.reply_disabled);
+    assert!(state.reply_button_disabled);
+    assert!(!state.is_resolved);
+    assert!(state.can_toggle_resolution);
+
+    let outdated_thread = review_thread(ReviewThreadState::Outdated);
+    let state = review_thread_ui_state(&outdated_thread, Some("other"), true, true, None);
+
+    assert!(!state.active_reply);
+    assert!(!state.reply_submitting);
+    assert!(state.reply_disabled);
+    assert!(state.reply_button_disabled);
+    assert!(!state.can_toggle_resolution);
+}
+
+#[test]
+fn preserves_review_comment_markdown_body() {
+    assert_eq!(
+        review_comment_body_markdown("**bold**\n\n- list item"),
+        "**bold**\n\n- list item"
+    );
+    assert_eq!(review_comment_body_markdown(" \n\t "), "empty comment");
 }
 
 #[test]

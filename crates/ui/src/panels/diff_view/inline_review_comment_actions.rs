@@ -9,16 +9,31 @@ use harbor_domain::ReviewComment;
 
 use crate::workspace::AppView;
 
+pub(super) struct ReviewCommentActionsMenuState {
+    pub(super) comment_id: String,
+    pub(super) comment_body: String,
+    pub(super) can_update: bool,
+    pub(super) can_delete: bool,
+    pub(super) active_edit: bool,
+    pub(super) edit_submitting: bool,
+    pub(super) action_running: bool,
+    pub(super) view_entity: Entity<AppView>,
+}
+
 pub(super) fn render_review_comment_actions_menu(
-    comment_id: String,
-    comment_body: String,
-    can_update: bool,
-    can_delete: bool,
-    active_edit: bool,
-    edit_submitting: bool,
-    action_running: bool,
-    view_entity: Entity<AppView>,
+    state: ReviewCommentActionsMenuState,
 ) -> impl IntoElement {
+    let ReviewCommentActionsMenuState {
+        comment_id,
+        comment_body,
+        can_update,
+        can_delete,
+        active_edit,
+        edit_submitting,
+        action_running,
+        view_entity,
+    } = state;
+
     Popover::new(format!("comment-actions-{comment_id}"))
         .appearance(false)
         .anchor(Anchor::TopRight)

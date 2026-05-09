@@ -1,5 +1,9 @@
-use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px, rgb};
-use gpui_component::{StyledExt, input::InputState};
+use gpui::{AnyElement, Entity, IntoElement, StyleRefinement, div, prelude::*, px, rems, rgb};
+use gpui_component::{
+    StyledExt,
+    input::InputState,
+    text::{TextView, TextViewStyle},
+};
 use harbor_domain::ReviewComment;
 
 use crate::workspace::{
@@ -9,42 +13,108 @@ use crate::workspace::{
 use super::{
     avatars::render_review_comment_avatar,
     comment_actions::{
-        render_review_comment_actions_menu, render_review_comment_edit_composer,
-        review_comment_action_visibility,
+        ReviewCommentActionsMenuState, render_review_comment_actions_menu,
+        render_review_comment_edit_composer, review_comment_action_visibility,
     },
     reactions::render_review_reactions,
 };
 
-pub(super) fn render_review_comment_inline(
-    comment: &ReviewComment,
+#[derive(Clone)]
+pub(in crate::panels::diff_view) struct ReviewCommentListRenderState<'a> {
+    pub(in crate::panels::diff_view) active_review_comment_edit: Option<&'a str>,
+    pub(in crate::panels::diff_view) review_comment_edit_input: Entity<InputState>,
+    pub(in crate::panels::diff_view) edit_body_empty: bool,
+    pub(in crate::panels::diff_view) is_submitting_edit: bool,
+    pub(in crate::panels::diff_view) edit_error: Option<&'a ReviewCommentUiError>,
+    pub(in crate::panels::diff_view) action_comment_id: Option<&'a str>,
+    pub(in crate::panels::diff_view) comment_action_error: Option<&'a ReviewCommentUiError>,
+    pub(in crate::panels::diff_view) reaction_action: Option<&'a ReviewReactionAction>,
+    pub(in crate::panels::diff_view) reaction_error: Option<&'a ReviewCommentUiError>,
+    pub(in crate::panels::diff_view) view_entity: Entity<AppView>,
+}
+
+pub(super) struct ReviewCommentRenderState<'a> {
+    comment: &'a ReviewComment,
     separated: bool,
-    active_review_comment_edit: Option<&str>,
+    thread_resolved: bool,
+    ui_state: ReviewCommentUiState,
     review_comment_edit_input: Entity<InputState>,
     edit_body_empty: bool,
-    is_submitting_edit: bool,
-    edit_error: Option<&ReviewCommentUiError>,
-    action_comment_id: Option<&str>,
-    comment_action_error: Option<&ReviewCommentUiError>,
-    reaction_action: Option<&ReviewReactionAction>,
-    reaction_error: Option<&ReviewCommentUiError>,
-    thread_resolved: bool,
+    edit_error: Option<String>,
+    action_error: Option<String>,
+    reaction_action: Option<&'a ReviewReactionAction>,
+    reaction_error: Option<String>,
     view_entity: Entity<AppView>,
-) -> AnyElement {
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ReviewCommentUiState {
+    pub(crate) can_update: bool,
+    pub(crate) can_delete: bool,
+    pub(crate) show_actions: bool,
+    pub(crate) active_edit: bool,
+    pub(crate) edit_submitting: bool,
+    pub(crate) action_running: bool,
+}
+
+impl<'a> ReviewCommentRenderState<'a> {
+    pub(super) fn new(
+        comment: &'a ReviewComment,
+        separated: bool,
+        thread_resolved: bool,
+        list_state: &ReviewCommentListRenderState<'a>,
+    ) -> Self {
+        let ui_state = review_comment_ui_state(
+            comment,
+            list_state.active_review_comment_edit,
+            list_state.is_submitting_edit,
+            list_state.action_comment_id,
+        );
+        let edit_error = list_state
+            .edit_error
+            .filter(|error| error.comment_id == comment.id)
+            .map(|error| error.message.clone());
+        let action_error = list_state
+            .comment_action_error
+            .filter(|error| error.comment_id == comment.id)
+            .map(|error| error.message.clone());
+        let reaction_error = list_state
+            .reaction_error
+            .filter(|error| error.comment_id == comment.id)
+            .map(|error| error.message.clone());
+
+        Self {
+            comment,
+            separated,
+            thread_resolved,
+            ui_state,
+            review_comment_edit_input: list_state.review_comment_edit_input.clone(),
+            edit_body_empty: list_state.edit_body_empty,
+            edit_error,
+            action_error,
+            reaction_action: list_state.reaction_action,
+            reaction_error,
+            view_entity: list_state.view_entity.clone(),
+        }
+    }
+}
+
+pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) -> AnyElement {
+    let ReviewCommentRenderState {
+        comment,
+        separated,
+        thread_resolved,
+        ui_state,
+        review_comment_edit_input,
+        edit_body_empty,
+        edit_error,
+        action_error,
+        reaction_action,
+        reaction_error,
+        view_entity,
+    } = state;
     let comment_id = comment.id.clone();
     let comment_body = comment.body.clone();
-    let active_edit = active_review_comment_edit == Some(comment.id.as_str());
-    let edit_submitting = active_edit && is_submitting_edit;
-    let action_running = action_comment_id == Some(comment.id.as_str());
-    let edit_error = edit_error
-        .filter(|error| error.comment_id == comment.id)
-        .map(|error| error.message.clone());
-    let action_error = comment_action_error
-        .filter(|error| error.comment_id == comment.id)
-        .map(|error| error.message.clone());
-    let reaction_error = reaction_error
-        .filter(|error| error.comment_id == comment.id)
-        .map(|error| error.message.clone());
-    let (can_update, can_delete) = review_comment_action_visibility(comment);
     let author_color = if thread_resolved {
         rgb(0xb7c0cd)
     } else {
@@ -116,28 +186,34 @@ pub(super) fn render_review_comment_inline(
                                     )
                                 }),
                         )
-                        .when(can_update || can_delete, {
+                        .when(ui_state.show_actions, {
                             let view_entity = view_entity.clone();
                             let comment_id = comment_id.clone();
                             let comment_body = comment_body.clone();
                             move |element| {
                                 element.child(render_review_comment_actions_menu(
-                                    comment_id.clone(),
-                                    comment_body.clone(),
-                                    can_update,
-                                    can_delete,
-                                    active_edit,
-                                    edit_submitting,
-                                    action_running,
-                                    view_entity.clone(),
+                                    ReviewCommentActionsMenuState {
+                                        comment_id: comment_id.clone(),
+                                        comment_body: comment_body.clone(),
+                                        can_update: ui_state.can_update,
+                                        can_delete: ui_state.can_delete,
+                                        active_edit: ui_state.active_edit,
+                                        edit_submitting: ui_state.edit_submitting,
+                                        action_running: ui_state.action_running,
+                                        view_entity: view_entity.clone(),
+                                    },
                                 ))
                             }
                         }),
                 )
-                .when(!active_edit, |element| {
-                    element.child(render_review_comment_body(&comment.body, body_color))
+                .when(!ui_state.active_edit, |element| {
+                    element.child(render_review_comment_body(
+                        &comment.id,
+                        &comment.body,
+                        body_color,
+                    ))
                 })
-                .when(active_edit, {
+                .when(ui_state.active_edit, {
                     let view_entity = view_entity.clone();
                     let comment_id = comment_id.clone();
                     move |element| {
@@ -145,7 +221,7 @@ pub(super) fn render_review_comment_inline(
                             comment_id.clone(),
                             review_comment_edit_input.clone(),
                             edit_body_empty,
-                            edit_submitting,
+                            ui_state.edit_submitting,
                             edit_error.clone(),
                             view_entity.clone(),
                         ))
@@ -178,25 +254,57 @@ pub(super) fn render_review_comment_inline(
         .into_any_element()
 }
 
-fn render_review_comment_body(body: &str, color: gpui::Rgba) -> impl IntoElement {
-    let lines: Vec<String> = body.lines().map(str::to_string).collect::<Vec<_>>();
-    let lines = if lines.is_empty() {
-        vec!["empty comment".to_string()]
-    } else {
-        lines
-    };
+fn render_review_comment_body(comment_id: &str, body: &str, color: gpui::Rgba) -> impl IntoElement {
+    div().pt_2().text_xs().text_color(color).child(
+        TextView::markdown(
+            format!("review-comment-body-{comment_id}"),
+            review_comment_body_markdown(body),
+        )
+        .style(review_comment_markdown_style())
+        .selectable(true),
+    )
+}
 
-    div()
-        .pt_2()
-        .text_xs()
-        .text_color(color)
-        .children(lines.into_iter().map(|line| {
-            div().min_h(px(16.0)).child(if line.is_empty() {
-                " ".to_string()
-            } else {
-                line
-            })
-        }))
+fn review_comment_markdown_style() -> TextViewStyle {
+    TextViewStyle::default()
+        .paragraph_gap(rems(0.25))
+        .heading_font_size(|level, size| match level {
+            1..=2 => size,
+            _ => size * 0.9,
+        })
+        .code_block(
+            StyleRefinement::default()
+                .bg(rgb(0x0b1118))
+                .p_1()
+                .text_size(px(11.0)),
+        )
+}
+
+pub(crate) fn review_comment_body_markdown(body: &str) -> String {
+    if body.trim().is_empty() {
+        "empty comment".to_string()
+    } else {
+        body.to_string()
+    }
+}
+
+pub(crate) fn review_comment_ui_state(
+    comment: &ReviewComment,
+    active_review_comment_edit: Option<&str>,
+    is_submitting_edit: bool,
+    action_comment_id: Option<&str>,
+) -> ReviewCommentUiState {
+    let (can_update, can_delete) = review_comment_action_visibility(comment);
+    let active_edit = active_review_comment_edit == Some(comment.id.as_str());
+
+    ReviewCommentUiState {
+        can_update,
+        can_delete,
+        show_actions: can_update || can_delete,
+        active_edit,
+        edit_submitting: active_edit && is_submitting_edit,
+        action_running: action_comment_id == Some(comment.id.as_str()),
+    }
 }
 
 fn review_comment_time_label(comment: &ReviewComment) -> String {

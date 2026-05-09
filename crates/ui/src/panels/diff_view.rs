@@ -29,14 +29,16 @@ use file_section::{
     render_diff_file_section_header, render_diff_file_section_header_spacer,
     render_diff_unavailable_row,
 };
+use inline_reviews::{
+    ReviewCommentListRenderState, ReviewComposerRenderState, ReviewThreadRenderState,
+    render_review_composer_inline, render_review_composer_spacer, render_review_marker,
+    render_review_thread_inline,
+};
 #[cfg(test)]
 pub(crate) use inline_reviews::{
     github_avatar_url_for_login, review_comment_action_visibility, review_comment_avatar_url,
-    review_reaction_button_label, review_reaction_emoji, visible_review_reaction_contents,
-};
-use inline_reviews::{
-    render_review_composer_inline, render_review_composer_spacer, render_review_marker,
-    render_review_thread_inline,
+    review_comment_body_markdown, review_comment_ui_state, review_reaction_button_label,
+    review_reaction_emoji, review_thread_ui_state, visible_review_reaction_contents,
 };
 pub(crate) use layout::{continuous_diff_file_row_index, continuous_diff_hunk_row_index};
 use layout::{
@@ -507,18 +509,20 @@ fn render_diff_rows(
                         {
                             if let Some(composer) = row_state.review_composer.cloned() {
                                 rows.push(render_virtualized_inline_block(
-                                    render_review_composer_inline(
+                                    render_review_composer_inline(ReviewComposerRenderState {
                                         composer,
-                                        row_state.pending_review.cloned(),
-                                        row_state.review_comment_input.clone(),
-                                        row_state.review_comment_body_empty,
-                                        row_state.is_submitting_review_comment,
-                                        row_state.review_comment_error,
-                                        composer_row_count,
+                                        has_pending_review: row_state.pending_review.is_some(),
+                                        input: row_state.review_comment_input.clone(),
+                                        body_empty: row_state.review_comment_body_empty,
+                                        is_submitting: row_state.is_submitting_review_comment,
+                                        error: row_state
+                                            .review_comment_error
+                                            .map(ToString::to_string),
+                                        row_count: composer_row_count,
                                         line_number_width,
                                         review_marker_width,
-                                        row_state.view_entity.clone(),
-                                    )
+                                        view_entity: row_state.view_entity.clone(),
+                                    })
                                     .into_any_element(),
                                     visible_row_offset,
                                 ));
@@ -531,6 +535,19 @@ fn render_diff_rows(
                     *row_index += 1;
                 }
             }
+
+            let comment_state = ReviewCommentListRenderState {
+                active_review_comment_edit: row_state.active_review_comment_edit,
+                review_comment_edit_input: row_state.review_comment_edit_input.clone(),
+                edit_body_empty: row_state.review_comment_edit_body_empty,
+                is_submitting_edit: row_state.is_submitting_review_comment_edit,
+                edit_error: row_state.review_comment_edit_error,
+                action_comment_id: row_state.review_comment_action_comment_id,
+                comment_action_error: row_state.review_comment_action_error,
+                reaction_action: row_state.review_reaction_action,
+                reaction_error: row_state.review_reaction_error,
+                view_entity: row_state.view_entity.clone(),
+            };
 
             for thread in matching_threads {
                 let thread_row_count = review_thread_inline_rows_with_controls(
@@ -553,27 +570,23 @@ fn render_diff_rows(
                             && render_row == *row_index
                         {
                             rows.push(render_virtualized_inline_block(
-                                render_review_thread_inline(
+                                render_review_thread_inline(ReviewThreadRenderState {
                                     thread,
                                     line_number_width,
-                                    row_state.active_review_thread_reply,
-                                    row_state.review_thread_reply_input.clone(),
-                                    row_state.review_thread_reply_body_empty,
-                                    row_state.is_submitting_review_thread_reply,
-                                    row_state.review_thread_reply_error,
-                                    row_state.review_thread_action_thread_id,
-                                    row_state.review_thread_action_error,
-                                    row_state.active_review_comment_edit,
-                                    row_state.review_comment_edit_input.clone(),
-                                    row_state.review_comment_edit_body_empty,
-                                    row_state.is_submitting_review_comment_edit,
-                                    row_state.review_comment_edit_error,
-                                    row_state.review_comment_action_comment_id,
-                                    row_state.review_comment_action_error,
-                                    row_state.review_reaction_action,
-                                    row_state.review_reaction_error,
-                                    row_state.view_entity.clone(),
-                                )
+                                    active_review_thread_reply: row_state
+                                        .active_review_thread_reply,
+                                    review_thread_reply_input: row_state
+                                        .review_thread_reply_input
+                                        .clone(),
+                                    reply_body_empty: row_state.review_thread_reply_body_empty,
+                                    is_submitting_reply: row_state
+                                        .is_submitting_review_thread_reply,
+                                    reply_error: row_state.review_thread_reply_error,
+                                    action_thread_id: row_state.review_thread_action_thread_id,
+                                    action_error: row_state.review_thread_action_error,
+                                    comments: comment_state.clone(),
+                                    view_entity: row_state.view_entity.clone(),
+                                })
                                 .into_any_element(),
                                 visible_row_offset,
                             ));
