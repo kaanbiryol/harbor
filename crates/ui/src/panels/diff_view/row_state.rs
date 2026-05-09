@@ -75,7 +75,7 @@ impl<'a> DiffRowRenderState<'a> {
             review_reaction_action: view.review_reaction_action.as_ref(),
             review_reaction_error: view.review_reaction_error.as_ref(),
             active_file: view.active_file_index(),
-            active_hunk: view.active_hunk,
+            active_hunk: view.active_hunk_index(),
             view_entity,
         }
     }

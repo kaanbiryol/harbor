@@ -106,8 +106,8 @@ impl AppView {
         self.review_comment_error = None;
         self.pending_review_error = None;
         self.log_chunk = None;
-        self.active_file = 0;
-        self.active_hunk = 0;
+        self.diff_selection.file_index = 0;
+        self.diff_selection.hunk_index = 0;
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.review_list_scroll
@@ -202,15 +202,15 @@ impl AppView {
                             let count = files.len();
                             view.files = files;
                             view.diffs = diffs;
-                            view.active_file = 0;
-                            view.active_hunk = 0;
+                            view.diff_selection.file_index = 0;
+                            view.diff_selection.hunk_index = 0;
                             view.reset_changed_file_filters();
                             view.prune_reviewed_file_paths();
                             view.ensure_active_file_visible(cx);
                             view.clear_review_composer_state();
                             view.refresh_owned_file_filters(cx);
                             let row_index = view
-                                .file_tree_row_index_for_file(view.active_file, cx)
+                                .file_tree_row_index_for_file(view.diff_selection.file_index, cx)
                                 .unwrap_or(0);
                             view.file_list_scroll
                                 .scroll_to_item(row_index, ScrollStrategy::Top);
@@ -225,8 +225,8 @@ impl AppView {
                             view.reviewed_file_paths.clear();
                             view.reset_changed_file_filters();
                             view.owned_file_paths.clear();
-                            view.active_file = 0;
-                            view.active_hunk = 0;
+                            view.diff_selection.file_index = 0;
+                            view.diff_selection.hunk_index = 0;
                             view.clear_review_composer_state();
                             view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);

@@ -139,6 +139,12 @@ impl PullRequestInboxState {
     }
 }
 
+#[derive(Default)]
+struct DiffSelectionState {
+    file_index: usize,
+    hunk_index: usize,
+}
+
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -172,8 +178,7 @@ pub struct AppView {
     review_list_scroll: UniformListScrollHandle,
     log_list_scroll: UniformListScrollHandle,
     selected_pr: usize,
-    active_file: usize,
-    pub(crate) active_hunk: usize,
+    diff_selection: DiffSelectionState,
     active_tab: PanelTab,
     pull_request_inbox: PullRequestInboxState,
     repository_switcher_open: bool,
@@ -359,8 +364,7 @@ impl AppView {
             review_list_scroll: UniformListScrollHandle::new(),
             log_list_scroll: UniformListScrollHandle::new(),
             selected_pr: 0,
-            active_file: 0,
-            active_hunk: 0,
+            diff_selection: DiffSelectionState::default(),
             active_tab: PanelTab::Diff,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),
             repository_switcher_open: true,
@@ -447,11 +451,15 @@ impl AppView {
     }
 
     pub(crate) fn active_file(&self) -> Option<&DiffFile> {
-        self.files.get(self.active_file)
+        self.files.get(self.diff_selection.file_index)
     }
 
     pub(crate) fn active_file_index(&self) -> usize {
-        self.active_file
+        self.diff_selection.file_index
+    }
+
+    pub(crate) fn active_hunk_index(&self) -> usize {
+        self.diff_selection.hunk_index
     }
 
     pub(crate) fn diff_files(&self) -> &[DiffFile] {
@@ -543,13 +551,13 @@ impl AppView {
 
     fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
         let visible_files = self.visible_file_indices(cx);
-        if visible_files.is_empty() || visible_files.contains(&self.active_file) {
+        if visible_files.is_empty() || visible_files.contains(&self.diff_selection.file_index) {
             return;
         }
 
         if let Some(file_index) = visible_files.first().copied() {
-            self.active_file = file_index;
-            self.active_hunk = 0;
+            self.diff_selection.file_index = file_index;
+            self.diff_selection.hunk_index = 0;
             self.clear_review_composer_state();
             if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
                 self.file_list_scroll
@@ -602,8 +610,8 @@ impl AppView {
             return;
         }
 
-        self.active_file = 0;
-        self.active_hunk = 0;
+        self.diff_selection.file_index = 0;
+        self.diff_selection.hunk_index = 0;
         self.collapsed_file_tree_folders.clear();
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
@@ -659,8 +667,8 @@ impl AppView {
             self.pending_review = None;
             self.log_chunk = None;
             self.selected_pr = 0;
-            self.active_file = 0;
-            self.active_hunk = 0;
+            self.diff_selection.file_index = 0;
+            self.diff_selection.hunk_index = 0;
             self.status =
                 "Select a repository from the header before loading pull requests".to_string();
             cx.notify();
@@ -669,8 +677,8 @@ impl AppView {
 
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(path) = self.files.get(index).map(|file| file.path.clone()) {
-            self.active_file = index;
-            self.active_hunk = 0;
+            self.diff_selection.file_index = index;
+            self.diff_selection.hunk_index = 0;
             self.active_tab = PanelTab::Diff;
             self.clear_review_composer_state();
             if let Some(row_index) = self.file_tree_row_index_for_file(index, cx) {

@@ -169,8 +169,8 @@ impl AppView {
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
             show_files_owned_by_current_user: self.show_files_owned_by_current_user,
             owned_file_paths: self.owned_file_paths.clone(),
-            active_file: self.active_file,
-            active_hunk: self.active_hunk,
+            active_file: self.diff_selection.file_index,
+            active_hunk: self.diff_selection.hunk_index,
             active_tab: self.active_tab,
         })
     }
@@ -223,8 +223,9 @@ impl AppView {
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
         self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
         self.owned_file_paths = snapshot.owned_file_paths;
-        self.active_file = snapshot.active_file.min(self.files.len().saturating_sub(1));
-        self.active_hunk = snapshot.active_hunk;
+        self.diff_selection.file_index =
+            snapshot.active_file.min(self.files.len().saturating_sub(1));
+        self.diff_selection.hunk_index = snapshot.active_hunk;
         self.active_tab = snapshot.active_tab;
 
         self.pr_list_scroll
@@ -258,8 +259,8 @@ impl AppView {
             show_files_owned_by_current_user: self.show_files_owned_by_current_user,
             owned_file_paths: self.owned_file_paths.clone(),
             selected_pr: self.selected_pr,
-            active_file: self.active_file,
-            active_hunk: self.active_hunk,
+            active_file: self.diff_selection.file_index,
+            active_hunk: self.diff_selection.hunk_index,
             active_tab: self.active_tab,
         }
     }
@@ -316,8 +317,9 @@ impl AppView {
         self.selected_pr = snapshot
             .selected_pr
             .min(self.pull_requests.len().saturating_sub(1));
-        self.active_file = snapshot.active_file.min(self.files.len().saturating_sub(1));
-        self.active_hunk = snapshot.active_hunk;
+        self.diff_selection.file_index =
+            snapshot.active_file.min(self.files.len().saturating_sub(1));
+        self.diff_selection.hunk_index = snapshot.active_hunk;
         self.active_tab = snapshot.active_tab;
 
         self.pr_list_scroll

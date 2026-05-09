@@ -21,7 +21,7 @@ impl AppView {
 
         let current_position = visible_files
             .iter()
-            .position(|file_index| *file_index == self.active_file)
+            .position(|file_index| *file_index == self.diff_selection.file_index)
             .unwrap_or(visible_files.len().saturating_sub(1));
         let next_position = (current_position + 1) % visible_files.len();
         self.select_file(visible_files[next_position], cx);
@@ -42,7 +42,7 @@ impl AppView {
 
         let current_position = visible_files
             .iter()
-            .position(|file_index| *file_index == self.active_file)
+            .position(|file_index| *file_index == self.diff_selection.file_index)
             .unwrap_or(0);
         let previous_position = if current_position == 0 {
             visible_files.len() - 1
@@ -91,7 +91,8 @@ impl AppView {
         }
 
         if let Some(current_position) = targets.iter().position(|(_, file_index, hunk_index)| {
-            *file_index == self.active_file && *hunk_index == self.active_hunk
+            *file_index == self.diff_selection.file_index
+                && *hunk_index == self.diff_selection.hunk_index
         }) {
             let next_position = (current_position + 1) % targets.len();
             let (_, file_index, hunk_index) = targets[next_position];
@@ -101,7 +102,7 @@ impl AppView {
         let visible_file_indices = self.visible_file_indices(cx);
         let active_file_position = visible_file_indices
             .iter()
-            .position(|file_index| *file_index == self.active_file);
+            .position(|file_index| *file_index == self.diff_selection.file_index);
 
         active_file_position
             .and_then(|active_file_position| {
@@ -110,7 +111,7 @@ impl AppView {
                     .find(|(file_position, _, hunk_index)| {
                         *file_position > active_file_position
                             || (*file_position == active_file_position
-                                && *hunk_index > self.active_hunk)
+                                && *hunk_index > self.diff_selection.hunk_index)
                     })
                     .copied()
             })
@@ -125,7 +126,8 @@ impl AppView {
         }
 
         if let Some(current_position) = targets.iter().position(|(_, file_index, hunk_index)| {
-            *file_index == self.active_file && *hunk_index == self.active_hunk
+            *file_index == self.diff_selection.file_index
+                && *hunk_index == self.diff_selection.hunk_index
         }) {
             let previous_position = if current_position == 0 {
                 targets.len() - 1
@@ -139,7 +141,7 @@ impl AppView {
         let visible_file_indices = self.visible_file_indices(cx);
         let active_file_position = visible_file_indices
             .iter()
-            .position(|file_index| *file_index == self.active_file);
+            .position(|file_index| *file_index == self.diff_selection.file_index);
 
         active_file_position
             .and_then(|active_file_position| {
@@ -149,7 +151,7 @@ impl AppView {
                     .find(|(file_position, _, hunk_index)| {
                         *file_position < active_file_position
                             || (*file_position == active_file_position
-                                && *hunk_index < self.active_hunk)
+                                && *hunk_index < self.diff_selection.hunk_index)
                     })
                     .copied()
             })
@@ -192,8 +194,8 @@ impl AppView {
         hunk_index: usize,
         cx: &mut Context<Self>,
     ) {
-        self.active_file = file_index;
-        self.active_hunk = hunk_index;
+        self.diff_selection.file_index = file_index;
+        self.diff_selection.hunk_index = hunk_index;
         self.active_tab = PanelTab::Diff;
 
         if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {

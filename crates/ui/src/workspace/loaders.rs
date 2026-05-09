@@ -282,8 +282,8 @@ impl AppView {
                         view.pending_review_error = None;
                         view.log_chunk = None;
                         view.selected_pr = 0;
-                        view.active_file = 0;
-                        view.active_hunk = 0;
+                        view.diff_selection.file_index = 0;
+                        view.diff_selection.hunk_index = 0;
                         view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -314,8 +314,8 @@ impl AppView {
                         view.pending_review_error = None;
                         view.log_chunk = None;
                         view.selected_pr = 0;
-                        view.active_file = 0;
-                        view.active_hunk = 0;
+                        view.diff_selection.file_index = 0;
+                        view.diff_selection.hunk_index = 0;
                         view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                         view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);

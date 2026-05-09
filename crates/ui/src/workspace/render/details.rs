@@ -259,7 +259,7 @@ impl AppView {
                                             rows.push(render_changed_file_row(
                                                 file_row,
                                                 file,
-                                                file_row.file_index == view.active_file,
+                                                file_row.file_index == view.active_file_index(),
                                                 view.reviewed_file_paths.contains(&file.path),
                                                 cx,
                                             ));
