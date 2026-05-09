@@ -4,6 +4,99 @@ use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::AppView;
 
+#[derive(Clone, Debug)]
+pub(super) struct ReviewDataLoadTarget {
+    repo: RepoId,
+    owner: String,
+    name: String,
+    number: u64,
+    generation: u64,
+}
+
+impl ReviewDataLoadTarget {
+    pub(super) fn new(repo: RepoId, number: u64, generation: u64) -> Self {
+        Self {
+            owner: repo.owner.clone(),
+            name: repo.name.clone(),
+            repo,
+            number,
+            generation,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReviewDataLoadMode {
+    Initial,
+    Refresh,
+}
+
+impl ReviewDataLoadMode {
+    fn loaded_review_data_status(
+        self,
+        number: u64,
+        thread_count: usize,
+        has_warnings: bool,
+    ) -> String {
+        match (self, has_warnings) {
+            (Self::Initial, false) => {
+                format!("Loaded review history and {thread_count} threads for PR #{number}")
+            }
+            (Self::Initial, true) => {
+                format!(
+                    "Loaded {thread_count} review threads for PR #{number}, with review warnings"
+                )
+            }
+            (Self::Refresh, false) => {
+                format!("Refreshed review data and {thread_count} threads for PR #{number}")
+            }
+            (Self::Refresh, true) => {
+                format!(
+                    "Refreshed review data and {thread_count} threads for PR #{number}, with warnings"
+                )
+            }
+        }
+    }
+
+    fn loaded_threads_only_status(self, number: u64, thread_count: usize) -> String {
+        match self {
+            Self::Initial => {
+                format!(
+                    "Loaded {thread_count} review threads for PR #{number}, with review warnings"
+                )
+            }
+            Self::Refresh => {
+                format!(
+                    "Refreshed {thread_count} review threads for PR #{number}, but review history failed"
+                )
+            }
+        }
+    }
+
+    fn loaded_reviews_only_status(self, number: u64) -> String {
+        match self {
+            Self::Initial => format!("Failed to load review data for PR #{number}"),
+            Self::Refresh => {
+                format!("Refreshed review history for PR #{number}, but threads failed")
+            }
+        }
+    }
+
+    fn failed_status(self, number: u64) -> String {
+        match self {
+            Self::Initial => format!("Failed to load review data for PR #{number}"),
+            Self::Refresh => format!("Failed to refresh review data for PR #{number}"),
+        }
+    }
+
+    fn update_error_log_message(self) -> &'static str {
+        match self {
+            Self::Initial => "failed to update pull request review state",
+            Self::Refresh => "failed to update refreshed review state",
+        }
+    }
+}
+
 impl AppView {
     pub(crate) fn load_selected_review_data(&mut self, cx: &mut Context<Self>) {
         let Some(pull_request) = self.selected_pull_request().cloned() else {
@@ -18,14 +111,22 @@ impl AppView {
         cx.notify();
 
         let review_data_generation = self.next_review_data_generation();
-        let owner = repo.owner.clone();
-        let name = repo.name.clone();
+        let target = ReviewDataLoadTarget::new(repo, number, review_data_generation);
 
+        self.spawn_review_data_loader(target, ReviewDataLoadMode::Refresh, cx);
+    }
+
+    pub(super) fn spawn_review_data_loader(
+        &mut self,
+        target: ReviewDataLoadTarget,
+        mode: ReviewDataLoadMode,
+        cx: &mut Context<Self>,
+    ) {
         self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
             let client = GitHubClient::new(GhCliTransport);
             let current_user_result = client.current_user().await;
             let reviews_result = client
-                .list_pull_request_reviews(&owner, &name, number)
+                .list_pull_request_reviews(&target.owner, &target.name, target.number)
                 .await;
             let pending_review_comment_count_result = if let Ok(reviews) = reviews_result.as_ref()
             {
@@ -35,7 +136,12 @@ impl AppView {
                 ) {
                     Some(
                         client
-                            .pull_request_review_comment_count(&owner, &name, number, &review_id)
+                            .pull_request_review_comment_count(
+                                &target.owner,
+                                &target.name,
+                                target.number,
+                                &review_id,
+                            )
                             .await,
                     )
                 } else {
@@ -44,13 +150,15 @@ impl AppView {
             } else {
                 None
             };
-            let threads_result = client.list_review_threads(&owner, &name, number).await;
+            let threads_result = client
+                .list_review_threads(&target.owner, &target.name, target.number)
+                .await;
 
             if let Err(error) = this.update(cx, move |view, cx| {
-                if !selected_pull_request_matches(view, &repo, number) {
+                if !selected_pull_request_matches(view, &target.repo, target.number) {
                     return;
                 }
-                if view.review_data_generation() != review_data_generation {
+                if view.review_data_generation() != target.generation {
                     return;
                 }
 
@@ -87,13 +195,11 @@ impl AppView {
                             pending_review_comment_count,
                         );
                         view.refresh_owned_file_filters(cx);
-                        if view.reviews_error.is_none() {
-                            view.status =
-                                format!("Refreshed review data and {thread_count} threads for PR #{number}");
-                        } else {
-                            view.status =
-                                format!("Refreshed review data and {thread_count} threads for PR #{number}, with warnings");
-                        }
+                        view.status = mode.loaded_review_data_status(
+                            target.number,
+                            thread_count,
+                            view.reviews_error.is_some(),
+                        );
                     }
                     (Err(reviews_error), Ok(threads)) => {
                         let thread_count = threads.len();
@@ -104,9 +210,7 @@ impl AppView {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });
-                        view.status = format!(
-                            "Refreshed {thread_count} review threads for PR #{number}, but review history failed"
-                        );
+                        view.status = mode.loaded_threads_only_status(target.number, thread_count);
                     }
                     (Ok(reviews), Err(threads_error)) => {
                         view.apply_loaded_review_data(
@@ -121,8 +225,7 @@ impl AppView {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });
-                        view.status =
-                            format!("Refreshed review history for PR #{number}, but threads failed");
+                        view.status = mode.loaded_reviews_only_status(target.number);
                     }
                     (Err(reviews_error), Err(threads_error)) => {
                         view.pull_request_reviews.clear();
@@ -133,14 +236,14 @@ impl AppView {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });
-                        view.status = format!("Failed to refresh review data for PR #{number}");
+                        view.status = mode.failed_status(target.number);
                     }
                 }
 
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update refreshed review state");
+                tracing::warn!(%error, "{}", mode.update_error_log_message());
             }
         }));
     }
