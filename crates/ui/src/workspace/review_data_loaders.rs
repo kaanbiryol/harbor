@@ -1,5 +1,6 @@
 use gpui::Context;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId};
+use harbor_sync::SyncTarget;
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
@@ -9,16 +10,23 @@ pub(super) struct ReviewDataLoadTarget {
     owner: String,
     name: String,
     number: u64,
+    head_sha: String,
     generation: u64,
 }
 
 impl ReviewDataLoadTarget {
-    pub(super) fn new(repo: RepoId, number: u64, generation: u64) -> Self {
+    pub(super) fn new(
+        repo: RepoId,
+        number: u64,
+        head_sha: impl Into<String>,
+        generation: u64,
+    ) -> Self {
         Self {
             owner: repo.owner.clone(),
             name: repo.name.clone(),
             repo,
             number,
+            head_sha: head_sha.into(),
             generation,
         }
     }
@@ -101,6 +109,7 @@ impl AppView {
         let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };
+        self.mark_active_inbox_stale();
         let repo = pull_request.repo;
         let number = pull_request.number;
 
@@ -110,7 +119,8 @@ impl AppView {
         cx.notify();
 
         let review_data_generation = self.next_review_data_generation();
-        let target = ReviewDataLoadTarget::new(repo, number, review_data_generation);
+        let target =
+            ReviewDataLoadTarget::new(repo, number, pull_request.head_sha, review_data_generation);
 
         self.spawn_review_data_loader(target, ReviewDataLoadMode::Refresh, cx);
     }
@@ -126,6 +136,7 @@ impl AppView {
         let cached_current_user_login = self.current_user_login.clone();
         let existing_pending_review = self.pending_review.clone();
         let github_api = self.github_api.clone();
+        let store = self.repository_store.clone();
         self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
             let current_user_result = match cached_current_user_login {
                 Some(login) => Ok(login),
@@ -160,6 +171,32 @@ impl AppView {
             let threads_result = github_api
                 .list_review_threads(&target.owner, &target.name, target.number)
                 .await;
+            let cache_result = match (&store, reviews_result.as_ref(), threads_result.as_ref()) {
+                (Some(store), Ok(reviews), Ok(threads)) => {
+                    store
+                        .save_pull_request_reviews(
+                            &target.repo,
+                            target.number,
+                            &target.head_sha,
+                            reviews,
+                            threads,
+                        )
+                        .await
+                        .map_err(|error| error.to_string())
+                }
+                (Some(store), Err(error), _) | (Some(store), _, Err(error)) => store
+                    .record_sync_failure(
+                        &harbor_storage::detail_target_key(
+                            &target.repo,
+                            target.number,
+                            harbor_storage::PullRequestDetailSection::Reviews,
+                        ),
+                        &error.to_string(),
+                    )
+                    .await
+                    .map_err(|error| error.to_string()),
+                (None, _, _) => Ok(()),
+            };
 
             this.update_or_log(cx, mode.update_error_log_message(), move |view, cx| {
                 if !selected_pull_request_matches(view, &target.repo, target.number) {
@@ -172,6 +209,9 @@ impl AppView {
                 view.detail_loading.reviews = false;
                 view.detail_loaded.reviews = true;
                 view.reviews_error = None;
+                if let Err(error) = cache_result {
+                    view.repository_error = Some(error);
+                }
                 let current_user_login = match current_user_result {
                     Ok(login) => Some(login),
                     Err(error) => {
@@ -195,6 +235,7 @@ impl AppView {
 
                 match (reviews_result, threads_result) {
                     (Ok(reviews), Ok(threads)) => {
+                        view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
                         let thread_count = threads.len();
                         view.apply_loaded_review_data(
                             reviews,
@@ -210,6 +251,7 @@ impl AppView {
                         );
                     }
                     (Err(reviews_error), Ok(threads)) => {
+                        view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         let thread_count = threads.len();
                         view.pull_request_reviews.clear();
                         view.replace_loaded_review_threads(threads);
@@ -221,6 +263,7 @@ impl AppView {
                         view.status = mode.loaded_threads_only_status(target.number, thread_count);
                     }
                     (Ok(reviews), Err(threads_error)) => {
+                        view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         view.apply_loaded_review_data(
                             reviews,
                             Vec::new(),
@@ -236,6 +279,7 @@ impl AppView {
                         view.status = mode.loaded_reviews_only_status(target.number);
                     }
                     (Err(reviews_error), Err(threads_error)) => {
+                        view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         view.pull_request_reviews.clear();
                         let message = format!(
                             "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"

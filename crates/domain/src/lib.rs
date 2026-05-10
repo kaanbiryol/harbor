@@ -88,6 +88,7 @@ pub struct PullRequest {
     pub labels: Vec<Label>,
     pub checks_summary: ChecksSummary,
     pub unresolved_threads: usize,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

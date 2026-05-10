@@ -8,6 +8,7 @@ pub(crate) mod github_service;
 mod loaders;
 mod local_commands;
 mod navigation_commands;
+mod notifications;
 mod panel_commands;
 mod pull_request_detail_loaders;
 mod render;
@@ -19,6 +20,7 @@ mod reviews;
 mod state;
 mod state_reset;
 mod switchers;
+mod sync_loop;
 mod workflow_log_loaders;
 
 use std::{
@@ -37,6 +39,7 @@ use harbor_domain::{
     WorkflowJob, WorkflowRun,
 };
 use harbor_storage::SqliteStore;
+use harbor_sync::{ActivityState, SyncPolicy, SyncState, SyncTarget};
 
 use crate::actions::PanelTab;
 use crate::diff::{ParsedDiff, parse_files_with_syntax};
@@ -57,6 +60,7 @@ pub(crate) use changed_files::{
 };
 use external_apps::ExternalAppAvailability;
 use github_service::{GitHubApi, RealGitHubApi};
+use notifications::{NativeNotificationSink, NotificationSink};
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
@@ -139,6 +143,7 @@ pub struct AppView {
     repository_task: Option<Task<()>>,
     local_task: Option<Task<()>>,
     external_app_availability_task: Option<Task<()>>,
+    sync_task: Option<Task<()>>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
@@ -199,6 +204,12 @@ pub struct AppView {
     current_user_login: Option<String>,
     local_review_comment_sequence: u64,
     review_data_generation: u64,
+    activity_state: ActivityState,
+    notification_sink: Arc<dyn NotificationSink>,
+    notification_dedupe: HashSet<String>,
+    notifications_enabled: bool,
+    sync_policy: SyncPolicy,
+    sync_states: HashMap<SyncTarget, SyncState>,
     did_focus: bool,
     status: String,
     _subscriptions: Vec<Subscription>,
@@ -280,7 +291,7 @@ impl AppView {
                 .placeholder("Search pull requests...")
                 .clean_on_escape()
         });
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             cx.subscribe_in(
                 &repository_search_input,
                 window,
@@ -308,6 +319,18 @@ impl AppView {
                 Self::on_review_input_event,
             ),
         ];
+        subscriptions.push(cx.observe_window_activation(window, |view, window, cx| {
+            view.activity_state = if window.is_window_active() {
+                ActivityState::Focused
+            } else {
+                ActivityState::Background
+            };
+            if view.activity_state == ActivityState::Focused {
+                view.catch_up_active_inbox_after_focus(cx);
+            }
+            view.ensure_sync_loop(cx);
+            cx.notify();
+        }));
         let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
         let repositories = Vec::new();
         let status = if start_startup_tasks {
@@ -345,6 +368,7 @@ impl AppView {
             repository_task: None,
             local_task: None,
             external_app_availability_task: None,
+            sync_task: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
@@ -405,6 +429,16 @@ impl AppView {
             current_user_login: None,
             local_review_comment_sequence: 0,
             review_data_generation: 0,
+            activity_state: if window.is_window_active() {
+                ActivityState::Focused
+            } else {
+                ActivityState::Background
+            },
+            notification_sink: Arc::new(NativeNotificationSink),
+            notification_dedupe: HashSet::new(),
+            notifications_enabled: true,
+            sync_policy: SyncPolicy::default(),
+            sync_states: HashMap::new(),
             did_focus: false,
             status,
             _subscriptions: subscriptions,
@@ -413,6 +447,7 @@ impl AppView {
         if start_startup_tasks {
             view.load_recent_repositories(cx);
             view.refresh_external_app_availability(cx);
+            view.ensure_sync_loop(cx);
         }
 
         view

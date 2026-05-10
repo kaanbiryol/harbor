@@ -34,6 +34,7 @@ query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
         headRefName
         baseRefName
         headRefOid
+        updatedAt
         reviewDecision
         mergeStateStatus
         statusCheckRollup {

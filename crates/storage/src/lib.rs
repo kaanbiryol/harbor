@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
-use harbor_domain::RepoId;
+use chrono::{DateTime, Utc};
+use harbor_domain::{
+    CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, WorkflowRun,
+};
+use serde::{Serialize, de::DeserializeOwned};
 use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -19,6 +23,12 @@ pub enum StorageError {
 
 impl From<sqlx::Error> for StorageError {
     fn from(error: sqlx::Error) -> Self {
+        Self::Operation(error.to_string())
+    }
+}
+
+impl From<serde_json::Error> for StorageError {
+    fn from(error: serde_json::Error) -> Self {
         Self::Operation(error.to_string())
     }
 }
@@ -47,6 +57,38 @@ pub struct RecentRepository {
     pub id: RepoId,
     pub pinned: bool,
     pub local_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PullRequestDetailSection {
+    Metadata,
+    Files,
+    Reviews,
+    ReviewThreads,
+    CheckRuns,
+    WorkflowRuns,
+}
+
+impl PullRequestDetailSection {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Metadata => "metadata",
+            Self::Files => "files",
+            Self::Reviews => "reviews",
+            Self::ReviewThreads => "review_threads",
+            Self::CheckRuns => "check_runs",
+            Self::WorkflowRuns => "workflow_runs",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SyncTargetState {
+    pub target_key: String,
+    pub last_successful_fetch_at: Option<DateTime<Utc>>,
+    pub last_attempt_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub stale: bool,
 }
 
 #[derive(Clone)]
@@ -106,7 +148,21 @@ impl SqliteStore {
         .execute(&self.pool)
         .await?;
 
+        self.record_last_selected_repository(repository).await?;
+
         Ok(())
+    }
+
+    pub async fn last_selected_repository(&self) -> Result<Option<RepoId>> {
+        let row = sqlx::query(
+            "SELECT owner, name
+             FROM last_selected_repository
+             WHERE id = 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|row| RepoId::new(row.get::<String, _>("owner"), row.get::<String, _>("name"))))
     }
 
     pub async fn sync_repositories(&self, repositories: &[RepoId]) -> Result<()> {
@@ -121,6 +177,23 @@ impl SqliteStore {
             .execute(&self.pool)
             .await?;
         }
+
+        Ok(())
+    }
+
+    async fn record_last_selected_repository(&self, repository: &RepoId) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO last_selected_repository (id, owner, name, updated_at)
+             VALUES (1, ?1, ?2, unixepoch())
+             ON CONFLICT(id) DO UPDATE SET
+                owner = excluded.owner,
+                name = excluded.name,
+                updated_at = excluded.updated_at",
+        )
+        .bind(&repository.owner)
+        .bind(&repository.name)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -144,6 +217,382 @@ impl SqliteStore {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn load_pull_request_inbox(
+        &self,
+        repository: &RepoId,
+        mode: &str,
+    ) -> Result<Vec<PullRequest>> {
+        let rows = sqlx::query(
+            "SELECT pr_json
+             FROM pull_request_inbox_cache
+             WHERE owner = ?1 AND name = ?2 AND mode = ?3
+             ORDER BY position ASC",
+        )
+        .bind(&repository.owner)
+        .bind(&repository.name)
+        .bind(mode)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let json = row.get::<String, _>("pr_json");
+                serde_json::from_str(&json).map_err(StorageError::from)
+            })
+            .collect()
+    }
+
+    pub async fn save_pull_request_inbox(
+        &self,
+        repository: &RepoId,
+        mode: &str,
+        pull_requests: &[PullRequest],
+    ) -> Result<()> {
+        sqlx::query(
+            "DELETE FROM pull_request_inbox_cache
+             WHERE owner = ?1 AND name = ?2 AND mode = ?3",
+        )
+        .bind(&repository.owner)
+        .bind(&repository.name)
+        .bind(mode)
+        .execute(&self.pool)
+        .await?;
+
+        for (position, pull_request) in pull_requests.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO pull_request_inbox_cache
+                    (owner, name, mode, number, head_sha, position, pr_json, fetched_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())",
+            )
+            .bind(&repository.owner)
+            .bind(&repository.name)
+            .bind(mode)
+            .bind(pull_request.number as i64)
+            .bind(&pull_request.head_sha)
+            .bind(position as i64)
+            .bind(serde_json::to_string(pull_request)?)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        self.record_sync_success(&inbox_target_key(repository, mode))
+            .await
+    }
+
+    pub async fn save_pull_request_metadata(&self, pull_request: &PullRequest) -> Result<()> {
+        self.save_pull_request_detail_section(
+            &pull_request.repo,
+            pull_request.number,
+            &pull_request.head_sha,
+            PullRequestDetailSection::Metadata,
+            pull_request,
+        )
+        .await
+    }
+
+    pub async fn load_pull_request_metadata(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<Option<PullRequest>> {
+        self.load_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::Metadata,
+        )
+        .await
+    }
+
+    pub async fn save_pull_request_files(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        files: &[DiffFile],
+    ) -> Result<()> {
+        self.save_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::Files,
+            files,
+        )
+        .await
+    }
+
+    pub async fn load_pull_request_files(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<Option<Vec<DiffFile>>> {
+        self.load_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::Files,
+        )
+        .await
+    }
+
+    pub async fn save_pull_request_reviews(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        reviews: &[PullRequestReview],
+        threads: &[ReviewThread],
+    ) -> Result<()> {
+        self.save_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::Reviews,
+            reviews,
+        )
+        .await?;
+        self.save_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::ReviewThreads,
+            threads,
+        )
+        .await
+    }
+
+    pub async fn load_pull_request_reviews(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<Option<(Vec<PullRequestReview>, Vec<ReviewThread>)>> {
+        let reviews = self
+            .load_pull_request_detail_section::<Vec<PullRequestReview>>(
+                repository,
+                number,
+                head_sha,
+                PullRequestDetailSection::Reviews,
+            )
+            .await?;
+        let threads = self
+            .load_pull_request_detail_section::<Vec<ReviewThread>>(
+                repository,
+                number,
+                head_sha,
+                PullRequestDetailSection::ReviewThreads,
+            )
+            .await?;
+
+        Ok(match (reviews, threads) {
+            (Some(reviews), Some(threads)) => Some((reviews, threads)),
+            _ => None,
+        })
+    }
+
+    pub async fn save_pull_request_check_runs(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        check_runs: &[CheckRun],
+    ) -> Result<()> {
+        self.save_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::CheckRuns,
+            check_runs,
+        )
+        .await
+    }
+
+    pub async fn load_pull_request_check_runs(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<Option<Vec<CheckRun>>> {
+        self.load_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::CheckRuns,
+        )
+        .await
+    }
+
+    pub async fn save_pull_request_workflow_runs(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        workflow_runs: &[WorkflowRun],
+    ) -> Result<()> {
+        self.save_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::WorkflowRuns,
+            workflow_runs,
+        )
+        .await
+    }
+
+    pub async fn load_pull_request_workflow_runs(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<Option<Vec<WorkflowRun>>> {
+        self.load_pull_request_detail_section(
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::WorkflowRuns,
+        )
+        .await
+    }
+
+    pub async fn mark_sync_attempt(&self, target_key: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO sync_target_state (target_key, last_attempt_at, stale)
+             VALUES (?1, unixepoch(), 0)
+             ON CONFLICT(target_key) DO UPDATE SET
+                last_attempt_at = unixepoch()",
+        )
+        .bind(target_key)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn record_sync_success(&self, target_key: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO sync_target_state
+                (target_key, last_successful_fetch_at, last_attempt_at, last_error, stale)
+             VALUES (?1, unixepoch(), unixepoch(), NULL, 0)
+             ON CONFLICT(target_key) DO UPDATE SET
+                last_successful_fetch_at = unixepoch(),
+                last_attempt_at = unixepoch(),
+                last_error = NULL,
+                stale = 0",
+        )
+        .bind(target_key)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn record_sync_failure(&self, target_key: &str, error: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO sync_target_state (target_key, last_attempt_at, last_error, stale)
+             VALUES (?1, unixepoch(), ?2, 1)
+             ON CONFLICT(target_key) DO UPDATE SET
+                last_attempt_at = unixepoch(),
+                last_error = excluded.last_error,
+                stale = 1",
+        )
+        .bind(target_key)
+        .bind(error)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn mark_sync_target_stale(&self, target_key: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO sync_target_state (target_key, stale)
+             VALUES (?1, 1)
+             ON CONFLICT(target_key) DO UPDATE SET stale = 1",
+        )
+        .bind(target_key)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn sync_target_state(&self, target_key: &str) -> Result<Option<SyncTargetState>> {
+        let row = sqlx::query(
+            "SELECT target_key, last_successful_fetch_at, last_attempt_at, last_error, stale
+             FROM sync_target_state
+             WHERE target_key = ?1",
+        )
+        .bind(target_key)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(sync_target_state_from_row).transpose()
+    }
+
+    async fn save_pull_request_detail_section<T>(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        section: PullRequestDetailSection,
+        value: &T,
+    ) -> Result<()>
+    where
+        T: Serialize + ?Sized,
+    {
+        sqlx::query(
+            "INSERT INTO pull_request_detail_cache
+                (owner, name, number, head_sha, section, data_json, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+             ON CONFLICT(owner, name, number, head_sha, section) DO UPDATE SET
+                data_json = excluded.data_json,
+                fetched_at = unixepoch()",
+        )
+        .bind(&repository.owner)
+        .bind(&repository.name)
+        .bind(number as i64)
+        .bind(head_sha)
+        .bind(section.key())
+        .bind(serde_json::to_string(value)?)
+        .execute(&self.pool)
+        .await?;
+
+        self.record_sync_success(&detail_target_key(repository, number, section))
+            .await
+    }
+
+    async fn load_pull_request_detail_section<T>(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        section: PullRequestDetailSection,
+    ) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let row = sqlx::query(
+            "SELECT data_json
+             FROM pull_request_detail_cache
+             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5",
+        )
+        .bind(&repository.owner)
+        .bind(&repository.name)
+        .bind(number as i64)
+        .bind(head_sha)
+        .bind(section.key())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(|row| {
+            let json = row.get::<String, _>("data_json");
+            serde_json::from_str(&json).map_err(StorageError::from)
+        })
+        .transpose()
     }
 
     async fn migrate(&self) -> Result<()> {
@@ -173,8 +622,96 @@ impl SqliteStore {
                 .await?;
         }
 
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS last_selected_repository (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                owner TEXT NOT NULL,
+                name TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS pull_request_inbox_cache (
+                owner TEXT NOT NULL,
+                name TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                head_sha TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                pr_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL,
+                PRIMARY KEY (owner, name, mode, number)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS pull_request_detail_cache (
+                owner TEXT NOT NULL,
+                name TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                head_sha TEXT NOT NULL,
+                section TEXT NOT NULL,
+                data_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL,
+                PRIMARY KEY (owner, name, number, head_sha, section)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS sync_target_state (
+                target_key TEXT PRIMARY KEY,
+                last_successful_fetch_at INTEGER,
+                last_attempt_at INTEGER,
+                last_error TEXT,
+                stale INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
+}
+
+pub fn inbox_target_key(repository: &RepoId, mode: &str) -> String {
+    format!("inbox:{}:{}", repository.full_name(), mode)
+}
+
+pub fn detail_target_key(
+    repository: &RepoId,
+    number: u64,
+    section: PullRequestDetailSection,
+) -> String {
+    format!("pr:{}#{}:{}", repository.full_name(), number, section.key())
+}
+
+fn sync_target_state_from_row(row: sqlx::sqlite::SqliteRow) -> Result<SyncTargetState> {
+    Ok(SyncTargetState {
+        target_key: row.get("target_key"),
+        last_successful_fetch_at: unix_timestamp_to_datetime(
+            row.get::<Option<i64>, _>("last_successful_fetch_at"),
+        )?,
+        last_attempt_at: unix_timestamp_to_datetime(row.get::<Option<i64>, _>("last_attempt_at"))?,
+        last_error: row.get("last_error"),
+        stale: row.get::<i64, _>("stale") != 0,
+    })
+}
+
+fn unix_timestamp_to_datetime(timestamp: Option<i64>) -> Result<Option<DateTime<Utc>>> {
+    timestamp
+        .map(|timestamp| {
+            DateTime::<Utc>::from_timestamp(timestamp, 0).ok_or_else(|| {
+                StorageError::Operation(format!("invalid unix timestamp {timestamp}"))
+            })
+        })
+        .transpose()
 }
 
 fn default_database_path() -> Result<PathBuf> {
@@ -210,6 +747,8 @@ fn default_database_path() -> Result<PathBuf> {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState, ReviewDecision};
+
     use super::*;
 
     #[test]
@@ -243,6 +782,87 @@ mod tests {
             assert!(!repositories[0].pinned);
             assert_eq!(repositories[0].local_path, None);
             assert_eq!(repositories[1].id, old_repository);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn records_last_selected_repository_when_repository_is_opened() {
+        smol::block_on(async {
+            let database_path = test_database_path("last-selected-repository");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let first_repository = RepoId::new("acme", "app");
+            let second_repository = RepoId::new("zed", "editor");
+
+            assert_eq!(
+                store
+                    .last_selected_repository()
+                    .await
+                    .expect("load empty last selected repository"),
+                None
+            );
+
+            store
+                .record_repository(&first_repository)
+                .await
+                .expect("record first repository");
+            assert_eq!(
+                store
+                    .last_selected_repository()
+                    .await
+                    .expect("load first last selected repository"),
+                Some(first_repository)
+            );
+
+            store
+                .record_repository(&second_repository)
+                .await
+                .expect("record second repository");
+            assert_eq!(
+                store
+                    .last_selected_repository()
+                    .await
+                    .expect("load second last selected repository"),
+                Some(second_repository)
+            );
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn syncing_repositories_does_not_replace_last_selected_repository() {
+        smol::block_on(async {
+            let database_path = test_database_path("sync-keeps-last-selected-repository");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let selected_repository = RepoId::new("acme", "app");
+            let synced_repository = RepoId::new("zed", "editor");
+
+            store
+                .record_repository(&selected_repository)
+                .await
+                .expect("record selected repository");
+            store
+                .sync_repositories(std::slice::from_ref(&synced_repository))
+                .await
+                .expect("sync repositories");
+
+            assert_eq!(
+                store
+                    .last_selected_repository()
+                    .await
+                    .expect("load last selected repository"),
+                Some(selected_repository)
+            );
 
             cleanup_database(database_path);
         });
@@ -335,6 +955,155 @@ mod tests {
         });
     }
 
+    #[test]
+    fn saves_and_loads_pull_request_inbox_cache() {
+        smol::block_on(async {
+            let database_path = test_database_path("pull-request-inbox-cache");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let repository = RepoId::new("acme", "app");
+            let pull_request = pull_request(7);
+
+            store
+                .save_pull_request_inbox(&repository, "open", std::slice::from_ref(&pull_request))
+                .await
+                .expect("save inbox");
+
+            let cached = store
+                .load_pull_request_inbox(&repository, "open")
+                .await
+                .expect("load inbox");
+
+            assert_eq!(cached, vec![pull_request]);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn replaces_absent_pull_requests_for_cached_mode() {
+        smol::block_on(async {
+            let database_path = test_database_path("replace-pull-request-inbox-cache");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let repository = RepoId::new("acme", "app");
+
+            store
+                .save_pull_request_inbox(&repository, "open", &[pull_request(7), pull_request(8)])
+                .await
+                .expect("save initial inbox");
+            store
+                .save_pull_request_inbox(&repository, "open", &[pull_request(8)])
+                .await
+                .expect("replace inbox");
+
+            let cached = store
+                .load_pull_request_inbox(&repository, "open")
+                .await
+                .expect("load inbox");
+
+            assert_eq!(cached.len(), 1);
+            assert_eq!(cached[0].number, 8);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn saves_and_loads_detail_sections_independently() {
+        smol::block_on(async {
+            let database_path = test_database_path("pull-request-detail-cache");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let pull_request = pull_request(7);
+
+            store
+                .save_pull_request_metadata(&pull_request)
+                .await
+                .expect("save metadata");
+            store
+                .save_pull_request_check_runs(
+                    &pull_request.repo,
+                    pull_request.number,
+                    &pull_request.head_sha,
+                    &[],
+                )
+                .await
+                .expect("save checks");
+
+            let cached_metadata = store
+                .load_pull_request_metadata(
+                    &pull_request.repo,
+                    pull_request.number,
+                    &pull_request.head_sha,
+                )
+                .await
+                .expect("load metadata");
+            let cached_checks = store
+                .load_pull_request_check_runs(
+                    &pull_request.repo,
+                    pull_request.number,
+                    &pull_request.head_sha,
+                )
+                .await
+                .expect("load checks");
+
+            assert_eq!(cached_metadata, Some(pull_request));
+            assert_eq!(cached_checks, Some(Vec::new()));
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn records_sync_failure_without_dropping_cache() {
+        smol::block_on(async {
+            let database_path = test_database_path("sync-failure-preserves-cache");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let repository = RepoId::new("acme", "app");
+            let pull_request = pull_request(7);
+            let target_key = inbox_target_key(&repository, "open");
+
+            store
+                .save_pull_request_inbox(&repository, "open", std::slice::from_ref(&pull_request))
+                .await
+                .expect("save inbox");
+            store
+                .record_sync_failure(&target_key, "rate limited")
+                .await
+                .expect("record failure");
+
+            let cached = store
+                .load_pull_request_inbox(&repository, "open")
+                .await
+                .expect("load inbox");
+            let target_state = store
+                .sync_target_state(&target_key)
+                .await
+                .expect("load target state")
+                .expect("target state");
+
+            assert_eq!(cached, vec![pull_request]);
+            assert_eq!(target_state.last_error.as_deref(), Some("rate limited"));
+            assert!(target_state.stale);
+
+            cleanup_database(database_path);
+        });
+    }
+
     fn test_database_path(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -351,6 +1120,29 @@ mod tests {
         };
         if let Err(error) = std::fs::remove_dir_all(directory) {
             eprintln!("failed to clean up test database: {error}");
+        }
+    }
+
+    fn pull_request(number: u64) -> PullRequest {
+        PullRequest {
+            repo: RepoId::new("acme", "app"),
+            node_id: format!("pr-node-{number}"),
+            number,
+            title: "Add feature".to_string(),
+            body: None,
+            author: "octocat".to_string(),
+            url: format!("https://github.com/acme/app/pull/{number}"),
+            state: PullRequestState::Open,
+            is_draft: false,
+            head_ref: "feature".to_string(),
+            base_ref: "main".to_string(),
+            head_sha: "abc123".to_string(),
+            review_decision: Some(ReviewDecision::ReviewRequired),
+            merge_state: Some(MergeState::Clean),
+            labels: Vec::new(),
+            checks_summary: ChecksSummary::default(),
+            unresolved_threads: 0,
+            updated_at: DateTime::from_timestamp(1_777_777_777, 0),
         }
     }
 }

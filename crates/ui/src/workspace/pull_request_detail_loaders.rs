@@ -1,6 +1,7 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
 use harbor_domain::{PullRequest, RepoId};
+use harbor_sync::SyncTarget;
 
 use crate::{
     actions::PanelTab,
@@ -45,6 +46,18 @@ struct SelectedPullRequestLoad {
     head_sha: String,
 }
 
+#[derive(Clone, Debug, Default)]
+struct CachedSelectedPullRequestDetail {
+    metadata: Option<PullRequest>,
+    files: Option<Vec<harbor_domain::DiffFile>>,
+    check_runs: Option<Vec<harbor_domain::CheckRun>>,
+    workflow_runs: Option<Vec<harbor_domain::WorkflowRun>>,
+    review_data: Option<(
+        Vec<harbor_domain::PullRequestReview>,
+        Vec<harbor_domain::ReviewThread>,
+    )>,
+}
+
 impl SelectedPullRequestLoad {
     fn from_pull_request(pull_request: &PullRequest) -> Self {
         let repo = pull_request.repo.clone();
@@ -85,6 +98,9 @@ impl AppView {
         }
 
         self.reset_selected_pull_request_detail_state(load.number);
+        if fetch_policy == PullRequestDetailFetchPolicy::PreferCache {
+            self.spawn_cached_selected_pull_request_detail_loader(load.clone(), cx);
+        }
 
         self.spawn_pull_request_metadata_loader(load.clone(), cx);
         self.spawn_pull_request_files_loader(load.clone(), cx);
@@ -166,10 +182,126 @@ impl AppView {
     ) {
         let review_data_generation = self.next_review_data_generation();
         self.spawn_review_data_loader(
-            ReviewDataLoadTarget::new(load.repo, load.number, review_data_generation),
+            ReviewDataLoadTarget::new(
+                load.repo,
+                load.number,
+                load.head_sha,
+                review_data_generation,
+            ),
             mode,
             cx,
         );
+    }
+
+    fn spawn_cached_selected_pull_request_detail_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(store) = self.repository_store.clone() else {
+            return;
+        };
+
+        let task = cx.background_spawn({
+            let repo = load.repo.clone();
+            let head_sha = load.head_sha.clone();
+            async move {
+                let metadata = store
+                    .load_pull_request_metadata(&repo, load.number, &head_sha)
+                    .await?;
+                let files = store
+                    .load_pull_request_files(&repo, load.number, &head_sha)
+                    .await?;
+                let check_runs = store
+                    .load_pull_request_check_runs(&repo, load.number, &head_sha)
+                    .await?;
+                let workflow_runs = store
+                    .load_pull_request_workflow_runs(&repo, load.number, &head_sha)
+                    .await?;
+                let review_data = store
+                    .load_pull_request_reviews(&repo, load.number, &head_sha)
+                    .await?;
+
+                harbor_storage::Result::Ok(CachedSelectedPullRequestDetail {
+                    metadata,
+                    files,
+                    check_runs,
+                    workflow_runs,
+                    review_data,
+                })
+            }
+        });
+
+        self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
+            let result = task.await;
+
+            this.update_or_log(
+                cx,
+                "failed to update cached pull request detail state",
+                move |view, cx| {
+                    if !selected_pull_request_matches(view, &load.repo, load.number) {
+                        return;
+                    }
+
+                    let Ok(cached) = result else {
+                        return;
+                    };
+                    let mut applied_any = false;
+
+                    if let Some(metadata) = cached.metadata
+                        && !view.detail_loaded.details
+                    {
+                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                            *selected = metadata;
+                        }
+                        applied_any = true;
+                    }
+
+                    if let Some(files) = cached.files
+                        && view.files.is_empty()
+                    {
+                        let diffs = parse_files(&files);
+                        view.files = files;
+                        view.diffs = diffs;
+                        view.ensure_active_file_visible(cx);
+                        applied_any = true;
+                    }
+
+                    if let Some(check_runs) = cached.check_runs
+                        && view.check_runs.is_empty()
+                    {
+                        let summary = checks_summary_from_runs(&check_runs);
+                        view.check_runs = check_runs;
+                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                            selected.checks_summary = summary;
+                        }
+                        applied_any = true;
+                    }
+
+                    if let Some(workflow_runs) = cached.workflow_runs
+                        && view.workflow_runs.is_empty()
+                    {
+                        view.workflow_runs = workflow_runs;
+                        applied_any = true;
+                    }
+
+                    if let Some((reviews, threads)) = cached.review_data
+                        && view.pull_request_reviews.is_empty()
+                        && view.review_threads.is_empty()
+                    {
+                        view.pull_request_reviews = reviews;
+                        view.replace_loaded_review_threads(threads);
+                        view.refresh_owned_file_filters(cx);
+                        applied_any = true;
+                    }
+
+                    if applied_any {
+                        view.status = format!("Showing cached PR #{} details", load.number);
+                        cx.notify();
+                    }
+                },
+            );
+        }));
     }
 
     fn spawn_pull_request_metadata_loader(
@@ -183,6 +315,7 @@ impl AppView {
 
         self.detail_loading.details = true;
         let github_api = self.github_api.clone();
+        let store = self.repository_store.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -191,6 +324,24 @@ impl AppView {
 
             async move |this, cx| {
                 let result = github_api.get_pull_request(&owner, &name, number).await;
+                let cache_result = match (&store, result.as_ref()) {
+                    (Some(store), Ok(detail)) => store
+                        .save_pull_request_metadata(detail)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (Some(store), Err(error)) => store
+                        .record_sync_failure(
+                            &harbor_storage::detail_target_key(
+                                &repo,
+                                number,
+                                harbor_storage::PullRequestDetailSection::Metadata,
+                            ),
+                            &error.to_string(),
+                        )
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (None, _) => Ok(()),
+                };
 
                 this.update_or_log(
                     cx,
@@ -202,8 +353,12 @@ impl AppView {
 
                         view.detail_loading.details = false;
                         view.detail_loaded.details = true;
+                        if let Err(error) = cache_result {
+                            view.repository_error = Some(error);
+                        }
                         match result {
                             Ok(detail) => {
+                                view.mark_sync_success(SyncTarget::SelectedPullRequestMetadata);
                                 if let Some(selected) = view.pull_requests.get_mut(view.selected_pr)
                                 {
                                     let review_decision = selected.review_decision;
@@ -220,6 +375,7 @@ impl AppView {
                                 view.status = format!("Loaded PR #{number} details");
                             }
                             Err(error) => {
+                                view.mark_sync_failure(SyncTarget::SelectedPullRequestMetadata);
                                 view.details_error = Some(error.to_string());
                                 view.status = format!("Failed to load PR #{number} details");
                             }
@@ -244,11 +400,13 @@ impl AppView {
 
         self.detail_loading.files = true;
         let github_api = self.github_api.clone();
+        let store = self.repository_store.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;
             let number = load.number;
+            let head_sha = load.head_sha;
             let highlight_theme = cx.theme().highlight_theme.clone();
 
             async move |this, cx| {
@@ -259,6 +417,24 @@ impl AppView {
                         let diffs = parse_files(&files);
                         (files, diffs)
                     });
+                let cache_result = match (&store, result.as_ref()) {
+                    (Some(store), Ok((files, _))) => store
+                        .save_pull_request_files(&repo, number, &head_sha, files)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (Some(store), Err(error)) => store
+                        .record_sync_failure(
+                            &harbor_storage::detail_target_key(
+                                &repo,
+                                number,
+                                harbor_storage::PullRequestDetailSection::Files,
+                            ),
+                            &error.to_string(),
+                        )
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (None, _) => Ok(()),
+                };
                 let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
                 let update_repo = repo.clone();
 
@@ -272,6 +448,9 @@ impl AppView {
 
                         view.detail_loading.files = false;
                         view.detail_loaded.files = true;
+                        if let Err(error) = cache_result {
+                            view.repository_error = Some(error);
+                        }
                         match result {
                             Ok((files, diffs)) => {
                                 let count = files.len();
@@ -371,6 +550,7 @@ impl AppView {
 
         self.detail_loading.checks = true;
         let github_api = self.github_api.clone();
+        let store = self.repository_store.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -384,6 +564,24 @@ impl AppView {
                 } else {
                     github_api.list_check_runs(&owner, &name, &head_sha).await
                 };
+                let cache_result = match (&store, result.as_ref()) {
+                    (Some(store), Ok(check_runs)) => store
+                        .save_pull_request_check_runs(&repo, number, &head_sha, check_runs)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (Some(store), Err(error)) => store
+                        .record_sync_failure(
+                            &harbor_storage::detail_target_key(
+                                &repo,
+                                number,
+                                harbor_storage::PullRequestDetailSection::CheckRuns,
+                            ),
+                            &error.to_string(),
+                        )
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (None, _) => Ok(()),
+                };
 
                 this.update_or_log(
                     cx,
@@ -395,8 +593,12 @@ impl AppView {
 
                         view.detail_loading.checks = false;
                         view.detail_loaded.checks = true;
+                        if let Err(error) = cache_result {
+                            view.repository_error = Some(error);
+                        }
                         match result {
                             Ok(check_runs) => {
+                                view.mark_sync_success(SyncTarget::SelectedPullRequestChecks);
                                 let count = check_runs.len();
                                 let summary = checks_summary_from_runs(&check_runs);
                                 view.check_runs = check_runs;
@@ -410,6 +612,7 @@ impl AppView {
                                 view.status = format!("Loaded {count} check runs for PR #{number}");
                             }
                             Err(error) => {
+                                view.mark_sync_failure(SyncTarget::SelectedPullRequestChecks);
                                 view.check_runs.clear();
                                 view.checks_error = Some(error.to_string());
                                 view.status = format!("Failed to load checks for PR #{number}");
@@ -435,6 +638,7 @@ impl AppView {
 
         self.detail_loading.workflows = true;
         let github_api = self.github_api.clone();
+        let store = self.repository_store.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -450,6 +654,24 @@ impl AppView {
                         .list_workflow_runs_for_head(&owner, &name, &head_sha)
                         .await
                 };
+                let cache_result = match (&store, result.as_ref()) {
+                    (Some(store), Ok(workflow_runs)) => store
+                        .save_pull_request_workflow_runs(&repo, number, &head_sha, workflow_runs)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (Some(store), Err(error)) => store
+                        .record_sync_failure(
+                            &harbor_storage::detail_target_key(
+                                &repo,
+                                number,
+                                harbor_storage::PullRequestDetailSection::WorkflowRuns,
+                            ),
+                            &error.to_string(),
+                        )
+                        .await
+                        .map_err(|error| error.to_string()),
+                    (None, _) => Ok(()),
+                };
 
                 this.update_or_log(
                     cx,
@@ -461,8 +683,12 @@ impl AppView {
 
                         view.detail_loading.workflows = false;
                         view.detail_loaded.workflows = true;
+                        if let Err(error) = cache_result {
+                            view.repository_error = Some(error);
+                        }
                         match result {
                             Ok(workflow_runs) => {
+                                view.mark_sync_success(SyncTarget::SelectedPullRequestWorkflows);
                                 let count = workflow_runs.len();
                                 view.workflow_runs = workflow_runs;
                                 view.workflows_error = None;
@@ -477,6 +703,7 @@ impl AppView {
                                 }
                             }
                             Err(error) => {
+                                view.mark_sync_failure(SyncTarget::SelectedPullRequestWorkflows);
                                 view.workflow_runs.clear();
                                 view.workflows_error = Some(error.to_string());
                                 view.status =

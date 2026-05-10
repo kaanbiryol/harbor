@@ -30,6 +30,7 @@ pub(crate) fn pull_request() -> PullRequest {
             skipped: 0,
         },
         unresolved_threads: 0,
+        updated_at: Some(test_time()),
     }
 }
 

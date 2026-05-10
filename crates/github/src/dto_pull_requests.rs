@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use harbor_domain::{
     CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
     PullRequest, PullRequestState, RepoId, ReviewDecision,
@@ -28,6 +29,8 @@ struct ApiPullRequest {
     merged: Option<bool>,
     #[serde(default)]
     mergeable_state: Option<String>,
+    #[serde(default)]
+    updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +106,8 @@ struct GraphQlPullRequestSearchNode {
     base_ref_name: Option<String>,
     #[serde(default, rename = "headRefOid")]
     head_ref_oid: Option<String>,
+    #[serde(default, rename = "updatedAt")]
+    updated_at: Option<DateTime<Utc>>,
     #[serde(default, rename = "reviewDecision")]
     review_decision: Option<String>,
     #[serde(default, rename = "mergeStateStatus")]
@@ -261,6 +266,7 @@ impl ApiPullRequest {
                 .collect(),
             checks_summary: ChecksSummary::default(),
             unresolved_threads: 0,
+            updated_at: self.updated_at,
         }
     }
 }
@@ -314,6 +320,7 @@ impl GraphQlPullRequestSearchNode {
                 .map(checks_summary_from_graphql_rollup)
                 .unwrap_or_default(),
             unresolved_threads: 0,
+            updated_at: self.updated_at,
         })
     }
 }
