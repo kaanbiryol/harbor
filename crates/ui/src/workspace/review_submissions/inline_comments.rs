@@ -1,0 +1,208 @@
+use gpui::Context;
+use harbor_github::{GhCliTransport, GitHubClient, GitHubError};
+
+use crate::workspace::{
+    AppView, PendingReviewSession, PullRequestDetailCacheKey, ReviewCommentSubmission,
+    reviews::increment_pending_review_comment_count,
+};
+
+impl AppView {
+    pub(crate) fn submit_review_comment(
+        &mut self,
+        submission: ReviewCommentSubmission,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_submitting_review_comment {
+            self.status = "A review comment is already being submitted".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(composer) = self.review_composer_state.composer.clone() else {
+            self.review_comment_error = Some("Select diff lines before commenting".to_string());
+            self.status = "Select diff lines before commenting".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_comment_error = Some("Select a pull request before commenting".to_string());
+            self.status = "Select a pull request before commenting".to_string();
+            cx.notify();
+            return;
+        };
+
+        let body = self
+            .review_composer_state
+            .comment_input
+            .read(cx)
+            .value()
+            .to_string();
+        let body = body.trim().to_string();
+        if body.is_empty() {
+            self.review_comment_error = Some("Enter a comment before sending".to_string());
+            self.status = "Enter a comment before sending".to_string();
+            cx.notify();
+            return;
+        }
+
+        let pending_review_node_id = match submission {
+            ReviewCommentSubmission::AddToReview => {
+                let Some(pending_review) = self.pending_review.clone() else {
+                    self.review_comment_error =
+                        Some("Start a review before adding a review comment".to_string());
+                    self.status = "Start a review before adding a review comment".to_string();
+                    cx.notify();
+                    return;
+                };
+                Some(pending_review.node_id)
+            }
+            ReviewCommentSubmission::SingleComment | ReviewCommentSubmission::StartReview => None,
+        };
+
+        if submission == ReviewCommentSubmission::StartReview && pr.node_id.is_empty() {
+            self.review_comment_error =
+                Some("GitHub did not return a pull request node id".to_string());
+            self.status = "Cannot start review without a pull request node id".to_string();
+            cx.notify();
+            return;
+        }
+
+        let detail_key =
+            PullRequestDetailCacheKey::new(pr.repo.clone(), pr.number, pr.head_sha.clone());
+        let optimistic_comment =
+            self.insert_optimistic_review_thread(composer.range.clone(), body.clone());
+        let increments_pending_review_count = submission == ReviewCommentSubmission::AddToReview;
+        let pending_review_before_increment = if increments_pending_review_count {
+            self.pending_review.clone()
+        } else {
+            None
+        };
+        if increments_pending_review_count {
+            increment_pending_review_comment_count(&mut self.pending_review);
+        }
+
+        self.is_submitting_review_comment = submission == ReviewCommentSubmission::StartReview;
+        self.review_composer_state.composer = None;
+        self.review_composer_state.line_selection = None;
+        self.review_comment_error = None;
+        self.status = match submission {
+            ReviewCommentSubmission::SingleComment => {
+                format!("Added comment locally on PR #{}; syncing", pr.number)
+            }
+            ReviewCommentSubmission::StartReview => {
+                format!(
+                    "Started pending review locally on PR #{}; syncing",
+                    pr.number
+                )
+            }
+            ReviewCommentSubmission::AddToReview => {
+                format!("Added review comment locally on PR #{}; syncing", pr.number)
+            }
+        };
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client = GitHubClient::new(GhCliTransport);
+            let result = match submission {
+                ReviewCommentSubmission::SingleComment => client
+                    .create_pull_request_review_comment(
+                        &pr.repo.owner,
+                        &pr.repo.name,
+                        pr.number,
+                        &pr.head_sha,
+                        &composer.range,
+                        &body,
+                    )
+                    .await
+                    .map(|()| None),
+                ReviewCommentSubmission::StartReview => client
+                    .start_pull_request_review(&pr.node_id, &pr.head_sha, &composer.range, &body)
+                    .await
+                    .map(Some),
+                ReviewCommentSubmission::AddToReview => {
+                    if let Some(pending_review_node_id) = pending_review_node_id {
+                        client
+                            .add_pending_review_thread(
+                                &pending_review_node_id,
+                                &composer.range,
+                                &body,
+                            )
+                            .await
+                            .map(|()| None)
+                    } else {
+                        Err(GitHubError::Transport(
+                            "missing pending review id".to_string(),
+                        ))
+                    }
+                }
+            };
+
+            if let Err(error) = this.update(cx, move |view, cx| {
+                if submission == ReviewCommentSubmission::StartReview {
+                    view.is_submitting_review_comment = false;
+                }
+
+                match result {
+                    Ok(new_pending_review_node_id) => {
+                        if let (ReviewCommentSubmission::StartReview, Some(node_id)) =
+                            (submission, new_pending_review_node_id)
+                        {
+                            view.set_pending_review_for_detail(
+                                &detail_key,
+                                PendingReviewSession {
+                                    node_id,
+                                    comment_count: 1,
+                                },
+                            );
+                        }
+
+                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
+                            view.review_comment_error = None;
+                            view.status = match submission {
+                                ReviewCommentSubmission::SingleComment => {
+                                    format!("Posted comment on PR #{}", pr.number)
+                                }
+                                ReviewCommentSubmission::StartReview => {
+                                    format!("Started pending review on PR #{}", pr.number)
+                                }
+                                ReviewCommentSubmission::AddToReview => {
+                                    format!("Added review comment on PR #{}", pr.number)
+                                }
+                            };
+                            view.load_selected_review_data(cx);
+                        }
+                    }
+                    Err(error) => {
+                        view.remove_optimistic_review_comment_for_detail(
+                            &detail_key,
+                            &optimistic_comment.comment_id,
+                        );
+                        if increments_pending_review_count {
+                            view.rollback_pending_review_comment_count_for_detail(
+                                &detail_key,
+                                pending_review_before_increment.as_ref(),
+                            );
+                        }
+
+                        let message = format!("Failed to submit review comment: {error}");
+                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
+                            if view.review_composer_state.composer.is_none() {
+                                view.review_composer_state.composer = Some(composer);
+                            }
+                            view.review_comment_error = Some(message.clone());
+                            view.status = message;
+                        }
+                    }
+                }
+
+                cx.notify();
+            }) {
+                crate::workspace::log_entity_update_error(
+                    "failed to update review comment submission state",
+                    error,
+                );
+            }
+        })
+        .detach();
+    }
+}
