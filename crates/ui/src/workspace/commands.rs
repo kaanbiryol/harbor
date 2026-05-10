@@ -46,10 +46,10 @@ impl AppView {
     ) {
         let behavior = open_selected_pull_request_behavior(
             self.selected_pull_request_number(),
-            !self.files.is_empty(),
-            self.detail_loading.details,
-            self.detail_loading.files,
-            self.detail_loading.reviews,
+            !self.detail_state.files.is_empty(),
+            self.detail_state.detail_loading.details,
+            self.detail_state.detail_loading.files,
+            self.detail_state.detail_loading.reviews,
         );
 
         match behavior {
@@ -58,7 +58,7 @@ impl AppView {
                 cx.notify();
             }
             OpenSelectedPullRequestBehavior::ShowDetails { number, refresh } => {
-                self.repository_switcher_open = false;
+                self.repository_state.repository_switcher_open = false;
                 self.pull_request_inbox_search_open = false;
                 self.file_filter_popover_open = false;
                 self.pull_request_inbox.visible = false;
@@ -83,7 +83,7 @@ impl AppView {
     ) {
         if self.selected_pull_request_number().is_some() {
             self.refresh_selected_pull_request(cx);
-        } else if let Some(repo) = self.configured_repo.clone() {
+        } else if let Some(repo) = self.repository_state.configured_repo.clone() {
             self.refresh_pull_requests(repo, cx);
         } else {
             self.status =

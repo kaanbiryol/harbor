@@ -31,15 +31,12 @@ use std::{
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, ListAlignment, ListOffset, ListState,
-    ScrollStrategy, Subscription, Task, UniformListScrollHandle, Window, px,
+    ScrollStrategy, Subscription, UniformListScrollHandle, Window, px,
 };
 use gpui_component::{ActiveTheme, input::InputState};
-use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, ReviewThreadState,
-    WorkflowJob, WorkflowRun,
-};
-use harbor_storage::SqliteStore;
-use harbor_sync::{ActivityState, SyncPolicy, SyncState, SyncTarget};
+use harbor_domain::{DiffFile, PullRequest, RepoId, WorkflowRun};
+pub(crate) use harbor_sync::PullRequestInboxMode;
+use harbor_sync::{ActivityState, SyncPolicy};
 
 use crate::actions::PanelTab;
 use crate::diff::{ParsedDiff, parse_files_with_syntax};
@@ -60,7 +57,7 @@ pub(crate) use changed_files::{
 };
 use external_apps::ExternalAppAvailability;
 use github_service::{GitHubApi, RealGitHubApi};
-use notifications::{NativeNotificationSink, NotificationSink};
+use notifications::NativeNotificationSink;
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
@@ -68,8 +65,10 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    DiffSelectionState, PullRequestDetailLoadedState, PullRequestDetailLoadingState,
-    PullRequestInboxState, ReviewComposerState, WorkflowLogState,
+    DiffSelectionState, NotificationState, PullRequestDetailLoadedState,
+    PullRequestDetailLoadingState, PullRequestDetailUiState, PullRequestInboxState,
+    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
+    WorkspaceTasks,
 };
 pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 
@@ -79,71 +78,16 @@ pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fm
 
 const DIFF_LIST_OVERDRAW: f32 = 240.0;
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub(crate) enum PullRequestInboxMode {
-    #[default]
-    Open,
-    Closed,
-    NeedsReview,
-}
-
-impl PullRequestInboxMode {
-    pub(crate) const ALL: [Self; 3] = [Self::Open, Self::Closed, Self::NeedsReview];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Open => "Open",
-            Self::Closed => "Closed",
-            Self::NeedsReview => "Needs review",
-        }
-    }
-
-    pub(crate) fn status_label(self) -> &'static str {
-        match self {
-            Self::Open => "open pull requests",
-            Self::Closed => "closed pull requests",
-            Self::NeedsReview => "pull requests requesting your review",
-        }
-    }
-
-    pub(crate) fn empty_message(self) -> &'static str {
-        match self {
-            Self::Open => "No open pull requests",
-            Self::Closed => "No closed pull requests",
-            Self::NeedsReview => "No pull requests require your review",
-        }
-    }
-
-    pub(crate) fn key(self) -> &'static str {
-        match self {
-            Self::Open => "open",
-            Self::Closed => "closed",
-            Self::NeedsReview => "needs-review",
-        }
-    }
-}
-
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
-    repositories: Vec<RepoId>,
-    files: Vec<DiffFile>,
-    diffs: Vec<Option<ParsedDiff>>,
-    check_runs: Vec<CheckRun>,
-    workflow_runs: Vec<WorkflowRun>,
-    workflow_jobs: Vec<WorkflowJob>,
-    pull_request_reviews: Vec<PullRequestReview>,
     github_api: Arc<dyn GitHubApi>,
-    pub(crate) review_threads: Vec<ReviewThread>,
-    pub(crate) review_composer_state: ReviewComposerState,
-    pub(crate) pending_review: Option<PendingReviewSession>,
-    pub(crate) log_state: WorkflowLogState,
-    pr_list_task: Option<Task<()>>,
-    pr_detail_tasks: Vec<Task<()>>,
-    repository_task: Option<Task<()>>,
-    local_task: Option<Task<()>>,
-    external_app_availability_task: Option<Task<()>>,
-    sync_task: Option<Task<()>>,
+    tasks: WorkspaceTasks,
+    repository_state: RepositoryUiState,
+    pub(crate) detail_state: PullRequestDetailUiState,
+    pub(crate) review_state: ReviewRuntimeState,
+    notification_state: NotificationState,
+    sync_runtime: SyncRuntimeState,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
@@ -153,64 +97,22 @@ pub struct AppView {
     diff_selection: DiffSelectionState,
     active_tab: PanelTab,
     pull_request_inbox: PullRequestInboxState,
-    repository_switcher_open: bool,
     pull_request_inbox_search_open: bool,
     file_filter_popover_open: bool,
-    repository_switcher_selection: usize,
     pull_request_switcher_selection: usize,
-    repository_search_input: Entity<InputState>,
     pull_request_search_input: Entity<InputState>,
-    pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
-    configured_repo: Option<RepoId>,
-    repository_store: Option<SqliteStore>,
-    repository_local_paths: HashMap<RepoId, PathBuf>,
     external_app_availability: ExternalAppAvailability,
     collapsed_file_tree_folders: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
     owned_file_paths: HashSet<String>,
-    is_loading_repositories: bool,
     is_loading_prs: bool,
-    detail_loaded: PullRequestDetailLoadedState,
-    detail_loading: PullRequestDetailLoadingState,
     is_running_action: bool,
     is_running_pr_action: bool,
-    pub(crate) is_submitting_review_comment: bool,
-    pub(crate) is_submitting_review_thread_reply: bool,
-    pub(crate) is_submitting_review_comment_edit: bool,
-    pub(crate) is_submitting_pending_review: bool,
-    pub(crate) review_thread_action_thread_id: Option<String>,
-    pub(crate) review_comment_action_comment_id: Option<String>,
-    pub(crate) review_reaction_action: Option<ReviewReactionAction>,
-    review_thread_state_overrides: HashMap<String, ReviewThreadState>,
-    review_reaction_overrides: HashMap<ReviewReactionKey, bool>,
     load_error: Option<String>,
-    details_error: Option<String>,
-    files_error: Option<String>,
-    checks_error: Option<String>,
-    workflows_error: Option<String>,
-    reviews_error: Option<String>,
-    repository_error: Option<String>,
     action_error: Option<String>,
     pr_action_error: Option<String>,
-    pub(crate) review_comment_error: Option<String>,
-    pub(crate) review_thread_reply_error: Option<ReviewThreadUiError>,
-    pub(crate) review_thread_action_error: Option<ReviewThreadUiError>,
-    pub(crate) review_comment_edit_error: Option<ReviewCommentUiError>,
-    pub(crate) review_comment_action_error: Option<ReviewCommentUiError>,
-    pub(crate) review_reaction_error: Option<ReviewCommentUiError>,
-    pub(crate) pending_review_error: Option<String>,
-    current_user_login: Option<String>,
-    local_review_comment_sequence: u64,
-    review_data_generation: u64,
-    activity_state: ActivityState,
-    notification_sink: Arc<dyn NotificationSink>,
-    notification_dedupe: HashSet<String>,
-    notifications_enabled: bool,
-    sync_policy: SyncPolicy,
-    sync_states: HashMap<SyncTarget, SyncState>,
-    did_focus: bool,
     status: String,
     _subscriptions: Vec<Subscription>,
 }
@@ -320,12 +222,12 @@ impl AppView {
             ),
         ];
         subscriptions.push(cx.observe_window_activation(window, |view, window, cx| {
-            view.activity_state = if window.is_window_active() {
+            view.sync_runtime.activity_state = if window.is_window_active() {
                 ActivityState::Focused
             } else {
                 ActivityState::Background
             };
-            if view.activity_state == ActivityState::Focused {
+            if view.sync_runtime.activity_state == ActivityState::Focused {
                 view.catch_up_active_inbox_after_focus(cx);
             }
             view.ensure_sync_loop(cx);
@@ -342,33 +244,84 @@ impl AppView {
         let mut view = Self {
             focus_handle: cx.focus_handle(),
             pull_requests,
-            repositories,
-            files,
-            diffs,
-            check_runs: Vec::new(),
-            workflow_runs: Vec::new(),
-            workflow_jobs: Vec::new(),
-            pull_request_reviews,
             github_api,
-            review_threads,
-            review_composer_state: ReviewComposerState {
-                composer: None,
-                line_selection: None,
-                comment_input: review_comment_input,
-                thread_reply_thread_id: None,
-                thread_reply_input: review_thread_reply_input,
-                comment_edit_comment_id: None,
-                comment_edit_input: review_comment_edit_input,
-                pending_review_body_input,
+            tasks: WorkspaceTasks::default(),
+            repository_state: RepositoryUiState {
+                repositories,
+                repository_switcher_open: true,
+                repository_switcher_selection: 0,
+                repository_search_input,
+                configured_repo: None,
+                repository_store: None,
+                repository_local_paths: HashMap::new(),
+                is_loading_repositories: start_startup_tasks,
+                repository_error: None,
             },
-            pending_review: None,
-            log_state: WorkflowLogState::new(),
-            pr_list_task: None,
-            pr_detail_tasks: Vec::new(),
-            repository_task: None,
-            local_task: None,
-            external_app_availability_task: None,
-            sync_task: None,
+            detail_state: PullRequestDetailUiState {
+                files,
+                diffs,
+                check_runs: Vec::new(),
+                workflow_runs: Vec::new(),
+                workflow_jobs: Vec::new(),
+                pull_request_detail_cache: HashMap::new(),
+                detail_loaded: PullRequestDetailLoadedState::default(),
+                detail_loading: PullRequestDetailLoadingState::default(),
+                log_state: WorkflowLogState::new(),
+                details_error: None,
+                files_error: None,
+                checks_error: None,
+                workflows_error: None,
+            },
+            review_state: ReviewRuntimeState {
+                pull_request_reviews,
+                review_threads,
+                review_composer_state: ReviewComposerState {
+                    composer: None,
+                    line_selection: None,
+                    comment_input: review_comment_input,
+                    thread_reply_thread_id: None,
+                    thread_reply_input: review_thread_reply_input,
+                    comment_edit_comment_id: None,
+                    comment_edit_input: review_comment_edit_input,
+                    pending_review_body_input,
+                },
+                pending_review: None,
+                is_submitting_review_comment: false,
+                is_submitting_review_thread_reply: false,
+                is_submitting_review_comment_edit: false,
+                is_submitting_pending_review: false,
+                review_thread_action_thread_id: None,
+                review_comment_action_comment_id: None,
+                review_reaction_action: None,
+                review_thread_state_overrides: HashMap::new(),
+                review_reaction_overrides: HashMap::new(),
+                reviews_error: None,
+                review_comment_error: None,
+                review_thread_reply_error: None,
+                review_thread_action_error: None,
+                review_comment_edit_error: None,
+                review_comment_action_error: None,
+                review_reaction_error: None,
+                pending_review_error: None,
+                current_user_login: None,
+                local_review_comment_sequence: 0,
+                review_data_generation: 0,
+            },
+            notification_state: NotificationState {
+                notification_sink: Arc::new(NativeNotificationSink),
+                notification_dedupe: HashSet::new(),
+                notifications_enabled: true,
+            },
+            sync_runtime: SyncRuntimeState {
+                activity_state: if window.is_window_active() {
+                    ActivityState::Focused
+                } else {
+                    ActivityState::Background
+                },
+                sync_policy: SyncPolicy::default(),
+                sync_states: HashMap::new(),
+                did_focus: false,
+            },
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
@@ -378,68 +331,22 @@ impl AppView {
             diff_selection: DiffSelectionState::default(),
             active_tab: PanelTab::Diff,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),
-            repository_switcher_open: true,
             pull_request_inbox_search_open: false,
             file_filter_popover_open: false,
-            repository_switcher_selection: 0,
             pull_request_switcher_selection: 0,
-            repository_search_input,
             pull_request_search_input,
-            pull_request_detail_cache: HashMap::new(),
-            configured_repo: None,
-            repository_store: None,
-            repository_local_paths: HashMap::new(),
             external_app_availability: ExternalAppAvailability::default(),
             collapsed_file_tree_folders: HashSet::new(),
             reviewed_file_paths: HashSet::new(),
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
-            is_loading_repositories: start_startup_tasks,
             is_loading_prs: false,
-            detail_loaded: PullRequestDetailLoadedState::default(),
-            detail_loading: PullRequestDetailLoadingState::default(),
             is_running_action: false,
             is_running_pr_action: false,
-            is_submitting_review_comment: false,
-            is_submitting_review_thread_reply: false,
-            is_submitting_review_comment_edit: false,
-            is_submitting_pending_review: false,
-            review_thread_action_thread_id: None,
-            review_comment_action_comment_id: None,
-            review_reaction_action: None,
-            review_thread_state_overrides: HashMap::new(),
-            review_reaction_overrides: HashMap::new(),
             load_error: None,
-            details_error: None,
-            files_error: None,
-            checks_error: None,
-            workflows_error: None,
-            reviews_error: None,
-            repository_error: None,
             action_error: None,
             pr_action_error: None,
-            review_comment_error: None,
-            review_thread_reply_error: None,
-            review_thread_action_error: None,
-            review_comment_edit_error: None,
-            review_comment_action_error: None,
-            review_reaction_error: None,
-            pending_review_error: None,
-            current_user_login: None,
-            local_review_comment_sequence: 0,
-            review_data_generation: 0,
-            activity_state: if window.is_window_active() {
-                ActivityState::Focused
-            } else {
-                ActivityState::Background
-            },
-            notification_sink: Arc::new(NativeNotificationSink),
-            notification_dedupe: HashSet::new(),
-            notifications_enabled: true,
-            sync_policy: SyncPolicy::default(),
-            sync_states: HashMap::new(),
-            did_focus: false,
             status,
             _subscriptions: subscriptions,
         };
@@ -468,7 +375,7 @@ impl AppView {
     }
 
     pub(crate) fn active_file(&self) -> Option<&DiffFile> {
-        self.files.get(self.diff_selection.file_index)
+        self.detail_state.files.get(self.diff_selection.file_index)
     }
 
     pub(crate) fn active_file_index(&self) -> usize {
@@ -480,11 +387,11 @@ impl AppView {
     }
 
     pub(crate) fn diff_files(&self) -> &[DiffFile] {
-        &self.files
+        &self.detail_state.files
     }
 
     pub(crate) fn parsed_diffs(&self) -> &[Option<ParsedDiff>] {
-        &self.diffs
+        &self.detail_state.diffs
     }
 
     pub(crate) fn reviewed_file_paths(&self) -> &HashSet<String> {
@@ -495,7 +402,7 @@ impl AppView {
         let filters = self.changed_file_filters();
 
         changed_file_tree_rows(
-            &self.files,
+            &self.detail_state.files,
             &self.collapsed_file_tree_folders,
             &self.reviewed_file_paths,
             &filters,
@@ -513,7 +420,8 @@ impl AppView {
     }
 
     pub(crate) fn reviewed_file_count(&self) -> usize {
-        self.files
+        self.detail_state
+            .files
             .iter()
             .filter(|file| self.reviewed_file_paths.contains(&file.path))
             .count()
@@ -529,7 +437,7 @@ impl AppView {
     }
 
     pub(crate) fn changed_file_type_filters(&self) -> Vec<ChangedFileTypeFilter> {
-        changed_file_type_filters(&self.files, &self.excluded_file_type_filters)
+        changed_file_type_filters(&self.detail_state.files, &self.excluded_file_type_filters)
     }
 
     pub(crate) fn included_file_type_filter_count(&self) -> usize {
@@ -554,12 +462,12 @@ impl AppView {
 
         continuous_diff_file_item_index(
             ContinuousDiffLayoutInput {
-                files: &self.files,
-                diffs: &self.diffs,
+                files: &self.detail_state.files,
+                diffs: &self.detail_state.diffs,
                 visible_file_indices: &visible_file_indices,
                 reviewed_file_paths: &self.reviewed_file_paths,
-                review_threads: &self.review_threads,
-                review_composer: self.review_composer_state.composer.as_ref(),
+                review_threads: &self.review_state.review_threads,
+                review_composer: self.review_state.review_composer_state.composer.as_ref(),
             },
             file_index,
         )
@@ -568,12 +476,12 @@ impl AppView {
     fn sync_diff_list_items(&mut self, cx: &App) {
         let visible_file_indices = self.visible_file_indices(cx);
         let next_items = continuous_diff_items(ContinuousDiffLayoutInput {
-            files: &self.files,
-            diffs: &self.diffs,
+            files: &self.detail_state.files,
+            diffs: &self.detail_state.diffs,
             visible_file_indices: &visible_file_indices,
             reviewed_file_paths: &self.reviewed_file_paths,
-            review_threads: &self.review_threads,
-            review_composer: self.review_composer_state.composer.as_ref(),
+            review_threads: &self.review_state.review_threads,
+            review_composer: self.review_state.review_composer_state.composer.as_ref(),
         });
         sync_diff_list_state(&self.diff_list_state, &mut self.diff_list_items, next_items);
     }
@@ -613,6 +521,7 @@ impl AppView {
 
     fn prune_reviewed_file_paths(&mut self) {
         let file_paths = self
+            .detail_state
             .files
             .iter()
             .map(|file| file.path.clone())
@@ -629,10 +538,11 @@ impl AppView {
     }
 
     fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
-        self.workflow_runs
+        self.detail_state
+            .workflow_runs
             .iter()
             .find(|run| workflow_run_failed(run))
-            .or_else(|| self.workflow_runs.first())
+            .or_else(|| self.detail_state.workflow_runs.first())
     }
 
     pub(crate) fn select_pull_request(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -655,17 +565,17 @@ impl AppView {
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
         self.clear_detail_loaded_state();
-        self.workflow_jobs.clear();
+        self.detail_state.workflow_jobs.clear();
         self.clear_log_content();
-        self.pull_request_reviews.clear();
-        self.review_threads.clear();
+        self.review_state.pull_request_reviews.clear();
+        self.review_state.review_threads.clear();
         self.clear_review_composer_state();
-        self.pending_review = None;
-        self.reviews_error = None;
+        self.review_state.pending_review = None;
+        self.review_state.reviews_error = None;
         self.clear_log_error();
         self.pr_action_error = None;
-        self.review_comment_error = None;
-        self.pending_review_error = None;
+        self.review_state.review_comment_error = None;
+        self.review_state.pending_review_error = None;
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -686,7 +596,7 @@ impl AppView {
             return;
         }
 
-        if let Some(repository) = self.configured_repo.clone() {
+        if let Some(repository) = self.repository_state.configured_repo.clone() {
             self.load_repository_pull_requests_from_cache(repository, mode, cx);
         } else {
             self.pull_request_inbox.mode = mode;
@@ -704,7 +614,12 @@ impl AppView {
     }
 
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(path) = self.files.get(index).map(|file| file.path.clone()) {
+        if let Some(path) = self
+            .detail_state
+            .files
+            .get(index)
+            .map(|file| file.path.clone())
+        {
             self.select_diff_file_index(index);
             self.active_tab = PanelTab::Diff;
             self.clear_review_composer_state();
@@ -744,7 +659,12 @@ impl AppView {
         file_index: usize,
         cx: &mut Context<Self>,
     ) {
-        let Some(path) = self.files.get(file_index).map(|file| file.path.clone()) else {
+        let Some(path) = self
+            .detail_state
+            .files
+            .get(file_index)
+            .map(|file| file.path.clone())
+        else {
             self.status = "No changed file to mark reviewed".to_string();
             cx.notify();
             return;
@@ -757,7 +677,7 @@ impl AppView {
             true
         };
         let reviewed_count = self.reviewed_file_count();
-        let total_count = self.files.len();
+        let total_count = self.detail_state.files.len();
 
         self.status = if reviewed {
             format!("Marked {path} as reviewed ({reviewed_count}/{total_count})")
@@ -825,12 +745,14 @@ impl AppView {
     }
 
     pub(crate) fn remember_repository(&mut self, repository: RepoId) {
-        self.repositories.retain(|existing| existing != &repository);
-        self.repositories.insert(0, repository);
+        self.repository_state
+            .repositories
+            .retain(|existing| existing != &repository);
+        self.repository_state.repositories.insert(0, repository);
     }
 
     pub(crate) fn current_repository(&self) -> Option<&RepoId> {
-        self.configured_repo.as_ref().or_else(|| {
+        self.repository_state.configured_repo.as_ref().or_else(|| {
             self.selected_pull_request()
                 .map(|pull_request| &pull_request.repo)
         })
@@ -838,15 +760,17 @@ impl AppView {
 
     pub(crate) fn current_repository_local_path(&self) -> Option<&PathBuf> {
         self.current_repository()
-            .and_then(|repository| self.repository_local_paths.get(repository))
+            .and_then(|repository| self.repository_state.repository_local_paths.get(repository))
     }
 
     pub(crate) fn set_repository_local_path(&mut self, repository: RepoId, path: PathBuf) {
-        self.repository_local_paths.insert(repository, path);
+        self.repository_state
+            .repository_local_paths
+            .insert(repository, path);
     }
 
     pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {
-        let Some(current_user_login) = self.current_user_login.clone() else {
+        let Some(current_user_login) = self.review_state.current_user_login.clone() else {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
             cx.notify();
@@ -858,14 +782,14 @@ impl AppView {
             cx.notify();
             return;
         };
-        if self.files.is_empty() {
+        if self.detail_state.files.is_empty() {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
             cx.notify();
             return;
         }
 
-        let files = self.files.clone();
+        let files = self.detail_state.files.clone();
         let selected_repository = self.current_repository().cloned();
         let selected_pr_number = self.selected_pull_request_number();
         let task = cx.background_spawn(async move {

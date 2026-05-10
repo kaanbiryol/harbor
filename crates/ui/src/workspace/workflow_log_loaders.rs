@@ -1,4 +1,4 @@
-use gpui::{Context, ScrollStrategy};
+use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_logs::parse_workflow_log;
 
 use crate::{
@@ -13,21 +13,31 @@ impl AppView {
             .selected_pull_request()
             .map(|pull_request| pull_request.repo.clone())
         else {
-            self.log_state.error =
+            self.detail_state.log_state.error =
                 Some("Workflow logs require a selected pull request and GitHub CLI auth".into());
-            self.status = self.log_state.error.clone().unwrap_or_default();
+            self.status = self
+                .detail_state
+                .log_state
+                .error
+                .clone()
+                .unwrap_or_default();
             cx.notify();
             return;
         };
         let Some(run) = self.selected_workflow_run_for_logs().cloned() else {
-            self.log_state.error =
+            self.detail_state.log_state.error =
                 Some("No workflow run is available for the selected PR head".into());
-            self.status = self.log_state.error.clone().unwrap_or_default();
+            self.status = self
+                .detail_state
+                .log_state
+                .error
+                .clone()
+                .unwrap_or_default();
             cx.notify();
             return;
         };
 
-        if self.log_state.is_loading {
+        if self.detail_state.log_state.is_loading {
             self.status = format!("Already loading logs for {}", workflow_run_label(&run));
             cx.notify();
             return;
@@ -36,9 +46,10 @@ impl AppView {
         self.active_tab = PanelTab::Logs;
         self.set_log_loading(true);
         self.clear_log_error();
-        self.workflow_jobs.clear();
+        self.detail_state.workflow_jobs.clear();
         self.clear_log_content();
-        self.log_state
+        self.detail_state
+            .log_state
             .list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Loading logs for {}", workflow_run_label(&run));
@@ -49,11 +60,16 @@ impl AppView {
         let run_label = workflow_run_label(&run);
         let github_api = self.github_api.clone();
 
-        self.log_state.task = Some(cx.spawn(async move |this, cx| {
+        self.detail_state.log_state.task = Some(cx.spawn(async move |this, cx| {
             let jobs_result = github_api
                 .list_workflow_jobs_for_run(&owner, &name, run_id)
                 .await;
-            let log_result = github_api.workflow_run_log(&owner, &name, run_id).await;
+            let log_result = match github_api.workflow_run_log(&owner, &name, run_id).await {
+                Ok(text) => Ok(cx
+                    .background_spawn(async move { parse_workflow_log(run_id, &text) })
+                    .await),
+                Err(error) => Err(error),
+            };
 
             this.update_or_log(
                 cx,
@@ -67,19 +83,19 @@ impl AppView {
 
                     match jobs_result {
                         Ok(jobs) => {
-                            view.workflow_jobs = jobs;
+                            view.detail_state.workflow_jobs = jobs;
                         }
                         Err(error) => {
-                            view.workflow_jobs.clear();
-                            view.log_state.error =
+                            view.detail_state.workflow_jobs.clear();
+                            view.detail_state.log_state.error =
                                 Some(format!("Failed to load workflow jobs: {error}"));
                         }
                     }
 
                     match log_result {
-                        Ok(text) => {
-                            view.log_state.chunk = Some(parse_workflow_log(run_id, &text));
-                            if view.log_state.error.is_none() {
+                        Ok(chunk) => {
+                            view.detail_state.log_state.chunk = Some(chunk);
+                            if view.detail_state.log_state.error.is_none() {
                                 view.status = format!("Loaded logs for {run_label}");
                             } else {
                                 view.status =
@@ -89,12 +105,13 @@ impl AppView {
                         Err(error) => {
                             view.clear_log_content();
                             let message = format!("Failed to load workflow logs: {error}");
-                            view.log_state.error = Some(message.clone());
+                            view.detail_state.log_state.error = Some(message.clone());
                             view.status = message;
                         }
                     }
 
-                    view.log_state
+                    view.detail_state
+                        .log_state
                         .list_scroll
                         .scroll_to_item(0, ScrollStrategy::Top);
                     view.cache_current_pull_request_detail_snapshot();

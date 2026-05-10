@@ -133,7 +133,7 @@ impl AppView {
         path: PathBuf,
         cx: &mut Context<Self>,
     ) {
-        let store = self.repository_store.clone();
+        let store = self.repository_state.repository_store.clone();
         let repository_for_task = repository.clone();
         let owner = repository.owner.clone();
         let repo_name = repository.name.clone();
@@ -159,7 +159,7 @@ impl AppView {
             Ok::<PathBuf, String>(local_repository.repo_path)
         });
 
-        self.local_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.local_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_or_log(
@@ -169,7 +169,7 @@ impl AppView {
                     match result {
                         Ok(repo_path) => {
                             view.set_repository_local_path(repository.clone(), repo_path.clone());
-                            view.repository_error = None;
+                            view.repository_state.repository_error = None;
                             view.status = format!(
                                 "Saved local checkout for {} at {}",
                                 repository.full_name(),
@@ -178,12 +178,12 @@ impl AppView {
                             view.refresh_owned_file_filters(cx);
                         }
                         Err(error) => {
-                            view.repository_error = Some(error.clone());
+                            view.repository_state.repository_error = Some(error.clone());
                             view.status = format!("Failed to save local checkout: {error}");
                         }
                     }
 
-                    view.local_task = None;
+                    view.tasks.local_task = None;
                     cx.notify();
                 },
             );
@@ -197,7 +197,12 @@ impl AppView {
             return;
         };
 
-        let Some(repo_path) = self.repository_local_paths.get(&pr.repo).cloned() else {
+        let Some(repo_path) = self
+            .repository_state
+            .repository_local_paths
+            .get(&pr.repo)
+            .cloned()
+        else {
             self.status = format!(
                 "Choose a local checkout for {} before opening with {}",
                 pr.repo.full_name(),
@@ -243,7 +248,7 @@ impl AppView {
             ))
         });
 
-        self.local_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.local_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_or_log(cx, "failed to update open-with state", move |view, cx| {
@@ -251,7 +256,7 @@ impl AppView {
                     Ok(status) => status,
                     Err(error) => format!("Failed to open with {app_label}: {error}"),
                 };
-                view.local_task = None;
+                view.tasks.local_task = None;
                 cx.notify();
             });
         }));
@@ -269,7 +274,12 @@ impl AppView {
             return;
         };
 
-        let Some(repo_path) = self.repository_local_paths.get(&pr.repo).cloned() else {
+        let Some(repo_path) = self
+            .repository_state
+            .repository_local_paths
+            .get(&pr.repo)
+            .cloned()
+        else {
             self.status = format!(
                 "Choose a local checkout for {} before checkout",
                 pr.repo.full_name()
@@ -292,7 +302,7 @@ impl AppView {
             .map_err(|error| error.to_string())
         });
 
-        self.local_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.local_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_or_log(cx, "failed to update checkout state", move |view, cx| {
@@ -300,7 +310,7 @@ impl AppView {
                     Ok(status) => status,
                     Err(error) => format!("Failed to prepare PR worktree: {error}"),
                 };
-                view.local_task = None;
+                view.tasks.local_task = None;
                 cx.notify();
             });
         }));

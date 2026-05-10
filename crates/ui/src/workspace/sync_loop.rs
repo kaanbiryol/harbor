@@ -9,18 +9,18 @@ use harbor_sync::{
 
 use crate::{
     actions::PanelTab,
-    workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode},
+    workspace::{AppView, PullRequestInboxCacheKey},
 };
 
 const IDLE_SYNC_LOOP_DELAY: Duration = Duration::from_secs(60);
 
 impl AppView {
     pub(crate) fn ensure_sync_loop(&mut self, cx: &mut Context<Self>) {
-        if self.sync_task.is_some() {
+        if self.tasks.sync_task.is_some() {
             return;
         }
 
-        self.sync_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.sync_task = Some(cx.spawn(async move |this, cx| {
             loop {
                 let delay = match this.update(cx, |view, _| view.next_sync_delay()) {
                     Ok(delay) => delay,
@@ -44,32 +44,39 @@ impl AppView {
     }
 
     pub(crate) fn mark_sync_attempt(&mut self, target: SyncTarget) {
-        self.sync_states
+        self.sync_runtime
+            .sync_states
             .entry(target)
             .or_default()
             .mark_attempt(Utc::now());
     }
 
     pub(crate) fn mark_sync_success(&mut self, target: SyncTarget) {
-        self.sync_states
+        self.sync_runtime
+            .sync_states
             .entry(target)
             .or_default()
             .mark_success(Utc::now());
     }
 
     pub(crate) fn mark_sync_failure(&mut self, target: SyncTarget) {
-        self.sync_states.entry(target).or_default().mark_failure();
+        self.sync_runtime
+            .sync_states
+            .entry(target)
+            .or_default()
+            .mark_failure();
     }
 
     pub(crate) fn mark_active_inbox_stale(&mut self) {
-        self.sync_states
-            .entry(active_inbox_sync_target(self.pull_request_inbox.mode))
+        self.sync_runtime
+            .sync_states
+            .entry(self.pull_request_inbox.mode.active_sync_target())
             .or_default()
             .mark_stale();
     }
 
     fn run_scheduled_active_inbox_sync(&mut self, cx: &mut Context<Self>) {
-        let Some(repository) = self.configured_repo.clone() else {
+        let Some(repository) = self.repository_state.configured_repo.clone() else {
             return;
         };
         if self.is_loading_prs {
@@ -80,11 +87,11 @@ impl AppView {
         if matches!(decision, SyncDecision::RunNow) {
             let key =
                 PullRequestInboxCacheKey::new(repository.clone(), self.pull_request_inbox.mode);
-            if active_inbox_sync_target(self.pull_request_inbox.mode) == SyncTarget::ActiveInbox {
+            if self.pull_request_inbox.mode.active_sync_target() == SyncTarget::ActiveInbox {
                 tracing::info!(
                     repository = %repository.full_name(),
                     mode = self.pull_request_inbox.mode.key(),
-                    activity_state = ?self.activity_state,
+                    activity_state = ?self.sync_runtime.activity_state,
                     "github graphql source: scheduled active inbox refresh"
                 );
             }
@@ -99,7 +106,7 @@ impl AppView {
     }
 
     fn next_sync_delay(&self) -> Duration {
-        if self.configured_repo.is_none() {
+        if self.repository_state.configured_repo.is_none() {
             return IDLE_SYNC_LOOP_DELAY;
         }
 
@@ -119,20 +126,21 @@ impl AppView {
     }
 
     fn active_inbox_sync_decision(&self, reason: SyncReason) -> SyncDecision {
-        self.sync_decision(
-            active_inbox_sync_target(self.pull_request_inbox.mode),
-            reason,
-        )
+        self.sync_decision(self.pull_request_inbox.mode.active_sync_target(), reason)
     }
 
     fn sync_decision(&self, target: SyncTarget, reason: SyncReason) -> SyncDecision {
         let empty_state = SyncState::default();
-        let state = self.sync_states.get(&target).unwrap_or(&empty_state);
+        let state = self
+            .sync_runtime
+            .sync_states
+            .get(&target)
+            .unwrap_or(&empty_state);
 
-        self.sync_policy.decision(
+        self.sync_runtime.sync_policy.decision(
             target,
             reason,
-            self.activity_state,
+            self.sync_runtime.activity_state,
             state,
             self.sync_signals(),
             Utc::now(),
@@ -145,7 +153,7 @@ impl AppView {
                 checks_have_running_or_pending_work(pull_request.checks_summary)
             }),
             has_running_workflows: harbor_sync::workflow_runs_have_running_work(
-                &self.workflow_runs,
+                &self.detail_state.workflow_runs,
             ),
             selected_pr_visible: self.selected_pull_request().is_some(),
         }
@@ -159,13 +167,13 @@ impl AppView {
     }
 
     fn run_scheduled_selected_pull_request_sync(&mut self, cx: &mut Context<Self>) {
-        if self.activity_state == harbor_sync::ActivityState::Background
+        if self.sync_runtime.activity_state == harbor_sync::ActivityState::Background
             || self.selected_pull_request().is_none()
-            || self.detail_loading.details
-            || self.detail_loading.files
-            || self.detail_loading.checks
-            || self.detail_loading.workflows
-            || self.detail_loading.reviews
+            || self.detail_state.detail_loading.details
+            || self.detail_state.detail_loading.files
+            || self.detail_state.detail_loading.checks
+            || self.detail_state.detail_loading.workflows
+            || self.detail_state.detail_loading.reviews
         {
             return;
         }
@@ -198,13 +206,13 @@ impl AppView {
         self.mark_sync_attempt(target);
         match target {
             SyncTarget::SelectedPullRequestReviews => {
-                self.detail_loaded.reviews = false;
+                self.detail_state.detail_loaded.reviews = false;
             }
             SyncTarget::SelectedPullRequestChecks => {
-                self.detail_loaded.checks = false;
+                self.detail_state.detail_loaded.checks = false;
             }
             SyncTarget::SelectedPullRequestWorkflows => {
-                self.detail_loaded.workflows = false;
+                self.detail_state.detail_loaded.workflows = false;
             }
             SyncTarget::ActiveInbox | SyncTarget::SelectedPullRequestMetadata => {}
             SyncTarget::ActiveInboxLight | SyncTarget::ActiveInboxEnrichment => {}
@@ -213,7 +221,7 @@ impl AppView {
     }
 
     fn next_selected_pull_request_sync_delay(&self) -> Duration {
-        if self.activity_state == harbor_sync::ActivityState::Background
+        if self.sync_runtime.activity_state == harbor_sync::ActivityState::Background
             || self.selected_pull_request().is_none()
         {
             return IDLE_SYNC_LOOP_DELAY;
@@ -237,12 +245,5 @@ impl AppView {
         }
 
         delay
-    }
-}
-
-fn active_inbox_sync_target(mode: PullRequestInboxMode) -> SyncTarget {
-    match mode {
-        PullRequestInboxMode::Open | PullRequestInboxMode::Closed => SyncTarget::ActiveInboxLight,
-        PullRequestInboxMode::NeedsReview => SyncTarget::ActiveInbox,
     }
 }

@@ -100,9 +100,12 @@ impl PullRequestInboxSnapshot {
 
 impl AppView {
     pub(crate) fn current_pull_request_inbox_key(&self) -> Option<PullRequestInboxCacheKey> {
-        self.configured_repo.clone().map(|repository| {
-            PullRequestInboxCacheKey::new(repository, self.pull_request_inbox.mode)
-        })
+        self.repository_state
+            .configured_repo
+            .clone()
+            .map(|repository| {
+                PullRequestInboxCacheKey::new(repository, self.pull_request_inbox.mode)
+            })
     }
 
     pub(crate) fn cache_current_pull_request_inbox_snapshot(&mut self) {
@@ -111,11 +114,11 @@ impl AppView {
         };
 
         if self.is_loading_prs
-            || self.detail_loading.details
-            || self.detail_loading.files
-            || self.detail_loading.checks
-            || self.detail_loading.workflows
-            || self.detail_loading.reviews
+            || self.detail_state.detail_loading.details
+            || self.detail_state.detail_loading.files
+            || self.detail_state.detail_loading.checks
+            || self.detail_state.detail_loading.workflows
+            || self.detail_state.detail_loading.reviews
             || self.load_error.is_some()
         {
             return;
@@ -141,19 +144,21 @@ impl AppView {
             return;
         };
 
-        if self.detail_loading.details
-            || self.detail_loading.files
-            || self.detail_loading.checks
-            || self.detail_loading.workflows
-            || self.detail_loading.reviews
-            || self.details_error.is_some()
-            || self.files_error.is_some()
+        if self.detail_state.detail_loading.details
+            || self.detail_state.detail_loading.files
+            || self.detail_state.detail_loading.checks
+            || self.detail_state.detail_loading.workflows
+            || self.detail_state.detail_loading.reviews
+            || self.detail_state.details_error.is_some()
+            || self.detail_state.files_error.is_some()
         {
             return;
         }
 
         if let Some(snapshot) = self.current_pull_request_detail_snapshot() {
-            self.pull_request_detail_cache.insert(key, snapshot);
+            self.detail_state
+                .pull_request_detail_cache
+                .insert(key, snapshot);
             self.cache_current_pull_request_inbox_snapshot();
         }
     }
@@ -163,17 +168,17 @@ impl AppView {
 
         Some(PullRequestDetailSnapshot {
             pull_request,
-            files: self.files.clone(),
-            diffs: self.diffs.clone(),
-            check_runs: self.check_runs.clone(),
-            workflow_runs: self.workflow_runs.clone(),
-            workflow_jobs: self.workflow_jobs.clone(),
-            pull_request_reviews: self.pull_request_reviews.clone(),
-            review_threads: self.review_threads.clone(),
-            detail_loaded: self.detail_loaded,
-            pending_review: self.pending_review.clone(),
-            log_chunk: self.log_state.chunk.clone(),
-            current_user_login: self.current_user_login.clone(),
+            files: self.detail_state.files.clone(),
+            diffs: self.detail_state.diffs.clone(),
+            check_runs: self.detail_state.check_runs.clone(),
+            workflow_runs: self.detail_state.workflow_runs.clone(),
+            workflow_jobs: self.detail_state.workflow_jobs.clone(),
+            pull_request_reviews: self.review_state.pull_request_reviews.clone(),
+            review_threads: self.review_state.review_threads.clone(),
+            detail_loaded: self.detail_state.detail_loaded,
+            pending_review: self.review_state.pending_review.clone(),
+            log_chunk: self.detail_state.log_state.chunk.clone(),
+            current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
@@ -192,11 +197,16 @@ impl AppView {
         let Some(key) = self.selected_pull_request_detail_key() else {
             return false;
         };
-        let Some(snapshot) = self.pull_request_detail_cache.get(&key).cloned() else {
+        let Some(snapshot) = self
+            .detail_state
+            .pull_request_detail_cache
+            .get(&key)
+            .cloned()
+        else {
             return false;
         };
 
-        self.pr_detail_tasks.clear();
+        self.tasks.pr_detail_tasks.clear();
         self.set_detail_loading(false);
         self.set_log_loading(false);
         self.clear_detail_errors();
@@ -206,24 +216,25 @@ impl AppView {
         self.clear_review_composer_state();
 
         self.replace_selected_pull_request_preserving_row_fields(snapshot.pull_request);
-        self.files = snapshot.files;
-        self.diffs = snapshot.diffs;
-        self.check_runs = snapshot.check_runs;
-        self.workflow_runs = snapshot.workflow_runs;
-        self.workflow_jobs = snapshot.workflow_jobs;
-        self.pull_request_reviews = snapshot.pull_request_reviews;
-        self.review_threads = snapshot.review_threads;
-        self.detail_loaded = snapshot.detail_loaded;
-        self.pending_review = snapshot.pending_review;
-        self.log_state.chunk = snapshot.log_chunk;
-        self.current_user_login = snapshot.current_user_login;
+        self.detail_state.files = snapshot.files;
+        self.detail_state.diffs = snapshot.diffs;
+        self.detail_state.check_runs = snapshot.check_runs;
+        self.detail_state.workflow_runs = snapshot.workflow_runs;
+        self.detail_state.workflow_jobs = snapshot.workflow_jobs;
+        self.review_state.pull_request_reviews = snapshot.pull_request_reviews;
+        self.review_state.review_threads = snapshot.review_threads;
+        self.detail_state.detail_loaded = snapshot.detail_loaded;
+        self.review_state.pending_review = snapshot.pending_review;
+        self.detail_state.log_state.chunk = snapshot.log_chunk;
+        self.review_state.current_user_login = snapshot.current_user_login;
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
         self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
         self.owned_file_paths = snapshot.owned_file_paths;
-        self.diff_selection.file_index =
-            snapshot.active_file.min(self.files.len().saturating_sub(1));
+        self.diff_selection.file_index = snapshot
+            .active_file
+            .min(self.detail_state.files.len().saturating_sub(1));
         self.diff_selection.hunk_index = snapshot.active_hunk;
         self.active_tab = snapshot.active_tab;
 
@@ -239,17 +250,17 @@ impl AppView {
     fn current_pull_request_inbox_snapshot(&self) -> PullRequestInboxSnapshot {
         PullRequestInboxSnapshot {
             pull_requests: self.pull_requests.clone(),
-            files: self.files.clone(),
-            diffs: self.diffs.clone(),
-            check_runs: self.check_runs.clone(),
-            workflow_runs: self.workflow_runs.clone(),
-            workflow_jobs: self.workflow_jobs.clone(),
-            pull_request_reviews: self.pull_request_reviews.clone(),
-            review_threads: self.review_threads.clone(),
-            detail_loaded: self.detail_loaded,
-            pending_review: self.pending_review.clone(),
-            log_chunk: self.log_state.chunk.clone(),
-            current_user_login: self.current_user_login.clone(),
+            files: self.detail_state.files.clone(),
+            diffs: self.detail_state.diffs.clone(),
+            check_runs: self.detail_state.check_runs.clone(),
+            workflow_runs: self.detail_state.workflow_runs.clone(),
+            workflow_jobs: self.detail_state.workflow_jobs.clone(),
+            pull_request_reviews: self.review_state.pull_request_reviews.clone(),
+            review_threads: self.review_state.review_threads.clone(),
+            detail_loaded: self.detail_state.detail_loaded,
+            pending_review: self.review_state.pending_review.clone(),
+            log_chunk: self.detail_state.log_state.chunk.clone(),
+            current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
@@ -271,10 +282,10 @@ impl AppView {
             return false;
         };
 
-        self.configured_repo = Some(key.repository.clone());
+        self.repository_state.configured_repo = Some(key.repository.clone());
         self.pull_request_inbox.mode = key.mode;
-        self.pr_list_task = None;
-        self.pr_detail_tasks.clear();
+        self.tasks.pr_list_task = None;
+        self.tasks.pr_detail_tasks.clear();
         self.is_loading_prs = false;
         self.set_detail_loading(false);
         self.set_log_loading(false);
@@ -286,17 +297,17 @@ impl AppView {
         self.clear_review_composer_state();
 
         self.pull_requests = snapshot.pull_requests;
-        self.files = snapshot.files;
-        self.diffs = snapshot.diffs;
-        self.check_runs = snapshot.check_runs;
-        self.workflow_runs = snapshot.workflow_runs;
-        self.workflow_jobs = snapshot.workflow_jobs;
-        self.pull_request_reviews = snapshot.pull_request_reviews;
-        self.review_threads = snapshot.review_threads;
-        self.detail_loaded = snapshot.detail_loaded;
-        self.pending_review = snapshot.pending_review;
-        self.log_state.chunk = snapshot.log_chunk;
-        self.current_user_login = snapshot.current_user_login;
+        self.detail_state.files = snapshot.files;
+        self.detail_state.diffs = snapshot.diffs;
+        self.detail_state.check_runs = snapshot.check_runs;
+        self.detail_state.workflow_runs = snapshot.workflow_runs;
+        self.detail_state.workflow_jobs = snapshot.workflow_jobs;
+        self.review_state.pull_request_reviews = snapshot.pull_request_reviews;
+        self.review_state.review_threads = snapshot.review_threads;
+        self.detail_state.detail_loaded = snapshot.detail_loaded;
+        self.review_state.pending_review = snapshot.pending_review;
+        self.detail_state.log_state.chunk = snapshot.log_chunk;
+        self.review_state.current_user_login = snapshot.current_user_login;
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
@@ -305,8 +316,9 @@ impl AppView {
         self.selected_pr = snapshot
             .selected_pr
             .min(self.pull_requests.len().saturating_sub(1));
-        self.diff_selection.file_index =
-            snapshot.active_file.min(self.files.len().saturating_sub(1));
+        self.diff_selection.file_index = snapshot
+            .active_file
+            .min(self.detail_state.files.len().saturating_sub(1));
         self.diff_selection.hunk_index = snapshot.active_hunk;
         self.active_tab = snapshot.active_tab;
 

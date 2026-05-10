@@ -6,7 +6,7 @@ use harbor_domain::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 use sqlx::{
-    Row, SqlitePool,
+    Row, Sqlite, SqlitePool, Transaction,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 use thiserror::Error;
@@ -262,6 +262,8 @@ impl SqliteStore {
         mode: &str,
         pull_requests: &[PullRequest],
     ) -> Result<()> {
+        let mut transaction = self.pool.begin().await?;
+
         sqlx::query(
             "DELETE FROM pull_request_inbox_cache
              WHERE owner = ?1 AND name = ?2 AND mode = ?3",
@@ -269,7 +271,7 @@ impl SqliteStore {
         .bind(&repository.owner)
         .bind(&repository.name)
         .bind(mode)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await?;
 
         for (position, pull_request) in pull_requests.iter().enumerate() {
@@ -285,12 +287,18 @@ impl SqliteStore {
             .bind(&pull_request.head_sha)
             .bind(position as i64)
             .bind(serde_json::to_string(pull_request)?)
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await?;
         }
 
-        self.record_sync_success(&inbox_target_key(repository, mode))
-            .await
+        Self::record_sync_success_in_transaction(
+            &mut transaction,
+            &inbox_target_key(repository, mode),
+        )
+        .await?;
+        transaction.commit().await?;
+
+        Ok(())
     }
 
     pub async fn save_pull_request_metadata(&self, pull_request: &PullRequest) -> Result<()> {
@@ -359,7 +367,10 @@ impl SqliteStore {
         reviews: &[PullRequestReview],
         threads: &[ReviewThread],
     ) -> Result<()> {
-        self.save_pull_request_detail_section(
+        let mut transaction = self.pool.begin().await?;
+
+        Self::save_pull_request_detail_section_in_transaction(
+            &mut transaction,
             repository,
             number,
             head_sha,
@@ -367,14 +378,28 @@ impl SqliteStore {
             reviews,
         )
         .await?;
-        self.save_pull_request_detail_section(
+        Self::record_sync_success_in_transaction(
+            &mut transaction,
+            &detail_target_key(repository, number, PullRequestDetailSection::Reviews),
+        )
+        .await?;
+        Self::save_pull_request_detail_section_in_transaction(
+            &mut transaction,
             repository,
             number,
             head_sha,
             PullRequestDetailSection::ReviewThreads,
             threads,
         )
-        .await
+        .await?;
+        Self::record_sync_success_in_transaction(
+            &mut transaction,
+            &detail_target_key(repository, number, PullRequestDetailSection::ReviewThreads),
+        )
+        .await?;
+        transaction.commit().await?;
+
+        Ok(())
     }
 
     pub async fn load_pull_request_reviews(
@@ -603,6 +628,37 @@ impl SqliteStore {
     where
         T: Serialize + ?Sized,
     {
+        let mut transaction = self.pool.begin().await?;
+        Self::save_pull_request_detail_section_in_transaction(
+            &mut transaction,
+            repository,
+            number,
+            head_sha,
+            section,
+            value,
+        )
+        .await?;
+        Self::record_sync_success_in_transaction(
+            &mut transaction,
+            &detail_target_key(repository, number, section),
+        )
+        .await?;
+        transaction.commit().await?;
+
+        Ok(())
+    }
+
+    async fn save_pull_request_detail_section_in_transaction<T>(
+        transaction: &mut Transaction<'_, Sqlite>,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        section: PullRequestDetailSection,
+        value: &T,
+    ) -> Result<()>
+    where
+        T: Serialize + ?Sized,
+    {
         sqlx::query(
             "INSERT INTO pull_request_detail_cache
                 (owner, name, number, head_sha, section, data_json, fetched_at)
@@ -617,11 +673,31 @@ impl SqliteStore {
         .bind(head_sha)
         .bind(section.key())
         .bind(serde_json::to_string(value)?)
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
 
-        self.record_sync_success(&detail_target_key(repository, number, section))
-            .await
+        Ok(())
+    }
+
+    async fn record_sync_success_in_transaction(
+        transaction: &mut Transaction<'_, Sqlite>,
+        target_key: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO sync_target_state
+                (target_key, last_successful_fetch_at, last_attempt_at, last_error, stale)
+             VALUES (?1, unixepoch(), unixepoch(), NULL, 0)
+             ON CONFLICT(target_key) DO UPDATE SET
+                last_successful_fetch_at = unixepoch(),
+                last_attempt_at = unixepoch(),
+                last_error = NULL,
+                stale = 0",
+        )
+        .bind(target_key)
+        .execute(&mut **transaction)
+        .await?;
+
+        Ok(())
     }
 
     async fn load_pull_request_detail_section<T>(
@@ -655,6 +731,15 @@ impl SqliteStore {
     }
 
     async fn migrate(&self) -> Result<()> {
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS recent_repositories (
                 owner TEXT NOT NULL,
@@ -743,6 +828,21 @@ impl SqliteStore {
                 updated_at INTEGER NOT NULL
             )",
         )
+        .execute(&self.pool)
+        .await?;
+
+        self.record_schema_migration(1).await?;
+
+        Ok(())
+    }
+
+    async fn record_schema_migration(&self, version: i64) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO schema_migrations (version, applied_at)
+             VALUES (?1, unixepoch())
+             ON CONFLICT(version) DO NOTHING",
+        )
+        .bind(version)
         .execute(&self.pool)
         .await?;
 
@@ -1020,6 +1120,29 @@ mod tests {
             assert_eq!(repositories.len(), 1);
             assert_eq!(repositories[0].id, RepoId::new("acme", "app"));
             assert_eq!(repositories[0].local_path, None);
+            assert_eq!(
+                migration_versions(&store).await.expect("load migrations"),
+                vec![1]
+            );
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn records_initial_schema_migration_for_new_database() {
+        smol::block_on(async {
+            let database_path = test_database_path("records-schema-migration");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+
+            assert_eq!(
+                migration_versions(&store).await.expect("load migrations"),
+                vec![1]
+            );
 
             cleanup_database(database_path);
         });
@@ -1080,6 +1203,52 @@ mod tests {
 
             assert_eq!(cached.len(), 1);
             assert_eq!(cached[0].number, 8);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn failed_inbox_replacement_keeps_existing_cache() {
+        smol::block_on(async {
+            let database_path = test_database_path("inbox-rollback");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let repository = RepoId::new("acme", "app");
+            let original_pull_request = pull_request(7);
+
+            store
+                .save_pull_request_inbox(
+                    &repository,
+                    "open",
+                    std::slice::from_ref(&original_pull_request),
+                )
+                .await
+                .expect("save original inbox");
+            sqlx::query(
+                "CREATE TRIGGER fail_inbox_insert
+                 BEFORE INSERT ON pull_request_inbox_cache
+                 BEGIN
+                    SELECT RAISE(FAIL, 'blocked insert');
+                 END",
+            )
+            .execute(&store.pool)
+            .await
+            .expect("create failing trigger");
+
+            let result = store
+                .save_pull_request_inbox(&repository, "open", &[pull_request(8)])
+                .await;
+            assert!(result.is_err());
+
+            let cached = store
+                .load_pull_request_inbox(&repository, "open")
+                .await
+                .expect("load inbox after failed replacement");
+            assert_eq!(cached, vec![original_pull_request]);
 
             cleanup_database(database_path);
         });
@@ -1221,6 +1390,17 @@ mod tests {
         if let Err(error) = std::fs::remove_dir_all(directory) {
             eprintln!("failed to clean up test database: {error}");
         }
+    }
+
+    async fn migration_versions(store: &SqliteStore) -> Result<Vec<i64>> {
+        let rows = sqlx::query("SELECT version FROM schema_migrations ORDER BY version ASC")
+            .fetch_all(&store.pool)
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| row.get::<i64, _>("version"))
+            .collect())
     }
 
     fn pull_request(number: u64) -> PullRequest {

@@ -18,7 +18,7 @@ use super::render_switcher_section_label;
 
 impl AppView {
     fn pull_request_inbox_mode_count(&self, mode: PullRequestInboxMode) -> Option<usize> {
-        let repository = self.configured_repo.as_ref()?;
+        let repository = self.repository_state.configured_repo.as_ref()?;
 
         if mode == self.pull_request_inbox.mode {
             return Some(self.pull_requests.len());
@@ -54,7 +54,7 @@ impl AppView {
                     view.update(cx, |view, cx| {
                         view.pull_request_inbox_search_open = *open;
                         if *open {
-                            view.repository_switcher_open = false;
+                            view.repository_state.repository_switcher_open = false;
                             view.file_filter_popover_open = false;
                             view.status = "Pull request search opened".to_string();
                             view.pull_request_search_input.update(cx, |input, cx| {
@@ -160,7 +160,7 @@ impl AppView {
         let show_list =
             !self.is_loading_prs && self.load_error.is_none() && !self.pull_requests.is_empty();
         let current_mode = self.pull_request_inbox.mode;
-        let empty_message = if self.configured_repo.is_some() {
+        let empty_message = if self.repository_state.configured_repo.is_some() {
             current_mode.empty_message()
         } else {
             "Choose a repository from the header"
@@ -212,7 +212,9 @@ impl AppView {
                                             .icon(IconName::Redo)
                                             .tooltip("Refresh pull requests")
                                             .loading(self.is_loading_prs)
-                                            .disabled(self.configured_repo.is_none())
+                                            .disabled(
+                                                self.repository_state.configured_repo.is_none(),
+                                            )
                                             .on_click(cx.listener(|view, _, _, cx| {
                                                 view.reload_pull_request_inbox(cx);
                                             })),

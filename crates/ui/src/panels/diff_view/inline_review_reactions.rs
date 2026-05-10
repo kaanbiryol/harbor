@@ -127,7 +127,7 @@ fn render_add_reaction_popover(
                     let view = view_entity.read(popover_cx);
                     (
                         view.review_comment(&comment_id).cloned(),
-                        view.review_reaction_action.clone(),
+                        view.review_state.review_reaction_action.clone(),
                     )
                 };
                 let Some(comment) = comment else {

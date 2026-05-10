@@ -12,26 +12,29 @@ impl AppView {
         submission: ReviewCommentSubmission,
         cx: &mut Context<Self>,
     ) {
-        if self.is_submitting_review_comment {
+        if self.review_state.is_submitting_review_comment {
             self.status = "A review comment is already being submitted".to_string();
             cx.notify();
             return;
         }
 
-        let Some(composer) = self.review_composer_state.composer.clone() else {
-            self.review_comment_error = Some("Select diff lines before commenting".to_string());
+        let Some(composer) = self.review_state.review_composer_state.composer.clone() else {
+            self.review_state.review_comment_error =
+                Some("Select diff lines before commenting".to_string());
             self.status = "Select diff lines before commenting".to_string();
             cx.notify();
             return;
         };
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_comment_error = Some("Select a pull request before commenting".to_string());
+            self.review_state.review_comment_error =
+                Some("Select a pull request before commenting".to_string());
             self.status = "Select a pull request before commenting".to_string();
             cx.notify();
             return;
         };
 
         let body = self
+            .review_state
             .review_composer_state
             .comment_input
             .read(cx)
@@ -39,7 +42,8 @@ impl AppView {
             .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
-            self.review_comment_error = Some("Enter a comment before sending".to_string());
+            self.review_state.review_comment_error =
+                Some("Enter a comment before sending".to_string());
             self.status = "Enter a comment before sending".to_string();
             cx.notify();
             return;
@@ -47,8 +51,8 @@ impl AppView {
 
         let pending_review_node_id = match submission {
             ReviewCommentSubmission::AddToReview => {
-                let Some(pending_review) = self.pending_review.clone() else {
-                    self.review_comment_error =
+                let Some(pending_review) = self.review_state.pending_review.clone() else {
+                    self.review_state.review_comment_error =
                         Some("Start a review before adding a review comment".to_string());
                     self.status = "Start a review before adding a review comment".to_string();
                     cx.notify();
@@ -60,7 +64,7 @@ impl AppView {
         };
 
         if submission == ReviewCommentSubmission::StartReview && pr.node_id.is_empty() {
-            self.review_comment_error =
+            self.review_state.review_comment_error =
                 Some("GitHub did not return a pull request node id".to_string());
             self.status = "Cannot start review without a pull request node id".to_string();
             cx.notify();
@@ -73,18 +77,19 @@ impl AppView {
             self.insert_optimistic_review_thread(composer.range.clone(), body.clone());
         let increments_pending_review_count = submission == ReviewCommentSubmission::AddToReview;
         let pending_review_before_increment = if increments_pending_review_count {
-            self.pending_review.clone()
+            self.review_state.pending_review.clone()
         } else {
             None
         };
         if increments_pending_review_count {
-            increment_pending_review_comment_count(&mut self.pending_review);
+            increment_pending_review_comment_count(&mut self.review_state.pending_review);
         }
 
-        self.is_submitting_review_comment = submission == ReviewCommentSubmission::StartReview;
-        self.review_composer_state.composer = None;
-        self.review_composer_state.line_selection = None;
-        self.review_comment_error = None;
+        self.review_state.is_submitting_review_comment =
+            submission == ReviewCommentSubmission::StartReview;
+        self.review_state.review_composer_state.composer = None;
+        self.review_state.review_composer_state.line_selection = None;
+        self.review_state.review_comment_error = None;
         self.status = match submission {
             ReviewCommentSubmission::SingleComment => {
                 format!("Added comment locally on PR #{}; syncing", pr.number)
@@ -142,7 +147,7 @@ impl AppView {
                 "failed to update review comment submission state",
                 move |view, cx| {
                     if submission == ReviewCommentSubmission::StartReview {
-                        view.is_submitting_review_comment = false;
+                        view.review_state.is_submitting_review_comment = false;
                     }
 
                     match result {
@@ -161,7 +166,7 @@ impl AppView {
 
                             if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
                             {
-                                view.review_comment_error = None;
+                                view.review_state.review_comment_error = None;
                                 view.status = match submission {
                                     ReviewCommentSubmission::SingleComment => {
                                         format!("Posted comment on PR #{}", pr.number)
@@ -191,10 +196,11 @@ impl AppView {
                             let message = format!("Failed to submit review comment: {error}");
                             if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
                             {
-                                if view.review_composer_state.composer.is_none() {
-                                    view.review_composer_state.composer = Some(composer);
+                                if view.review_state.review_composer_state.composer.is_none() {
+                                    view.review_state.review_composer_state.composer =
+                                        Some(composer);
                                 }
-                                view.review_comment_error = Some(message.clone());
+                                view.review_state.review_comment_error = Some(message.clone());
                                 view.status = message;
                             }
                         }

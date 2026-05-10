@@ -113,8 +113,8 @@ impl AppView {
         let repo = pull_request.repo;
         let number = pull_request.number;
 
-        self.detail_loading.reviews = true;
-        self.reviews_error = None;
+        self.detail_state.detail_loading.reviews = true;
+        self.review_state.reviews_error = None;
         self.status = format!("Refreshing review data for PR #{number}");
         cx.notify();
 
@@ -131,13 +131,13 @@ impl AppView {
         mode: ReviewDataLoadMode,
         cx: &mut Context<Self>,
     ) {
-        self.detail_loading.reviews = true;
-        self.detail_loaded.reviews = false;
-        let cached_current_user_login = self.current_user_login.clone();
-        let existing_pending_review = self.pending_review.clone();
+        self.detail_state.detail_loading.reviews = true;
+        self.detail_state.detail_loaded.reviews = false;
+        let cached_current_user_login = self.review_state.current_user_login.clone();
+        let existing_pending_review = self.review_state.pending_review.clone();
         let github_api = self.github_api.clone();
-        let store = self.repository_store.clone();
-        self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
+        let store = self.repository_state.repository_store.clone();
+        self.tasks.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
             let current_user_result = match cached_current_user_login {
                 Some(login) => Ok(login),
                 None => github_api.current_user().await,
@@ -212,16 +212,16 @@ impl AppView {
                     return;
                 }
 
-                view.detail_loading.reviews = false;
-                view.detail_loaded.reviews = true;
-                view.reviews_error = None;
+                view.detail_state.detail_loading.reviews = false;
+                view.detail_state.detail_loaded.reviews = true;
+                view.review_state.reviews_error = None;
                 if let Err(error) = cache_result {
-                    view.repository_error = Some(error);
+                    view.repository_state.repository_error = Some(error);
                 }
                 let current_user_login = match current_user_result {
                     Ok(login) => Some(login),
                     Err(error) => {
-                        view.reviews_error =
+                        view.review_state.reviews_error =
                             Some(format!("Failed to detect current user: {error}"));
                         None
                     }
@@ -230,7 +230,7 @@ impl AppView {
                     Some(Ok(count)) => Some(count),
                     Some(Err(error)) => {
                         let message = format!("Failed to count pending review comments: {error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
+                        view.review_state.reviews_error = Some(match view.review_state.reviews_error.take() {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });
@@ -253,16 +253,16 @@ impl AppView {
                         view.status = mode.loaded_review_data_status(
                             target.number,
                             thread_count,
-                            view.reviews_error.is_some(),
+                            view.review_state.reviews_error.is_some(),
                         );
                     }
                     (Err(reviews_error), Ok(threads)) => {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         let thread_count = threads.len();
-                        view.pull_request_reviews.clear();
+                        view.review_state.pull_request_reviews.clear();
                         view.replace_loaded_review_threads(threads);
                         let message = format!("Failed to load review history: {reviews_error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
+                        view.review_state.reviews_error = Some(match view.review_state.reviews_error.take() {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });
@@ -278,7 +278,7 @@ impl AppView {
                         );
                         view.refresh_owned_file_filters(cx);
                         let message = format!("Failed to load review threads: {threads_error}");
-                        view.reviews_error = Some(match view.reviews_error.take() {
+                        view.review_state.reviews_error = Some(match view.review_state.reviews_error.take() {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });
@@ -286,11 +286,11 @@ impl AppView {
                     }
                     (Err(reviews_error), Err(threads_error)) => {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
-                        view.pull_request_reviews.clear();
+                        view.review_state.pull_request_reviews.clear();
                         let message = format!(
                             "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"
                         );
-                        view.reviews_error = Some(match view.reviews_error.take() {
+                        view.review_state.reviews_error = Some(match view.review_state.reviews_error.take() {
                             Some(existing) => format!("{existing}; {message}"),
                             None => message,
                         });

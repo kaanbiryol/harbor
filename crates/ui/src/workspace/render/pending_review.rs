@@ -18,9 +18,14 @@ impl AppView {
         pending_review: PendingReviewSession,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let body_input = self.review_composer_state.pending_review_body_input.clone();
-        let submitting = self.is_submitting_pending_review;
+        let body_input = self
+            .review_state
+            .review_composer_state
+            .pending_review_body_input
+            .clone();
+        let submitting = self.review_state.is_submitting_pending_review;
         let body_empty = self
+            .review_state
             .review_composer_state
             .pending_review_body_input
             .read(cx)
@@ -116,15 +121,18 @@ impl AppView {
                                 })),
                         ),
                 )
-                .when_some(self.pending_review_error.clone(), |element, error| {
-                    element.child(
-                        div()
-                            .pt_2()
-                            .text_xs()
-                            .text_color(rgb(0xf87171))
-                            .child(error),
-                    )
-                }),
+                .when_some(
+                    self.review_state.pending_review_error.clone(),
+                    |element, error| {
+                        element.child(
+                            div()
+                                .pt_2()
+                                .text_xs()
+                                .text_color(rgb(0xf87171))
+                                .child(error),
+                        )
+                    },
+                ),
         )
     }
 }

@@ -6,9 +6,9 @@ use crate::workspace::AppView;
 
 impl AppView {
     pub(crate) fn switcher_repositories(&self) -> Vec<RepoId> {
-        let mut repositories = self.repositories.clone();
+        let mut repositories = self.repository_state.repositories.clone();
 
-        if let Some(repository) = self.configured_repo.clone()
+        if let Some(repository) = self.repository_state.configured_repo.clone()
             && !repositories.iter().any(|existing| existing == &repository)
         {
             repositories.push(repository);
@@ -27,7 +27,13 @@ impl AppView {
     }
 
     pub(crate) fn filtered_switcher_repositories(&self, cx: &App) -> Vec<RepoId> {
-        let query = normalized_search_query(&self.repository_search_input.read(cx).value());
+        let query = normalized_search_query(
+            &self
+                .repository_state
+                .repository_search_input
+                .read(cx)
+                .value(),
+        );
 
         self.switcher_repositories()
             .into_iter()
@@ -54,7 +60,7 @@ impl AppView {
     pub(crate) fn reset_repository_switcher_selection(&mut self, cx: &App) {
         let current_repository = self.current_repository().cloned();
         let repositories = self.filtered_switcher_repositories(cx);
-        self.repository_switcher_selection = current_repository
+        self.repository_state.repository_switcher_selection = current_repository
             .and_then(|current| {
                 repositories
                     .iter()
@@ -77,8 +83,11 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let len = self.filtered_switcher_repositories(cx).len();
-        self.repository_switcher_selection =
-            next_switcher_index(self.repository_switcher_selection, len, delta);
+        self.repository_state.repository_switcher_selection = next_switcher_index(
+            self.repository_state.repository_switcher_selection,
+            len,
+            delta,
+        );
         cx.notify();
     }
 
@@ -95,13 +104,17 @@ impl AppView {
 
     pub(crate) fn accept_repository_switcher_selection(&mut self, cx: &mut Context<Self>) {
         let repositories = self.filtered_switcher_repositories(cx);
-        let query = self.repository_search_input.read(cx).value();
+        let query = self
+            .repository_state
+            .repository_search_input
+            .read(cx)
+            .value();
         let Some(repository) = repository_switcher_accepted_repository(
             &repositories,
-            self.repository_switcher_selection,
+            self.repository_state.repository_switcher_selection,
             &query,
         ) else {
-            self.status = if self.is_loading_repositories {
+            self.status = if self.repository_state.is_loading_repositories {
                 "Fetching repositories from GitHub...".to_string()
             } else {
                 "Type owner/repo to open a repository".to_string()
@@ -111,7 +124,7 @@ impl AppView {
         };
 
         self.select_repository_from_switcher(repository, cx);
-        self.repository_switcher_open = false;
+        self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         cx.notify();
     }
@@ -142,13 +155,14 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let is_repository_input = input.entity_id() == self.repository_search_input.entity_id();
+        let is_repository_input =
+            input.entity_id() == self.repository_state.repository_search_input.entity_id();
         let is_pull_request_input = input.entity_id() == self.pull_request_search_input.entity_id();
 
         match event {
             InputEvent::Change => {
                 if is_repository_input {
-                    self.repository_switcher_selection = 0;
+                    self.repository_state.repository_switcher_selection = 0;
                 } else if is_pull_request_input {
                     self.pull_request_switcher_selection = 0;
                 }
@@ -156,7 +170,7 @@ impl AppView {
                 cx.notify();
             }
             InputEvent::PressEnter { .. }
-                if is_repository_input && self.repository_switcher_open =>
+                if is_repository_input && self.repository_state.repository_switcher_open =>
             {
                 self.accept_repository_switcher_selection(cx);
             }

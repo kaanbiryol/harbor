@@ -24,6 +24,7 @@ impl AppView {
         match action {
             WorkflowAction::DispatchBuild => {
                 let Some(run) = self
+                    .detail_state
                     .workflow_runs
                     .iter()
                     .find(|run| run.workflow_id.is_some())
@@ -48,10 +49,11 @@ impl AppView {
             }
             WorkflowAction::RerunFailedJobs => {
                 let Some(run) = self
+                    .detail_state
                     .workflow_runs
                     .iter()
                     .find(|run| workflow_run_failed(run))
-                    .or_else(|| self.workflow_runs.first())
+                    .or_else(|| self.detail_state.workflow_runs.first())
                 else {
                     return Err(
                         "No workflow run is available for the selected pull request head".into(),
@@ -194,7 +196,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.pending_review.is_some() {
+        if self.review_state.pending_review.is_some() {
             match action {
                 PullRequestAction::Approve => {
                     self.submit_pending_pull_request_review(

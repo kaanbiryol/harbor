@@ -154,7 +154,11 @@ impl AppView {
     pub(super) fn render_repository_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
         let repository_label = self.header_repository_label();
-        let repository_search_value = self.repository_search_input.read(cx).value();
+        let repository_search_value = self
+            .repository_state
+            .repository_search_input
+            .read(cx)
+            .value();
         let repository_query = normalized_search_query(&repository_search_value);
         let repositories = self.filtered_switcher_repositories(cx);
         let typed_repository = if repositories.is_empty() {
@@ -163,31 +167,35 @@ impl AppView {
             None
         };
         let current_repository = self.current_repository().cloned();
-        let repository_error = self.repository_error.clone();
-        let is_loading_repositories = self.is_loading_repositories;
+        let repository_error = self.repository_state.repository_error.clone();
+        let is_loading_repositories = self.repository_state.is_loading_repositories;
         let repository_selection = self
+            .repository_state
             .repository_switcher_selection
             .min(repositories.len().saturating_sub(1));
-        let repository_search_input = self.repository_search_input.clone();
+        let repository_search_input = self.repository_state.repository_search_input.clone();
         let has_repository_query = !repository_query.is_empty();
 
         Popover::new("repository-switcher-popover")
             .appearance(false)
             .anchor(Anchor::TopLeft)
-            .open(self.repository_switcher_open)
+            .open(self.repository_state.repository_switcher_open)
             .on_open_change({
                 let view = view.clone();
                 move |open, window, cx| {
                     view.update(cx, |view, cx| {
-                        view.repository_switcher_open = *open;
+                        view.repository_state.repository_switcher_open = *open;
                         if *open {
                             view.pull_request_inbox_search_open = false;
                             view.file_filter_popover_open = false;
                             view.status = "Repository search opened".to_string();
-                            view.repository_search_input.update(cx, |input, cx| {
-                                input.set_value("", window, cx);
-                                input.focus(window, cx);
-                            });
+                            view.repository_state.repository_search_input.update(
+                                cx,
+                                |input, cx| {
+                                    input.set_value("", window, cx);
+                                    input.focus(window, cx);
+                                },
+                            );
                             view.reset_repository_switcher_selection(cx);
                         }
                         cx.notify();
@@ -262,7 +270,7 @@ impl AppView {
                                             selected_repository.clone(),
                                             cx,
                                         );
-                                        view.repository_switcher_open = false;
+                                        view.repository_state.repository_switcher_open = false;
                                         view.pull_request_inbox_search_open = false;
                                         cx.notify();
                                     });
@@ -318,7 +326,8 @@ impl AppView {
                                                         repository.clone(),
                                                         cx,
                                                     );
-                                                    view.repository_switcher_open = false;
+                                                    view.repository_state
+                                                        .repository_switcher_open = false;
                                                     view.pull_request_inbox_search_open = false;
                                                     cx.notify();
                                                 });

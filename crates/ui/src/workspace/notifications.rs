@@ -44,20 +44,24 @@ impl AppView {
         events: Vec<PullRequestChangeEvent>,
         cx: &mut Context<Self>,
     ) {
-        if self.activity_state != harbor_sync::ActivityState::Background
-            || !self.notifications_enabled
+        if self.sync_runtime.activity_state != harbor_sync::ActivityState::Background
+            || !self.notification_state.notifications_enabled
         {
             return;
         }
 
         for event in events {
             let dedupe_key = event.dedupe_key();
-            if !self.notification_dedupe.insert(dedupe_key) {
+            if !self
+                .notification_state
+                .notification_dedupe
+                .insert(dedupe_key)
+            {
                 continue;
             }
 
             let notification = HarborNotification::from_pull_request_change(&event);
-            let sink = self.notification_sink.clone();
+            let sink = self.notification_state.notification_sink.clone();
             let task = cx.background_spawn(async move { sink.notify(notification) });
 
             cx.spawn(async move |this, cx| {
@@ -68,7 +72,7 @@ impl AppView {
                     move |view, cx| {
                         if let Err(error) = result {
                             let message = format!("Failed to send notification: {error}");
-                            view.repository_error = Some(message.clone());
+                            view.repository_state.repository_error = Some(message.clone());
                             view.status = message;
                             cx.notify();
                         }
@@ -85,7 +89,7 @@ impl AppView {
         }
 
         if self.active_inbox_focus_catch_up_due()
-            && let Some(repository) = self.configured_repo.clone()
+            && let Some(repository) = self.repository_state.configured_repo.clone()
         {
             if self.pull_request_inbox.mode == PullRequestInboxMode::NeedsReview {
                 tracing::info!(

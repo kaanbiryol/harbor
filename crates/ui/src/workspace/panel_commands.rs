@@ -21,7 +21,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.pull_request_inbox.visible = !self.pull_request_inbox.visible;
-        self.repository_switcher_open = false;
+        self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         self.file_filter_popover_open = false;
         self.status = if self.pull_request_inbox.visible {
@@ -49,17 +49,20 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.repository_switcher_open = !self.repository_switcher_open;
-        if self.repository_switcher_open {
+        self.repository_state.repository_switcher_open =
+            !self.repository_state.repository_switcher_open;
+        if self.repository_state.repository_switcher_open {
             self.pull_request_inbox_search_open = false;
             self.file_filter_popover_open = false;
-            self.repository_search_input.update(cx, |input, cx| {
-                input.set_value("", window, cx);
-                input.focus(window, cx);
-            });
+            self.repository_state
+                .repository_search_input
+                .update(cx, |input, cx| {
+                    input.set_value("", window, cx);
+                    input.focus(window, cx);
+                });
             self.reset_repository_switcher_selection(cx);
         }
-        self.status = if self.repository_switcher_open {
+        self.status = if self.repository_state.repository_switcher_open {
             "Repository switcher opened".to_string()
         } else {
             "Repository switcher closed".to_string()
@@ -68,7 +71,7 @@ impl AppView {
     }
 
     pub(super) fn close_panel(&mut self, _: &ClosePanel, _: &mut Window, cx: &mut Context<Self>) {
-        self.repository_switcher_open = false;
+        self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         self.file_filter_popover_open = false;
         self.status = "Closed transient UI".to_string();
@@ -81,7 +84,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let selected_repository = repository.full_name();
-        if self.configured_repo.as_ref() == Some(&repository) {
+        if self.repository_state.configured_repo.as_ref() == Some(&repository) {
             self.status = format!("Selected repository {selected_repository}");
             cx.notify();
             return;
@@ -115,7 +118,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.file_filter_popover_open = !self.file_filter_popover_open;
-        self.repository_switcher_open = false;
+        self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         self.status = if self.file_filter_popover_open {
             "Opened changed-file filters".to_string()

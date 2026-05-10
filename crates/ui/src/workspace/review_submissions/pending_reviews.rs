@@ -13,20 +13,21 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.is_submitting_pending_review || self.is_running_pr_action {
+        if self.review_state.is_submitting_pending_review || self.is_running_pr_action {
             self.status = "A pull request action is already running".to_string();
             cx.notify();
             return;
         }
 
-        let Some(pending_review) = self.pending_review.clone() else {
-            self.pending_review_error = Some("No pending review to submit".to_string());
+        let Some(pending_review) = self.review_state.pending_review.clone() else {
+            self.review_state.pending_review_error =
+                Some("No pending review to submit".to_string());
             self.status = "No pending review to submit".to_string();
             cx.notify();
             return;
         };
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.pending_review_error =
+            self.review_state.pending_review_error =
                 Some("Select a pull request before submitting a review".to_string());
             self.status = "Select a pull request before submitting a review".to_string();
             cx.notify();
@@ -34,6 +35,7 @@ impl AppView {
         };
 
         let body = self
+            .review_state
             .review_composer_state
             .pending_review_body_input
             .read(cx)
@@ -43,7 +45,7 @@ impl AppView {
             && pending_review.comment_count == 0
             && body.trim().is_empty()
         {
-            self.pending_review_error =
+            self.review_state.pending_review_error =
                 Some("Add a review summary or at least one pending comment".to_string());
             self.status = "Add a review summary or at least one pending comment".to_string();
             cx.notify();
@@ -60,9 +62,9 @@ impl AppView {
             }
         };
 
-        self.is_submitting_pending_review = true;
+        self.review_state.is_submitting_pending_review = true;
         self.is_running_pr_action = true;
-        self.pending_review_error = None;
+        self.review_state.pending_review_error = None;
         self.status = format!("Submitting pending review on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
@@ -76,25 +78,25 @@ impl AppView {
                 cx,
                 "failed to update pending review submission state",
                 move |view, window, cx| {
-                    view.is_submitting_pending_review = false;
+                    view.review_state.is_submitting_pending_review = false;
                     view.is_running_pr_action = false;
 
                     match result {
                         Ok(()) => {
-                            view.pending_review = None;
-                            view.pending_review_error = None;
-                            view.review_composer_state.pending_review_body_input.update(
-                                cx,
-                                |input, cx| {
+                            view.review_state.pending_review = None;
+                            view.review_state.pending_review_error = None;
+                            view.review_state
+                                .review_composer_state
+                                .pending_review_body_input
+                                .update(cx, |input, cx| {
                                     input.set_value("", window, cx);
-                                },
-                            );
+                                });
                             view.status = format!("Submitted pending review on PR #{}", pr.number);
                             view.reload_pull_request_inbox(cx);
                         }
                         Err(error) => {
                             let message = format!("Failed to submit pending review: {error}");
-                            view.pending_review_error = Some(message.clone());
+                            view.review_state.pending_review_error = Some(message.clone());
                             view.status = message;
                         }
                     }

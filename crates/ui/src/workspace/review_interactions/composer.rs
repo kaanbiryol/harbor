@@ -15,12 +15,12 @@ impl AppView {
         target: ReviewLineTarget,
         cx: &mut Context<Self>,
     ) {
-        self.review_composer_state.line_selection = Some(ReviewLineSelection {
+        self.review_state.review_composer_state.line_selection = Some(ReviewLineSelection {
             anchor: target.clone(),
             current: target,
         });
-        self.review_composer_state.composer = None;
-        self.review_comment_error = None;
+        self.review_state.review_composer_state.composer = None;
+        self.review_state.review_comment_error = None;
         self.active_tab = PanelTab::Diff;
         self.status = "Started review line selection".to_string();
         cx.notify();
@@ -31,7 +31,12 @@ impl AppView {
         target: ReviewLineTarget,
         cx: &mut Context<Self>,
     ) {
-        if let Some(selection) = self.review_composer_state.line_selection.as_mut() {
+        if let Some(selection) = self
+            .review_state
+            .review_composer_state
+            .line_selection
+            .as_mut()
+        {
             selection.current = target;
         }
         cx.notify();
@@ -42,7 +47,12 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(selection) = self.review_composer_state.line_selection.take() else {
+        let Some(selection) = self
+            .review_state
+            .review_composer_state
+            .line_selection
+            .take()
+        else {
             return;
         };
 
@@ -50,19 +60,20 @@ impl AppView {
             Ok(composer) => {
                 let range = composer.range.clone();
                 let label = review_comment_range_label(&range);
-                self.review_composer_state
+                self.review_state
+                    .review_composer_state
                     .comment_input
                     .update(cx, |input, cx| {
                         input.set_value("", window, cx);
                         input.focus(window, cx);
                     });
-                self.review_composer_state.composer = Some(composer);
-                self.review_comment_error = None;
+                self.review_state.review_composer_state.composer = Some(composer);
+                self.review_state.review_comment_error = None;
                 self.status = format!("Opened review composer for {label}");
             }
             Err(message) => {
-                self.review_composer_state.composer = None;
-                self.review_comment_error = Some(message.clone());
+                self.review_state.review_composer_state.composer = None;
+                self.review_state.review_comment_error = Some(message.clone());
                 self.status = message;
             }
         }
@@ -72,7 +83,8 @@ impl AppView {
 
     pub(crate) fn cancel_review_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.clear_review_composer_state();
-        self.review_composer_state
+        self.review_state
+            .review_composer_state
             .comment_input
             .update(cx, |input, cx| {
                 input.set_value("", window, cx);

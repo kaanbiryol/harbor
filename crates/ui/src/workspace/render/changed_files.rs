@@ -89,7 +89,7 @@ impl AppView {
     pub(super) fn render_changed_files_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
         let reviewed_count = self.reviewed_file_count();
-        let total_count = self.files.len();
+        let total_count = self.detail_state.files.len();
         let visible_count = self.visible_file_indices(cx).len();
         let type_filters = self.changed_file_type_filters();
         let included_type_count = self.included_file_type_filter_count();
@@ -145,7 +145,7 @@ impl AppView {
                                     view.update(cx, |view, cx| {
                                         view.file_filter_popover_open = *open;
                                         if *open {
-                                            view.repository_switcher_open = false;
+                                            view.repository_state.repository_switcher_open = false;
                                             view.pull_request_inbox_search_open = false;
                                         }
                                         cx.notify();

@@ -137,7 +137,9 @@ pub(crate) fn render_review_panel(
                                     let mut rows = Vec::with_capacity(range.len());
 
                                     for index in range {
-                                        let Some(thread) = view.review_threads.get(index) else {
+                                        let Some(thread) =
+                                            view.review_state.review_threads.get(index)
+                                        else {
                                             continue;
                                         };
                                         rows.push(render_review_thread_row(
@@ -145,14 +147,17 @@ pub(crate) fn render_review_panel(
                                                 index,
                                                 thread,
                                                 active_review_thread_reply: view
+                                                    .review_state
                                                     .review_composer_state
                                                     .thread_reply_thread_id
                                                     .as_deref(),
                                                 review_thread_reply_input: view
+                                                    .review_state
                                                     .review_composer_state
                                                     .thread_reply_input
                                                     .clone(),
                                                 reply_body_empty: view
+                                                    .review_state
                                                     .review_composer_state
                                                     .thread_reply_input
                                                     .read(_cx)
@@ -160,14 +165,18 @@ pub(crate) fn render_review_panel(
                                                     .trim()
                                                     .is_empty(),
                                                 is_submitting_reply: view
+                                                    .review_state
                                                     .is_submitting_review_thread_reply,
                                                 reply_error: view
+                                                    .review_state
                                                     .review_thread_reply_error
                                                     .as_ref(),
                                                 action_thread_id: view
+                                                    .review_state
                                                     .review_thread_action_thread_id
                                                     .as_deref(),
                                                 action_error: view
+                                                    .review_state
                                                     .review_thread_action_error
                                                     .as_ref(),
                                                 view_entity: view_entity.clone(),
@@ -468,6 +477,7 @@ mod tests {
 
         assert_eq!(
             view_entity.read_with(cx, |view, _| view
+                .review_state
                 .review_composer_state
                 .thread_reply_thread_id
                 .clone()),
@@ -481,7 +491,10 @@ mod tests {
         cx.simulate_click(cancel_bounds.center(), Modifiers::none());
 
         assert!(view_entity.read_with(cx, |view, _| {
-            view.review_composer_state.thread_reply_thread_id.is_none()
+            view.review_state
+                .review_composer_state
+                .thread_reply_thread_id
+                .is_none()
         }));
     }
 
@@ -497,7 +510,8 @@ mod tests {
 
         assert_eq!(
             view_entity.read_with(cx, |view, _| {
-                view.review_thread_action_error
+                view.review_state
+                    .review_thread_action_error
                     .as_ref()
                     .map(|error| (error.thread_id.clone(), error.message.clone()))
             }),
@@ -546,21 +560,35 @@ mod tests {
                 self.view_entity
                     .read_with(cx, |view, app| ReviewPanelRowTestState {
                         active_reply_thread_id: view
+                            .review_state
                             .review_composer_state
                             .thread_reply_thread_id
                             .clone(),
-                        reply_input: view.review_composer_state.thread_reply_input.clone(),
+                        reply_input: view
+                            .review_state
+                            .review_composer_state
+                            .thread_reply_input
+                            .clone(),
                         reply_body_empty: view
+                            .review_state
                             .review_composer_state
                             .thread_reply_input
                             .read(app)
                             .value()
                             .trim()
                             .is_empty(),
-                        is_submitting_reply: view.is_submitting_review_thread_reply,
-                        reply_error: view.review_thread_reply_error.as_ref().cloned(),
-                        action_thread_id: view.review_thread_action_thread_id.clone(),
-                        action_error: view.review_thread_action_error.as_ref().cloned(),
+                        is_submitting_reply: view.review_state.is_submitting_review_thread_reply,
+                        reply_error: view
+                            .review_state
+                            .review_thread_reply_error
+                            .as_ref()
+                            .cloned(),
+                        action_thread_id: view.review_state.review_thread_action_thread_id.clone(),
+                        action_error: view
+                            .review_state
+                            .review_thread_action_error
+                            .as_ref()
+                            .cloned(),
                     });
 
             render_review_thread_row(ReviewThreadRowRenderState {

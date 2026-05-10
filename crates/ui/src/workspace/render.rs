@@ -48,14 +48,15 @@ pub(super) fn render_switcher_section_label(label: &'static str) -> impl IntoEle
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.did_focus {
-            if self.repository_switcher_open {
-                self.repository_search_input
+        if !self.sync_runtime.did_focus {
+            if self.repository_state.repository_switcher_open {
+                self.repository_state
+                    .repository_search_input
                     .update(cx, |input, cx| input.focus(window, cx));
             } else {
                 window.focus(&self.focus_handle, cx);
             }
-            self.did_focus = true;
+            self.sync_runtime.did_focus = true;
         }
 
         if self.active_tab == PanelTab::Diff {
@@ -253,15 +254,19 @@ impl AppView {
                             let visible_file_indices = self.visible_file_indices(cx);
                             render_diff_panel(
                                 DiffPanelRenderInput {
-                                    files: &self.files,
-                                    diffs: &self.diffs,
+                                    files: &self.detail_state.files,
+                                    diffs: &self.detail_state.diffs,
                                     visible_file_indices: &visible_file_indices,
                                     reviewed_file_paths: &self.reviewed_file_paths,
-                                    review_threads: &self.review_threads,
-                                    review_composer: self.review_composer_state.composer.as_ref(),
+                                    review_threads: &self.review_state.review_threads,
+                                    review_composer: self
+                                        .review_state
+                                        .review_composer_state
+                                        .composer
+                                        .as_ref(),
                                     active_file_index: self.active_file_index(),
-                                    is_loading: self.detail_loading.files,
-                                    error: self.files_error.as_deref(),
+                                    is_loading: self.detail_state.detail_loading.files,
+                                    error: self.detail_state.files_error.as_deref(),
                                     list_state: self.diff_list_state.clone(),
                                     list_items: &self.diff_list_items,
                                 },
@@ -270,26 +275,26 @@ impl AppView {
                             .into_any_element()
                         }
                         PanelTab::Review => render_review_panel(
-                            &self.pull_request_reviews,
-                            &self.review_threads,
-                            self.detail_loading.reviews,
-                            self.reviews_error.as_deref(),
+                            &self.review_state.pull_request_reviews,
+                            &self.review_state.review_threads,
+                            self.detail_state.detail_loading.reviews,
+                            self.review_state.reviews_error.as_deref(),
                             self.review_list_scroll.clone(),
                             cx,
                         )
                         .into_any_element(),
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
-                            &self.check_runs,
-                            self.detail_loading.checks,
-                            self.checks_error.as_deref(),
+                            &self.detail_state.check_runs,
+                            self.detail_state.detail_loading.checks,
+                            self.detail_state.checks_error.as_deref(),
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
                             pr,
-                            &self.workflow_runs,
-                            self.detail_loading.workflows,
-                            self.workflows_error.as_deref(),
+                            &self.detail_state.workflow_runs,
+                            self.detail_state.detail_loading.workflows,
+                            self.detail_state.workflows_error.as_deref(),
                             self.action_error.as_deref(),
                             self.is_running_action,
                             cx,
@@ -297,11 +302,11 @@ impl AppView {
                         .into_any_element(),
                         PanelTab::Logs => render_logs_panel(
                             self.selected_workflow_run_for_logs(),
-                            &self.workflow_jobs,
-                            self.log_state.chunk.as_ref(),
-                            self.log_state.is_loading,
-                            self.log_state.error.as_deref(),
-                            self.log_state.list_scroll.clone(),
+                            &self.detail_state.workflow_jobs,
+                            self.detail_state.log_state.chunk.as_ref(),
+                            self.detail_state.log_state.is_loading,
+                            self.detail_state.log_state.error.as_deref(),
+                            self.detail_state.log_state.list_scroll.clone(),
                             cx,
                         )
                         .into_any_element(),

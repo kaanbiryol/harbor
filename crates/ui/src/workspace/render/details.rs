@@ -76,7 +76,7 @@ impl AppView {
                             .text_color(rgb(0x9aa4b2))
                             .child(format!("{} / {}", pr.repo.full_name(), pr.head_sha)),
                     )
-                    .when(self.detail_loading.details, |element| {
+                    .when(self.detail_state.detail_loading.details, |element| {
                         element.child(
                             div()
                                 .pt_2()
@@ -85,7 +85,7 @@ impl AppView {
                                 .child("Loading latest PR details..."),
                         )
                     })
-                    .when_some(self.details_error.clone(), |element, error| {
+                    .when_some(self.detail_state.details_error.clone(), |element, error| {
                         element.child(
                             div()
                                 .pt_2()
@@ -160,9 +160,12 @@ impl AppView {
                                     })),
                             ),
                     )
-                    .when_some(self.pending_review.clone(), |element, pending_review| {
-                        element.child(self.render_pending_review_bar(pending_review, cx))
-                    })
+                    .when_some(
+                        self.review_state.pending_review.clone(),
+                        |element, pending_review| {
+                            element.child(self.render_pending_review_bar(pending_review, cx))
+                        },
+                    )
                     .when_some(self.pr_action_error.clone(), |element, error| {
                         element.child(
                             div()
@@ -174,7 +177,7 @@ impl AppView {
                     }),
             )
             .child(self.render_changed_files_header(cx))
-            .when(self.detail_loading.files, |element| {
+            .when(self.detail_state.detail_loading.files, |element| {
                 element.child(
                     div()
                         .flex_1()
@@ -185,7 +188,7 @@ impl AppView {
                         .child("Loading changed files..."),
                 )
             })
-            .when_some(self.files_error.clone(), |element, error| {
+            .when_some(self.detail_state.files_error.clone(), |element, error| {
                 element.child(
                     div()
                         .flex_1()
@@ -197,7 +200,9 @@ impl AppView {
                 )
             })
             .when(
-                !self.detail_loading.files && self.files_error.is_none() && self.files.is_empty(),
+                !self.detail_state.detail_loading.files
+                    && self.detail_state.files_error.is_none()
+                    && self.detail_state.files.is_empty(),
                 |element| {
                     element.child(
                         div()
@@ -211,9 +216,9 @@ impl AppView {
                 },
             )
             .when(
-                !self.detail_loading.files
-                    && self.files_error.is_none()
-                    && !self.files.is_empty()
+                !self.detail_state.detail_loading.files
+                    && self.detail_state.files_error.is_none()
+                    && !self.detail_state.files.is_empty()
                     && self.changed_file_tree_rows(cx).is_empty(),
                 |element| {
                     element.child(
@@ -228,9 +233,9 @@ impl AppView {
                 },
             )
             .when(
-                !self.detail_loading.files
-                    && self.files_error.is_none()
-                    && !self.files.is_empty()
+                !self.detail_state.detail_loading.files
+                    && self.detail_state.files_error.is_none()
+                    && !self.detail_state.files.is_empty()
                     && !self.changed_file_tree_rows(cx).is_empty(),
                 |element| {
                     let row_count = self.changed_file_tree_rows(cx).len();
@@ -252,7 +257,8 @@ impl AppView {
                                             rows.push(render_changed_folder_row(folder_row, cx));
                                         }
                                         ChangedFileTreeRow::File(file_row) => {
-                                            let Some(file) = view.files.get(file_row.file_index)
+                                            let Some(file) =
+                                                view.detail_state.files.get(file_row.file_index)
                                             else {
                                                 continue;
                                             };

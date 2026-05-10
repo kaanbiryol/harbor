@@ -531,6 +531,7 @@ mod tests {
 
         assert_eq!(
             view_entity.read_with(cx, |view, _| view
+                .review_state
                 .review_composer_state
                 .thread_reply_thread_id
                 .clone()),
@@ -563,7 +564,10 @@ mod tests {
         cx.simulate_click(cancel_bounds.center(), Modifiers::none());
 
         assert!(view_entity.read_with(cx, |view, _| {
-            view.review_composer_state.comment_edit_comment_id.is_none()
+            view.review_state
+                .review_composer_state
+                .comment_edit_comment_id
+                .is_none()
         }));
     }
 
@@ -615,39 +619,67 @@ mod tests {
                 .view_entity
                 .read_with(cx, |view, app| ReviewThreadTestState {
                     active_reply_thread_id: view
+                        .review_state
                         .review_composer_state
                         .thread_reply_thread_id
                         .clone(),
-                    reply_input: view.review_composer_state.thread_reply_input.clone(),
+                    reply_input: view
+                        .review_state
+                        .review_composer_state
+                        .thread_reply_input
+                        .clone(),
                     reply_body_empty: view
+                        .review_state
                         .review_composer_state
                         .thread_reply_input
                         .read(app)
                         .value()
                         .trim()
                         .is_empty(),
-                    is_submitting_reply: view.is_submitting_review_thread_reply,
-                    review_thread_reply_error: view.review_thread_reply_error.as_ref().cloned(),
-                    action_thread_id: view.review_thread_action_thread_id.clone(),
-                    action_error: view.review_thread_action_error.as_ref().cloned(),
+                    is_submitting_reply: view.review_state.is_submitting_review_thread_reply,
+                    review_thread_reply_error: view
+                        .review_state
+                        .review_thread_reply_error
+                        .as_ref()
+                        .cloned(),
+                    action_thread_id: view.review_state.review_thread_action_thread_id.clone(),
+                    action_error: view
+                        .review_state
+                        .review_thread_action_error
+                        .as_ref()
+                        .cloned(),
                     active_comment_edit_id: view
+                        .review_state
                         .review_composer_state
                         .comment_edit_comment_id
                         .clone(),
-                    comment_edit_input: view.review_composer_state.comment_edit_input.clone(),
+                    comment_edit_input: view
+                        .review_state
+                        .review_composer_state
+                        .comment_edit_input
+                        .clone(),
                     edit_body_empty: view
+                        .review_state
                         .review_composer_state
                         .comment_edit_input
                         .read(app)
                         .value()
                         .trim()
                         .is_empty(),
-                    is_submitting_edit: view.is_submitting_review_comment_edit,
-                    review_comment_edit_error: view.review_comment_edit_error.as_ref().cloned(),
-                    action_comment_id: view.review_comment_action_comment_id.clone(),
-                    comment_action_error: view.review_comment_action_error.as_ref().cloned(),
-                    reaction_action: view.review_reaction_action.clone(),
-                    reaction_error: view.review_reaction_error.as_ref().cloned(),
+                    is_submitting_edit: view.review_state.is_submitting_review_comment_edit,
+                    review_comment_edit_error: view
+                        .review_state
+                        .review_comment_edit_error
+                        .as_ref()
+                        .cloned(),
+                    action_comment_id: view.review_state.review_comment_action_comment_id.clone(),
+                    comment_action_error: view
+                        .review_state
+                        .review_comment_action_error
+                        .as_ref()
+                        .cloned(),
+                    reaction_action: view.review_state.review_reaction_action.clone(),
+                    reaction_error: view.review_state.review_reaction_error.as_ref().cloned(),
                 });
             let active_reply_thread_id = render_state.active_reply_thread_id.as_deref();
             let action_thread_id = render_state.action_thread_id.as_deref();

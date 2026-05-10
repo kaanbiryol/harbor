@@ -8,33 +8,46 @@ use harbor_github::{
     HttpCacheValidator, PullRequestEnrichment, PullRequestListFilter, Result,
     SubmitPullRequestReviewEvent,
 };
+use harbor_sync::PullRequestInboxSource;
 use std::sync::Mutex;
 
-#[async_trait]
-pub(crate) trait GitHubApi: Send + Sync {
+pub(crate) trait GitHubApi:
+    GitHubRateLimitApi
+    + GitHubRepositoryApi
+    + GitHubPullRequestDetailApi
+    + GitHubWorkflowApi
+    + GitHubWorkflowActionApi
+    + GitHubReviewApi
+    + GitHubReviewMutationApi
+    + GitHubPullRequestActionApi
+    + PullRequestInboxSource
+{
+}
+
+impl<T> GitHubApi for T where
+    T: GitHubRateLimitApi
+        + GitHubRepositoryApi
+        + GitHubPullRequestDetailApi
+        + GitHubWorkflowApi
+        + GitHubWorkflowActionApi
+        + GitHubReviewApi
+        + GitHubReviewMutationApi
+        + GitHubPullRequestActionApi
+        + PullRequestInboxSource
+{
+}
+
+pub(crate) trait GitHubRateLimitApi: Send + Sync {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus>;
-    fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus>;
+}
 
+#[async_trait]
+pub(crate) trait GitHubRepositoryApi: Send + Sync {
     async fn list_repositories(&self) -> Result<Vec<RepoId>>;
+}
 
-    async fn list_repository_pull_requests(
-        &self,
-        repository: &RepoId,
-        filter: PullRequestListFilter,
-    ) -> Result<Vec<PullRequest>>;
-
-    async fn list_repository_pull_requests_light(
-        &self,
-        repository: &RepoId,
-        filter: PullRequestListFilter,
-        validator: Option<HttpCacheValidator>,
-    ) -> Result<ConditionalFetch<Vec<PullRequest>>>;
-
-    async fn enrich_pull_requests_by_node_ids(
-        &self,
-        node_ids: &[String],
-    ) -> Result<Vec<PullRequestEnrichment>>;
-
+#[async_trait]
+pub(crate) trait GitHubPullRequestDetailApi: Send + Sync {
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest>;
 
     async fn list_pull_request_files(
@@ -57,7 +70,10 @@ pub(crate) trait GitHubApi: Send + Sync {
         repo: &str,
         head_sha: &str,
     ) -> Result<Vec<WorkflowRun>>;
+}
 
+#[async_trait]
+pub(crate) trait GitHubWorkflowApi: Send + Sync {
     async fn list_workflow_jobs_for_run(
         &self,
         owner: &str,
@@ -66,7 +82,23 @@ pub(crate) trait GitHubApi: Send + Sync {
     ) -> Result<Vec<WorkflowJob>>;
 
     async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
+}
 
+#[async_trait]
+pub(crate) trait GitHubWorkflowActionApi: Send + Sync {
+    async fn dispatch_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+        git_ref: &str,
+    ) -> Result<()>;
+
+    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()>;
+}
+
+#[async_trait]
+pub(crate) trait GitHubReviewApi: Send + Sync {
     async fn current_user(&self) -> Result<String>;
 
     async fn list_pull_request_reviews(
@@ -90,35 +122,10 @@ pub(crate) trait GitHubApi: Send + Sync {
         repo: &str,
         number: u64,
     ) -> Result<Vec<ReviewThread>>;
+}
 
-    async fn dispatch_workflow(
-        &self,
-        owner: &str,
-        repo: &str,
-        workflow_id: u64,
-        git_ref: &str,
-    ) -> Result<()>;
-
-    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()>;
-
-    async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()>;
-
-    async fn request_pull_request_changes(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        body: &str,
-    ) -> Result<()>;
-
-    async fn merge_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        head_sha: &str,
-    ) -> Result<()>;
-
+#[async_trait]
+pub(crate) trait GitHubReviewMutationApi: Send + Sync {
     async fn submit_pull_request_review(
         &self,
         pull_request_review_node_id: &str,
@@ -179,6 +186,27 @@ pub(crate) trait GitHubApi: Send + Sync {
     ) -> Result<()>;
 }
 
+#[async_trait]
+pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
+    async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()>;
+
+    async fn request_pull_request_changes(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()>;
+
+    async fn merge_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<()>;
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct RealGitHubApi {
     client: GitHubClient<GhCliTransport>,
@@ -212,18 +240,16 @@ impl RealGitHubApi {
     }
 }
 
-#[async_trait]
-impl GitHubApi for RealGitHubApi {
+impl GitHubRateLimitApi for RealGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         self.client.latest_rate_limit()
     }
+}
 
+#[async_trait]
+impl PullRequestInboxSource for RealGitHubApi {
     fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
         self.client.latest_rate_limits()
-    }
-
-    async fn list_repositories(&self) -> Result<Vec<RepoId>> {
-        self.client.list_repositories().await
     }
 
     async fn list_repository_pull_requests(
@@ -253,7 +279,17 @@ impl GitHubApi for RealGitHubApi {
     ) -> Result<Vec<PullRequestEnrichment>> {
         self.client.enrich_pull_requests_by_node_ids(node_ids).await
     }
+}
 
+#[async_trait]
+impl GitHubRepositoryApi for RealGitHubApi {
+    async fn list_repositories(&self) -> Result<Vec<RepoId>> {
+        self.client.list_repositories().await
+    }
+}
+
+#[async_trait]
+impl GitHubPullRequestDetailApi for RealGitHubApi {
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest> {
         self.client.get_pull_request(owner, repo, number).await
     }
@@ -288,7 +324,10 @@ impl GitHubApi for RealGitHubApi {
             .list_workflow_runs_for_head(owner, repo, head_sha)
             .await
     }
+}
 
+#[async_trait]
+impl GitHubWorkflowApi for RealGitHubApi {
     async fn list_workflow_jobs_for_run(
         &self,
         owner: &str,
@@ -303,7 +342,29 @@ impl GitHubApi for RealGitHubApi {
     async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
         self.client.workflow_run_log(owner, repo, run_id).await
     }
+}
 
+#[async_trait]
+impl GitHubWorkflowActionApi for RealGitHubApi {
+    async fn dispatch_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+        git_ref: &str,
+    ) -> Result<()> {
+        self.client
+            .dispatch_workflow(owner, repo, workflow_id, git_ref)
+            .await
+    }
+
+    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
+        self.client.rerun_failed_jobs(owner, repo, run_id).await
+    }
+}
+
+#[async_trait]
+impl GitHubReviewApi for RealGitHubApi {
     async fn current_user(&self) -> Result<String> {
         if let Some(login) = self.cached_current_user_login()? {
             return Ok(login);
@@ -346,51 +407,10 @@ impl GitHubApi for RealGitHubApi {
     ) -> Result<Vec<ReviewThread>> {
         self.client.list_review_threads(owner, repo, number).await
     }
+}
 
-    async fn dispatch_workflow(
-        &self,
-        owner: &str,
-        repo: &str,
-        workflow_id: u64,
-        git_ref: &str,
-    ) -> Result<()> {
-        self.client
-            .dispatch_workflow(owner, repo, workflow_id, git_ref)
-            .await
-    }
-
-    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
-        self.client.rerun_failed_jobs(owner, repo, run_id).await
-    }
-
-    async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
-        self.client.approve_pull_request(owner, repo, number).await
-    }
-
-    async fn request_pull_request_changes(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        body: &str,
-    ) -> Result<()> {
-        self.client
-            .request_pull_request_changes(owner, repo, number, body)
-            .await
-    }
-
-    async fn merge_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        head_sha: &str,
-    ) -> Result<()> {
-        self.client
-            .merge_pull_request(owner, repo, number, head_sha)
-            .await
-    }
-
+#[async_trait]
+impl GitHubReviewMutationApi for RealGitHubApi {
     async fn submit_pull_request_review(
         &self,
         pull_request_review_node_id: &str,
@@ -487,6 +507,37 @@ impl GitHubApi for RealGitHubApi {
     }
 }
 
+#[async_trait]
+impl GitHubPullRequestActionApi for RealGitHubApi {
+    async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
+        self.client.approve_pull_request(owner, repo, number).await
+    }
+
+    async fn request_pull_request_changes(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()> {
+        self.client
+            .request_pull_request_changes(owner, repo, number, body)
+            .await
+    }
+
+    async fn merge_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        head_sha: &str,
+    ) -> Result<()> {
+        self.client
+            .merge_pull_request(owner, repo, number, head_sha)
+            .await
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::{
@@ -504,7 +555,13 @@ pub(crate) mod test_support {
         PullRequestEnrichment, PullRequestListFilter, Result, SubmitPullRequestReviewEvent,
     };
 
-    use super::GitHubApi;
+    use harbor_sync::PullRequestInboxSource;
+
+    use super::{
+        GitHubPullRequestActionApi, GitHubPullRequestDetailApi, GitHubRateLimitApi,
+        GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowActionApi,
+        GitHubWorkflowApi,
+    };
 
     type FakeQueue<T> = Arc<Mutex<VecDeque<Result<T>>>>;
 
@@ -628,19 +685,16 @@ pub(crate) mod test_support {
             })
     }
 
-    #[async_trait]
-    impl GitHubApi for FakeGitHubApi {
+    impl GitHubRateLimitApi for FakeGitHubApi {
         fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
             None
         }
+    }
 
+    #[async_trait]
+    impl PullRequestInboxSource for FakeGitHubApi {
         fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
             Vec::new()
-        }
-
-        async fn list_repositories(&self) -> Result<Vec<RepoId>> {
-            self.record_call("list_repositories");
-            pop_result(&self.repositories, "list_repositories")
         }
 
         async fn list_repository_pull_requests(
@@ -675,7 +729,18 @@ pub(crate) mod test_support {
                 "enrich_pull_requests_by_node_ids",
             )
         }
+    }
 
+    #[async_trait]
+    impl GitHubRepositoryApi for FakeGitHubApi {
+        async fn list_repositories(&self) -> Result<Vec<RepoId>> {
+            self.record_call("list_repositories");
+            pop_result(&self.repositories, "list_repositories")
+        }
+    }
+
+    #[async_trait]
+    impl GitHubPullRequestDetailApi for FakeGitHubApi {
         async fn get_pull_request(
             &self,
             _owner: &str,
@@ -715,7 +780,10 @@ pub(crate) mod test_support {
             self.record_call("list_workflow_runs_for_head");
             pop_result(&self.workflow_runs, "list_workflow_runs_for_head")
         }
+    }
 
+    #[async_trait]
+    impl GitHubWorkflowApi for FakeGitHubApi {
         async fn list_workflow_jobs_for_run(
             &self,
             _owner: &str,
@@ -735,7 +803,10 @@ pub(crate) mod test_support {
             self.record_call("workflow_run_log");
             pop_result(&self.workflow_logs, "workflow_run_log")
         }
+    }
 
+    #[async_trait]
+    impl GitHubReviewApi for FakeGitHubApi {
         async fn current_user(&self) -> Result<String> {
             self.record_call("current_user");
             pop_result(&self.current_user, "current_user")
@@ -774,7 +845,10 @@ pub(crate) mod test_support {
             self.record_call("list_review_threads");
             pop_result(&self.review_threads, "list_review_threads")
         }
+    }
 
+    #[async_trait]
+    impl GitHubWorkflowActionApi for FakeGitHubApi {
         async fn dispatch_workflow(
             &self,
             _owner: &str,
@@ -790,7 +864,10 @@ pub(crate) mod test_support {
             self.record_call("rerun_failed_jobs");
             pop_result(&self.rerun_failed_jobs_results, "rerun_failed_jobs")
         }
+    }
 
+    #[async_trait]
+    impl GitHubPullRequestActionApi for FakeGitHubApi {
         async fn approve_pull_request(
             &self,
             _owner: &str,
@@ -825,7 +902,10 @@ pub(crate) mod test_support {
             self.record_call("merge_pull_request");
             pop_result(&self.merge_results, "merge_pull_request")
         }
+    }
 
+    #[async_trait]
+    impl GitHubReviewMutationApi for FakeGitHubApi {
         async fn submit_pull_request_review(
             &self,
             _pull_request_review_node_id: &str,
@@ -1017,7 +1097,7 @@ mod tests {
             ]
         );
         view_entity.read_with(cx, |view, _| {
-            assert_eq!(view.review_threads, vec![thread]);
+            assert_eq!(view.review_state.review_threads, vec![thread]);
         });
 
         view_entity.update(cx, |view, cx| {
@@ -1095,10 +1175,10 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.configured_repo = Some(pull_request.repo.clone());
+            view.repository_state.configured_repo = Some(pull_request.repo.clone());
             view.pull_requests = vec![pull_request];
             view.selected_pr = 0;
-            view.sync_states.insert(
+            view.sync_runtime.sync_states.insert(
                 SyncTarget::ActiveInboxLight,
                 SyncState {
                     last_successful_fetch_at: Some(Utc::now() - Duration::seconds(31)),
@@ -1119,8 +1199,8 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.configured_repo = Some(pull_request.repo.clone());
-            view.sync_states.insert(
+            view.repository_state.configured_repo = Some(pull_request.repo.clone());
+            view.sync_runtime.sync_states.insert(
                 SyncTarget::ActiveInboxLight,
                 SyncState {
                     last_successful_fetch_at: Some(Utc::now()),
@@ -1143,9 +1223,9 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.configured_repo = Some(pull_request.repo.clone());
+            view.repository_state.configured_repo = Some(pull_request.repo.clone());
             view.pull_request_inbox.mode = PullRequestInboxMode::NeedsReview;
-            view.sync_states.insert(
+            view.sync_runtime.sync_states.insert(
                 SyncTarget::ActiveInbox,
                 SyncState {
                     last_successful_fetch_at: Some(Utc::now() - Duration::seconds(31)),
@@ -1168,12 +1248,14 @@ mod tests {
             view.pull_request_inbox.mode = PullRequestInboxMode::Open;
             view.mark_active_inbox_stale();
             assert!(
-                view.sync_states
+                view.sync_runtime
+                    .sync_states
                     .get(&SyncTarget::ActiveInboxLight)
                     .is_some_and(|state| state.stale)
             );
             assert!(
                 !view
+                    .sync_runtime
                     .sync_states
                     .get(&SyncTarget::ActiveInbox)
                     .is_some_and(|state| state.stale)
@@ -1182,7 +1264,8 @@ mod tests {
             view.pull_request_inbox.mode = PullRequestInboxMode::NeedsReview;
             view.mark_active_inbox_stale();
             assert!(
-                view.sync_states
+                view.sync_runtime
+                    .sync_states
                     .get(&SyncTarget::ActiveInbox)
                     .is_some_and(|state| state.stale)
             );
@@ -1207,7 +1290,7 @@ mod tests {
         assert_eq!(api.calls(), vec!["get_pull_request"]);
         view_entity.read_with(cx, |view, _| {
             assert_eq!(view.pull_requests[0].title, "Updated title");
-            assert!(view.files.is_empty());
+            assert!(view.detail_state.files.is_empty());
         });
     }
 
@@ -1223,7 +1306,7 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.configured_repo = Some(pull_request.repo.clone());
+            view.repository_state.configured_repo = Some(pull_request.repo.clone());
             view.pull_requests = vec![pull_request.clone()];
             view.selected_pr = 0;
             view.refresh_pull_requests(pull_request.repo, cx);
@@ -1267,8 +1350,8 @@ mod tests {
         view_entity.read_with(cx, |view, _| {
             assert_eq!(view.selected_pr, 1);
             assert_eq!(view.pull_requests[1].title, "Selected detail");
-            assert!(view.files.is_empty());
-            assert!(view.review_threads.is_empty());
+            assert!(view.detail_state.files.is_empty());
+            assert!(view.review_state.review_threads.is_empty());
         });
     }
 
@@ -1328,10 +1411,11 @@ mod tests {
         cx.run_until_parked();
 
         view_entity.read_with(cx, |view, _| {
-            assert_eq!(view.pull_request_reviews, vec![review]);
-            assert!(view.review_threads.is_empty());
+            assert_eq!(view.review_state.pull_request_reviews, vec![review]);
+            assert!(view.review_state.review_threads.is_empty());
             assert!(
-                view.reviews_error
+                view.review_state
+                    .reviews_error
                     .as_deref()
                     .is_some_and(|error| error.contains("Failed to load review threads"))
             );
@@ -1360,10 +1444,11 @@ mod tests {
         cx.run_until_parked();
 
         view_entity.read_with(cx, |view, _| {
-            assert!(view.pull_request_reviews.is_empty());
-            assert_eq!(view.review_threads, vec![thread]);
+            assert!(view.review_state.pull_request_reviews.is_empty());
+            assert_eq!(view.review_state.review_threads, vec![thread]);
             assert!(
-                view.reviews_error
+                view.review_state
+                    .reviews_error
                     .as_deref()
                     .is_some_and(|error| error.contains("Failed to load review history"))
             );
@@ -1383,7 +1468,7 @@ mod tests {
         success_view.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
             view.selected_pr = 0;
-            view.workflow_runs = vec![workflow_run()];
+            view.detail_state.workflow_runs = vec![workflow_run()];
             view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
             assert!(view.is_running_action);
             assert_eq!(view.status, "Dispatching CI on feature");
@@ -1405,7 +1490,7 @@ mod tests {
         failure_view.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
             view.selected_pr = 0;
-            view.workflow_runs = vec![workflow_run()];
+            view.detail_state.workflow_runs = vec![workflow_run()];
             view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
             assert_eq!(view.status, "Dispatching CI on feature");
         });
