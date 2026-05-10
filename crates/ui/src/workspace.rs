@@ -1,4 +1,5 @@
 mod action_commands;
+pub(crate) mod async_updates;
 mod cache;
 mod changed_files;
 mod commands;

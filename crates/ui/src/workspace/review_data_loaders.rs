@@ -2,7 +2,7 @@ use gpui::Context;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId};
 use harbor_github::{GhCliTransport, GitHubClient};
 
-use crate::workspace::AppView;
+use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
 #[derive(Clone, Debug)]
 pub(super) struct ReviewDataLoadTarget {
@@ -154,7 +154,7 @@ impl AppView {
                 .list_review_threads(&target.owner, &target.name, target.number)
                 .await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
+            this.update_or_log(cx, mode.update_error_log_message(), move |view, cx| {
                 if !selected_pull_request_matches(view, &target.repo, target.number) {
                     return;
                 }
@@ -242,9 +242,7 @@ impl AppView {
 
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(mode.update_error_log_message(), error);
-            }
+            });
         }));
     }
 }

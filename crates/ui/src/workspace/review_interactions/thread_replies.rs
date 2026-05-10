@@ -3,6 +3,7 @@ use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{
     AppView, PullRequestDetailCacheKey, ReviewThreadUiError,
+    async_updates::AppViewAsyncUpdateExt,
     reviews::{increment_pending_review_comment_count, is_local_review_thread_id},
 };
 
@@ -133,49 +134,50 @@ impl AppView {
                 .add_review_thread_reply(&thread_id, pending_review_node_id.as_deref(), &body)
                 .await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                match result {
-                    Ok(()) => {
-                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            view.review_thread_reply_error = None;
-                            view.status = format!("Posted reply on PR #{}", pr.number);
-                            view.load_selected_review_data(cx);
-                        }
-                    }
-                    Err(error) => {
-                        view.remove_optimistic_review_comment_for_detail(
-                            &detail_key,
-                            &optimistic_comment.comment_id,
-                        );
-                        if increments_pending_review_count {
-                            view.rollback_pending_review_comment_count_for_detail(
-                                &detail_key,
-                                pending_review_before_increment.as_ref(),
-                            );
-                        }
-
-                        let message = format!("Failed to post reply: {error}");
-                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            if view.review_composer_state.thread_reply_thread_id.is_none() {
-                                view.review_composer_state.thread_reply_thread_id =
-                                    Some(thread_id.clone());
+            this.update_or_log(
+                cx,
+                "failed to update review thread reply state",
+                move |view, cx| {
+                    match result {
+                        Ok(()) => {
+                            if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
+                            {
+                                view.review_thread_reply_error = None;
+                                view.status = format!("Posted reply on PR #{}", pr.number);
+                                view.load_selected_review_data(cx);
                             }
-                            view.review_thread_reply_error = Some(ReviewThreadUiError {
-                                thread_id,
-                                message: message.clone(),
-                            });
-                            view.status = message;
+                        }
+                        Err(error) => {
+                            view.remove_optimistic_review_comment_for_detail(
+                                &detail_key,
+                                &optimistic_comment.comment_id,
+                            );
+                            if increments_pending_review_count {
+                                view.rollback_pending_review_comment_count_for_detail(
+                                    &detail_key,
+                                    pending_review_before_increment.as_ref(),
+                                );
+                            }
+
+                            let message = format!("Failed to post reply: {error}");
+                            if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
+                            {
+                                if view.review_composer_state.thread_reply_thread_id.is_none() {
+                                    view.review_composer_state.thread_reply_thread_id =
+                                        Some(thread_id.clone());
+                                }
+                                view.review_thread_reply_error = Some(ReviewThreadUiError {
+                                    thread_id,
+                                    message: message.clone(),
+                                });
+                                view.status = message;
+                            }
                         }
                     }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update review thread reply state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

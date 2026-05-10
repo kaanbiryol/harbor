@@ -8,7 +8,7 @@ use crate::{
         WorkflowAction, WorkflowActionRequest,
     },
     panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
-    workspace::AppView,
+    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
 };
 
 impl AppView {
@@ -114,29 +114,28 @@ impl AppView {
                 } => client.rerun_failed_jobs(owner, repo, *run_id).await,
             };
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.is_running_action = false;
+            this.update_or_log(
+                cx,
+                "failed to update workflow action state",
+                move |view, cx| {
+                    view.is_running_action = false;
 
-                match result {
-                    Ok(()) => {
-                        view.action_error = None;
-                        view.refresh_selected_pull_request(cx);
-                        view.status = request.success_status();
+                    match result {
+                        Ok(()) => {
+                            view.action_error = None;
+                            view.refresh_selected_pull_request(cx);
+                            view.status = request.success_status();
+                        }
+                        Err(error) => {
+                            let message = format!("Failed to {}: {error}", request.failure_label());
+                            view.action_error = Some(message.clone());
+                            view.status = message;
+                        }
                     }
-                    Err(error) => {
-                        let message = format!("Failed to {}: {error}", request.failure_label());
-                        view.action_error = Some(message.clone());
-                        view.status = message;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update workflow action state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }
@@ -268,30 +267,29 @@ impl AppView {
                 }
             };
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.is_running_pr_action = false;
+            this.update_or_log(
+                cx,
+                "failed to update pull request action state",
+                move |view, cx| {
+                    view.is_running_pr_action = false;
 
-                match result {
-                    Ok(()) => {
-                        let status = request.success_status();
-                        view.pr_action_error = None;
-                        view.reload_pull_request_inbox(cx);
-                        view.status = status;
+                    match result {
+                        Ok(()) => {
+                            let status = request.success_status();
+                            view.pr_action_error = None;
+                            view.reload_pull_request_inbox(cx);
+                            view.status = status;
+                        }
+                        Err(error) => {
+                            let message = format!("Failed to {}: {error}", request.failure_label());
+                            view.pr_action_error = Some(message.clone());
+                            view.status = message;
+                        }
                     }
-                    Err(error) => {
-                        let message = format!("Failed to {}: {error}", request.failure_label());
-                        view.pr_action_error = Some(message.clone());
-                        view.status = message;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update pull request action state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

@@ -9,6 +9,7 @@ use crate::{
     panels::checks_summary_from_runs,
     workspace::{
         AppView,
+        async_updates::AppViewAsyncUpdateExt,
         review_data_loaders::{
             ReviewDataLoadMode, ReviewDataLoadTarget, selected_pull_request_matches,
         },
@@ -108,38 +109,38 @@ impl AppView {
                     .get_pull_request(&owner, &name, number)
                     .await;
 
-                if let Err(error) = this.update(cx, move |view, cx| {
-                    if !selected_pull_request_matches(view, &repo, number) {
-                        return;
-                    }
+                this.update_or_log(
+                    cx,
+                    "failed to update pull request detail state",
+                    move |view, cx| {
+                        if !selected_pull_request_matches(view, &repo, number) {
+                            return;
+                        }
 
-                    view.detail_loading.details = false;
-                    match result {
-                        Ok(detail) => {
-                            if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
-                                let review_decision = selected.review_decision;
-                                *selected = detail;
-                                if selected.review_decision.is_none() {
-                                    selected.review_decision = review_decision;
+                        view.detail_loading.details = false;
+                        match result {
+                            Ok(detail) => {
+                                if let Some(selected) = view.pull_requests.get_mut(view.selected_pr)
+                                {
+                                    let review_decision = selected.review_decision;
+                                    *selected = detail;
+                                    if selected.review_decision.is_none() {
+                                        selected.review_decision = review_decision;
+                                    }
                                 }
+                                view.details_error = None;
+                                view.status = format!("Loaded PR #{number} details");
                             }
-                            view.details_error = None;
-                            view.status = format!("Loaded PR #{number} details");
+                            Err(error) => {
+                                view.details_error = Some(error.to_string());
+                                view.status = format!("Failed to load PR #{number} details");
+                            }
                         }
-                        Err(error) => {
-                            view.details_error = Some(error.to_string());
-                            view.status = format!("Failed to load PR #{number} details");
-                        }
-                    }
 
-                    view.cache_current_pull_request_detail_snapshot();
-                    cx.notify();
-                }) {
-                    crate::workspace::log_entity_update_error(
-                        "failed to update pull request detail state",
-                        error,
-                    );
-                }
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    },
+                );
             }
         }));
     }
@@ -167,56 +168,60 @@ impl AppView {
                 let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
                 let update_repo = repo.clone();
 
-                if let Err(error) = this.update(cx, move |view, cx| {
-                    if !selected_pull_request_matches(view, &update_repo, number) {
-                        return;
-                    }
-
-                    view.detail_loading.files = false;
-                    match result {
-                        Ok((files, diffs)) => {
-                            let count = files.len();
-                            view.files = files;
-                            view.diffs = diffs;
-                            view.reset_diff_selection();
-                            view.reset_changed_file_filters();
-                            view.prune_reviewed_file_paths();
-                            view.ensure_active_file_visible(cx);
-                            view.clear_review_composer_state();
-                            view.refresh_owned_file_filters(cx);
-                            let row_index = view
-                                .file_tree_row_index_for_file(view.diff_selection.file_index, cx)
-                                .unwrap_or(0);
-                            view.file_list_scroll
-                                .scroll_to_item(row_index, ScrollStrategy::Top);
-                            view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                            view.files_error = None;
-                            view.status = format!("Loaded {count} changed files for PR #{number}");
+                this.update_or_log(
+                    cx,
+                    "failed to update pull request file state",
+                    move |view, cx| {
+                        if !selected_pull_request_matches(view, &update_repo, number) {
+                            return;
                         }
-                        Err(error) => {
-                            view.files.clear();
-                            view.diffs.clear();
-                            view.collapsed_file_tree_folders.clear();
-                            view.reviewed_file_paths.clear();
-                            view.reset_changed_file_filters();
-                            view.owned_file_paths.clear();
-                            view.reset_diff_selection();
-                            view.clear_review_composer_state();
-                            view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                            view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                            view.files_error = Some(error.to_string());
-                            view.status = format!("Failed to load changed files for PR #{number}");
-                        }
-                    }
 
-                    view.cache_current_pull_request_detail_snapshot();
-                    cx.notify();
-                }) {
-                    crate::workspace::log_entity_update_error(
-                        "failed to update pull request file state",
-                        error,
-                    );
-                }
+                        view.detail_loading.files = false;
+                        match result {
+                            Ok((files, diffs)) => {
+                                let count = files.len();
+                                view.files = files;
+                                view.diffs = diffs;
+                                view.reset_diff_selection();
+                                view.reset_changed_file_filters();
+                                view.prune_reviewed_file_paths();
+                                view.ensure_active_file_visible(cx);
+                                view.clear_review_composer_state();
+                                view.refresh_owned_file_filters(cx);
+                                let row_index = view
+                                    .file_tree_row_index_for_file(
+                                        view.diff_selection.file_index,
+                                        cx,
+                                    )
+                                    .unwrap_or(0);
+                                view.file_list_scroll
+                                    .scroll_to_item(row_index, ScrollStrategy::Top);
+                                view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                                view.files_error = None;
+                                view.status =
+                                    format!("Loaded {count} changed files for PR #{number}");
+                            }
+                            Err(error) => {
+                                view.files.clear();
+                                view.diffs.clear();
+                                view.collapsed_file_tree_folders.clear();
+                                view.reviewed_file_paths.clear();
+                                view.reset_changed_file_filters();
+                                view.owned_file_paths.clear();
+                                view.reset_diff_selection();
+                                view.clear_review_composer_state();
+                                view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                                view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                                view.files_error = Some(error.to_string());
+                                view.status =
+                                    format!("Failed to load changed files for PR #{number}");
+                            }
+                        }
+
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    },
+                );
 
                 let Some(files_for_syntax) = files_for_syntax else {
                     return;
@@ -235,27 +240,26 @@ impl AppView {
                         .await;
 
                     let update_repo = repo.clone();
-                    if let Err(error) = this.update(cx, move |view, cx| {
-                        if !selected_pull_request_matches(view, &update_repo, number) {
-                            return;
-                        }
-                        if view.files.get(file_index).map(|file| file.path.as_str())
-                            != Some(file_path.as_str())
-                        {
-                            return;
-                        }
+                    this.update_or_log(
+                        cx,
+                        "failed to update pull request syntax highlight state",
+                        move |view, cx| {
+                            if !selected_pull_request_matches(view, &update_repo, number) {
+                                return;
+                            }
+                            if view.files.get(file_index).map(|file| file.path.as_str())
+                                != Some(file_path.as_str())
+                            {
+                                return;
+                            }
 
-                        if let Some(diff) = view.diffs.get_mut(file_index) {
-                            *diff = Some(highlighted_diff);
-                        }
-                        view.cache_current_pull_request_detail_snapshot();
-                        cx.notify();
-                    }) {
-                        crate::workspace::log_entity_update_error(
-                            "failed to update pull request syntax highlight state",
-                            error,
-                        );
-                    }
+                            if let Some(diff) = view.diffs.get_mut(file_index) {
+                                *diff = Some(highlighted_diff);
+                            }
+                            view.cache_current_pull_request_detail_snapshot();
+                            cx.notify();
+                        },
+                    );
                 }
             }
         }));
@@ -282,40 +286,40 @@ impl AppView {
                         .await
                 };
 
-                if let Err(error) = this.update(cx, move |view, cx| {
-                    if !selected_pull_request_matches(view, &repo, number) {
-                        return;
-                    }
+                this.update_or_log(
+                    cx,
+                    "failed to update pull request checks state",
+                    move |view, cx| {
+                        if !selected_pull_request_matches(view, &repo, number) {
+                            return;
+                        }
 
-                    view.detail_loading.checks = false;
-                    match result {
-                        Ok(check_runs) => {
-                            let count = check_runs.len();
-                            let summary = checks_summary_from_runs(&check_runs);
-                            view.check_runs = check_runs;
-                            view.checks_error = None;
+                        view.detail_loading.checks = false;
+                        match result {
+                            Ok(check_runs) => {
+                                let count = check_runs.len();
+                                let summary = checks_summary_from_runs(&check_runs);
+                                view.check_runs = check_runs;
+                                view.checks_error = None;
 
-                            if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
-                                selected.checks_summary = summary;
+                                if let Some(selected) = view.pull_requests.get_mut(view.selected_pr)
+                                {
+                                    selected.checks_summary = summary;
+                                }
+
+                                view.status = format!("Loaded {count} check runs for PR #{number}");
                             }
-
-                            view.status = format!("Loaded {count} check runs for PR #{number}");
+                            Err(error) => {
+                                view.check_runs.clear();
+                                view.checks_error = Some(error.to_string());
+                                view.status = format!("Failed to load checks for PR #{number}");
+                            }
                         }
-                        Err(error) => {
-                            view.check_runs.clear();
-                            view.checks_error = Some(error.to_string());
-                            view.status = format!("Failed to load checks for PR #{number}");
-                        }
-                    }
 
-                    view.cache_current_pull_request_detail_snapshot();
-                    cx.notify();
-                }) {
-                    crate::workspace::log_entity_update_error(
-                        "failed to update pull request checks state",
-                        error,
-                    );
-                }
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    },
+                );
             }
         }));
     }
@@ -341,41 +345,42 @@ impl AppView {
                         .await
                 };
 
-                if let Err(error) = this.update(cx, move |view, cx| {
-                    if !selected_pull_request_matches(view, &repo, number) {
-                        return;
-                    }
+                this.update_or_log(
+                    cx,
+                    "failed to update pull request workflow state",
+                    move |view, cx| {
+                        if !selected_pull_request_matches(view, &repo, number) {
+                            return;
+                        }
 
-                    view.detail_loading.workflows = false;
-                    match result {
-                        Ok(workflow_runs) => {
-                            let count = workflow_runs.len();
-                            view.workflow_runs = workflow_runs;
-                            view.workflows_error = None;
-                            view.status = format!("Loaded {count} workflow runs for PR #{number}");
+                        view.detail_loading.workflows = false;
+                        match result {
+                            Ok(workflow_runs) => {
+                                let count = workflow_runs.len();
+                                view.workflow_runs = workflow_runs;
+                                view.workflows_error = None;
+                                view.status =
+                                    format!("Loaded {count} workflow runs for PR #{number}");
 
-                            if view.active_tab == PanelTab::Logs
-                                && view.log_state.error.is_none()
-                                && !view.workflow_runs.is_empty()
-                            {
-                                view.load_selected_workflow_logs(cx);
+                                if view.active_tab == PanelTab::Logs
+                                    && view.log_state.error.is_none()
+                                    && !view.workflow_runs.is_empty()
+                                {
+                                    view.load_selected_workflow_logs(cx);
+                                }
+                            }
+                            Err(error) => {
+                                view.workflow_runs.clear();
+                                view.workflows_error = Some(error.to_string());
+                                view.status =
+                                    format!("Failed to load workflow runs for PR #{number}");
                             }
                         }
-                        Err(error) => {
-                            view.workflow_runs.clear();
-                            view.workflows_error = Some(error.to_string());
-                            view.status = format!("Failed to load workflow runs for PR #{number}");
-                        }
-                    }
 
-                    view.cache_current_pull_request_detail_snapshot();
-                    cx.notify();
-                }) {
-                    crate::workspace::log_entity_update_error(
-                        "failed to update pull request workflow state",
-                        error,
-                    );
-                }
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    },
+                );
             }
         }));
     }

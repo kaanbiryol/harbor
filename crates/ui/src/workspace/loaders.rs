@@ -3,7 +3,9 @@ use harbor_domain::RepoId;
 use harbor_github::{GhCliTransport, GitHubClient, PullRequestListFilter};
 use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
 
-use crate::workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode};
+use crate::workspace::{
+    AppView, PullRequestInboxCacheKey, PullRequestInboxMode, async_updates::AppViewAsyncUpdateExt,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PullRequestFetchPolicy {
@@ -20,7 +22,7 @@ impl AppView {
         self.repository_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
+            this.update_or_log(cx, "failed to update repository store state", move |view, cx| {
                 match result {
                     Ok(load) => {
                         let repository_count = load.repositories.len();
@@ -57,9 +59,7 @@ impl AppView {
                 }
 
                 cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error("failed to update repository store state", error);
-            }
+            });
         }));
     }
 
@@ -70,7 +70,10 @@ impl AppView {
         self.repository_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
+            this.update_or_log(
+                cx,
+                "failed to update repository refresh state",
+                move |view, cx| {
                 view.is_loading_repositories = false;
 
                 match result {
@@ -115,9 +118,8 @@ impl AppView {
                 }
 
                 cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error("failed to update repository refresh state", error);
-            }
+                },
+            );
         }));
     }
 
@@ -142,23 +144,22 @@ impl AppView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                match result {
-                    Ok(()) => {
-                        view.repository_error = None;
+            this.update_or_log(
+                cx,
+                "failed to update repository write state",
+                move |view, cx| {
+                    match result {
+                        Ok(()) => {
+                            view.repository_error = None;
+                        }
+                        Err(error) => {
+                            view.repository_error = Some(error.to_string());
+                        }
                     }
-                    Err(error) => {
-                        view.repository_error = Some(error.to_string());
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update repository write state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }
@@ -242,59 +243,58 @@ impl AppView {
                 .list_repository_pull_requests(&repo, pull_request_list_filter(mode))
                 .await;
 
-            if let Err(error) = this.update(cx, |view, cx| {
-                if view.current_pull_request_inbox_key().as_ref() != Some(&key) {
-                    return;
-                }
-
-                view.is_loading_prs = false;
-
-                match result {
-                    Ok(pull_requests) => {
-                        let count = pull_requests.len();
-                        let status = pull_request_inbox_loaded_status(&repo, mode, count);
-                        view.pull_requests = pull_requests;
-                        view.clear_changed_file_state();
-                        view.clear_workflow_state();
-                        view.clear_review_data_state();
-                        view.clear_review_submission_errors();
-                        view.clear_log_content();
-                        view.selected_pr = 0;
-                        view.reset_diff_selection();
-                        view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        view.reset_detail_scrolls();
-                        view.load_error = None;
-                        view.status = status;
-                        view.refresh_selected_pull_request(cx);
+            this.update_or_log(
+                cx,
+                "failed to update pull request inbox state",
+                |view, cx| {
+                    if view.current_pull_request_inbox_key().as_ref() != Some(&key) {
+                        return;
                     }
-                    Err(error) => {
-                        let status = pull_request_inbox_failed_status(&repo, mode);
-                        view.pull_requests.clear();
-                        view.clear_changed_file_state();
-                        view.clear_workflow_state();
-                        view.clear_review_data_state();
-                        view.clear_review_submission_errors();
-                        view.clear_log_content();
-                        view.selected_pr = 0;
-                        view.reset_diff_selection();
-                        view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        view.reset_detail_scrolls();
-                        view.set_detail_loading(false);
-                        view.set_log_loading(false);
-                        view.is_running_action = false;
-                        view.is_running_pr_action = false;
-                        view.load_error = Some(error.to_string());
-                        view.status = status;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update pull request inbox state",
-                    error,
-                );
-            }
+                    view.is_loading_prs = false;
+
+                    match result {
+                        Ok(pull_requests) => {
+                            let count = pull_requests.len();
+                            let status = pull_request_inbox_loaded_status(&repo, mode, count);
+                            view.pull_requests = pull_requests;
+                            view.clear_changed_file_state();
+                            view.clear_workflow_state();
+                            view.clear_review_data_state();
+                            view.clear_review_submission_errors();
+                            view.clear_log_content();
+                            view.selected_pr = 0;
+                            view.reset_diff_selection();
+                            view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.reset_detail_scrolls();
+                            view.load_error = None;
+                            view.status = status;
+                            view.refresh_selected_pull_request(cx);
+                        }
+                        Err(error) => {
+                            let status = pull_request_inbox_failed_status(&repo, mode);
+                            view.pull_requests.clear();
+                            view.clear_changed_file_state();
+                            view.clear_workflow_state();
+                            view.clear_review_data_state();
+                            view.clear_review_submission_errors();
+                            view.clear_log_content();
+                            view.selected_pr = 0;
+                            view.reset_diff_selection();
+                            view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                            view.reset_detail_scrolls();
+                            view.set_detail_loading(false);
+                            view.set_log_loading(false);
+                            view.is_running_action = false;
+                            view.is_running_pr_action = false;
+                            view.load_error = Some(error.to_string());
+                            view.status = status;
+                        }
+                    }
+
+                    cx.notify();
+                },
+            );
         }));
     }
 }

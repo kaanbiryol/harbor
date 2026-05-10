@@ -1,7 +1,7 @@
 use gpui::{Context, Window};
 use harbor_github::{GhCliTransport, GitHubClient};
 
-use crate::workspace::{AppView, ReviewCommentUiError};
+use crate::workspace::{AppView, ReviewCommentUiError, async_updates::AppViewAsyncUpdateExt};
 
 impl AppView {
     pub(crate) fn open_review_comment_edit(
@@ -108,36 +108,35 @@ impl AppView {
                 .update_review_comment(&comment_id, &body)
                 .await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.is_submitting_review_comment_edit = false;
+            this.update_or_log(
+                cx,
+                "failed to update review comment edit state",
+                move |view, cx| {
+                    view.is_submitting_review_comment_edit = false;
 
-                match result {
-                    Ok(()) => {
-                        if let Some(comment) = view.review_comment_mut(&comment_id) {
-                            comment.body = body;
+                    match result {
+                        Ok(()) => {
+                            if let Some(comment) = view.review_comment_mut(&comment_id) {
+                                comment.body = body;
+                            }
+                            view.review_composer_state.comment_edit_comment_id = None;
+                            view.review_comment_edit_error = None;
+                            view.status = format!("Updated review comment on PR #{}", pr.number);
+                            view.load_selected_review_data(cx);
                         }
-                        view.review_composer_state.comment_edit_comment_id = None;
-                        view.review_comment_edit_error = None;
-                        view.status = format!("Updated review comment on PR #{}", pr.number);
-                        view.load_selected_review_data(cx);
+                        Err(error) => {
+                            let message = format!("Failed to update review comment: {error}");
+                            view.review_comment_edit_error = Some(ReviewCommentUiError {
+                                comment_id,
+                                message: message.clone(),
+                            });
+                            view.status = message;
+                        }
                     }
-                    Err(error) => {
-                        let message = format!("Failed to update review comment: {error}");
-                        view.review_comment_edit_error = Some(ReviewCommentUiError {
-                            comment_id,
-                            message: message.clone(),
-                        });
-                        view.status = message;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update review comment edit state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }
@@ -189,39 +188,38 @@ impl AppView {
                 .delete_review_comment(&comment_id)
                 .await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.review_comment_action_comment_id = None;
+            this.update_or_log(
+                cx,
+                "failed to update review comment action state",
+                move |view, cx| {
+                    view.review_comment_action_comment_id = None;
 
-                match result {
-                    Ok(()) => {
-                        view.remove_review_comment(&comment_id);
-                        view.review_composer_state.comment_edit_comment_id = view
-                            .review_composer_state
-                            .comment_edit_comment_id
-                            .take()
-                            .filter(|active_id| active_id != &comment_id);
-                        view.review_comment_action_error = None;
-                        view.sync_unresolved_thread_count();
-                        view.status = format!("Deleted review comment on PR #{}", pr.number);
-                        view.load_selected_review_data(cx);
+                    match result {
+                        Ok(()) => {
+                            view.remove_review_comment(&comment_id);
+                            view.review_composer_state.comment_edit_comment_id = view
+                                .review_composer_state
+                                .comment_edit_comment_id
+                                .take()
+                                .filter(|active_id| active_id != &comment_id);
+                            view.review_comment_action_error = None;
+                            view.sync_unresolved_thread_count();
+                            view.status = format!("Deleted review comment on PR #{}", pr.number);
+                            view.load_selected_review_data(cx);
+                        }
+                        Err(error) => {
+                            let message = format!("Failed to delete review comment: {error}");
+                            view.review_comment_action_error = Some(ReviewCommentUiError {
+                                comment_id,
+                                message: message.clone(),
+                            });
+                            view.status = message;
+                        }
                     }
-                    Err(error) => {
-                        let message = format!("Failed to delete review comment: {error}");
-                        view.review_comment_action_error = Some(ReviewCommentUiError {
-                            comment_id,
-                            message: message.clone(),
-                        });
-                        view.status = message;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update review comment action state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

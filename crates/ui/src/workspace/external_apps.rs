@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use gpui::{AppContext, Context};
 use harbor_git::ExternalApp;
 
-use crate::workspace::AppView;
+use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ExternalAppAvailability {
@@ -58,16 +58,15 @@ impl AppView {
         self.external_app_availability_task = Some(cx.spawn(async move |this, cx| {
             let availability = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.external_app_availability = availability;
-                view.external_app_availability_task = None;
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update external app availability",
-                    error,
-                );
-            }
+            this.update_or_log(
+                cx,
+                "failed to update external app availability",
+                move |view, cx| {
+                    view.external_app_availability = availability;
+                    view.external_app_availability_task = None;
+                    cx.notify();
+                },
+            );
         }));
     }
 }

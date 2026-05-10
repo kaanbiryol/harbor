@@ -9,7 +9,7 @@ use crate::{
         CheckoutPullRequest, ChooseLocalCheckout, OpenWithCursor, OpenWithFinder, OpenWithGhostty,
         OpenWithTerminal, OpenWithVsCode, OpenWithWarp, OpenWithXcode, OpenWithZed,
     },
-    workspace::AppView,
+    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
 };
 
 impl AppView {
@@ -162,32 +162,31 @@ impl AppView {
         self.local_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                match result {
-                    Ok(repo_path) => {
-                        view.set_repository_local_path(repository.clone(), repo_path.clone());
-                        view.repository_error = None;
-                        view.status = format!(
-                            "Saved local checkout for {} at {}",
-                            repository.full_name(),
-                            repo_path.display()
-                        );
-                        view.refresh_owned_file_filters(cx);
+            this.update_or_log(
+                cx,
+                "failed to update local checkout state",
+                move |view, cx| {
+                    match result {
+                        Ok(repo_path) => {
+                            view.set_repository_local_path(repository.clone(), repo_path.clone());
+                            view.repository_error = None;
+                            view.status = format!(
+                                "Saved local checkout for {} at {}",
+                                repository.full_name(),
+                                repo_path.display()
+                            );
+                            view.refresh_owned_file_filters(cx);
+                        }
+                        Err(error) => {
+                            view.repository_error = Some(error.clone());
+                            view.status = format!("Failed to save local checkout: {error}");
+                        }
                     }
-                    Err(error) => {
-                        view.repository_error = Some(error.clone());
-                        view.status = format!("Failed to save local checkout: {error}");
-                    }
-                }
 
-                view.local_task = None;
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update local checkout state",
-                    error,
-                );
-            }
+                    view.local_task = None;
+                    cx.notify();
+                },
+            );
         }));
     }
 
@@ -247,19 +246,14 @@ impl AppView {
         self.local_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
+            this.update_or_log(cx, "failed to update open-with state", move |view, cx| {
                 view.status = match result {
                     Ok(status) => status,
                     Err(error) => format!("Failed to open with {app_label}: {error}"),
                 };
                 view.local_task = None;
                 cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update open-with state",
-                    error,
-                );
-            }
+            });
         }));
     }
 
@@ -301,16 +295,14 @@ impl AppView {
         self.local_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
+            this.update_or_log(cx, "failed to update checkout state", move |view, cx| {
                 view.status = match result {
                     Ok(status) => status,
                     Err(error) => format!("Failed to prepare PR worktree: {error}"),
                 };
                 view.local_task = None;
                 cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error("failed to update checkout state", error);
-            }
+            });
         }));
     }
 }

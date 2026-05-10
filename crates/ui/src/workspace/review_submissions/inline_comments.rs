@@ -3,7 +3,7 @@ use harbor_github::{GhCliTransport, GitHubClient, GitHubError};
 
 use crate::workspace::{
     AppView, PendingReviewSession, PullRequestDetailCacheKey, ReviewCommentSubmission,
-    reviews::increment_pending_review_comment_count,
+    async_updates::AppViewAsyncUpdateExt, reviews::increment_pending_review_comment_count,
 };
 
 impl AppView {
@@ -137,71 +137,72 @@ impl AppView {
                 }
             };
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                if submission == ReviewCommentSubmission::StartReview {
-                    view.is_submitting_review_comment = false;
-                }
-
-                match result {
-                    Ok(new_pending_review_node_id) => {
-                        if let (ReviewCommentSubmission::StartReview, Some(node_id)) =
-                            (submission, new_pending_review_node_id)
-                        {
-                            view.set_pending_review_for_detail(
-                                &detail_key,
-                                PendingReviewSession {
-                                    node_id,
-                                    comment_count: 1,
-                                },
-                            );
-                        }
-
-                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            view.review_comment_error = None;
-                            view.status = match submission {
-                                ReviewCommentSubmission::SingleComment => {
-                                    format!("Posted comment on PR #{}", pr.number)
-                                }
-                                ReviewCommentSubmission::StartReview => {
-                                    format!("Started pending review on PR #{}", pr.number)
-                                }
-                                ReviewCommentSubmission::AddToReview => {
-                                    format!("Added review comment on PR #{}", pr.number)
-                                }
-                            };
-                            view.load_selected_review_data(cx);
-                        }
+            this.update_or_log(
+                cx,
+                "failed to update review comment submission state",
+                move |view, cx| {
+                    if submission == ReviewCommentSubmission::StartReview {
+                        view.is_submitting_review_comment = false;
                     }
-                    Err(error) => {
-                        view.remove_optimistic_review_comment_for_detail(
-                            &detail_key,
-                            &optimistic_comment.comment_id,
-                        );
-                        if increments_pending_review_count {
-                            view.rollback_pending_review_comment_count_for_detail(
-                                &detail_key,
-                                pending_review_before_increment.as_ref(),
-                            );
-                        }
 
-                        let message = format!("Failed to submit review comment: {error}");
-                        if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key) {
-                            if view.review_composer_state.composer.is_none() {
-                                view.review_composer_state.composer = Some(composer);
+                    match result {
+                        Ok(new_pending_review_node_id) => {
+                            if let (ReviewCommentSubmission::StartReview, Some(node_id)) =
+                                (submission, new_pending_review_node_id)
+                            {
+                                view.set_pending_review_for_detail(
+                                    &detail_key,
+                                    PendingReviewSession {
+                                        node_id,
+                                        comment_count: 1,
+                                    },
+                                );
                             }
-                            view.review_comment_error = Some(message.clone());
-                            view.status = message;
+
+                            if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
+                            {
+                                view.review_comment_error = None;
+                                view.status = match submission {
+                                    ReviewCommentSubmission::SingleComment => {
+                                        format!("Posted comment on PR #{}", pr.number)
+                                    }
+                                    ReviewCommentSubmission::StartReview => {
+                                        format!("Started pending review on PR #{}", pr.number)
+                                    }
+                                    ReviewCommentSubmission::AddToReview => {
+                                        format!("Added review comment on PR #{}", pr.number)
+                                    }
+                                };
+                                view.load_selected_review_data(cx);
+                            }
+                        }
+                        Err(error) => {
+                            view.remove_optimistic_review_comment_for_detail(
+                                &detail_key,
+                                &optimistic_comment.comment_id,
+                            );
+                            if increments_pending_review_count {
+                                view.rollback_pending_review_comment_count_for_detail(
+                                    &detail_key,
+                                    pending_review_before_increment.as_ref(),
+                                );
+                            }
+
+                            let message = format!("Failed to submit review comment: {error}");
+                            if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
+                            {
+                                if view.review_composer_state.composer.is_none() {
+                                    view.review_composer_state.composer = Some(composer);
+                                }
+                                view.review_comment_error = Some(message.clone());
+                                view.status = message;
+                            }
                         }
                     }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update review comment submission state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

@@ -1,7 +1,10 @@
 use gpui::{Context, Window};
 use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
 
-use crate::{actions::DEFAULT_REQUEST_CHANGES_BODY, workspace::AppView};
+use crate::{
+    actions::DEFAULT_REQUEST_CHANGES_BODY,
+    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
+};
 
 impl AppView {
     pub(crate) fn submit_pending_pull_request_review(
@@ -68,37 +71,36 @@ impl AppView {
                 .submit_pull_request_review(&pending_review.node_id, event, body.as_deref())
                 .await;
 
-            if let Err(error) = this.update_in(cx, move |view, window, cx| {
-                view.is_submitting_pending_review = false;
-                view.is_running_pr_action = false;
+            this.update_in_or_log(
+                cx,
+                "failed to update pending review submission state",
+                move |view, window, cx| {
+                    view.is_submitting_pending_review = false;
+                    view.is_running_pr_action = false;
 
-                match result {
-                    Ok(()) => {
-                        view.pending_review = None;
-                        view.pending_review_error = None;
-                        view.review_composer_state.pending_review_body_input.update(
-                            cx,
-                            |input, cx| {
-                                input.set_value("", window, cx);
-                            },
-                        );
-                        view.status = format!("Submitted pending review on PR #{}", pr.number);
-                        view.reload_pull_request_inbox(cx);
+                    match result {
+                        Ok(()) => {
+                            view.pending_review = None;
+                            view.pending_review_error = None;
+                            view.review_composer_state.pending_review_body_input.update(
+                                cx,
+                                |input, cx| {
+                                    input.set_value("", window, cx);
+                                },
+                            );
+                            view.status = format!("Submitted pending review on PR #{}", pr.number);
+                            view.reload_pull_request_inbox(cx);
+                        }
+                        Err(error) => {
+                            let message = format!("Failed to submit pending review: {error}");
+                            view.pending_review_error = Some(message.clone());
+                            view.status = message;
+                        }
                     }
-                    Err(error) => {
-                        let message = format!("Failed to submit pending review: {error}");
-                        view.pending_review_error = Some(message.clone());
-                        view.status = message;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update pending review submission state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

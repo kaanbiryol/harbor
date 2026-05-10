@@ -2,7 +2,7 @@ use gpui::Context;
 use harbor_domain::ReviewThreadState;
 use harbor_github::{GhCliTransport, GitHubClient};
 
-use crate::workspace::{AppView, ReviewThreadUiError};
+use crate::workspace::{AppView, ReviewThreadUiError, async_updates::AppViewAsyncUpdateExt};
 
 impl AppView {
     pub(crate) fn set_review_thread_resolved(
@@ -58,47 +58,46 @@ impl AppView {
                 client.unresolve_review_thread(&thread_id).await
             };
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.review_thread_action_thread_id = None;
+            this.update_or_log(
+                cx,
+                "failed to update review thread action state",
+                move |view, cx| {
+                    view.review_thread_action_thread_id = None;
 
-                match result {
-                    Ok(()) => {
-                        view.set_review_thread_state(&thread_id, desired_state);
-                        view.sync_unresolved_thread_count();
-                        view.review_thread_action_error = None;
-                        view.status = if resolved {
-                            format!("Resolved review thread on PR #{}", pr.number)
-                        } else {
-                            format!("Reopened review thread on PR #{}", pr.number)
-                        };
-                        view.load_selected_review_data(cx);
-                    }
-                    Err(error) => {
-                        view.review_thread_state_overrides.remove(&thread_id);
-                        if let Some(previous_state) = previous_state {
-                            view.set_review_thread_state(&thread_id, previous_state);
+                    match result {
+                        Ok(()) => {
+                            view.set_review_thread_state(&thread_id, desired_state);
                             view.sync_unresolved_thread_count();
+                            view.review_thread_action_error = None;
+                            view.status = if resolved {
+                                format!("Resolved review thread on PR #{}", pr.number)
+                            } else {
+                                format!("Reopened review thread on PR #{}", pr.number)
+                            };
+                            view.load_selected_review_data(cx);
                         }
-                        let message = if resolved {
-                            format!("Failed to resolve review thread: {error}")
-                        } else {
-                            format!("Failed to reopen review thread: {error}")
-                        };
-                        view.review_thread_action_error = Some(ReviewThreadUiError {
-                            thread_id,
-                            message: message.clone(),
-                        });
-                        view.status = message;
+                        Err(error) => {
+                            view.review_thread_state_overrides.remove(&thread_id);
+                            if let Some(previous_state) = previous_state {
+                                view.set_review_thread_state(&thread_id, previous_state);
+                                view.sync_unresolved_thread_count();
+                            }
+                            let message = if resolved {
+                                format!("Failed to resolve review thread: {error}")
+                            } else {
+                                format!("Failed to reopen review thread: {error}")
+                            };
+                            view.review_thread_action_error = Some(ReviewThreadUiError {
+                                thread_id,
+                                message: message.clone(),
+                            });
+                            view.status = message;
+                        }
                     }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update review thread action state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

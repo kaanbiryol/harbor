@@ -4,6 +4,7 @@ use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{
     AppView, ReviewCommentUiError, ReviewReactionAction,
+    async_updates::AppViewAsyncUpdateExt,
     reviews::{ReviewReactionKey, review_reaction},
 };
 
@@ -77,34 +78,33 @@ impl AppView {
                     .await
             };
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                view.review_reaction_action = None;
+            this.update_or_log(
+                cx,
+                "failed to update review reaction state",
+                move |view, cx| {
+                    view.review_reaction_action = None;
 
-                match result {
-                    Ok(()) => {
-                        view.review_reaction_error = None;
-                        view.status = format!("Updated reaction on PR #{}", pr.number);
-                        view.load_selected_review_data(cx);
+                    match result {
+                        Ok(()) => {
+                            view.review_reaction_error = None;
+                            view.status = format!("Updated reaction on PR #{}", pr.number);
+                            view.load_selected_review_data(cx);
+                        }
+                        Err(error) => {
+                            view.review_reaction_overrides.remove(&reaction_key);
+                            view.set_review_comment_reaction(&comment_id, content, had_reacted);
+                            let message = format!("Failed to update reaction: {error}");
+                            view.review_reaction_error = Some(ReviewCommentUiError {
+                                comment_id,
+                                message: message.clone(),
+                            });
+                            view.status = message;
+                        }
                     }
-                    Err(error) => {
-                        view.review_reaction_overrides.remove(&reaction_key);
-                        view.set_review_comment_reaction(&comment_id, content, had_reacted);
-                        let message = format!("Failed to update reaction: {error}");
-                        view.review_reaction_error = Some(ReviewCommentUiError {
-                            comment_id,
-                            message: message.clone(),
-                        });
-                        view.status = message;
-                    }
-                }
 
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update review reaction state",
-                    error,
-                );
-            }
+                    cx.notify();
+                },
+            );
         })
         .detach();
     }

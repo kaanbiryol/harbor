@@ -2,7 +2,11 @@ use gpui::{Context, ScrollStrategy};
 use harbor_github::{GhCliTransport, GitHubClient};
 use harbor_logs::parse_workflow_log;
 
-use crate::{actions::PanelTab, panels::workflow_run_label, workspace::AppView};
+use crate::{
+    actions::PanelTab,
+    panels::workflow_run_label,
+    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
+};
 
 impl AppView {
     pub(crate) fn load_selected_workflow_logs(&mut self, cx: &mut Context<Self>) {
@@ -52,52 +56,52 @@ impl AppView {
                 .await;
             let log_result = client.workflow_run_log(&owner, &name, run_id).await;
 
-            if let Err(error) = this.update(cx, move |view, cx| {
-                if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
-                    return;
-                }
-
-                view.set_log_loading(false);
-
-                match jobs_result {
-                    Ok(jobs) => {
-                        view.workflow_jobs = jobs;
+            this.update_or_log(
+                cx,
+                "failed to update workflow log state",
+                move |view, cx| {
+                    if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
+                        return;
                     }
-                    Err(error) => {
-                        view.workflow_jobs.clear();
-                        view.log_state.error =
-                            Some(format!("Failed to load workflow jobs: {error}"));
-                    }
-                }
 
-                match log_result {
-                    Ok(text) => {
-                        view.log_state.chunk = Some(parse_workflow_log(run_id, &text));
-                        if view.log_state.error.is_none() {
-                            view.status = format!("Loaded logs for {run_label}");
-                        } else {
-                            view.status = format!("Loaded logs for {run_label}, but jobs failed");
+                    view.set_log_loading(false);
+
+                    match jobs_result {
+                        Ok(jobs) => {
+                            view.workflow_jobs = jobs;
+                        }
+                        Err(error) => {
+                            view.workflow_jobs.clear();
+                            view.log_state.error =
+                                Some(format!("Failed to load workflow jobs: {error}"));
                         }
                     }
-                    Err(error) => {
-                        view.clear_log_content();
-                        let message = format!("Failed to load workflow logs: {error}");
-                        view.log_state.error = Some(message.clone());
-                        view.status = message;
-                    }
-                }
 
-                view.log_state
-                    .list_scroll
-                    .scroll_to_item(0, ScrollStrategy::Top);
-                view.cache_current_pull_request_detail_snapshot();
-                cx.notify();
-            }) {
-                crate::workspace::log_entity_update_error(
-                    "failed to update workflow log state",
-                    error,
-                );
-            }
+                    match log_result {
+                        Ok(text) => {
+                            view.log_state.chunk = Some(parse_workflow_log(run_id, &text));
+                            if view.log_state.error.is_none() {
+                                view.status = format!("Loaded logs for {run_label}");
+                            } else {
+                                view.status =
+                                    format!("Loaded logs for {run_label}, but jobs failed");
+                            }
+                        }
+                        Err(error) => {
+                            view.clear_log_content();
+                            let message = format!("Failed to load workflow logs: {error}");
+                            view.log_state.error = Some(message.clone());
+                            view.status = message;
+                        }
+                    }
+
+                    view.log_state
+                        .list_scroll
+                        .scroll_to_item(0, ScrollStrategy::Top);
+                    view.cache_current_pull_request_detail_snapshot();
+                    cx.notify();
+                },
+            );
         }));
     }
 }
