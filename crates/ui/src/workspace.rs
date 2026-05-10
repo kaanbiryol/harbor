@@ -14,6 +14,7 @@ mod review_interactions;
 mod review_state;
 mod review_submissions;
 mod reviews;
+mod state;
 mod state_reset;
 mod switchers;
 mod workflow_log_loaders;
@@ -32,7 +33,6 @@ use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, ReviewThreadState,
     WorkflowJob, WorkflowRun,
 };
-use harbor_logs::LogChunk;
 use harbor_storage::SqliteStore;
 
 use crate::actions::PanelTab;
@@ -59,6 +59,10 @@ pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
     ReviewLineSelection, ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
     review_comment_pending_sync, review_range_from_targets, review_reaction,
+};
+use state::{
+    DiffSelectionState, PullRequestDetailLoadingState, PullRequestInboxState, ReviewComposerState,
+    WorkflowLogState,
 };
 #[cfg(test)]
 pub(crate) use switchers::{
@@ -120,68 +124,6 @@ impl PullRequestInboxMode {
             Self::Open => "open",
             Self::Closed => "closed",
             Self::NeedsReview => "needs-review",
-        }
-    }
-}
-
-#[derive(Default)]
-struct PullRequestInboxState {
-    visible: bool,
-    mode: PullRequestInboxMode,
-    cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
-}
-
-impl PullRequestInboxState {
-    fn visible_by_default() -> Self {
-        Self {
-            visible: true,
-            ..Self::default()
-        }
-    }
-}
-
-#[derive(Default)]
-struct DiffSelectionState {
-    file_index: usize,
-    hunk_index: usize,
-}
-
-#[derive(Default)]
-struct PullRequestDetailLoadingState {
-    details: bool,
-    files: bool,
-    checks: bool,
-    workflows: bool,
-    reviews: bool,
-}
-
-pub(crate) struct ReviewComposerState {
-    pub(crate) composer: Option<ReviewComposer>,
-    pub(crate) line_selection: Option<ReviewLineSelection>,
-    pub(crate) comment_input: Entity<InputState>,
-    pub(crate) thread_reply_thread_id: Option<String>,
-    pub(crate) thread_reply_input: Entity<InputState>,
-    pub(crate) comment_edit_comment_id: Option<String>,
-    pub(crate) comment_edit_input: Entity<InputState>,
-    pub(crate) pending_review_body_input: Entity<InputState>,
-}
-
-pub(crate) struct WorkflowLogState {
-    pub(crate) chunk: Option<LogChunk>,
-    pub(crate) task: Option<Task<()>>,
-    pub(crate) list_scroll: UniformListScrollHandle,
-    pub(crate) is_loading: bool,
-    pub(crate) error: Option<String>,
-}
-
-impl WorkflowLogState {
-    fn new() -> Self {
-        Self {
-            chunk: None,
-            task: None,
-            list_scroll: UniformListScrollHandle::new(),
-            is_loading: false,
-            error: None,
         }
     }
 }
