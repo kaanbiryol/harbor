@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub mod diff;
+pub mod diff_reviews;
 pub mod reviews;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
