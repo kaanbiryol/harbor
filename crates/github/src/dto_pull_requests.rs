@@ -6,7 +6,7 @@ use harbor_domain::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{GitHubError, Result};
+use crate::{GitHubError, PullRequestEnrichment, Result};
 
 #[derive(Debug, Deserialize)]
 struct ApiPullRequest {
@@ -63,6 +63,17 @@ struct GraphQlPullRequestSearchData {
 }
 
 #[derive(Debug, Deserialize)]
+struct GraphQlPullRequestEnrichmentResponse {
+    data: Option<GraphQlPullRequestEnrichmentData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestEnrichmentData {
+    #[serde(default)]
+    nodes: Vec<Option<GraphQlPullRequestEnrichmentNode>>,
+}
+
+#[derive(Debug, Deserialize)]
 struct GraphQlPullRequestSearchConnection {
     #[serde(default)]
     nodes: Vec<Option<GraphQlPullRequestSearchNode>>,
@@ -116,6 +127,20 @@ struct GraphQlPullRequestSearchNode {
     status_check_rollup: Option<GraphQlStatusCheckRollup>,
     #[serde(default)]
     labels: GraphQlNodes<GraphQlLabel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestEnrichmentNode {
+    #[serde(default, rename = "__typename")]
+    typename: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default, rename = "reviewDecision")]
+    review_decision: Option<String>,
+    #[serde(default, rename = "mergeStateStatus")]
+    merge_state_status: Option<String>,
+    #[serde(default, rename = "statusCheckRollup")]
+    status_check_rollup: Option<GraphQlStatusCheckRollup>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,6 +250,23 @@ pub(crate) fn pull_request_search_page_from_graphql_value(
     })
 }
 
+pub(crate) fn pull_request_enrichments_from_graphql_value(
+    value: Value,
+) -> Result<Vec<PullRequestEnrichment>> {
+    let response: GraphQlPullRequestEnrichmentResponse =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let data = response
+        .data
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL response data".to_string()))?;
+
+    data.nodes
+        .into_iter()
+        .flatten()
+        .filter(|node| node.is_pull_request())
+        .map(GraphQlPullRequestEnrichmentNode::into_domain)
+        .collect()
+}
+
 pub fn diff_files_from_value(value: Value) -> Result<Vec<DiffFile>> {
     let files: Vec<ApiDiffFile> =
         serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
@@ -321,6 +363,27 @@ impl GraphQlPullRequestSearchNode {
                 .unwrap_or_default(),
             unresolved_threads: 0,
             updated_at: self.updated_at,
+        })
+    }
+}
+
+impl GraphQlPullRequestEnrichmentNode {
+    fn is_pull_request(&self) -> bool {
+        self.typename.as_deref() == Some("PullRequest") || self.id.is_some()
+    }
+
+    fn into_domain(self) -> Result<PullRequestEnrichment> {
+        Ok(PullRequestEnrichment {
+            node_id: required_graphql_field(self.id, "id")?,
+            review_decision: self
+                .review_decision
+                .as_deref()
+                .and_then(map_review_decision),
+            merge_state: self.merge_state_status.as_deref().map(map_merge_state),
+            checks_summary: self
+                .status_check_rollup
+                .map(checks_summary_from_graphql_rollup)
+                .unwrap_or_default(),
         })
     }
 }

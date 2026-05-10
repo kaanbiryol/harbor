@@ -2,7 +2,7 @@ use harbor_sync::PullRequestChangeEvent;
 
 use gpui::{AppContext, Context};
 
-use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
+use crate::workspace::{AppView, PullRequestInboxMode, async_updates::AppViewAsyncUpdateExt};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct HarborNotification {
@@ -87,7 +87,14 @@ impl AppView {
         if self.active_inbox_focus_catch_up_due()
             && let Some(repository) = self.configured_repo.clone()
         {
-            self.refresh_pull_requests(repository, cx);
+            if self.pull_request_inbox.mode == PullRequestInboxMode::NeedsReview {
+                tracing::info!(
+                    repository = %repository.full_name(),
+                    mode = self.pull_request_inbox.mode.key(),
+                    "github graphql source: focus catch-up inbox refresh"
+                );
+            }
+            self.refresh_pull_requests_light(repository, cx);
         }
     }
 }

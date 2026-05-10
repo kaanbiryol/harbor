@@ -1,6 +1,6 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
-use harbor_domain::{PullRequest, RepoId};
+use harbor_domain::{MergeState, PullRequest, RepoId};
 use harbor_sync::SyncTarget;
 
 use crate::{
@@ -73,12 +73,44 @@ impl SelectedPullRequestLoad {
 }
 
 impl AppView {
+    pub(crate) fn replace_selected_pull_request_preserving_row_fields(
+        &mut self,
+        mut detail: PullRequest,
+    ) {
+        let Some(selected) = self.pull_requests.get_mut(self.selected_pr) else {
+            return;
+        };
+
+        if detail.review_decision.is_none() {
+            detail.review_decision = selected.review_decision;
+        }
+        if detail.merge_state.is_none() || detail.merge_state == Some(MergeState::Unknown) {
+            detail.merge_state = selected.merge_state;
+        }
+        detail.checks_summary = selected.checks_summary;
+        detail.unresolved_threads = selected.unresolved_threads;
+
+        *selected = detail;
+    }
+
     pub(super) fn load_selected_pull_request(&mut self, cx: &mut Context<Self>) {
         self.load_selected_pull_request_with_policy(PullRequestDetailFetchPolicy::PreferCache, cx);
     }
 
     pub(super) fn refresh_selected_pull_request(&mut self, cx: &mut Context<Self>) {
         self.load_selected_pull_request_with_policy(PullRequestDetailFetchPolicy::Refresh, cx);
+    }
+
+    pub(crate) fn refresh_selected_pull_request_metadata_only(&mut self, cx: &mut Context<Self>) {
+        let Some(pull_request) = self.selected_pull_request().cloned() else {
+            return;
+        };
+
+        self.detail_loaded.details = false;
+        self.spawn_pull_request_metadata_loader(
+            SelectedPullRequestLoad::from_pull_request(&pull_request),
+            cx,
+        );
     }
 
     fn load_selected_pull_request_with_policy(
@@ -251,9 +283,7 @@ impl AppView {
                     if let Some(metadata) = cached.metadata
                         && !view.detail_loaded.details
                     {
-                        if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
-                            *selected = metadata;
-                        }
+                        view.replace_selected_pull_request_preserving_row_fields(metadata);
                         applied_any = true;
                     }
 
@@ -359,18 +389,7 @@ impl AppView {
                         match result {
                             Ok(detail) => {
                                 view.mark_sync_success(SyncTarget::SelectedPullRequestMetadata);
-                                if let Some(selected) = view.pull_requests.get_mut(view.selected_pr)
-                                {
-                                    let review_decision = selected.review_decision;
-                                    let checks_summary = selected.checks_summary;
-                                    let unresolved_threads = selected.unresolved_threads;
-                                    *selected = detail;
-                                    if selected.review_decision.is_none() {
-                                        selected.review_decision = review_decision;
-                                    }
-                                    selected.checks_summary = checks_summary;
-                                    selected.unresolved_threads = unresolved_threads;
-                                }
+                                view.replace_selected_pull_request_preserving_row_fields(detail);
                                 view.details_error = None;
                                 view.status = format!("Loaded PR #{number} details");
                             }

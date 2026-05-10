@@ -3,8 +3,11 @@ use gpui_component::{Root, Theme, ThemeMode, TitleBar};
 use gpui_component_assets::Assets;
 use harbor_ui::{AppView, bind_keys};
 use std::sync::Arc;
+use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() {
+    init_logging();
+
     gpui_platform::application()
         .with_assets(Assets)
         .run(move |cx| {
@@ -36,4 +39,18 @@ fn main() {
             })
             .detach();
         });
+}
+
+fn init_logging() {
+    let filter = Targets::new()
+        .with_default(tracing::Level::WARN)
+        .with_target("harbor_github", tracing::Level::INFO)
+        .with_target("harbor_ui", tracing::Level::INFO);
+
+    drop(
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_target(true))
+            .with(filter)
+            .try_init(),
+    );
 }

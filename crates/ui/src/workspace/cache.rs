@@ -205,9 +205,7 @@ impl AppView {
         self.clear_review_submission_errors();
         self.clear_review_composer_state();
 
-        if let Some(selected) = self.pull_requests.get_mut(self.selected_pr) {
-            *selected = snapshot.pull_request;
-        }
+        self.replace_selected_pull_request_preserving_row_fields(snapshot.pull_request);
         self.files = snapshot.files;
         self.diffs = snapshot.diffs;
         self.check_runs = snapshot.check_runs;

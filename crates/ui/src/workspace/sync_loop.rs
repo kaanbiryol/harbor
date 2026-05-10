@@ -9,7 +9,7 @@ use harbor_sync::{
 
 use crate::{
     actions::PanelTab,
-    workspace::{AppView, PullRequestInboxCacheKey},
+    workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode},
 };
 
 const IDLE_SYNC_LOOP_DELAY: Duration = Duration::from_secs(60);
@@ -63,7 +63,7 @@ impl AppView {
 
     pub(crate) fn mark_active_inbox_stale(&mut self) {
         self.sync_states
-            .entry(SyncTarget::ActiveInbox)
+            .entry(active_inbox_sync_target(self.pull_request_inbox.mode))
             .or_default()
             .mark_stale();
     }
@@ -80,10 +80,19 @@ impl AppView {
         if matches!(decision, SyncDecision::RunNow) {
             let key =
                 PullRequestInboxCacheKey::new(repository.clone(), self.pull_request_inbox.mode);
+            if active_inbox_sync_target(self.pull_request_inbox.mode) == SyncTarget::ActiveInbox {
+                tracing::info!(
+                    repository = %repository.full_name(),
+                    mode = self.pull_request_inbox.mode.key(),
+                    activity_state = ?self.activity_state,
+                    "github graphql source: scheduled active inbox refresh"
+                );
+            }
             self.spawn_pull_request_inbox_refresh(
                 repository,
                 self.pull_request_inbox.mode,
                 key,
+                false,
                 cx,
             );
         }
@@ -110,7 +119,10 @@ impl AppView {
     }
 
     fn active_inbox_sync_decision(&self, reason: SyncReason) -> SyncDecision {
-        self.sync_decision(SyncTarget::ActiveInbox, reason)
+        self.sync_decision(
+            active_inbox_sync_target(self.pull_request_inbox.mode),
+            reason,
+        )
     }
 
     fn sync_decision(&self, target: SyncTarget, reason: SyncReason) -> SyncDecision {
@@ -164,8 +176,7 @@ impl AppView {
         ) == SyncDecision::RunNow
         {
             self.mark_sync_attempt(SyncTarget::SelectedPullRequestMetadata);
-            self.detail_loaded.details = false;
-            self.load_active_panel_data_if_needed(cx);
+            self.refresh_selected_pull_request_metadata_only(cx);
             return;
         }
 
@@ -196,6 +207,7 @@ impl AppView {
                 self.detail_loaded.workflows = false;
             }
             SyncTarget::ActiveInbox | SyncTarget::SelectedPullRequestMetadata => {}
+            SyncTarget::ActiveInboxLight | SyncTarget::ActiveInboxEnrichment => {}
         }
         self.load_active_panel_data_if_needed(cx);
     }
@@ -225,5 +237,12 @@ impl AppView {
         }
 
         delay
+    }
+}
+
+fn active_inbox_sync_target(mode: PullRequestInboxMode) -> SyncTarget {
+    match mode {
+        PullRequestInboxMode::Open | PullRequestInboxMode::Closed => SyncTarget::ActiveInboxLight,
+        PullRequestInboxMode::NeedsReview => SyncTarget::ActiveInbox,
     }
 }

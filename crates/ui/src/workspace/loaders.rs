@@ -1,7 +1,12 @@
 use gpui::{AppContext, Context, ScrollStrategy};
-use harbor_domain::{PullRequest, RepoId};
-use harbor_github::PullRequestListFilter;
-use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
+use harbor_domain::{MergeState, PullRequest, RepoId};
+use harbor_github::{
+    ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
+    PullRequestEnrichment, PullRequestListFilter,
+};
+use harbor_storage::{
+    RecentRepository, SqliteStore, StorageConfig, StorageError, StoredHttpCacheValidator,
+};
 use harbor_sync::{SyncTarget, detect_pull_request_changes};
 
 use crate::workspace::{
@@ -9,9 +14,24 @@ use crate::workspace::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PullRequestFetchPolicy {
+enum PullRequestInboxRefreshIntent {
     PreferCache,
-    Refresh,
+    LightRefresh,
+    ManualRefresh,
+}
+
+impl PullRequestInboxRefreshIntent {
+    fn uses_cache(self) -> bool {
+        self == Self::PreferCache
+    }
+
+    fn resets_detail_state(self) -> bool {
+        self != Self::LightRefresh
+    }
+
+    fn force_enrichment(self) -> bool {
+        self == Self::ManualRefresh
+    }
 }
 
 impl AppView {
@@ -178,7 +198,7 @@ impl AppView {
         self.load_repository_pull_requests(
             repo,
             self.pull_request_inbox.mode,
-            PullRequestFetchPolicy::PreferCache,
+            PullRequestInboxRefreshIntent::PreferCache,
             cx,
         );
     }
@@ -189,14 +209,28 @@ impl AppView {
         mode: PullRequestInboxMode,
         cx: &mut Context<Self>,
     ) {
-        self.load_repository_pull_requests(repo, mode, PullRequestFetchPolicy::PreferCache, cx);
+        self.load_repository_pull_requests(
+            repo,
+            mode,
+            PullRequestInboxRefreshIntent::PreferCache,
+            cx,
+        );
     }
 
     pub(super) fn refresh_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,
             self.pull_request_inbox.mode,
-            PullRequestFetchPolicy::Refresh,
+            PullRequestInboxRefreshIntent::ManualRefresh,
+            cx,
+        );
+    }
+
+    pub(crate) fn refresh_pull_requests_light(&mut self, repo: RepoId, cx: &mut Context<Self>) {
+        self.load_repository_pull_requests(
+            repo,
+            self.pull_request_inbox.mode,
+            PullRequestInboxRefreshIntent::LightRefresh,
             cx,
         );
     }
@@ -216,43 +250,48 @@ impl AppView {
         &mut self,
         repo: RepoId,
         mode: PullRequestInboxMode,
-        fetch_policy: PullRequestFetchPolicy,
+        refresh_intent: PullRequestInboxRefreshIntent,
         cx: &mut Context<Self>,
     ) {
         let key = PullRequestInboxCacheKey::new(repo.clone(), mode);
 
         self.cache_current_pull_request_inbox_snapshot();
 
-        if fetch_policy == PullRequestFetchPolicy::PreferCache
-            && self.restore_pull_request_inbox_snapshot(key.clone(), cx)
+        if refresh_intent.uses_cache() && self.restore_pull_request_inbox_snapshot(key.clone(), cx)
         {
             self.record_recent_repository(repo.clone(), cx);
-            self.spawn_pull_request_inbox_refresh(repo, mode, key, cx);
+            self.spawn_pull_request_inbox_refresh(repo, mode, key, false, cx);
             return;
         }
 
         self.configured_repo = Some(repo.clone());
         self.pull_request_inbox.mode = mode;
         self.ensure_sync_loop(cx);
-        self.record_recent_repository(repo.clone(), cx);
+        if refresh_intent != PullRequestInboxRefreshIntent::LightRefresh {
+            self.record_recent_repository(repo.clone(), cx);
+        }
         self.is_loading_prs = true;
         self.load_error = None;
-        self.clear_detail_errors();
-        self.clear_log_error();
-        self.clear_action_errors();
-        self.pr_detail_tasks.clear();
-        self.clear_review_data_state();
-        self.clear_review_submission_errors();
-        self.collapsed_file_tree_folders.clear();
-        self.reviewed_file_paths.clear();
-        self.reset_changed_file_filters();
-        self.owned_file_paths.clear();
-        self.clear_detail_loaded_state();
-        self.set_detail_loading(false);
-        self.set_log_loading(false);
+
+        if refresh_intent.resets_detail_state() {
+            self.clear_detail_errors();
+            self.clear_log_error();
+            self.clear_action_errors();
+            self.pr_detail_tasks.clear();
+            self.clear_review_data_state();
+            self.clear_review_submission_errors();
+            self.collapsed_file_tree_folders.clear();
+            self.reviewed_file_paths.clear();
+            self.reset_changed_file_filters();
+            self.owned_file_paths.clear();
+            self.clear_detail_loaded_state();
+            self.set_detail_loading(false);
+            self.set_log_loading(false);
+        }
+
         self.status = pull_request_inbox_loading_status(&repo, mode);
 
-        if fetch_policy == PullRequestFetchPolicy::PreferCache
+        if refresh_intent.uses_cache()
             && let Some(store) = self.repository_store.clone()
         {
             let load_repo = repo.clone();
@@ -290,14 +329,20 @@ impl AppView {
                                     mode.status_label(),
                                     repo.full_name()
                                 );
-                                view.spawn_pull_request_inbox_refresh(repo, mode, load_key, cx);
+                                view.spawn_pull_request_inbox_refresh(
+                                    repo, mode, load_key, false, cx,
+                                );
                             }
                             Ok((_pull_requests, _store)) => {
-                                view.spawn_pull_request_inbox_refresh(repo, mode, load_key, cx);
+                                view.spawn_pull_request_inbox_refresh(
+                                    repo, mode, load_key, false, cx,
+                                );
                             }
                             Err(error) => {
                                 view.repository_error = Some(error.to_string());
-                                view.spawn_pull_request_inbox_refresh(repo, mode, load_key, cx);
+                                view.spawn_pull_request_inbox_refresh(
+                                    repo, mode, load_key, false, cx,
+                                );
                             }
                         }
 
@@ -308,7 +353,13 @@ impl AppView {
             return;
         }
 
-        self.spawn_pull_request_inbox_refresh(repo, mode, key, cx);
+        self.spawn_pull_request_inbox_refresh(
+            repo,
+            mode,
+            key,
+            refresh_intent.force_enrichment(),
+            cx,
+        );
     }
 
     pub(crate) fn spawn_pull_request_inbox_refresh(
@@ -316,33 +367,28 @@ impl AppView {
         repo: RepoId,
         mode: PullRequestInboxMode,
         key: PullRequestInboxCacheKey,
+        force_enrichment: bool,
         cx: &mut Context<Self>,
     ) {
         self.is_loading_prs = true;
         self.load_error = None;
-        self.mark_sync_attempt(SyncTarget::ActiveInbox);
+        self.mark_sync_attempt(active_inbox_sync_target(mode));
         let github_api = self.github_api.clone();
         let store = self.repository_store.clone();
         let previous_pull_requests = self.pull_requests.clone();
 
         self.pr_list_task = Some(cx.spawn(async move |this, cx| {
-            let result = github_api
-                .list_repository_pull_requests(&repo, pull_request_list_filter(mode))
-                .await;
-            let cache_result = match (&store, result.as_ref()) {
-                (Some(store), Ok(pull_requests)) => store
-                    .save_pull_request_inbox(&repo, mode.key(), pull_requests)
-                    .await
-                    .map_err(|error| error.to_string()),
-                (Some(store), Err(error)) => store
-                    .record_sync_failure(
-                        &harbor_storage::inbox_target_key(&repo, mode.key()),
-                        &error.to_string(),
-                    )
-                    .await
-                    .map_err(|error| error.to_string()),
-                (None, _) => Ok(()),
-            };
+            let refresh = load_pull_request_inbox_from_github(
+                github_api.as_ref(),
+                store.as_ref(),
+                &repo,
+                mode,
+                &previous_pull_requests,
+                force_enrichment,
+            )
+            .await;
+            let cache_result =
+                cache_pull_request_inbox_refresh(store.as_ref(), &repo, mode, &refresh).await;
 
             this.update_or_log(
                 cx,
@@ -357,9 +403,21 @@ impl AppView {
                         view.repository_error = Some(error);
                     }
 
-                    match result {
-                        Ok(pull_requests) => {
-                            view.mark_sync_success(SyncTarget::ActiveInbox);
+                    match refresh {
+                        Ok(PullRequestInboxRefresh::NotModified) => {
+                            view.mark_sync_success(active_inbox_sync_target(mode));
+                            view.load_error = None;
+                            view.status = format!(
+                                "{} from {} unchanged",
+                                mode.status_label(),
+                                repo.full_name()
+                            );
+                        }
+                        Ok(PullRequestInboxRefresh::Modified {
+                            pull_requests,
+                            enrichment_error,
+                        }) => {
+                            view.mark_sync_success(active_inbox_sync_target(mode));
                             let count = pull_requests.len();
                             let status = pull_request_inbox_loaded_status(&repo, mode, count);
                             let change_events = detect_pull_request_changes(
@@ -374,11 +432,13 @@ impl AppView {
                                 cx,
                             );
                             view.load_error = None;
-                            view.status = status;
+                            view.status = enrichment_error
+                                .map(|error| format!("{status}; rich refresh failed: {error}"))
+                                .unwrap_or(status);
                             view.handle_pull_request_change_events(change_events, cx);
                         }
                         Err(error) => {
-                            view.mark_sync_failure(SyncTarget::ActiveInbox);
+                            view.mark_sync_failure(active_inbox_sync_target(mode));
                             let mut status = pull_request_inbox_failed_status(&repo, mode);
                             view.set_detail_loading(false);
                             view.set_log_loading(false);
@@ -482,12 +542,247 @@ struct RepositoryRefresh {
     repository_error: Option<String>,
 }
 
+enum PullRequestInboxRefresh {
+    Modified {
+        pull_requests: Vec<PullRequest>,
+        enrichment_error: Option<String>,
+    },
+    NotModified,
+}
+
 fn pull_request_list_filter(mode: PullRequestInboxMode) -> PullRequestListFilter {
     match mode {
         PullRequestInboxMode::Open => PullRequestListFilter::Open,
         PullRequestInboxMode::Closed => PullRequestListFilter::Closed,
         PullRequestInboxMode::NeedsReview => PullRequestListFilter::NeedsReview,
     }
+}
+
+fn active_inbox_sync_target(mode: PullRequestInboxMode) -> SyncTarget {
+    if pull_request_inbox_mode_uses_rest_light(mode) {
+        SyncTarget::ActiveInboxLight
+    } else {
+        SyncTarget::ActiveInbox
+    }
+}
+
+fn pull_request_inbox_mode_uses_rest_light(mode: PullRequestInboxMode) -> bool {
+    matches!(
+        mode,
+        PullRequestInboxMode::Open | PullRequestInboxMode::Closed
+    )
+}
+
+fn http_validator_key(repository: &RepoId, mode: PullRequestInboxMode) -> String {
+    format!("rest-inbox:{}:{}", repository.full_name(), mode.key())
+}
+
+fn github_validator_from_storage(validator: StoredHttpCacheValidator) -> HttpCacheValidator {
+    HttpCacheValidator {
+        etag: validator.etag,
+        last_modified: validator.last_modified,
+    }
+}
+
+fn storage_validator_from_github(validator: HttpCacheValidator) -> StoredHttpCacheValidator {
+    StoredHttpCacheValidator {
+        etag: validator.etag,
+        last_modified: validator.last_modified,
+    }
+}
+
+async fn load_pull_request_inbox_from_github(
+    github_api: &dyn crate::workspace::github_service::GitHubApi,
+    store: Option<&SqliteStore>,
+    repository: &RepoId,
+    mode: PullRequestInboxMode,
+    previous_pull_requests: &[PullRequest],
+    force_enrichment: bool,
+) -> std::result::Result<PullRequestInboxRefresh, GitHubError> {
+    if !pull_request_inbox_mode_uses_rest_light(mode) {
+        tracing::info!(
+            repository = %repository.full_name(),
+            mode = mode.key(),
+            forced = force_enrichment,
+            "github graphql source: needs review inbox search"
+        );
+        return github_api
+            .list_repository_pull_requests(repository, pull_request_list_filter(mode))
+            .await
+            .map(|pull_requests| PullRequestInboxRefresh::Modified {
+                pull_requests,
+                enrichment_error: None,
+            });
+    }
+
+    let validator_key = http_validator_key(repository, mode);
+    let validator = match store {
+        Some(store) => store
+            .load_http_cache_validator(&validator_key)
+            .await
+            .map_err(|error| GitHubError::Transport(error.to_string()))?
+            .map(github_validator_from_storage),
+        None => None,
+    };
+
+    let fetch = github_api
+        .list_repository_pull_requests_light(repository, pull_request_list_filter(mode), validator)
+        .await?;
+
+    let (mut pull_requests, validator) = match fetch {
+        ConditionalFetch::NotModified { validator } => {
+            if let (Some(store), Some(validator)) = (store, validator) {
+                store
+                    .save_http_cache_validator(
+                        &validator_key,
+                        &storage_validator_from_github(validator),
+                    )
+                    .await
+                    .map_err(|error| GitHubError::Transport(error.to_string()))?;
+            }
+            return Ok(PullRequestInboxRefresh::NotModified);
+        }
+        ConditionalFetch::Modified { value, validator } => (value, validator),
+    };
+
+    if let (Some(store), Some(validator)) = (store, validator) {
+        store
+            .save_http_cache_validator(&validator_key, &storage_validator_from_github(validator))
+            .await
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+    }
+
+    merge_light_pull_request_rows(previous_pull_requests, &mut pull_requests);
+
+    let node_ids =
+        pull_request_enrichment_node_ids(previous_pull_requests, &pull_requests, force_enrichment);
+    let enrichment_error = if node_ids.is_empty()
+        || (!force_enrichment && graphql_rate_limit_is_low(&github_api.latest_rate_limits()))
+    {
+        None
+    } else {
+        tracing::info!(
+            repository = %repository.full_name(),
+            mode = mode.key(),
+            pull_request_count = node_ids.len(),
+            forced = force_enrichment,
+            "github graphql source: pull request row enrichment"
+        );
+        match github_api.enrich_pull_requests_by_node_ids(&node_ids).await {
+            Ok(enrichments) => {
+                apply_pull_request_enrichments(&mut pull_requests, enrichments);
+                None
+            }
+            Err(error) => Some(error.to_string()),
+        }
+    };
+
+    Ok(PullRequestInboxRefresh::Modified {
+        pull_requests,
+        enrichment_error,
+    })
+}
+
+async fn cache_pull_request_inbox_refresh(
+    store: Option<&SqliteStore>,
+    repository: &RepoId,
+    mode: PullRequestInboxMode,
+    refresh: &std::result::Result<PullRequestInboxRefresh, GitHubError>,
+) -> std::result::Result<(), String> {
+    let Some(store) = store else {
+        return Ok(());
+    };
+
+    match refresh {
+        Ok(PullRequestInboxRefresh::Modified { pull_requests, .. }) => store
+            .save_pull_request_inbox(repository, mode.key(), pull_requests)
+            .await
+            .map_err(|error| error.to_string()),
+        Ok(PullRequestInboxRefresh::NotModified) => store
+            .record_sync_success(&harbor_storage::inbox_target_key(repository, mode.key()))
+            .await
+            .map_err(|error| error.to_string()),
+        Err(error) => store
+            .record_sync_failure(
+                &harbor_storage::inbox_target_key(repository, mode.key()),
+                &error.to_string(),
+            )
+            .await
+            .map_err(|error| error.to_string()),
+    }
+}
+
+fn merge_light_pull_request_rows(previous: &[PullRequest], current: &mut [PullRequest]) {
+    for pull_request in current {
+        let Some(previous_pull_request) = previous
+            .iter()
+            .find(|previous| previous.number == pull_request.number)
+        else {
+            continue;
+        };
+
+        if previous_pull_request.head_sha != pull_request.head_sha {
+            continue;
+        }
+
+        if pull_request.node_id.is_empty() {
+            pull_request.node_id = previous_pull_request.node_id.clone();
+        }
+        pull_request.review_decision = previous_pull_request.review_decision;
+        pull_request.checks_summary = previous_pull_request.checks_summary;
+        pull_request.unresolved_threads = previous_pull_request.unresolved_threads;
+        if pull_request.merge_state == Some(MergeState::Unknown)
+            || pull_request.merge_state.is_none()
+        {
+            pull_request.merge_state = previous_pull_request.merge_state;
+        }
+    }
+}
+
+fn pull_request_enrichment_node_ids(
+    _previous: &[PullRequest],
+    current: &[PullRequest],
+    force_enrichment: bool,
+) -> Vec<String> {
+    if !force_enrichment {
+        return Vec::new();
+    }
+
+    current
+        .iter()
+        .filter(|pull_request| !pull_request.node_id.is_empty())
+        .map(|pull_request| pull_request.node_id.clone())
+        .collect()
+}
+
+fn apply_pull_request_enrichments(
+    pull_requests: &mut [PullRequest],
+    enrichments: Vec<PullRequestEnrichment>,
+) {
+    for enrichment in enrichments {
+        let Some(pull_request) = pull_requests
+            .iter_mut()
+            .find(|pull_request| pull_request.node_id == enrichment.node_id)
+        else {
+            continue;
+        };
+
+        pull_request.review_decision = enrichment.review_decision;
+        pull_request.merge_state = enrichment.merge_state;
+    }
+}
+
+fn graphql_rate_limit_is_low(rate_limits: &[GitHubRateLimitStatus]) -> bool {
+    rate_limits.iter().any(|rate_limit| {
+        rate_limit.resource.as_deref() == Some("graphql")
+            && match (rate_limit.remaining, rate_limit.limit) {
+                (Some(remaining), Some(limit)) if limit > 0 => {
+                    remaining <= 500 || remaining.saturating_mul(10) <= limit
+                }
+                (Some(remaining), None) => remaining <= 500,
+                _ => false,
+            }
+    })
 }
 
 fn pull_request_inbox_loading_status(repository: &RepoId, mode: PullRequestInboxMode) -> String {

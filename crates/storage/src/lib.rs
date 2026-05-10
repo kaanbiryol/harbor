@@ -91,6 +91,18 @@ pub struct SyncTargetState {
     pub stale: bool,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StoredHttpCacheValidator {
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+}
+
+impl StoredHttpCacheValidator {
+    pub fn is_empty(&self) -> bool {
+        self.etag.is_none() && self.last_modified.is_none()
+    }
+}
+
 #[derive(Clone)]
 pub struct SqliteStore {
     pool: SqlitePool,
@@ -533,6 +545,53 @@ impl SqliteStore {
         row.map(sync_target_state_from_row).transpose()
     }
 
+    pub async fn load_http_cache_validator(
+        &self,
+        request_key: &str,
+    ) -> Result<Option<StoredHttpCacheValidator>> {
+        let row = sqlx::query(
+            "SELECT etag, last_modified
+             FROM http_cache_validators
+             WHERE request_key = ?1",
+        )
+        .bind(request_key)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row
+            .map(|row| StoredHttpCacheValidator {
+                etag: row.get("etag"),
+                last_modified: row.get("last_modified"),
+            })
+            .filter(|validator| !validator.is_empty()))
+    }
+
+    pub async fn save_http_cache_validator(
+        &self,
+        request_key: &str,
+        validator: &StoredHttpCacheValidator,
+    ) -> Result<()> {
+        if validator.is_empty() {
+            return Ok(());
+        }
+
+        sqlx::query(
+            "INSERT INTO http_cache_validators (request_key, etag, last_modified, updated_at)
+             VALUES (?1, ?2, ?3, unixepoch())
+             ON CONFLICT(request_key) DO UPDATE SET
+                etag = excluded.etag,
+                last_modified = excluded.last_modified,
+                updated_at = excluded.updated_at",
+        )
+        .bind(request_key)
+        .bind(&validator.etag)
+        .bind(&validator.last_modified)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     async fn save_pull_request_detail_section<T>(
         &self,
         repository: &RepoId,
@@ -671,6 +730,17 @@ impl SqliteStore {
                 last_attempt_at INTEGER,
                 last_error TEXT,
                 stale INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS http_cache_validators (
+                request_key TEXT PRIMARY KEY,
+                etag TEXT,
+                last_modified TEXT,
+                updated_at INTEGER NOT NULL
             )",
         )
         .execute(&self.pool)
@@ -1099,6 +1169,36 @@ mod tests {
             assert_eq!(cached, vec![pull_request]);
             assert_eq!(target_state.last_error.as_deref(), Some("rate limited"));
             assert!(target_state.stale);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn saves_and_loads_http_cache_validator() {
+        smol::block_on(async {
+            let database_path = test_database_path("http-cache-validator");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let validator = StoredHttpCacheValidator {
+                etag: Some("\"abc\"".to_string()),
+                last_modified: Some("Wed, 01 May 2026 10:00:00 GMT".to_string()),
+            };
+
+            store
+                .save_http_cache_validator("rest:acme/app:open", &validator)
+                .await
+                .expect("save validator");
+
+            let cached = store
+                .load_http_cache_validator("rest:acme/app:open")
+                .await
+                .expect("load validator");
+
+            assert_eq!(cached, Some(validator));
 
             cleanup_database(database_path);
         });

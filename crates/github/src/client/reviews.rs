@@ -20,8 +20,11 @@ use super::{
 };
 
 const REVIEW_THREAD_COMMENT_PAGE_BATCH_SIZE: usize = 8;
-const REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT: usize = 64;
+const REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT: usize = 8;
 const REVIEW_THREAD_PAGE_LIMIT: usize = 20;
+const REVIEW_THREAD_PAGE_SIZE: usize = 5;
+const REVIEW_THREAD_INITIAL_COMMENT_PAGE_SIZE: usize = 1;
+const REVIEW_THREAD_COMMENT_PAGE_SIZE: usize = 50;
 
 impl<T> GitHubClient<T>
 where
@@ -111,6 +114,8 @@ where
                         "repo": repo,
                         "number": number,
                         "after": after,
+                        "threadPageSize": REVIEW_THREAD_PAGE_SIZE,
+                        "commentPageSize": REVIEW_THREAD_INITIAL_COMMENT_PAGE_SIZE,
                     }),
                 )
                 .await?;
@@ -147,9 +152,12 @@ where
             let batch_size = pending.len().min(REVIEW_THREAD_COMMENT_PAGE_BATCH_SIZE);
             for _ in 0..batch_size {
                 if *loaded_pages >= REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT {
-                    return Err(GitHubError::RequestBudget(format!(
-                        "stopped loading review thread comments after {REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT} extra pages"
-                    )));
+                    tracing::warn!(
+                        pending_comment_pages = pending.len(),
+                        loaded_comment_pages = *loaded_pages,
+                        "stopped paginating review thread comments; rendering partial review threads"
+                    );
+                    return Ok(());
                 }
 
                 *loaded_pages += 1;
@@ -168,6 +176,7 @@ where
                         json!({
                             "threadId": cursor.thread_id.clone(),
                             "after": after,
+                            "commentPageSize": REVIEW_THREAD_COMMENT_PAGE_SIZE,
                         }),
                     )
                     .await?;

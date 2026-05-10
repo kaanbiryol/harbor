@@ -9,7 +9,9 @@ mod reviews;
 #[path = "client/workflows.rs"]
 mod workflows;
 
-use crate::{GitHubRateLimitStatus, GitHubTransport};
+use harbor_domain::{ChecksSummary, MergeState, ReviewDecision};
+
+use crate::{GitHubRateLimitStatus, GitHubRequestAttribution, GitHubTransport};
 
 #[derive(Clone, Debug)]
 pub struct GitHubClient<T> {
@@ -30,6 +32,14 @@ pub enum PullRequestListFilter {
     NeedsReview,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullRequestEnrichment {
+    pub node_id: String,
+    pub review_decision: Option<ReviewDecision>,
+    pub merge_state: Option<MergeState>,
+    pub checks_summary: ChecksSummary,
+}
+
 impl<T> GitHubClient<T> {
     pub fn new(transport: T) -> Self {
         Self { transport }
@@ -46,6 +56,18 @@ where
 {
     pub fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         self.transport.latest_rate_limit()
+    }
+
+    pub fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
+        self.transport.latest_rate_limits()
+    }
+
+    pub fn latest_request_attribution(&self) -> Option<GitHubRequestAttribution> {
+        self.transport.latest_request_attribution()
+    }
+
+    pub fn recent_request_attributions(&self) -> Vec<GitHubRequestAttribution> {
+        self.transport.recent_request_attributions()
     }
 }
 

@@ -15,6 +15,8 @@ pub enum ActivityState {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SyncTarget {
     ActiveInbox,
+    ActiveInboxLight,
+    ActiveInboxEnrichment,
     SelectedPullRequestMetadata,
     SelectedPullRequestReviews,
     SelectedPullRequestChecks,
@@ -37,6 +39,13 @@ pub enum SyncDecision {
     Wait(Duration),
     SkipInFlight,
     Backoff(Duration),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InboxRefreshKind {
+    RestLight,
+    GraphQlSearch,
+    GraphQlEnrichment,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -93,7 +102,11 @@ impl Default for SyncSignals {
 pub struct SyncPolicy {
     pub focused_inbox_interval: Duration,
     pub focused_inbox_running_checks_interval: Duration,
+    pub focused_inbox_graphql_search_interval: Duration,
     pub background_inbox_interval: Duration,
+    pub background_inbox_graphql_search_interval: Duration,
+    pub focused_inbox_enrichment_interval: Duration,
+    pub background_inbox_enrichment_interval: Duration,
     pub focus_catch_up_after: Duration,
     pub selected_pr_metadata_interval: Duration,
     pub selected_pr_reviews_interval: Duration,
@@ -107,13 +120,17 @@ impl Default for SyncPolicy {
         Self {
             focused_inbox_interval: Duration::from_secs(120),
             focused_inbox_running_checks_interval: Duration::from_secs(45),
+            focused_inbox_graphql_search_interval: Duration::from_secs(300),
             background_inbox_interval: Duration::from_secs(300),
+            background_inbox_graphql_search_interval: Duration::from_secs(1_800),
+            focused_inbox_enrichment_interval: Duration::from_secs(1_800),
+            background_inbox_enrichment_interval: Duration::from_secs(3_600),
             focus_catch_up_after: Duration::from_secs(30),
-            selected_pr_metadata_interval: Duration::from_secs(60),
-            selected_pr_reviews_interval: Duration::from_secs(60),
+            selected_pr_metadata_interval: Duration::from_secs(120),
+            selected_pr_reviews_interval: Duration::from_secs(120),
             selected_pr_checks_running_interval: Duration::from_secs(15),
             selected_pr_checks_terminal_interval: Duration::from_secs(60),
-            selected_pr_workflows_running_interval: Duration::from_secs(30),
+            selected_pr_workflows_running_interval: Duration::from_secs(60),
         }
     }
 }
@@ -143,7 +160,9 @@ impl SyncPolicy {
             return SyncDecision::RunNow;
         }
 
-        if reason == SyncReason::FocusGained && self.is_due(state, self.focus_catch_up_after, now) {
+        if reason == SyncReason::FocusGained
+            && self.is_due(state, self.focus_catch_up_interval(target), now)
+        {
             return SyncDecision::RunNow;
         }
 
@@ -154,7 +173,13 @@ impl SyncPolicy {
         }
 
         let interval = self.interval(target, activity, signals);
-        if target != SyncTarget::ActiveInbox && activity == ActivityState::Background {
+        if !matches!(
+            target,
+            SyncTarget::ActiveInbox
+                | SyncTarget::ActiveInboxLight
+                | SyncTarget::ActiveInboxEnrichment
+        ) && activity == ActivityState::Background
+        {
             return SyncDecision::Wait(interval);
         }
 
@@ -181,13 +206,22 @@ impl SyncPolicy {
         signals: SyncSignals,
     ) -> Duration {
         match (target, activity) {
-            (SyncTarget::ActiveInbox, ActivityState::Background) => self.background_inbox_interval,
-            (SyncTarget::ActiveInbox, ActivityState::Focused)
-                if signals.has_running_or_pending_checks =>
-            {
-                self.focused_inbox_running_checks_interval
+            (SyncTarget::ActiveInboxLight, ActivityState::Background) => {
+                self.background_inbox_interval
             }
-            (SyncTarget::ActiveInbox, ActivityState::Focused) => self.focused_inbox_interval,
+            (SyncTarget::ActiveInboxLight, ActivityState::Focused) => self.focused_inbox_interval,
+            (SyncTarget::ActiveInboxEnrichment, ActivityState::Background) => {
+                self.background_inbox_enrichment_interval
+            }
+            (SyncTarget::ActiveInboxEnrichment, ActivityState::Focused) => {
+                self.focused_inbox_enrichment_interval
+            }
+            (SyncTarget::ActiveInbox, ActivityState::Background) => {
+                self.background_inbox_graphql_search_interval
+            }
+            (SyncTarget::ActiveInbox, ActivityState::Focused) => {
+                self.focused_inbox_graphql_search_interval
+            }
             (SyncTarget::SelectedPullRequestMetadata, _) => self.selected_pr_metadata_interval,
             (SyncTarget::SelectedPullRequestReviews, _) => self.selected_pr_reviews_interval,
             (SyncTarget::SelectedPullRequestChecks, _) if signals.has_running_or_pending_checks => {
@@ -204,6 +238,13 @@ impl SyncPolicy {
         state.last_successful_fetch_at.is_none_or(|last| {
             now.signed_duration_since(last).to_std().unwrap_or_default() >= interval
         })
+    }
+
+    fn focus_catch_up_interval(&self, target: SyncTarget) -> Duration {
+        match target {
+            SyncTarget::ActiveInbox => self.focused_inbox_graphql_search_interval,
+            _ => self.focus_catch_up_after,
+        }
     }
 }
 
@@ -505,10 +546,46 @@ mod tests {
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
+                SyncTarget::ActiveInboxLight,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &state,
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::Wait(Duration::from_secs(60))
+        );
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::ActiveInboxLight,
+                SyncReason::Scheduled,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(time(8)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::RunNow
+        );
+    }
+
+    #[test]
+    fn needs_review_graphql_search_uses_slower_cadence() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::ActiveInbox,
+                SyncReason::Scheduled,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(time(6)),
+                    ..SyncState::default()
+                },
                 SyncSignals::default(),
                 now,
             ),
@@ -521,7 +598,73 @@ mod tests {
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
-                    last_successful_fetch_at: Some(time(8)),
+                    last_successful_fetch_at: Some(time(5)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::RunNow
+        );
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::ActiveInbox,
+                SyncReason::Scheduled,
+                ActivityState::Background,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_740)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::Wait(Duration::from_secs(60))
+        );
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::ActiveInbox,
+                SyncReason::Scheduled,
+                ActivityState::Background,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_800)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::RunNow
+        );
+    }
+
+    #[test]
+    fn focus_catch_up_uses_graphql_search_cadence_for_needs_review() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::ActiveInbox,
+                SyncReason::FocusGained,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::Wait(Duration::from_secs(269))
+        );
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::ActiveInboxLight,
+                SyncReason::FocusGained,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
                     ..SyncState::default()
                 },
                 SyncSignals::default(),
@@ -538,7 +681,7 @@ mod tests {
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
+                SyncTarget::ActiveInboxLight,
                 SyncReason::Scheduled,
                 ActivityState::Background,
                 &SyncState {
@@ -553,7 +696,7 @@ mod tests {
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
+                SyncTarget::ActiveInboxLight,
                 SyncReason::Scheduled,
                 ActivityState::Background,
                 &SyncState {
@@ -568,13 +711,13 @@ mod tests {
     }
 
     #[test]
-    fn running_checks_accelerate_inbox_refresh() {
+    fn running_checks_do_not_accelerate_full_inbox_refresh() {
         let policy = SyncPolicy::default();
         let now = time(10);
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
+                SyncTarget::ActiveInboxLight,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
@@ -587,22 +730,58 @@ mod tests {
                 },
                 now,
             ),
-            SyncDecision::Wait(Duration::from_secs(1))
+            SyncDecision::Wait(Duration::from_secs(76))
         );
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
+                SyncTarget::ActiveInboxLight,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(45)),
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(120)),
                     ..SyncState::default()
                 },
                 SyncSignals {
                     has_running_or_pending_checks: true,
                     ..SyncSignals::default()
                 },
+                now,
+            ),
+            SyncDecision::RunNow
+        );
+    }
+
+    #[test]
+    fn selected_metadata_refreshes_every_two_minutes() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::SelectedPullRequestMetadata,
+                SyncReason::Scheduled,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(time(9)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
+                now,
+            ),
+            SyncDecision::Wait(Duration::from_secs(60))
+        );
+
+        assert_eq!(
+            policy.decision(
+                SyncTarget::SelectedPullRequestMetadata,
+                SyncReason::Scheduled,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(time(8)),
+                    ..SyncState::default()
+                },
+                SyncSignals::default(),
                 now,
             ),
             SyncDecision::RunNow

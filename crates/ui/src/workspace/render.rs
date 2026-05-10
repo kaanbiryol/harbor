@@ -17,6 +17,9 @@ use crate::panels::{
 };
 use crate::workspace::AppView;
 
+const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
+const SHOW_STATUS_BAR_CACHED_MESSAGES: bool = true;
+
 #[path = "render/changed_files.rs"]
 mod changed_files;
 #[path = "render/details.rs"]
@@ -133,12 +136,21 @@ impl AppView {
         } else {
             "Show pull request inbox"
         };
-        let rate_limit = self.github_api.latest_rate_limit();
-        let rate_limit_label = rate_limit.as_ref().and_then(github_rate_limit_label);
-        let rate_limit_color = rate_limit
-            .as_ref()
-            .map(github_rate_limit_color)
-            .unwrap_or_else(|| rgb(0x9aa4b2));
+        let status_label = status_bar_status_label(&self.status).to_string();
+        let (rate_limit_label, rate_limit_color) = if SHOW_STATUS_BAR_RATE_LIMITS {
+            let rate_limits = self.github_api.latest_rate_limits();
+            let rate_limit = self.github_api.latest_rate_limit();
+            (
+                github_rate_limits_label(&rate_limits)
+                    .or_else(|| rate_limit.as_ref().and_then(github_rate_limit_label)),
+                rate_limit
+                    .as_ref()
+                    .map(github_rate_limit_color)
+                    .unwrap_or_else(|| rgb(0x9aa4b2)),
+            )
+        } else {
+            (None, rgb(0x9aa4b2))
+        };
 
         div()
             .flex()
@@ -161,13 +173,7 @@ impl AppView {
                         view.toggle_pull_request_inbox(&TogglePullRequestInbox, window, cx);
                     })),
             )
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .truncate()
-                    .child(self.status.clone()),
-            )
+            .child(div().min_w_0().flex_1().truncate().child(status_label))
             .when_some(rate_limit_label, |element, label| {
                 element.child(
                     div()
@@ -304,6 +310,20 @@ impl AppView {
     }
 }
 
+fn status_bar_status_label(status: &str) -> &str {
+    if !SHOW_STATUS_BAR_CACHED_MESSAGES && status_bar_message_mentions_cached_data(status) {
+        ""
+    } else {
+        status
+    }
+}
+
+fn status_bar_message_mentions_cached_data(status: &str) -> bool {
+    let status = status.to_ascii_lowercase();
+    (status.starts_with("showing ") && status.contains("cached"))
+        || status.contains("; showing cached data")
+}
+
 fn github_rate_limit_label(rate_limit: &GitHubRateLimitStatus) -> Option<String> {
     let resource = rate_limit.resource.as_deref().unwrap_or("api");
     let budget = match (rate_limit.remaining, rate_limit.limit) {
@@ -327,6 +347,26 @@ fn github_rate_limit_label(rate_limit: &GitHubRateLimitStatus) -> Option<String>
     }
 
     Some(format!("github {resource}: {budget}"))
+}
+
+fn github_rate_limits_label(rate_limits: &[GitHubRateLimitStatus]) -> Option<String> {
+    if rate_limits.len() <= 1 {
+        return rate_limits.first().and_then(github_rate_limit_label);
+    }
+
+    let labels = rate_limits
+        .iter()
+        .filter_map(|rate_limit| {
+            let resource = rate_limit.resource.as_deref().unwrap_or("api");
+            match (rate_limit.remaining, rate_limit.limit) {
+                (Some(remaining), Some(limit)) => Some(format!("{resource} {remaining}/{limit}")),
+                (Some(remaining), None) => Some(format!("{resource} {remaining} left")),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    (!labels.is_empty()).then(|| format!("github {}", labels.join(" ")))
 }
 
 fn github_rate_limit_color(rate_limit: &GitHubRateLimitStatus) -> gpui::Rgba {

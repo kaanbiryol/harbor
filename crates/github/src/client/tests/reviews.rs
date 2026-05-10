@@ -90,8 +90,8 @@ fn queries_pull_request_review_threads() {
         .lock()
         .expect("graphql calls mutex should not be poisoned");
     assert_eq!(calls.len(), 1);
-    assert!(calls[0].0.contains("reviewThreads(first: 50"));
-    assert!(calls[0].0.contains("comments(first: 50"));
+    assert!(calls[0].0.contains("reviewThreads(first: $threadPageSize"));
+    assert!(calls[0].0.contains("comments(first: $commentPageSize"));
     assert_eq!(
         calls[0].1,
         json!({
@@ -99,6 +99,8 @@ fn queries_pull_request_review_threads() {
             "repo": "app",
             "number": 7,
             "after": null,
+            "threadPageSize": 5,
+            "commentPageSize": 1,
         })
     );
 }
@@ -152,6 +154,8 @@ fn paginates_pull_request_review_threads() {
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].1["after"], Value::Null);
     assert_eq!(calls[1].1["after"], "cursor-1");
+    assert_eq!(calls[0].1["threadPageSize"], 5);
+    assert_eq!(calls[0].1["commentPageSize"], 1);
 }
 
 #[test]
@@ -280,6 +284,7 @@ fn paginates_pull_request_review_thread_comments() {
         json!({
             "threadId": "thread-1",
             "after": "comment-cursor-1",
+            "commentPageSize": 50,
         })
     );
     assert_eq!(
@@ -287,8 +292,85 @@ fn paginates_pull_request_review_thread_comments() {
         json!({
             "threadId": "thread-2",
             "after": "comment-cursor-2",
+            "commentPageSize": 50,
         })
     );
+}
+
+#[test]
+fn keeps_partial_review_thread_comments_when_pagination_budget_is_hit() {
+    let transport = RecordingTransport::default();
+    let mut responses = vec![json!({
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {
+                            "hasNextPage": false,
+                            "endCursor": null
+                        },
+                        "nodes": [
+                            {
+                                "id": "thread-1",
+                                "path": "src/app.rs",
+                                "line": 42,
+                                "diffSide": "RIGHT",
+                                "startLine": null,
+                                "startDiffSide": null,
+                                "originalLine": 42,
+                                "isResolved": false,
+                                "isOutdated": false,
+                                "comments": {
+                                    "pageInfo": {
+                                        "hasNextPage": true,
+                                        "endCursor": "comment-cursor-1"
+                                    },
+                                    "nodes": [
+                                        review_thread_comment_json("comment-1", "First comment")
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    })];
+    for index in 2..=9 {
+        responses.push(json!({
+            "data": {
+                "node": {
+                    "comments": {
+                        "pageInfo": {
+                            "hasNextPage": true,
+                            "endCursor": format!("comment-cursor-{index}")
+                        },
+                        "nodes": [
+                            review_thread_comment_json(
+                                &format!("comment-{index}"),
+                                &format!("Comment {index}")
+                            )
+                        ]
+                    }
+                }
+            }
+        }));
+    }
+    *transport
+        .graphql_responses
+        .lock()
+        .expect("graphql responses mutex should not be poisoned") = responses;
+    let client = GitHubClient::new(transport.clone());
+
+    let threads = smol::block_on(client.list_review_threads("acme", "app", 7)).unwrap();
+
+    assert_eq!(threads.len(), 1);
+    assert_eq!(threads[0].comments.len(), 9);
+    let calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(calls.len(), 9);
 }
 
 #[test]

@@ -13,3 +13,4 @@ gpui_platform.workspace = true
 harbor-ui = { path = "../ui" }
 reqwest_client.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true

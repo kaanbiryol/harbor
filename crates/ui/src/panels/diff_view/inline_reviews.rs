@@ -30,6 +30,8 @@ use threads::{
     render_review_thread_reply_composer,
 };
 
+const INLINE_REVIEW_THREAD_RECENT_REPLY_LIMIT: usize = 20;
+
 pub(super) struct ReviewComposerRenderState {
     pub(super) composer: ReviewComposer,
     pub(super) has_pending_review: bool,
@@ -267,6 +269,8 @@ pub(super) fn render_review_thread_inline(
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
     let thread_id = thread.id.clone();
+    let hidden_comment_count = hidden_inline_review_comment_count(thread.comments.len());
+    let visible_reply_start_index = visible_inline_review_reply_start_index(thread.comments.len());
 
     div()
         .min_h(px(DIFF_ROW_HEIGHT))
@@ -311,16 +315,44 @@ pub(super) fn render_review_thread_inline(
                             can_toggle_resolution: ui_state.can_toggle_resolution,
                             view_entity: view_entity.clone(),
                         }))
-                        .child(div().px_2().pb_2().children(
-                            thread.comments.iter().enumerate().map(|(index, comment)| {
-                                render_review_comment_inline(ReviewCommentRenderState::new(
-                                    comment,
-                                    index > 0,
-                                    is_resolved,
-                                    &comments,
+                        .child(
+                            div()
+                                .px_2()
+                                .pb_2()
+                                .children(thread.comments.iter().take(1).enumerate().map(
+                                    |(index, comment)| {
+                                        render_review_comment_inline(ReviewCommentRenderState::new(
+                                            comment,
+                                            index > 0,
+                                            is_resolved,
+                                            &comments,
+                                        ))
+                                    },
                                 ))
-                            }),
-                        ))
+                                .when(hidden_comment_count > 0, |element| {
+                                    element.child(render_hidden_review_comments_notice(
+                                        hidden_comment_count,
+                                        is_resolved,
+                                    ))
+                                })
+                                .children(
+                                    thread
+                                        .comments
+                                        .iter()
+                                        .enumerate()
+                                        .skip(visible_reply_start_index)
+                                        .map(|(index, comment)| {
+                                            render_review_comment_inline(
+                                                ReviewCommentRenderState::new(
+                                                    comment,
+                                                    index > 0,
+                                                    is_resolved,
+                                                    &comments,
+                                                ),
+                                            )
+                                        }),
+                                ),
+                        )
                         .when(thread.comments.is_empty(), |element| {
                             element.child(
                                 div()
@@ -363,6 +395,48 @@ pub(super) fn render_review_thread_inline(
                         }),
                 ),
         )
+}
+
+fn hidden_inline_review_comment_count(comment_count: usize) -> usize {
+    comment_count.saturating_sub(INLINE_REVIEW_THREAD_RECENT_REPLY_LIMIT + 1)
+}
+
+fn visible_inline_review_reply_start_index(comment_count: usize) -> usize {
+    if hidden_inline_review_comment_count(comment_count) > 0 {
+        comment_count - INLINE_REVIEW_THREAD_RECENT_REPLY_LIMIT
+    } else {
+        1
+    }
+}
+
+fn render_hidden_review_comments_notice(
+    hidden_comment_count: usize,
+    is_resolved: bool,
+) -> impl IntoElement {
+    let label = if hidden_comment_count == 1 {
+        "1 older reply hidden in diff view".to_string()
+    } else {
+        format!("{hidden_comment_count} older replies hidden in diff view")
+    };
+
+    div()
+        .mt_2()
+        .ml(px(28.0))
+        .border_l_1()
+        .border_color(if is_resolved {
+            rgb(0x213040)
+        } else {
+            rgb(0x263241)
+        })
+        .pl_2()
+        .py_1()
+        .text_xs()
+        .text_color(if is_resolved {
+            rgb(0x697789)
+        } else {
+            rgb(0x93a4b8)
+        })
+        .child(label)
 }
 
 pub(super) fn render_review_marker(
@@ -415,6 +489,14 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn compacts_large_inline_review_threads() {
+        assert_eq!(hidden_inline_review_comment_count(21), 0);
+        assert_eq!(visible_inline_review_reply_start_index(21), 1);
+        assert_eq!(hidden_inline_review_comment_count(125), 104);
+        assert_eq!(visible_inline_review_reply_start_index(125), 105);
+    }
 
     #[gpui::test]
     async fn renders_comment_actions_only_when_available(cx: &mut TestAppContext) {

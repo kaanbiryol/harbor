@@ -2639,6 +2639,7 @@ dependencies = [
  "harbor-ui",
  "reqwest_client",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2667,6 +2668,7 @@ dependencies = [
  "serde_json",
  "smol",
  "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

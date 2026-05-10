@@ -4,15 +4,19 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 pub(super) use super::requests::{REPOSITORY_PAGE_SIZE, REVIEW_COMMENT_PAGE_SIZE};
-use crate::{GitHubError, GitHubTransport, Result};
+use crate::{ConditionalFetch, GitHubError, GitHubTransport, HttpCacheValidator, Result};
 
 pub(super) type RecordedGet = (String, Vec<(String, String)>);
+pub(super) type RecordedConditionalGet =
+    (String, Vec<(String, String)>, Option<HttpCacheValidator>);
 const FIXTURE_REVIEW_COMMENT_CREATED_AT: &str = "2026-05-01T10:00:00Z";
 
 #[derive(Clone, Default)]
 pub(super) struct RecordingTransport {
     pub(super) gets: Arc<Mutex<Vec<RecordedGet>>>,
+    pub(super) conditional_gets: Arc<Mutex<Vec<RecordedConditionalGet>>>,
     pub(super) get_response: Arc<Mutex<Option<Value>>>,
+    pub(super) conditional_get_response: Arc<Mutex<Option<ConditionalFetch<Value>>>>,
     pub(super) get_responses: Arc<Mutex<Vec<Value>>>,
     pub(super) posts: Arc<Mutex<Vec<(String, Value)>>>,
     pub(super) puts: Arc<Mutex<Vec<(String, Value)>>>,
@@ -51,6 +55,41 @@ impl GitHubTransport for RecordingTransport {
             .expect("get response mutex should not be poisoned")
             .clone()
             .ok_or_else(|| GitHubError::Transport("missing GET response".to_string()))
+    }
+
+    async fn rest_get_conditional(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        validator: Option<&HttpCacheValidator>,
+    ) -> Result<ConditionalFetch<Value>> {
+        self.conditional_gets
+            .lock()
+            .expect("conditional gets mutex should not be poisoned")
+            .push((
+                path.to_string(),
+                query
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
+                    .collect(),
+                validator.cloned(),
+            ));
+
+        if let Some(response) = self
+            .conditional_get_response
+            .lock()
+            .expect("conditional get response mutex should not be poisoned")
+            .clone()
+        {
+            return Ok(response);
+        }
+
+        self.rest_get(path, query)
+            .await
+            .map(|value| ConditionalFetch::Modified {
+                value,
+                validator: None,
+            })
     }
 
     async fn rest_post(&self, path: &str, body: Value) -> Result<Value> {

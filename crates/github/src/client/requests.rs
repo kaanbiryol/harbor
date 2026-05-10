@@ -18,7 +18,6 @@ query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
         id
         number
         title
-        body
         url
         state
         isDraft
@@ -37,37 +36,30 @@ query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
         updatedAt
         reviewDecision
         mergeStateStatus
-        statusCheckRollup {
-          contexts(first: 50) {
-            nodes {
-              __typename
-              ... on CheckRun {
-                status
-                conclusion
-              }
-              ... on StatusContext {
-                state
-              }
-            }
-          }
-        }
-        labels(first: 20) {
-          nodes {
-            name
-            color
-          }
-        }
       }
     }
+  }
+  rateLimit {
+    cost
+    remaining
+    limit
+    used
   }
 }
 "#;
 
 pub(super) const REVIEW_THREADS_QUERY: &str = r#"
-query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: Int!, $after: String) {
+query HarborPullRequestReviewThreads(
+  $owner: String!,
+  $repo: String!,
+  $number: Int!,
+  $after: String,
+  $threadPageSize: Int!,
+  $commentPageSize: Int!
+) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
-      reviewThreads(first: 50, after: $after) {
+      reviewThreads(first: $threadPageSize, after: $after) {
         pageInfo {
           hasNextPage
           endCursor
@@ -82,7 +74,7 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
           originalLine
           isResolved
           isOutdated
-          comments(first: 50) {
+          comments(first: $commentPageSize) {
             nodes {
               id
               body
@@ -102,9 +94,6 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
               reactionGroups {
                 content
                 viewerHasReacted
-                users(first: 1) {
-                  totalCount
-                }
               }
             }
             pageInfo {
@@ -116,14 +105,39 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
       }
     }
   }
+  rateLimit {
+    cost
+    remaining
+    limit
+    used
+  }
+}
+"#;
+
+pub(super) const PULL_REQUEST_ENRICHMENT_QUERY: &str = r#"
+query HarborPullRequestEnrichment($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    __typename
+    ... on PullRequest {
+      id
+      reviewDecision
+      mergeStateStatus
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    limit
+    used
+  }
 }
 "#;
 
 pub(super) const REVIEW_THREAD_COMMENTS_QUERY: &str = r#"
-query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String) {
+query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String, $commentPageSize: Int!) {
   node(id: $threadId) {
     ... on PullRequestReviewThread {
-      comments(first: 100, after: $after) {
+      comments(first: $commentPageSize, after: $after) {
         pageInfo {
           hasNextPage
           endCursor
@@ -147,13 +161,16 @@ query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String) {
           reactionGroups {
             content
             viewerHasReacted
-            users(first: 1) {
-              totalCount
-            }
           }
         }
       }
     }
+  }
+  rateLimit {
+    cost
+    remaining
+    limit
+    used
   }
 }
 "#;

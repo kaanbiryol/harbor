@@ -285,7 +285,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use gpui::{ListAlignment, ListOffset, px};
-    use harbor_domain::{FileStatus, ReviewThreadState};
+    use harbor_domain::{FileStatus, ReviewCommentRange, ReviewSide, ReviewThreadState};
 
     use crate::{
         diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff, parse_unified_diff},
@@ -749,6 +749,44 @@ mod tests {
                     line_index: 1,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn places_loaded_review_thread_range_on_added_line() {
+        let file = test_file("src/review_thread_comments_125.rs");
+        let diff = parse_unified_diff(
+            "@@ -0,0 +1,3 @@\n+pub fn review_thread_comment_target() -> &'static str {\n+    \"single thread with many replies\"\n+}",
+        );
+        let mut thread = test_review_thread(ReviewThreadState::Unresolved);
+        thread.path = "src/review_thread_comments_125.rs".to_string();
+        thread.range = Some(ReviewCommentRange {
+            path: "src/review_thread_comments_125.rs".to_string(),
+            line: 2,
+            side: ReviewSide::Right,
+            start_line: Some(2),
+            start_side: None,
+        });
+        let files = vec![file];
+        let diffs = vec![Some(diff)];
+        let visible_file_indices = vec![0];
+        let reviewed_file_paths = HashSet::new();
+
+        assert!(
+            continuous_diff_items(ContinuousDiffLayoutInput {
+                files: &files,
+                diffs: &diffs,
+                visible_file_indices: &visible_file_indices,
+                reviewed_file_paths: &reviewed_file_paths,
+                review_threads: &[thread],
+                review_composer: None,
+            })
+            .contains(&DiffListItem::ReviewThread {
+                file_index: 0,
+                hunk_index: 0,
+                line_index: 1,
+                thread_id: "thread-1".to_string(),
+            })
         );
     }
 

@@ -168,6 +168,12 @@ impl AppView {
             } else {
                 None
             };
+            tracing::info!(
+                repository = %target.repo.full_name(),
+                pull_request = target.number,
+                mode = ?mode,
+                "github graphql source: selected pull request review threads"
+            );
             let threads_result = github_api
                 .list_review_threads(&target.owner, &target.name, target.number)
                 .await;

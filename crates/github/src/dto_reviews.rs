@@ -181,6 +181,7 @@ struct GraphQlReactionGroup {
     content: String,
     #[serde(default, rename = "viewerHasReacted")]
     viewer_has_reacted: bool,
+    #[serde(default)]
     users: GraphQlReactionUsers,
 }
 
@@ -421,7 +422,10 @@ impl GraphQlReactionGroup {
     fn into_domain(self) -> Option<ReviewReaction> {
         Some(ReviewReaction {
             content: map_reaction_content(&self.content)?,
-            count: self.users.total_count,
+            count: self
+                .users
+                .total_count
+                .max(usize::from(self.viewer_has_reacted)),
             viewer_has_reacted: self.viewer_has_reacted,
         })
     }
