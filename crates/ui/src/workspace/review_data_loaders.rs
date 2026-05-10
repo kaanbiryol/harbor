@@ -124,6 +124,7 @@ impl AppView {
         self.detail_loading.reviews = true;
         self.detail_loaded.reviews = false;
         let cached_current_user_login = self.current_user_login.clone();
+        let existing_pending_review = self.pending_review.clone();
         let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
             let current_user_result = match cached_current_user_login {
@@ -138,6 +139,7 @@ impl AppView {
                 if let Some(review_id) = pending_review_rest_id(
                     reviews,
                     current_user_result.as_ref().ok().map(String::as_str),
+                    existing_pending_review.as_ref(),
                 ) {
                     Some(
                         github_api
@@ -266,12 +268,16 @@ pub(super) fn selected_pull_request_matches(
 pub(super) fn pending_review_rest_id(
     reviews: &[PullRequestReview],
     current_user_login: Option<&str>,
+    existing_pending_review: Option<&crate::workspace::PendingReviewSession>,
 ) -> Option<String> {
     reviews
         .iter()
         .find(|review| {
             review.state == PullRequestReviewState::Pending
                 && current_user_login.is_none_or(|login| review.author == login)
+                && existing_pending_review.is_none_or(|pending_review| {
+                    review.node_id.as_deref() != Some(pending_review.node_id.as_str())
+                })
         })
         .map(|review| review.id.clone())
 }
@@ -288,7 +294,7 @@ mod tests {
         ];
 
         assert_eq!(
-            pending_review_rest_id(&reviews, Some("alex")),
+            pending_review_rest_id(&reviews, Some("alex"), None),
             Some("review-2".to_string())
         );
     }
@@ -297,7 +303,21 @@ mod tests {
     fn pending_review_rest_id_ignores_non_pending_reviews() {
         let reviews = vec![review("review-1", "alex", PullRequestReviewState::Approved)];
 
-        assert_eq!(pending_review_rest_id(&reviews, Some("alex")), None);
+        assert_eq!(pending_review_rest_id(&reviews, Some("alex"), None), None);
+    }
+
+    #[test]
+    fn pending_review_rest_id_skips_existing_pending_review() {
+        let reviews = vec![review("review-1", "alex", PullRequestReviewState::Pending)];
+        let existing_pending_review = crate::workspace::PendingReviewSession {
+            node_id: "review-1-node".to_string(),
+            comment_count: 2,
+        };
+
+        assert_eq!(
+            pending_review_rest_id(&reviews, Some("alex"), Some(&existing_pending_review)),
+            None
+        );
     }
 
     fn review(id: &str, author: &str, state: PullRequestReviewState) -> PullRequestReview {

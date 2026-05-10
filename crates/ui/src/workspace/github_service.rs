@@ -4,8 +4,10 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    GhCliTransport, GitHubClient, PullRequestListFilter, Result, SubmitPullRequestReviewEvent,
+    GhCliTransport, GitHubClient, GitHubError, PullRequestListFilter, Result,
+    SubmitPullRequestReviewEvent,
 };
+use std::sync::Mutex;
 
 #[async_trait]
 pub(crate) trait GitHubApi: Send + Sync {
@@ -164,14 +166,33 @@ pub(crate) trait GitHubApi: Send + Sync {
 #[derive(Clone, Debug)]
 pub(crate) struct RealGitHubApi {
     client: GitHubClient<GhCliTransport>,
+    current_user_login: std::sync::Arc<Mutex<Option<String>>>,
 }
 
 impl Default for RealGitHubApi {
     fn default() -> Self {
-        let transport = GhCliTransport;
         Self {
-            client: GitHubClient::new(transport),
+            client: GitHubClient::new(GhCliTransport::default()),
+            current_user_login: std::sync::Arc::new(Mutex::new(None)),
         }
+    }
+}
+
+impl RealGitHubApi {
+    fn cached_current_user_login(&self) -> Result<Option<String>> {
+        self.current_user_login
+            .lock()
+            .map(|login| login.clone())
+            .map_err(|error| GitHubError::Transport(error.to_string()))
+    }
+
+    fn cache_current_user_login(&self, login: String) -> Result<()> {
+        self.current_user_login
+            .lock()
+            .map(|mut cached_login| {
+                *cached_login = Some(login);
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))
     }
 }
 
@@ -242,7 +263,14 @@ impl GitHubApi for RealGitHubApi {
     }
 
     async fn current_user(&self) -> Result<String> {
-        self.client.current_user().await
+        if let Some(login) = self.cached_current_user_login()? {
+            return Ok(login);
+        }
+
+        let login = self.client.current_user().await?;
+        self.cache_current_user_login(login.clone())?;
+
+        Ok(login)
     }
 
     async fn list_pull_request_reviews(

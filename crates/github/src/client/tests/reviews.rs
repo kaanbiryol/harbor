@@ -90,7 +90,8 @@ fn queries_pull_request_review_threads() {
         .lock()
         .expect("graphql calls mutex should not be poisoned");
     assert_eq!(calls.len(), 1);
-    assert!(calls[0].0.contains("reviewThreads"));
+    assert!(calls[0].0.contains("reviewThreads(first: 50"));
+    assert!(calls[0].0.contains("comments(first: 50"));
     assert_eq!(
         calls[0].1,
         json!({

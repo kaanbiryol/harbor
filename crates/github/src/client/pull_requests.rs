@@ -8,6 +8,8 @@ use super::{
     requests::{REPOSITORY_PULL_REQUESTS_QUERY, repository_pull_requests_query},
 };
 
+const REPOSITORY_PULL_REQUEST_PAGE_LIMIT: usize = 10;
+
 impl<T> GitHubClient<T>
 where
     T: GitHubTransport,
@@ -37,8 +39,16 @@ where
         let mut pull_requests = Vec::new();
         let mut after = None;
         let search_query = repository_pull_requests_query(repository, filter);
+        let mut pages_loaded = 0;
 
         loop {
+            if pages_loaded >= REPOSITORY_PULL_REQUEST_PAGE_LIMIT {
+                return Err(GitHubError::RequestBudget(format!(
+                    "stopped loading repository pull requests after {REPOSITORY_PULL_REQUEST_PAGE_LIMIT} pages"
+                )));
+            }
+            pages_loaded += 1;
+
             let response = self
                 .transport
                 .graphql(

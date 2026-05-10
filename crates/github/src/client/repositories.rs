@@ -7,6 +7,8 @@ use super::{
     requests::{REPOSITORY_PAGE_SIZE, REPOSITORY_PAGE_SIZE_QUERY},
 };
 
+const REPOSITORY_LIST_PAGE_LIMIT: usize = 20;
+
 impl<T> GitHubClient<T>
 where
     T: GitHubTransport,
@@ -22,6 +24,12 @@ where
         let mut page = 1;
 
         loop {
+            if page > REPOSITORY_LIST_PAGE_LIMIT {
+                return Err(crate::GitHubError::RequestBudget(format!(
+                    "stopped loading repositories after {REPOSITORY_LIST_PAGE_LIMIT} pages"
+                )));
+            }
+
             let response = if page == 1 {
                 self.transport
                     .rest_get(

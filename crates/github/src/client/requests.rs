@@ -66,7 +66,7 @@ pub(super) const REVIEW_THREADS_QUERY: &str = r#"
 query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
-      reviewThreads(first: 100, after: $after) {
+      reviewThreads(first: 50, after: $after) {
         pageInfo {
           hasNextPage
           endCursor
@@ -81,7 +81,7 @@ query HarborPullRequestReviewThreads($owner: String!, $repo: String!, $number: I
           originalLine
           isResolved
           isOutdated
-          comments(first: 100) {
+          comments(first: 50) {
             nodes {
               id
               body

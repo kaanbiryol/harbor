@@ -21,6 +21,7 @@ use super::{
 
 const REVIEW_THREAD_COMMENT_PAGE_BATCH_SIZE: usize = 8;
 const REVIEW_THREAD_COMMENT_EXTRA_PAGE_LIMIT: usize = 64;
+const REVIEW_THREAD_PAGE_LIMIT: usize = 20;
 
 impl<T> GitHubClient<T>
 where
@@ -91,8 +92,16 @@ where
         let mut threads = Vec::new();
         let mut after = None;
         let mut extra_comment_pages_loaded = 0;
+        let mut thread_pages_loaded = 0;
 
         loop {
+            if thread_pages_loaded >= REVIEW_THREAD_PAGE_LIMIT {
+                return Err(GitHubError::RequestBudget(format!(
+                    "stopped loading review threads after {REVIEW_THREAD_PAGE_LIMIT} pages"
+                )));
+            }
+            thread_pages_loaded += 1;
+
             let response = self
                 .transport
                 .graphql(
