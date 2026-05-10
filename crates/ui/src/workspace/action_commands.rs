@@ -1,5 +1,5 @@
 use gpui::{Context, Window};
-use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
+use harbor_github::SubmitPullRequestReviewEvent;
 
 use crate::{
     actions::{
@@ -91,9 +91,9 @@ impl AppView {
         self.action_error = None;
         self.status = request.start_status();
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
             let result = match &request {
                 WorkflowActionRequest::DispatchBuild {
                     owner,
@@ -102,7 +102,7 @@ impl AppView {
                     git_ref,
                     ..
                 } => {
-                    client
+                    github_api
                         .dispatch_workflow(owner, repo, *workflow_id, git_ref)
                         .await
                 }
@@ -111,7 +111,7 @@ impl AppView {
                     repo,
                     run_id,
                     ..
-                } => client.rerun_failed_jobs(owner, repo, *run_id).await,
+                } => github_api.rerun_failed_jobs(owner, repo, *run_id).await,
             };
 
             this.update_or_log(
@@ -236,22 +236,22 @@ impl AppView {
         self.pr_action_error = None;
         self.status = request.start_status();
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
             let result = match &request {
                 PullRequestActionRequest::Approve {
                     owner,
                     repo,
                     number,
-                } => client.approve_pull_request(owner, repo, *number).await,
+                } => github_api.approve_pull_request(owner, repo, *number).await,
                 PullRequestActionRequest::RequestChanges {
                     owner,
                     repo,
                     number,
                     body,
                 } => {
-                    client
+                    github_api
                         .request_pull_request_changes(owner, repo, *number, body)
                         .await
                 }
@@ -261,7 +261,7 @@ impl AppView {
                     number,
                     head_sha,
                 } => {
-                    client
+                    github_api
                         .merge_pull_request(owner, repo, *number, head_sha)
                         .await
                 }

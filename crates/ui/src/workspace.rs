@@ -4,6 +4,7 @@ mod cache;
 mod changed_files;
 mod commands;
 mod external_apps;
+pub(crate) mod github_service;
 mod loaders;
 mod local_commands;
 mod navigation_commands;
@@ -23,6 +24,7 @@ mod workflow_log_loaders;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::Arc,
 };
 
 use gpui::{
@@ -53,6 +55,7 @@ pub(crate) use changed_files::{
     changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
+use github_service::{GitHubApi, RealGitHubApi};
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
@@ -123,6 +126,7 @@ pub struct AppView {
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
+    github_api: Arc<dyn GitHubApi>,
     pub(crate) review_threads: Vec<ReviewThread>,
     pub(crate) review_composer_state: ReviewComposerState,
     pub(crate) pending_review: Option<PendingReviewSession>,
@@ -205,10 +209,34 @@ impl AppView {
         Self::new_with_startup_tasks(window, cx, false)
     }
 
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn new_with_github_api(
+        github_api: Arc<dyn GitHubApi>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_with_startup_tasks_and_github_api(window, cx, false, github_api)
+    }
+
     fn new_with_startup_tasks(
         window: &mut Window,
         cx: &mut Context<Self>,
         start_startup_tasks: bool,
+    ) -> Self {
+        Self::new_with_startup_tasks_and_github_api(
+            window,
+            cx,
+            start_startup_tasks,
+            Arc::new(RealGitHubApi::default()),
+        )
+    }
+
+    fn new_with_startup_tasks_and_github_api(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        start_startup_tasks: bool,
+        github_api: Arc<dyn GitHubApi>,
     ) -> Self {
         let pull_requests = Vec::new();
         let files = Vec::new();
@@ -294,6 +322,7 @@ impl AppView {
             workflow_runs: Vec::new(),
             workflow_jobs: Vec::new(),
             pull_request_reviews,
+            github_api,
             review_threads,
             review_composer_state: ReviewComposerState {
                 composer: None,

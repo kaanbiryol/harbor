@@ -1,6 +1,5 @@
 use gpui::Context;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId};
-use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
@@ -122,10 +121,10 @@ impl AppView {
         mode: ReviewDataLoadMode,
         cx: &mut Context<Self>,
     ) {
+        let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
-            let current_user_result = client.current_user().await;
-            let reviews_result = client
+            let current_user_result = github_api.current_user().await;
+            let reviews_result = github_api
                 .list_pull_request_reviews(&target.owner, &target.name, target.number)
                 .await;
             let pending_review_comment_count_result = if let Ok(reviews) = reviews_result.as_ref()
@@ -135,7 +134,7 @@ impl AppView {
                     current_user_result.as_ref().ok().map(String::as_str),
                 ) {
                     Some(
-                        client
+                        github_api
                             .pull_request_review_comment_count(
                                 &target.owner,
                                 &target.name,
@@ -150,7 +149,7 @@ impl AppView {
             } else {
                 None
             };
-            let threads_result = client
+            let threads_result = github_api
                 .list_review_threads(&target.owner, &target.name, target.number)
                 .await;
 

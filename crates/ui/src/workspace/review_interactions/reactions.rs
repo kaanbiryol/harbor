@@ -1,6 +1,5 @@
 use gpui::Context;
 use harbor_domain::ReactionContent;
-use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{
     AppView, ReviewCommentUiError, ReviewReactionAction,
@@ -65,15 +64,15 @@ impl AppView {
         self.review_reaction_error = None;
         self.status = format!("Updating reaction on PR #{}", pr.number);
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
             let result = if had_reacted {
-                client
+                github_api
                     .remove_review_comment_reaction(&comment_id, content)
                     .await
             } else {
-                client
+                github_api
                     .add_review_comment_reaction(&comment_id, content)
                     .await
             };

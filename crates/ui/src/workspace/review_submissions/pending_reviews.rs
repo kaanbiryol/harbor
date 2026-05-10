@@ -1,5 +1,5 @@
 use gpui::{Context, Window};
-use harbor_github::{GhCliTransport, GitHubClient, SubmitPullRequestReviewEvent};
+use harbor_github::SubmitPullRequestReviewEvent;
 
 use crate::{
     actions::DEFAULT_REQUEST_CHANGES_BODY,
@@ -65,9 +65,10 @@ impl AppView {
         self.pending_review_error = None;
         self.status = format!("Submitting pending review on PR #{}", pr.number);
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn_in(window, async move |this, cx| {
-            let result = GitHubClient::new(GhCliTransport)
+            let result = github_api
                 .submit_pull_request_review(&pending_review.node_id, event, body.as_deref())
                 .await;
 

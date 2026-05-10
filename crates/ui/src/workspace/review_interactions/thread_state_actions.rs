@@ -1,6 +1,5 @@
 use gpui::Context;
 use harbor_domain::ReviewThreadState;
-use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{AppView, ReviewThreadUiError, async_updates::AppViewAsyncUpdateExt};
 
@@ -49,13 +48,13 @@ impl AppView {
             format!("Reopening review thread on PR #{}", pr.number)
         };
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
             let result = if resolved {
-                client.resolve_review_thread(&thread_id).await
+                github_api.resolve_review_thread(&thread_id).await
             } else {
-                client.unresolve_review_thread(&thread_id).await
+                github_api.unresolve_review_thread(&thread_id).await
             };
 
             this.update_or_log(

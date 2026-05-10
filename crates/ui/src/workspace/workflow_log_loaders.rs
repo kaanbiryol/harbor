@@ -1,5 +1,4 @@
 use gpui::{Context, ScrollStrategy};
-use harbor_github::{GhCliTransport, GitHubClient};
 use harbor_logs::parse_workflow_log;
 
 use crate::{
@@ -48,13 +47,13 @@ impl AppView {
         let name = repo.name.clone();
         let run_id = run.id;
         let run_label = workflow_run_label(&run);
+        let github_api = self.github_api.clone();
 
         self.log_state.task = Some(cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
-            let jobs_result = client
+            let jobs_result = github_api
                 .list_workflow_jobs_for_run(&owner, &name, run_id)
                 .await;
-            let log_result = client.workflow_run_log(&owner, &name, run_id).await;
+            let log_result = github_api.workflow_run_log(&owner, &name, run_id).await;
 
             this.update_or_log(
                 cx,

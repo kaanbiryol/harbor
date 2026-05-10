@@ -1,7 +1,6 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
 use harbor_domain::RepoId;
-use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::{
     actions::PanelTab,
@@ -98,6 +97,7 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -105,9 +105,7 @@ impl AppView {
             let number = load.number;
 
             async move |this, cx| {
-                let result = GitHubClient::new(GhCliTransport)
-                    .get_pull_request(&owner, &name, number)
-                    .await;
+                let result = github_api.get_pull_request(&owner, &name, number).await;
 
                 this.update_or_log(
                     cx,
@@ -150,6 +148,7 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -158,7 +157,7 @@ impl AppView {
             let highlight_theme = cx.theme().highlight_theme.clone();
 
             async move |this, cx| {
-                let result = GitHubClient::new(GhCliTransport)
+                let result = github_api
                     .list_pull_request_files(&owner, &name, number)
                     .await
                     .map(|files| {
@@ -270,6 +269,7 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -281,9 +281,7 @@ impl AppView {
                 let result = if head_sha.is_empty() {
                     Ok(Vec::new())
                 } else {
-                    GitHubClient::new(GhCliTransport)
-                        .list_check_runs(&owner, &name, &head_sha)
-                        .await
+                    github_api.list_check_runs(&owner, &name, &head_sha).await
                 };
 
                 this.update_or_log(
@@ -329,6 +327,7 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
@@ -340,7 +339,7 @@ impl AppView {
                 let result = if head_sha.is_empty() {
                     Ok(Vec::new())
                 } else {
-                    GitHubClient::new(GhCliTransport)
+                    github_api
                         .list_workflow_runs_for_head(&owner, &name, &head_sha)
                         .await
                 };

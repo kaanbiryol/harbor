@@ -1,6 +1,6 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_domain::RepoId;
-use harbor_github::{GhCliTransport, GitHubClient, PullRequestListFilter};
+use harbor_github::PullRequestListFilter;
 use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
 
 use crate::workspace::{
@@ -65,7 +65,9 @@ impl AppView {
 
     fn refresh_repositories_from_github(&mut self, store: SqliteStore, cx: &mut Context<Self>) {
         self.is_loading_repositories = true;
-        let task = cx.background_spawn(async move { refresh_repository_store(store).await });
+        let github_api = self.github_api.clone();
+        let task =
+            cx.background_spawn(async move { refresh_repository_store(store, github_api).await });
 
         self.repository_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -237,9 +239,10 @@ impl AppView {
         self.set_detail_loading(false);
         self.set_log_loading(false);
         self.status = pull_request_inbox_loading_status(&repo, mode);
+        let github_api = self.github_api.clone();
 
         self.pr_list_task = Some(cx.spawn(async move |this, cx| {
-            let result = GitHubClient::new(GhCliTransport)
+            let result = github_api
                 .list_repository_pull_requests(&repo, pull_request_list_filter(mode))
                 .await;
 
@@ -364,8 +367,9 @@ async fn load_repository_store(
 
 async fn refresh_repository_store(
     store: SqliteStore,
+    github_api: std::sync::Arc<dyn crate::workspace::github_service::GitHubApi>,
 ) -> std::result::Result<RepositoryRefresh, StorageError> {
-    let repository_error = match GitHubClient::new(GhCliTransport).list_repositories().await {
+    let repository_error = match github_api.list_repositories().await {
         Ok(repositories) => {
             store.sync_repositories(&repositories).await?;
             None

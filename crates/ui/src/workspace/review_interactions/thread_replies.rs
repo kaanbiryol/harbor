@@ -1,5 +1,4 @@
 use gpui::{Context, Window};
-use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{
     AppView, PullRequestDetailCacheKey, ReviewThreadUiError,
@@ -128,9 +127,10 @@ impl AppView {
         self.review_thread_reply_error = None;
         self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let result = GitHubClient::new(GhCliTransport)
+            let result = github_api
                 .add_review_thread_reply(&thread_id, pending_review_node_id.as_deref(), &body)
                 .await;
 

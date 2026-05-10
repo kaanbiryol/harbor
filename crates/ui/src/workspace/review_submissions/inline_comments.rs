@@ -1,5 +1,5 @@
 use gpui::Context;
-use harbor_github::{GhCliTransport, GitHubClient, GitHubError};
+use harbor_github::GitHubError;
 
 use crate::workspace::{
     AppView, PendingReviewSession, PullRequestDetailCacheKey, ReviewCommentSubmission,
@@ -100,11 +100,11 @@ impl AppView {
             }
         };
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let client = GitHubClient::new(GhCliTransport);
             let result = match submission {
-                ReviewCommentSubmission::SingleComment => client
+                ReviewCommentSubmission::SingleComment => github_api
                     .create_pull_request_review_comment(
                         &pr.repo.owner,
                         &pr.repo.name,
@@ -115,13 +115,13 @@ impl AppView {
                     )
                     .await
                     .map(|()| None),
-                ReviewCommentSubmission::StartReview => client
+                ReviewCommentSubmission::StartReview => github_api
                     .start_pull_request_review(&pr.node_id, &pr.head_sha, &composer.range, &body)
                     .await
                     .map(Some),
                 ReviewCommentSubmission::AddToReview => {
                     if let Some(pending_review_node_id) = pending_review_node_id {
-                        client
+                        github_api
                             .add_pending_review_thread(
                                 &pending_review_node_id,
                                 &composer.range,

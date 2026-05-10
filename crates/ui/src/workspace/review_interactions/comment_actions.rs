@@ -1,5 +1,4 @@
 use gpui::{Context, Window};
-use harbor_github::{GhCliTransport, GitHubClient};
 
 use crate::workspace::{AppView, ReviewCommentUiError, async_updates::AppViewAsyncUpdateExt};
 
@@ -102,11 +101,10 @@ impl AppView {
         self.review_comment_edit_error = None;
         self.status = format!("Updating review comment on PR #{}", pr.number);
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let result = GitHubClient::new(GhCliTransport)
-                .update_review_comment(&comment_id, &body)
-                .await;
+            let result = github_api.update_review_comment(&comment_id, &body).await;
 
             this.update_or_log(
                 cx,
@@ -182,11 +180,10 @@ impl AppView {
         self.review_comment_action_error = None;
         self.status = format!("Deleting review comment on PR #{}", pr.number);
         cx.notify();
+        let github_api = self.github_api.clone();
 
         cx.spawn(async move |this, cx| {
-            let result = GitHubClient::new(GhCliTransport)
-                .delete_review_comment(&comment_id)
-                .await;
+            let result = github_api.delete_review_comment(&comment_id).await;
 
             this.update_or_log(
                 cx,
