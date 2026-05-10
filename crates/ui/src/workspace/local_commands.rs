@@ -391,10 +391,11 @@ fn open_with_status(
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{DiffFile, FileStatus};
+    use harbor_domain::FileStatus;
     use harbor_git::{ExternalApp, OpenTarget};
 
     use super::*;
+    use crate::test_fixtures::diff_file;
 
     #[test]
     fn opens_worktree_root_for_removed_local_files() {
@@ -405,17 +406,5 @@ mod tests {
 
         assert_eq!(target, OpenTarget::Directory(root.to_path_buf()));
         assert_eq!(status, OpenTargetStatus::RemovedFile);
-    }
-
-    fn diff_file(path: &str, status: FileStatus) -> DiffFile {
-        DiffFile {
-            path: path.to_string(),
-            previous_path: None,
-            status,
-            additions: 1,
-            deletions: 0,
-            changes: 1,
-            patch: Some("@@ -1 +1 @@".to_string()),
-        }
     }
 }

@@ -205,7 +205,7 @@ pub(crate) fn review_reaction_emoji(content: ReactionContent) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::ReviewReaction;
+    use crate::test_fixtures::{review_comment, review_reaction};
 
     use super::*;
 
@@ -225,34 +225,11 @@ mod tests {
     #[test]
     fn shows_only_active_review_reactions_inline() {
         let mut comment = review_comment();
-        comment.reactions = vec![ReviewReaction {
-            content: ReactionContent::Heart,
-            count: 2,
-            viewer_has_reacted: false,
-        }];
+        comment.reactions = vec![review_reaction(ReactionContent::Heart, false)];
 
         assert_eq!(
             visible_review_reaction_contents(&comment),
             vec![ReactionContent::Heart]
         );
-    }
-
-    fn review_comment() -> ReviewComment {
-        ReviewComment {
-            id: "comment".to_string(),
-            author: "octocat".to_string(),
-            author_avatar_url: None,
-            body: "Looks good".to_string(),
-            created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
-                .expect("valid test timestamp")
-                .with_timezone(&chrono::Utc),
-            updated_at: None,
-            position: None,
-            viewer_did_author: false,
-            viewer_can_update: false,
-            viewer_can_delete: false,
-            viewer_can_react: true,
-            reactions: Vec::new(),
-        }
     }
 }

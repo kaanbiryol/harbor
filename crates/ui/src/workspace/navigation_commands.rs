@@ -316,11 +316,10 @@ fn encode_path_component(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{
-        ChecksSummary, DiffFile, FileStatus, MergeState, PullRequest, PullRequestState, RepoId,
-    };
+    use harbor_domain::FileStatus;
 
     use super::*;
+    use crate::test_fixtures::{diff_file, pull_request};
 
     #[test]
     fn builds_active_file_github_url() {
@@ -337,45 +336,5 @@ mod tests {
         let file = diff_file("src/deleted.rs", FileStatus::Removed);
 
         assert_eq!(github_file_url(&pull_request(), &file), None);
-    }
-
-    fn pull_request() -> PullRequest {
-        PullRequest {
-            repo: RepoId::new("acme", "app"),
-            node_id: "pr-node".to_string(),
-            number: 7,
-            title: "Add feature".to_string(),
-            body: None,
-            author: "octocat".to_string(),
-            url: "https://github.com/acme/app/pull/7".to_string(),
-            state: PullRequestState::Open,
-            is_draft: false,
-            head_ref: "feature".to_string(),
-            base_ref: "main".to_string(),
-            head_sha: "abc123".to_string(),
-            review_decision: None,
-            merge_state: Some(MergeState::Clean),
-            labels: Vec::new(),
-            checks_summary: ChecksSummary {
-                total: 1,
-                passed: 1,
-                failed: 0,
-                pending: 0,
-                skipped: 0,
-            },
-            unresolved_threads: 0,
-        }
-    }
-
-    fn diff_file(path: &str, status: FileStatus) -> DiffFile {
-        DiffFile {
-            path: path.to_string(),
-            previous_path: None,
-            status,
-            additions: 1,
-            deletions: 0,
-            changes: 1,
-            patch: Some("@@ -1 +1 @@".to_string()),
-        }
     }
 }

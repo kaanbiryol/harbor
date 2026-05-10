@@ -322,6 +322,8 @@ fn review_comment_time_label(comment: &ReviewComment) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_fixtures::review_comment;
+
     use super::*;
 
     #[test]
@@ -352,24 +354,5 @@ mod tests {
             "**bold**\n\n- list item"
         );
         assert_eq!(review_comment_body_markdown(" \n\t "), "empty comment");
-    }
-
-    fn review_comment() -> ReviewComment {
-        ReviewComment {
-            id: "comment".to_string(),
-            author: "octocat".to_string(),
-            author_avatar_url: None,
-            body: "Looks good".to_string(),
-            created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
-                .expect("valid test timestamp")
-                .with_timezone(&chrono::Utc),
-            updated_at: None,
-            position: None,
-            viewer_did_author: false,
-            viewer_can_update: false,
-            viewer_can_delete: false,
-            viewer_can_react: true,
-            reactions: Vec::new(),
-        }
     }
 }

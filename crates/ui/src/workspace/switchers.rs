@@ -229,9 +229,10 @@ pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId};
+    use harbor_domain::RepoId;
 
     use super::*;
+    use crate::test_fixtures::pull_request;
 
     #[test]
     fn parses_owner_and_repo() {
@@ -316,33 +317,5 @@ mod tests {
         assert_eq!(next_switcher_index(2, 3, 1), 0);
         assert_eq!(next_switcher_index(0, 3, -1), 2);
         assert_eq!(next_switcher_index(10, 3, 1), 0);
-    }
-
-    fn pull_request() -> PullRequest {
-        PullRequest {
-            repo: RepoId::new("acme", "app"),
-            node_id: "pr-node".to_string(),
-            number: 7,
-            title: "Add feature".to_string(),
-            body: None,
-            author: "octocat".to_string(),
-            url: "https://github.com/acme/app/pull/7".to_string(),
-            state: PullRequestState::Open,
-            is_draft: false,
-            head_ref: "feature".to_string(),
-            base_ref: "main".to_string(),
-            head_sha: "abc123".to_string(),
-            review_decision: None,
-            merge_state: Some(MergeState::Clean),
-            labels: Vec::new(),
-            checks_summary: ChecksSummary {
-                total: 1,
-                passed: 1,
-                failed: 0,
-                pending: 0,
-                skipped: 0,
-            },
-            unresolved_threads: 0,
-        }
     }
 }

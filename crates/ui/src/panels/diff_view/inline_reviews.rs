@@ -409,15 +409,12 @@ fn render_review_menu_marker(width: f32) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Utc};
     use gpui::{
         Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
     };
     use gpui_component::{Root, Theme, ThemeMode, input::InputState};
-    use harbor_domain::{
-        ReviewComment, ReviewCommentPosition, ReviewSide, ReviewThread, ReviewThreadState,
-    };
 
+    use crate::test_fixtures::review_thread as test_review_thread;
     use crate::workspace::{
         AppView, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError,
     };
@@ -629,36 +626,8 @@ mod tests {
     }
 
     fn review_thread() -> ReviewThread {
-        ReviewThread {
-            id: "thread-1".to_string(),
-            path: "src/lib.rs".to_string(),
-            range: None,
-            state: ReviewThreadState::Unresolved,
-            comments: vec![ReviewComment {
-                id: "comment-1".to_string(),
-                author: "maria".to_string(),
-                author_avatar_url: None,
-                body: "Please check this line.".to_string(),
-                created_at: test_time(),
-                updated_at: None,
-                position: Some(ReviewCommentPosition {
-                    path: "src/lib.rs".to_string(),
-                    line: Some(12),
-                    original_line: Some(11),
-                    side: ReviewSide::Right,
-                }),
-                viewer_did_author: true,
-                viewer_can_update: false,
-                viewer_can_delete: false,
-                viewer_can_react: true,
-                reactions: Vec::new(),
-            }],
-        }
-    }
-
-    fn test_time() -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
-            .expect("valid test timestamp")
-            .with_timezone(&Utc)
+        let mut thread = test_review_thread(ReviewThreadState::Unresolved);
+        thread.comments[0].viewer_can_update = false;
+        thread
     }
 }

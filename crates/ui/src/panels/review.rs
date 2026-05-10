@@ -436,14 +436,13 @@ pub(crate) fn review_time_label(review: &PullRequestReview) -> String {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Utc};
     use gpui::{
         Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
     };
     use gpui_component::{Root, Theme, ThemeMode, input::InputState};
-    use harbor_domain::{ReviewComment, ReviewCommentPosition, ReviewSide};
 
     use super::*;
+    use crate::test_fixtures::review_thread as test_review_thread;
 
     #[test]
     fn counts_review_threads_by_state() {
@@ -594,36 +593,6 @@ mod tests {
     }
 
     fn review_thread_with_state(state: ReviewThreadState) -> ReviewThread {
-        ReviewThread {
-            id: "thread-1".to_string(),
-            path: "src/lib.rs".to_string(),
-            range: None,
-            state,
-            comments: vec![ReviewComment {
-                id: "comment-1".to_string(),
-                author: "maria".to_string(),
-                author_avatar_url: None,
-                body: "Please check this line.".to_string(),
-                created_at: test_time(),
-                updated_at: None,
-                position: Some(ReviewCommentPosition {
-                    path: "src/lib.rs".to_string(),
-                    line: Some(12),
-                    original_line: Some(11),
-                    side: ReviewSide::Right,
-                }),
-                viewer_did_author: true,
-                viewer_can_update: true,
-                viewer_can_delete: false,
-                viewer_can_react: true,
-                reactions: Vec::new(),
-            }],
-        }
-    }
-
-    fn test_time() -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
-            .expect("valid test timestamp")
-            .with_timezone(&Utc)
+        test_review_thread(state)
     }
 }
