@@ -92,6 +92,12 @@ pub(crate) struct PullRequestInboxSnapshot {
     active_tab: PanelTab,
 }
 
+impl PullRequestInboxSnapshot {
+    pub(crate) fn pull_request_count(&self) -> usize {
+        self.pull_requests.len()
+    }
+}
+
 impl AppView {
     pub(crate) fn current_pull_request_inbox_key(&self) -> Option<PullRequestInboxCacheKey> {
         self.configured_repo.clone().map(|repository| {

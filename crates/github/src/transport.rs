@@ -9,7 +9,7 @@ use std::{
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{GitHubError, GitHubRateLimit, Result};
+use crate::{GitHubError, GitHubRateLimit, GitHubRateLimitStatus, Result};
 
 const MAX_CONCURRENT_GITHUB_REQUESTS: usize = 4;
 const MUTATION_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
@@ -21,6 +21,10 @@ pub trait GitHubTransport: Send + Sync {
     async fn rest_put(&self, path: &str, body: Value) -> Result<Value>;
     async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value>;
+
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -182,6 +186,10 @@ impl GitHubTransport for GhCliTransport {
 
         self.coordinator.run_json(kind, read_key, args, None).await
     }
+
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        self.coordinator.latest_rate_limit()
+    }
 }
 
 async fn run_status(args: Vec<String>) -> Result<()> {
@@ -218,6 +226,7 @@ struct GhCliRequestCoordinatorState {
     mutation_active: bool,
     last_mutation_completed_at: Option<Instant>,
     in_flight_json_reads: HashMap<String, Arc<InFlightJsonRequest>>,
+    latest_rate_limit: Option<GitHubRateLimitStatus>,
 }
 
 #[derive(Default)]
@@ -296,10 +305,12 @@ impl GhCliRequestCoordinator {
         let output = run_gh_command(args, input)?;
 
         if !output.status.success() {
+            self.record_rate_limit(parse_rate_limit_metadata(&output.stdout));
             return Err(map_failed_status(&output.stdout, &output.stderr));
         }
 
         let parsed = parse_json_output(&output.stdout)?;
+        self.record_rate_limit(parsed.rate_limit.clone());
         if let Some(error) = graphql_rate_limit_error(&parsed.value, &parsed.rate_limit) {
             return Err(error);
         }
@@ -330,6 +341,25 @@ impl GhCliRequestCoordinator {
             .insert(read_key.to_string(), in_flight.clone());
 
         JsonDedupeRole::Leader(in_flight)
+    }
+
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .latest_rate_limit
+            .clone()
+    }
+
+    fn record_rate_limit(&self, rate_limit: GitHubRateLimitMetadata) {
+        let Some(rate_limit) = rate_limit.into_status() else {
+            return;
+        };
+
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .latest_rate_limit = Some(rate_limit);
     }
 
     fn remove_in_flight_json_read(&self, read_key: &str, in_flight: &Arc<InFlightJsonRequest>) {
@@ -450,7 +480,7 @@ fn mutation_interval_elapsed(state: &GhCliRequestCoordinatorState) -> bool {
 fn mutation_interval_remaining(state: &GhCliRequestCoordinatorState) -> Option<Duration> {
     let elapsed = state.last_mutation_completed_at?.elapsed();
 
-    (elapsed < MUTATION_REQUEST_INTERVAL).then_some(MUTATION_REQUEST_INTERVAL - elapsed)
+    MUTATION_REQUEST_INTERVAL.checked_sub(elapsed)
 }
 
 fn run_gh_command(args: Vec<String>, input: Option<String>) -> Result<Output> {
@@ -492,6 +522,24 @@ struct GitHubRateLimitMetadata {
     reset_epoch_seconds: Option<u64>,
     resource: Option<String>,
     remaining: Option<u64>,
+    limit: Option<u64>,
+}
+
+impl GitHubRateLimitMetadata {
+    fn into_status(self) -> Option<GitHubRateLimitStatus> {
+        (self.retry_after_seconds.is_some()
+            || self.reset_epoch_seconds.is_some()
+            || self.resource.is_some()
+            || self.remaining.is_some()
+            || self.limit.is_some())
+        .then_some(GitHubRateLimitStatus {
+            retry_after_seconds: self.retry_after_seconds,
+            reset_epoch_seconds: self.reset_epoch_seconds,
+            resource: self.resource,
+            remaining: self.remaining,
+            limit: self.limit,
+        })
+    }
 }
 
 fn parse_json_output(stdout: &[u8]) -> Result<ParsedJsonOutput> {
@@ -543,6 +591,7 @@ fn parse_rate_limit_metadata(stdout: &[u8]) -> GitHubRateLimitMetadata {
             "x-ratelimit-reset" => metadata.reset_epoch_seconds = value.parse().ok(),
             "x-ratelimit-resource" => metadata.resource = Some(value.to_string()),
             "x-ratelimit-remaining" => metadata.remaining = value.parse().ok(),
+            "x-ratelimit-limit" => metadata.limit = value.parse().ok(),
             _ => {}
         }
     }
@@ -583,6 +632,7 @@ fn rate_limit_error(message: String, metadata: GitHubRateLimitMetadata) -> GitHu
         reset_epoch_seconds: metadata.reset_epoch_seconds,
         resource: metadata.resource,
         remaining: metadata.remaining,
+        limit: metadata.limit,
     };
 
     if lower_message.contains("secondary") || lower_message.contains("abuse") {
@@ -699,6 +749,7 @@ mod tests {
     fn parses_included_rate_limit_headers_and_json_body() {
         let output = concat!(
             "HTTP/2 200 OK\r\n",
+            "x-ratelimit-limit: 5000\r\n",
             "x-ratelimit-remaining: 42\r\n",
             "x-ratelimit-reset: 1770000000\r\n",
             "x-ratelimit-resource: graphql\r\n",
@@ -714,6 +765,7 @@ mod tests {
             json!({ "data": { "viewer": { "login": "octocat" } } })
         );
         assert_eq!(parsed.rate_limit.remaining, Some(42));
+        assert_eq!(parsed.rate_limit.limit, Some(5000));
         assert_eq!(parsed.rate_limit.reset_epoch_seconds, Some(1_770_000_000));
         assert_eq!(parsed.rate_limit.resource.as_deref(), Some("graphql"));
         assert_eq!(parsed.rate_limit.retry_after_seconds, Some(5));
@@ -740,6 +792,7 @@ mod tests {
             reset_epoch_seconds: Some(1_770_000_000),
             resource: Some("graphql".to_string()),
             remaining: Some(0),
+            limit: Some(5000),
         };
         let value = json!({
             "errors": [
@@ -757,10 +810,40 @@ mod tests {
                 assert_eq!(limit.message, "API rate limit exceeded");
                 assert_eq!(limit.reset_epoch_seconds, Some(1_770_000_000));
                 assert_eq!(limit.remaining, Some(0));
+                assert_eq!(limit.limit, Some(5000));
                 assert_eq!(limit.resource.as_deref(), Some("graphql"));
             }
             other => panic!("expected primary rate limit error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn records_latest_successful_rate_limit() {
+        let coordinator = GhCliRequestCoordinator::default();
+        coordinator.record_rate_limit(GitHubRateLimitMetadata {
+            retry_after_seconds: None,
+            reset_epoch_seconds: Some(1_770_000_000),
+            resource: Some("graphql".to_string()),
+            remaining: Some(42),
+            limit: Some(5000),
+        });
+
+        let rate_limit = coordinator.latest_rate_limit().unwrap();
+
+        assert_eq!(rate_limit.resource.as_deref(), Some("graphql"));
+        assert_eq!(rate_limit.remaining, Some(42));
+        assert_eq!(rate_limit.limit, Some(5000));
+        assert_eq!(rate_limit.reset_epoch_seconds, Some(1_770_000_000));
+    }
+
+    #[test]
+    fn mutation_interval_remaining_expires_without_overflow() {
+        let state = GhCliRequestCoordinatorState {
+            last_mutation_completed_at: Some(Instant::now() - MUTATION_REQUEST_INTERVAL * 2),
+            ..Default::default()
+        };
+
+        assert_eq!(mutation_interval_remaining(&state), None);
     }
 
     #[test]

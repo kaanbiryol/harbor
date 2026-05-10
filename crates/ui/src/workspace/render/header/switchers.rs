@@ -3,7 +3,7 @@ use gpui::{
     rgb, uniform_list,
 };
 use gpui_component::{
-    Disableable, Sizable, StyledExt,
+    Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::Input,
     popover::Popover,
@@ -128,59 +128,6 @@ fn render_switcher_typed_repository_row(repository: &RepoId, highlighted: bool) 
         )
 }
 
-fn render_switcher_pull_request_row(
-    number: u64,
-    title: String,
-    author: String,
-    current: bool,
-    highlighted: bool,
-) -> Stateful<Div> {
-    div()
-        .id(("switcher-pull-request", number))
-        .flex()
-        .flex_col()
-        .gap_1()
-        .px_2()
-        .py_2()
-        .text_sm()
-        .cursor_pointer()
-        .when(highlighted, |element| element.bg(rgb(0x263241)))
-        .when(current && !highlighted, |element| element.bg(rgb(0x202936)))
-        .hover(|element| element.bg(rgb(0x222a34)))
-        .child(
-            div()
-                .flex()
-                .min_w_0()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .flex_none()
-                        .font_medium()
-                        .text_color(rgb(0xe6e8eb))
-                        .child(format!("#{number}")),
-                )
-                .child(
-                    div()
-                        .min_w_0()
-                        .truncate()
-                        .text_color(rgb(0xcbd5e1))
-                        .child(title),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .min_w_0()
-                .items_center()
-                .gap_2()
-                .text_xs()
-                .text_color(rgb(0x7d8794))
-                .child("by")
-                .child(div().min_w_0().truncate().child(author)),
-        )
-}
-
 fn handle_repository_switcher_key(event: &KeyDownEvent, view: &Entity<AppView>, cx: &mut App) {
     if event.keystroke.modifiers.modified() {
         return;
@@ -197,28 +144,6 @@ fn handle_repository_switcher_key(event: &KeyDownEvent, view: &Entity<AppView>, 
             cx.stop_propagation();
             view.update(cx, |view, cx| {
                 view.move_repository_switcher_selection(1, cx);
-            });
-        }
-        _ => {}
-    }
-}
-
-fn handle_pull_request_switcher_key(event: &KeyDownEvent, view: &Entity<AppView>, cx: &mut App) {
-    if event.keystroke.modifiers.modified() {
-        return;
-    }
-
-    match event.keystroke.key.as_str() {
-        "up" => {
-            cx.stop_propagation();
-            view.update(cx, |view, cx| {
-                view.move_pull_request_switcher_selection(-1, cx);
-            });
-        }
-        "down" => {
-            cx.stop_propagation();
-            view.update(cx, |view, cx| {
-                view.move_pull_request_switcher_selection(1, cx);
             });
         }
         _ => {}
@@ -256,7 +181,7 @@ impl AppView {
                     view.update(cx, |view, cx| {
                         view.repository_switcher_open = *open;
                         if *open {
-                            view.pull_request_switcher_open = false;
+                            view.pull_request_inbox_search_open = false;
                             view.file_filter_popover_open = false;
                             view.status = "Repository search opened".to_string();
                             view.repository_search_input.update(cx, |input, cx| {
@@ -338,6 +263,7 @@ impl AppView {
                                             cx,
                                         );
                                         view.repository_switcher_open = false;
+                                        view.pull_request_inbox_search_open = false;
                                         cx.notify();
                                     });
                                     popover.update(cx, |popover, cx| {
@@ -393,6 +319,7 @@ impl AppView {
                                                         cx,
                                                     );
                                                     view.repository_switcher_open = false;
+                                                    view.pull_request_inbox_search_open = false;
                                                     cx.notify();
                                                 });
                                                 popover.update(cx, |popover, cx| {
@@ -410,137 +337,6 @@ impl AppView {
                         .w_full()
                         .min_h_0(),
                     );
-                }
-
-                menu
-            })
-    }
-
-    pub(super) fn render_pull_request_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
-        let pull_request_label = self.header_pull_request_label();
-        let pull_request_query =
-            normalized_search_query(&self.pull_request_search_input.read(cx).value());
-        let pull_requests = self.filtered_switcher_pull_requests(cx);
-        let inbox_mode = self.pull_request_inbox.mode;
-        let selected_pull_request = self.selected_pr;
-        let pull_request_selection = self
-            .pull_request_switcher_selection
-            .min(pull_requests.len().saturating_sub(1));
-        let pull_request_search_input = self.pull_request_search_input.clone();
-        let has_pull_request_query = !pull_request_query.is_empty();
-        let has_current_repository = self.current_repository().is_some();
-
-        Popover::new("pull-request-switcher-popover")
-            .appearance(false)
-            .anchor(Anchor::TopLeft)
-            .open(self.pull_request_switcher_open)
-            .on_open_change({
-                let view = view.clone();
-                move |open, window, cx| {
-                    view.update(cx, |view, cx| {
-                        view.pull_request_switcher_open = *open;
-                        if *open {
-                            view.repository_switcher_open = false;
-                            view.file_filter_popover_open = false;
-                            view.status = "Pull request search opened".to_string();
-                            view.pull_request_search_input.update(cx, |input, cx| {
-                                input.set_value("", window, cx);
-                                input.focus(window, cx);
-                            });
-                            view.reset_pull_request_switcher_selection(cx);
-                        }
-                        cx.notify();
-                    });
-                }
-            })
-            .trigger(
-                Button::new("pull-request-switcher")
-                    .ghost()
-                    .small()
-                    .compact()
-                    .dropdown_caret(true)
-                    .disabled(!has_current_repository)
-                    .max_w(px(560.))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(rgb(0xcbd5e1))
-                            .child(pull_request_label),
-                    ),
-            )
-            .content(move |_, _window, popover_cx| {
-                let view = view.clone();
-                let popover = popover_cx.entity().clone();
-                let mut menu = div()
-                    .id("pull-request-switcher-menu")
-                    .on_key_down({
-                        let view = view.clone();
-                        move |event, _, cx| {
-                            handle_pull_request_switcher_key(event, &view, cx);
-                        }
-                    })
-                    .w(px(520.))
-                    .max_h(px(520.))
-                    .overflow_y_scroll()
-                    .border_1()
-                    .border_color(rgb(0x343b44))
-                    .bg(rgb(0x171b20))
-                    .p_2()
-                    .shadow_lg()
-                    .child(render_switcher_section_label("search pull requests"))
-                    .child(
-                        div().px_1().pb_2().child(
-                            Input::new(&pull_request_search_input)
-                                .small()
-                                .cleanable(true),
-                        ),
-                    )
-                    .child(render_switcher_section_label("pull requests"));
-
-                if !has_current_repository {
-                    menu = menu.child(render_switcher_empty_row(
-                        "select a repository before searching pull requests",
-                    ));
-                } else if pull_requests.is_empty() {
-                    let label = if has_pull_request_query {
-                        "no pull requests match search"
-                    } else {
-                        inbox_mode.empty_message()
-                    };
-                    menu = menu.child(render_switcher_empty_row(label));
-                } else {
-                    for (row_index, (index, pull_request)) in pull_requests.iter().enumerate() {
-                        let current = *index == selected_pull_request;
-                        let highlighted = row_index == pull_request_selection;
-                        let number = pull_request.number;
-                        let title = pull_request.title.clone();
-                        let author = pull_request.author.clone();
-                        let view = view.clone();
-                        let popover = popover.clone();
-                        let index = *index;
-
-                        menu = menu.child(
-                            render_switcher_pull_request_row(
-                                number,
-                                title,
-                                author,
-                                current,
-                                highlighted,
-                            )
-                            .on_click(move |_, window, cx| {
-                                view.update(cx, |view, cx| {
-                                    view.select_pull_request(index, cx);
-                                    view.pull_request_switcher_open = false;
-                                    cx.notify();
-                                });
-                                popover.update(cx, |popover, cx| {
-                                    popover.dismiss(window, cx);
-                                });
-                            }),
-                        );
-                    }
                 }
 
                 menu

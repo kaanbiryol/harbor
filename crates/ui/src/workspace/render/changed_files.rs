@@ -146,7 +146,7 @@ impl AppView {
                                         view.file_filter_popover_open = *open;
                                         if *open {
                                             view.repository_switcher_open = false;
-                                            view.pull_request_switcher_open = false;
+                                            view.pull_request_inbox_search_open = false;
                                         }
                                         cx.notify();
                                     });

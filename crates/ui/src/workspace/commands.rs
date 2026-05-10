@@ -59,7 +59,7 @@ impl AppView {
             }
             OpenSelectedPullRequestBehavior::ShowDetails { number, refresh } => {
                 self.repository_switcher_open = false;
-                self.pull_request_switcher_open = false;
+                self.pull_request_inbox_search_open = false;
                 self.file_filter_popover_open = false;
                 self.pull_request_inbox.visible = false;
                 self.active_tab = PanelTab::Diff;

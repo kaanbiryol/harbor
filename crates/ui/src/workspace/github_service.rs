@@ -4,13 +4,15 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    GhCliTransport, GitHubClient, GitHubError, PullRequestListFilter, Result,
-    SubmitPullRequestReviewEvent,
+    GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus, PullRequestListFilter,
+    Result, SubmitPullRequestReviewEvent,
 };
 use std::sync::Mutex;
 
 #[async_trait]
 pub(crate) trait GitHubApi: Send + Sync {
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus>;
+
     async fn list_repositories(&self) -> Result<Vec<RepoId>>;
 
     async fn list_repository_pull_requests(
@@ -198,6 +200,10 @@ impl RealGitHubApi {
 
 #[async_trait]
 impl GitHubApi for RealGitHubApi {
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        self.client.latest_rate_limit()
+    }
+
     async fn list_repositories(&self) -> Result<Vec<RepoId>> {
         self.client.list_repositories().await
     }
@@ -457,7 +463,10 @@ pub(crate) mod test_support {
         CheckRun, DiffFile, PullRequest, PullRequestReview, ReactionContent, RepoId,
         ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
     };
-    use harbor_github::{GitHubError, PullRequestListFilter, Result, SubmitPullRequestReviewEvent};
+    use harbor_github::{
+        GitHubError, GitHubRateLimitStatus, PullRequestListFilter, Result,
+        SubmitPullRequestReviewEvent,
+    };
 
     use super::GitHubApi;
 
@@ -571,6 +580,10 @@ pub(crate) mod test_support {
 
     #[async_trait]
     impl GitHubApi for FakeGitHubApi {
+        fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+            None
+        }
+
         async fn list_repositories(&self) -> Result<Vec<RepoId>> {
             self.record_call("list_repositories");
             pop_result(&self.repositories, "list_repositories")

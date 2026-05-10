@@ -1,6 +1,6 @@
 use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px, rgb};
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     popover::{Popover, PopoverState},
 };
@@ -49,26 +49,57 @@ fn render_review_reaction_button(
     let running = reaction_action
         .is_some_and(|action| action.comment_id == comment.id && action.content == content);
     let comment_id = comment.id.clone();
-    let label = review_reaction_button_label(content, count);
-    let button = Button::new(format!("reaction-{comment_id}-{}", content.label()))
-        .label(label)
-        .xsmall()
-        .disabled(!comment.viewer_can_react || running)
-        .on_click({
+    let can_toggle = comment.viewer_can_react && !running;
+    let (background, border_color, count_color, hover_background) = if viewer_has_reacted {
+        (rgb(0x10233a), rgb(0x2f5f8f), rgb(0x93c5fd), rgb(0x17304f))
+    } else {
+        (rgb(0x111820), rgb(0x2b3644), rgb(0x9aa4b2), rgb(0x17212c))
+    };
+
+    div()
+        .id(format!("reaction-{comment_id}-{}", content.label()))
+        .h(px(24.0))
+        .min_w(px(34.0))
+        .px_2()
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap_1()
+        .rounded_sm()
+        .border_1()
+        .border_color(border_color)
+        .bg(background)
+        .text_xs()
+        .when(!can_toggle, |element| element.opacity(0.65))
+        .when(can_toggle, {
             let view_entity = view_entity.clone();
             let comment_id = comment_id.clone();
-            move |_, _, cx| {
-                view_entity.update(cx, |view, cx| {
-                    view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
-                });
+            move |element| {
+                element
+                    .cursor_pointer()
+                    .hover(move |element| element.bg(hover_background))
+                    .on_click(move |_, _, cx| {
+                        view_entity.update(cx, |view, cx| {
+                            view.toggle_review_comment_reaction(comment_id.clone(), content, cx);
+                        });
+                    })
             }
-        });
-
-    if viewer_has_reacted {
-        button.primary().into_any_element()
-    } else {
-        button.ghost().into_any_element()
-    }
+        })
+        .child(
+            div()
+                .line_height(px(18.0))
+                .child(review_reaction_emoji(content)),
+        )
+        .when(count > 0, |element| {
+            element.child(
+                div()
+                    .line_height(px(18.0))
+                    .font_medium()
+                    .text_color(count_color)
+                    .child(count.to_string()),
+            )
+        })
+        .into_any_element()
 }
 
 fn render_add_reaction_popover(
@@ -182,14 +213,6 @@ pub(crate) fn visible_review_reaction_contents(comment: &ReviewComment) -> Vec<R
         .collect()
 }
 
-pub(crate) fn review_reaction_button_label(content: ReactionContent, count: usize) -> String {
-    if count == 0 {
-        review_reaction_emoji(content).to_string()
-    } else {
-        format!("{} {count}", review_reaction_emoji(content))
-    }
-}
-
 pub(crate) fn review_reaction_emoji(content: ReactionContent) -> &'static str {
     match content {
         ReactionContent::ThumbsUp => "👍",
@@ -210,15 +233,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn labels_review_reaction_buttons() {
-        assert_eq!(
-            review_reaction_button_label(ReactionContent::ThumbsUp, 0),
-            "👍"
-        );
-        assert_eq!(
-            review_reaction_button_label(ReactionContent::Heart, 3),
-            "❤️ 3"
-        );
+    fn maps_review_reaction_emoji() {
+        assert_eq!(review_reaction_emoji(ReactionContent::ThumbsUp), "👍");
+        assert_eq!(review_reaction_emoji(ReactionContent::Heart), "❤️");
         assert_eq!(review_reaction_emoji(ReactionContent::Rocket), "🚀");
     }
 

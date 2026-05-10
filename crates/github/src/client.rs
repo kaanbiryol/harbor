@@ -9,6 +9,8 @@ mod reviews;
 #[path = "client/workflows.rs"]
 mod workflows;
 
+use crate::{GitHubRateLimitStatus, GitHubTransport};
+
 #[derive(Clone, Debug)]
 pub struct GitHubClient<T> {
     transport: T,
@@ -35,6 +37,15 @@ impl<T> GitHubClient<T> {
 
     pub fn transport(&self) -> &T {
         &self.transport
+    }
+}
+
+impl<T> GitHubClient<T>
+where
+    T: GitHubTransport,
+{
+    pub fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        self.transport.latest_rate_limit()
     }
 }
 

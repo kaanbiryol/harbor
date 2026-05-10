@@ -21,6 +21,14 @@ enum PullRequestRowSignalTone {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestRowRailTone {
+    Neutral,
+    Danger,
+    Warning,
+    Success,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PullRequestRowSignalKind {
     Conflict,
     ChecksFailed,
@@ -30,7 +38,6 @@ enum PullRequestRowSignalKind {
     ReviewChangesRequested,
     ReviewNeeded,
     UnresolvedThreads,
-    Ready,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,11 +212,7 @@ fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
 
     let mut quiet_signals = Vec::new();
 
-    if is_ready_to_merge(pr) {
-        quiet_signals.push(PullRequestRowSignal::new(PullRequestRowSignalKind::Ready));
-    }
-
-    if pr.review_decision == Some(ReviewDecision::Approved) {
+    if !is_ready_to_merge(pr) && pr.review_decision == Some(ReviewDecision::Approved) {
         quiet_signals.push(PullRequestRowSignal::new(
             PullRequestRowSignalKind::ReviewApproved,
         ));
@@ -226,14 +229,12 @@ fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
 
 fn action_checks_signal(summary: ChecksSummary) -> Option<PullRequestRowSignal> {
     if summary.failed > 0 {
-        Some(PullRequestRowSignal::with_label(
+        Some(PullRequestRowSignal::new(
             PullRequestRowSignalKind::ChecksFailed,
-            summary.failed.to_string(),
         ))
     } else if summary.pending > 0 {
-        Some(PullRequestRowSignal::with_label(
+        Some(PullRequestRowSignal::new(
             PullRequestRowSignalKind::ChecksRunning,
-            summary.pending.to_string(),
         ))
     } else {
         None
@@ -241,22 +242,18 @@ fn action_checks_signal(summary: ChecksSummary) -> Option<PullRequestRowSignal> 
 }
 
 fn quiet_checks_signal(summary: ChecksSummary) -> Option<PullRequestRowSignal> {
-    if summary.total == 0 {
-        None
-    } else if summary.passed == summary.total {
+    if summary.total > 0 && summary.failed == 0 && summary.pending == 0 {
         Some(PullRequestRowSignal::new(
             PullRequestRowSignalKind::ChecksPassed,
         ))
     } else {
-        Some(PullRequestRowSignal::with_label(
-            PullRequestRowSignalKind::ChecksPassed,
-            format!("{}/{}", summary.passed, summary.total),
-        ))
+        None
     }
 }
 
 fn is_ready_to_merge(pr: &PullRequest) -> bool {
-    !pr.is_draft
+    pr.state == PullRequestState::Open
+        && !pr.is_draft
         && pr.merge_state == Some(MergeState::Clean)
         && pr.checks_summary.total > 0
         && pr.checks_summary.failed == 0
@@ -266,6 +263,28 @@ fn is_ready_to_merge(pr: &PullRequest) -> bool {
             pr.review_decision,
             Some(ReviewDecision::ChangesRequested | ReviewDecision::ReviewRequired)
         )
+}
+
+fn pull_request_row_rail_tone(pr: &PullRequest) -> PullRequestRowRailTone {
+    if pr.state != PullRequestState::Open {
+        return PullRequestRowRailTone::Neutral;
+    }
+
+    if pr.merge_state == Some(MergeState::Dirty)
+        || pr.checks_summary.failed > 0
+        || pr.review_decision == Some(ReviewDecision::ChangesRequested)
+    {
+        PullRequestRowRailTone::Danger
+    } else if pr.checks_summary.pending > 0
+        || pr.review_decision == Some(ReviewDecision::ReviewRequired)
+        || pr.unresolved_threads > 0
+    {
+        PullRequestRowRailTone::Warning
+    } else if is_ready_to_merge(pr) || pr.review_decision == Some(ReviewDecision::Approved) {
+        PullRequestRowRailTone::Success
+    } else {
+        PullRequestRowRailTone::Neutral
+    }
 }
 
 fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
@@ -313,7 +332,6 @@ fn row_signal_icon(kind: PullRequestRowSignalKind) -> IconName {
         PullRequestRowSignalKind::ReviewChangesRequested => IconName::ThumbsDown,
         PullRequestRowSignalKind::ReviewNeeded => IconName::Eye,
         PullRequestRowSignalKind::UnresolvedThreads => IconName::Info,
-        PullRequestRowSignalKind::Ready => IconName::CircleCheck,
     }
 }
 
@@ -325,9 +343,9 @@ fn row_signal_tone(kind: PullRequestRowSignalKind) -> PullRequestRowSignalTone {
         PullRequestRowSignalKind::ChecksRunning
         | PullRequestRowSignalKind::ReviewNeeded
         | PullRequestRowSignalKind::UnresolvedThreads => PullRequestRowSignalTone::Warning,
-        PullRequestRowSignalKind::ChecksPassed
-        | PullRequestRowSignalKind::ReviewApproved
-        | PullRequestRowSignalKind::Ready => PullRequestRowSignalTone::Success,
+        PullRequestRowSignalKind::ChecksPassed | PullRequestRowSignalKind::ReviewApproved => {
+            PullRequestRowSignalTone::Success
+        }
     }
 }
 
@@ -336,6 +354,15 @@ fn row_signal_tone_colors(tone: PullRequestRowSignalTone) -> (gpui::Rgba, gpui::
         PullRequestRowSignalTone::Danger => (rgb(0xfca5a5), rgb(0x7f1d1d), rgb(0x2a1214)),
         PullRequestRowSignalTone::Warning => (rgb(0xfcd34d), rgb(0x713f12), rgb(0x241a0c)),
         PullRequestRowSignalTone::Success => (rgb(0x86efac), rgb(0x14532d), rgb(0x102016)),
+    }
+}
+
+fn row_rail_color(tone: PullRequestRowRailTone) -> gpui::Rgba {
+    match tone {
+        PullRequestRowRailTone::Neutral => rgb(0x20252b),
+        PullRequestRowRailTone::Danger => rgb(0xef4444),
+        PullRequestRowRailTone::Warning => rgb(0xfbbf24),
+        PullRequestRowRailTone::Success => rgb(0x22c55e),
     }
 }
 
@@ -348,6 +375,7 @@ pub(crate) fn render_pull_request_row(
     let signals = visible_pull_request_row_signals(pr);
     let primary_signal = signals.first().cloned();
     let secondary_signals = signals.iter().skip(1).cloned().collect::<Vec<_>>();
+    let rail_color = row_rail_color(pull_request_row_rail_tone(pr));
 
     div()
         .id(("pr-row", index))
@@ -355,11 +383,7 @@ pub(crate) fn render_pull_request_row(
         .w_full()
         .min_w_0()
         .flex()
-        .flex_col()
-        .justify_center()
         .overflow_hidden()
-        .px_3()
-        .py_2()
         .border_1()
         .border_color(rgb(0x20252b))
         .when(pr.is_draft, |element| element.opacity(0.72))
@@ -368,54 +392,74 @@ pub(crate) fn render_pull_request_row(
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_pull_request(index, cx);
         }))
+        .child(div().h_full().w(px(4.)).flex_none().bg(rail_color))
         .child(
             div()
-                .flex()
-                .w_full()
+                .flex_1()
                 .min_w_0()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .text_sm()
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .child(format!("#{} {}", pr.number, pr.title)),
-                )
-                .when_some(primary_signal, |element, signal| {
-                    element.child(render_row_signal(signal))
-                }),
-        )
-        .child(
-            div()
-                .pt_1()
                 .flex()
-                .w_full()
-                .min_w_0()
-                .items_center()
-                .justify_between()
-                .gap_2()
-                .text_xs()
+                .flex_col()
+                .justify_center()
+                .overflow_hidden()
+                .px_3()
+                .py_2()
                 .child(
                     div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .text_color(rgb(0x9aa4b2))
-                        .child(format!(
-                            "{} into {} by {}",
-                            pr.head_ref, pr.base_ref, pr.author
-                        )),
-                )
-                .child(
-                    div()
-                        .flex_none()
                         .flex()
+                        .w_full()
+                        .min_w_0()
+                        .justify_between()
                         .items_center()
-                        .gap_1()
-                        .children(secondary_signals.into_iter().map(render_row_signal)),
+                        .gap_2()
+                        .text_sm()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_color(rgb(0x7d8794))
+                                        .child(format!("#{}", pr.number)),
+                                )
+                                .child(div().min_w_0().flex_1().truncate().child(pr.title.clone())),
+                        )
+                        .when_some(primary_signal, |element, signal| {
+                            element.child(render_row_signal(signal))
+                        }),
+                )
+                .child(
+                    div()
+                        .pt_1()
+                        .flex()
+                        .w_full()
+                        .min_w_0()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .text_xs()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .truncate()
+                                .text_color(rgb(0x9aa4b2))
+                                .child(format!(
+                                    "{} into {} by {}",
+                                    pr.head_ref, pr.base_ref, pr.author
+                                )),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .children(secondary_signals.into_iter().map(render_row_signal)),
+                        ),
                 ),
         )
         .into_any_element()
@@ -666,10 +710,7 @@ mod tests {
         assert_eq!(
             signal_summary(&signals),
             vec![
-                (
-                    PullRequestRowSignalKind::ChecksFailed,
-                    Some("1".to_string())
-                ),
+                (PullRequestRowSignalKind::ChecksFailed, None),
                 (
                     PullRequestRowSignalKind::ReviewChangesRequested,
                     Some("changes".to_string())
@@ -717,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_ready_and_approved_without_check_text() {
+    fn ready_pull_request_suppresses_redundant_approved_signal() {
         let mut pr = pull_request();
         pr.review_decision = Some(ReviewDecision::Approved);
 
@@ -725,10 +766,62 @@ mod tests {
 
         assert_eq!(
             signal_summary(&signals),
-            vec![
-                (PullRequestRowSignalKind::Ready, None),
-                (PullRequestRowSignalKind::ReviewApproved, None)
-            ]
+            vec![(PullRequestRowSignalKind::ChecksPassed, None)]
+        );
+    }
+
+    #[test]
+    fn colors_review_posture_on_row_rail() {
+        let mut pr = pull_request();
+        pr.review_decision = Some(ReviewDecision::Approved);
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Success
+        );
+
+        pr.review_decision = Some(ReviewDecision::ChangesRequested);
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Danger
+        );
+
+        pr.review_decision = None;
+        pr.unresolved_threads = 1;
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Warning
+        );
+    }
+
+    #[test]
+    fn row_rail_prioritizes_blockers_over_approval() {
+        let mut pr = pull_request();
+        pr.review_decision = Some(ReviewDecision::Approved);
+        pr.checks_summary.failed = 1;
+
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Danger
+        );
+
+        pr.checks_summary.failed = 0;
+        pr.checks_summary.pending = 1;
+
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Warning
+        );
+    }
+
+    #[test]
+    fn closed_pull_request_is_not_ready_to_merge() {
+        let mut pr = pull_request();
+        pr.state = PullRequestState::Closed;
+
+        assert!(!is_ready_to_merge(&pr));
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Neutral
         );
     }
 

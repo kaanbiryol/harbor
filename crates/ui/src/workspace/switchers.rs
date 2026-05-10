@@ -112,6 +112,7 @@ impl AppView {
 
         self.select_repository_from_switcher(repository, cx);
         self.repository_switcher_open = false;
+        self.pull_request_inbox_search_open = false;
         cx.notify();
     }
 
@@ -130,7 +131,7 @@ impl AppView {
         };
 
         self.select_pull_request(index, cx);
-        self.pull_request_switcher_open = false;
+        self.pull_request_inbox_search_open = false;
         cx.notify();
     }
 
@@ -160,7 +161,7 @@ impl AppView {
                 self.accept_repository_switcher_selection(cx);
             }
             InputEvent::PressEnter { .. }
-                if is_pull_request_input && self.pull_request_switcher_open =>
+                if is_pull_request_input && self.pull_request_inbox_search_open =>
             {
                 self.accept_pull_request_switcher_selection(cx);
             }

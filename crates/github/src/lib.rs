@@ -8,12 +8,22 @@ pub use transport::{GhCliTransport, GitHubTransport};
 pub type Result<T> = std::result::Result<T, GitHubError>;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitHubRateLimitStatus {
+    pub retry_after_seconds: Option<u64>,
+    pub reset_epoch_seconds: Option<u64>,
+    pub resource: Option<String>,
+    pub remaining: Option<u64>,
+    pub limit: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GitHubRateLimit {
     pub message: String,
     pub retry_after_seconds: Option<u64>,
     pub reset_epoch_seconds: Option<u64>,
     pub resource: Option<String>,
     pub remaining: Option<u64>,
+    pub limit: Option<u64>,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]

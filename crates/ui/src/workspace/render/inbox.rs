@@ -1,25 +1,165 @@
-use gpui::{Context, IntoElement, div, prelude::*, px, rgb, uniform_list};
-use gpui_component::{
-    Sizable,
-    button::{Button, ButtonVariants},
+use gpui::{
+    Anchor, AnyElement, App, Context, Div, Entity, IntoElement, KeyDownEvent, Stateful, div,
+    prelude::*, px, rgb, uniform_list,
 };
-use harbor_domain::RepoId;
+use gpui_component::{
+    Disableable, IconName, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+    input::Input,
+    popover::Popover,
+};
 
 use crate::{
     panels::render_pull_request_row,
-    workspace::{AppView, PullRequestInboxMode},
+    workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode, normalized_search_query},
 };
 
+use super::render_switcher_section_label;
+
 impl AppView {
+    fn pull_request_inbox_mode_count(&self, mode: PullRequestInboxMode) -> Option<usize> {
+        let repository = self.configured_repo.as_ref()?;
+
+        if mode == self.pull_request_inbox.mode {
+            return Some(self.pull_requests.len());
+        }
+
+        let key = PullRequestInboxCacheKey::new(repository.clone(), mode);
+        self.pull_request_inbox
+            .cache
+            .get(&key)
+            .map(|snapshot| snapshot.pull_request_count())
+    }
+
+    fn render_pull_request_inbox_search(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().clone();
+        let pull_request_query =
+            normalized_search_query(&self.pull_request_search_input.read(cx).value());
+        let pull_requests = self.filtered_switcher_pull_requests(cx);
+        let selected_pull_request = self.selected_pr;
+        let pull_request_selection = self
+            .pull_request_switcher_selection
+            .min(pull_requests.len().saturating_sub(1));
+        let pull_request_search_input = self.pull_request_search_input.clone();
+        let has_pull_request_query = !pull_request_query.is_empty();
+        let has_current_repository = self.current_repository().is_some();
+
+        Popover::new("pull-request-inbox-search-popover")
+            .appearance(false)
+            .anchor(Anchor::TopRight)
+            .open(self.pull_request_inbox_search_open)
+            .on_open_change({
+                let view = view.clone();
+                move |open, window, cx| {
+                    view.update(cx, |view, cx| {
+                        view.pull_request_inbox_search_open = *open;
+                        if *open {
+                            view.repository_switcher_open = false;
+                            view.file_filter_popover_open = false;
+                            view.status = "Pull request search opened".to_string();
+                            view.pull_request_search_input.update(cx, |input, cx| {
+                                input.set_value("", window, cx);
+                                input.focus(window, cx);
+                            });
+                            view.reset_pull_request_switcher_selection(cx);
+                        }
+                        cx.notify();
+                    });
+                }
+            })
+            .trigger(
+                Button::new("search-pull-request-inbox")
+                    .ghost()
+                    .small()
+                    .compact()
+                    .icon(IconName::Search)
+                    .tooltip("Search pull requests")
+                    .disabled(!has_current_repository),
+            )
+            .content(move |_, _window, popover_cx| {
+                let view = view.clone();
+                let popover = popover_cx.entity().clone();
+                let mut results = div()
+                    .id("pull-request-inbox-search-results")
+                    .max_h(px(408.))
+                    .overflow_y_scroll()
+                    .p_2()
+                    .child(render_switcher_section_label("results"));
+
+                if !has_current_repository {
+                    results = results.child(render_pull_request_inbox_search_empty_row(
+                        "select a repository before searching pull requests",
+                    ));
+                } else if pull_requests.is_empty() {
+                    let label = if has_pull_request_query {
+                        "no pull requests match search"
+                    } else {
+                        "no pull requests in this list"
+                    };
+                    results = results.child(render_pull_request_inbox_search_empty_row(label));
+                } else {
+                    for (row_index, (index, pull_request)) in pull_requests.iter().enumerate() {
+                        let current = *index == selected_pull_request;
+                        let highlighted = row_index == pull_request_selection;
+                        let number = pull_request.number;
+                        let title = pull_request.title.clone();
+                        let author = pull_request.author.clone();
+                        let view = view.clone();
+                        let popover = popover.clone();
+                        let index = *index;
+
+                        results = results.child(
+                            render_pull_request_inbox_search_row(
+                                number,
+                                title,
+                                author,
+                                current,
+                                highlighted,
+                            )
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |view, cx| {
+                                    view.select_pull_request(index, cx);
+                                    view.pull_request_inbox_search_open = false;
+                                    cx.notify();
+                                });
+                                popover.update(cx, |popover, cx| {
+                                    popover.dismiss(window, cx);
+                                });
+                            }),
+                        );
+                    }
+                }
+
+                div()
+                    .id("pull-request-inbox-search-menu")
+                    .on_key_down({
+                        let view = view.clone();
+                        move |event, _, cx| {
+                            handle_pull_request_inbox_search_key(event, &view, cx);
+                        }
+                    })
+                    .w(px(360.))
+                    .max_h(px(480.))
+                    .overflow_hidden()
+                    .border_1()
+                    .border_color(rgb(0x343b44))
+                    .bg(rgb(0x171b20))
+                    .shadow_lg()
+                    .child(
+                        div().p_2().border_b_1().border_color(rgb(0x242a31)).child(
+                            Input::new(&pull_request_search_input)
+                                .small()
+                                .cleanable(true),
+                        ),
+                    )
+                    .child(results)
+            })
+    }
+
     pub(super) fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let show_list =
             !self.is_loading_prs && self.load_error.is_none() && !self.pull_requests.is_empty();
         let current_mode = self.pull_request_inbox.mode;
-        let repository_label = self
-            .configured_repo
-            .as_ref()
-            .map(RepoId::full_name)
-            .unwrap_or_else(|| "choose a repository from the header".to_string());
         let empty_message = if self.configured_repo.is_some() {
             current_mode.empty_message()
         } else {
@@ -38,34 +178,53 @@ impl AppView {
             .child(
                 div()
                     .px_3()
-                    .py_2()
-                    .text_sm()
-                    .text_color(rgb(0xf1f5f9))
-                    .child("Pull request inbox")
+                    .pt_3()
+                    .pb_2()
+                    .border_b_1()
+                    .border_color(rgb(0x242a31))
                     .child(
                         div()
-                            .pt_1()
-                            .text_xs()
-                            .text_color(rgb(0x9aa4b2))
-                            .child(repository_label),
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .truncate()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(rgb(0xf1f5f9))
+                                    .child("Pull requests"),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(self.render_pull_request_inbox_search(cx))
+                                    .child(
+                                        Button::new("refresh-pull-request-inbox")
+                                            .ghost()
+                                            .small()
+                                            .compact()
+                                            .icon(IconName::Redo)
+                                            .tooltip("Refresh pull requests")
+                                            .loading(self.is_loading_prs)
+                                            .disabled(self.configured_repo.is_none())
+                                            .on_click(cx.listener(|view, _, _, cx| {
+                                                view.reload_pull_request_inbox(cx);
+                                            })),
+                                    ),
+                            ),
                     )
                     .child(div().pt_2().flex().items_center().gap_1().children(
                         PullRequestInboxMode::ALL.into_iter().map(|mode| {
                             let active = mode == current_mode;
-                            let button =
-                                Button::new(format!("pull-request-inbox-mode-{}", mode.key()))
-                                    .label(mode.label())
-                                    .small()
-                                    .compact();
-                            let button = if active {
-                                button.primary()
-                            } else {
-                                button.ghost()
-                            };
+                            let count = self.pull_request_inbox_mode_count(mode);
 
-                            button.on_click(cx.listener(move |view, _, _, cx| {
-                                view.select_pull_request_inbox_mode(mode, cx);
-                            }))
+                            render_pull_request_inbox_mode_tab(mode, active, count, cx)
                         }),
                     )),
             )
@@ -137,5 +296,143 @@ impl AppView {
                     .w_full(),
                 )
             })
+    }
+}
+
+fn render_pull_request_inbox_mode_tab(
+    mode: PullRequestInboxMode,
+    active: bool,
+    count: Option<usize>,
+    cx: &mut Context<AppView>,
+) -> AnyElement {
+    div()
+        .id(format!("pull-request-inbox-mode-{}", mode.key()))
+        .h(px(28.))
+        .min_w_0()
+        .flex()
+        .items_center()
+        .gap_1()
+        .rounded_xs()
+        .px_2()
+        .text_xs()
+        .font_medium()
+        .cursor_pointer()
+        .text_color(if active { rgb(0xf8fafc) } else { rgb(0x9aa4b2) })
+        .when(active, |element| {
+            element
+                .border_1()
+                .border_color(rgb(0x34465b))
+                .bg(rgb(0x243244))
+        })
+        .when(!active, |element| {
+            element.hover(|style| style.bg(rgb(0x202a35)))
+        })
+        .on_click(cx.listener(move |view, _, _, cx| {
+            view.select_pull_request_inbox_mode(mode, cx);
+        }))
+        .child(div().truncate().child(mode.label()))
+        .when_some(count, |element, count| {
+            element.child(
+                div()
+                    .min_w(px(16.))
+                    .h(px(18.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_xs()
+                    .px_1()
+                    .text_color(if active { rgb(0xcbd5e1) } else { rgb(0x7d8794) })
+                    .bg(if active { rgb(0x1b2837) } else { rgb(0x171b20) })
+                    .child(count.to_string()),
+            )
+        })
+        .into_any_element()
+}
+
+fn render_pull_request_inbox_search_empty_row(label: &'static str) -> impl IntoElement {
+    div()
+        .px_2()
+        .py_2()
+        .text_sm()
+        .text_color(rgb(0x7d8794))
+        .child(label)
+}
+
+fn render_pull_request_inbox_search_row(
+    number: u64,
+    title: String,
+    author: String,
+    current: bool,
+    highlighted: bool,
+) -> Stateful<Div> {
+    div()
+        .id(("pull-request-inbox-search-row", number))
+        .flex()
+        .flex_col()
+        .gap_1()
+        .px_2()
+        .py_2()
+        .text_sm()
+        .cursor_pointer()
+        .when(highlighted, |element| element.bg(rgb(0x263241)))
+        .when(current && !highlighted, |element| element.bg(rgb(0x202936)))
+        .hover(|element| element.bg(rgb(0x222a34)))
+        .child(
+            div()
+                .flex()
+                .min_w_0()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .flex_none()
+                        .font_medium()
+                        .text_color(rgb(0xe6e8eb))
+                        .child(format!("#{number}")),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(rgb(0xcbd5e1))
+                        .child(title),
+                ),
+        )
+        .child(
+            div()
+                .flex()
+                .min_w_0()
+                .items_center()
+                .gap_2()
+                .text_xs()
+                .text_color(rgb(0x7d8794))
+                .child("by")
+                .child(div().min_w_0().truncate().child(author)),
+        )
+}
+
+fn handle_pull_request_inbox_search_key(
+    event: &KeyDownEvent,
+    view: &Entity<AppView>,
+    cx: &mut App,
+) {
+    if event.keystroke.modifiers.modified() {
+        return;
+    }
+
+    match event.keystroke.key.as_str() {
+        "up" => {
+            cx.stop_propagation();
+            view.update(cx, |view, cx| {
+                view.move_pull_request_switcher_selection(-1, cx);
+            });
+        }
+        "down" => {
+            cx.stop_propagation();
+            view.update(cx, |view, cx| {
+                view.move_pull_request_switcher_selection(1, cx);
+            });
+        }
+        _ => {}
     }
 }
