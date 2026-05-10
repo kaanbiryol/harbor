@@ -26,20 +26,8 @@ use super::{
     DIFF_ROW_HEIGHT, REVIEW_COMPOSER_MAX_WIDTH, REVIEW_MARKER_WIDTH,
     inline_review_layout::review_comment_range_label, render_line_number,
 };
-#[cfg(test)]
-pub(crate) use avatars::{github_avatar_url_for_login, review_comment_avatar_url};
-#[cfg(test)]
-pub(crate) use comment_actions::review_comment_action_visibility;
 pub(super) use comments::ReviewCommentListRenderState;
 use comments::{ReviewCommentRenderState, render_review_comment_inline};
-#[cfg(test)]
-pub(crate) use comments::{review_comment_body_markdown, review_comment_ui_state};
-#[cfg(test)]
-pub(crate) use reactions::{
-    review_reaction_button_label, review_reaction_emoji, visible_review_reaction_contents,
-};
-#[cfg(test)]
-pub(crate) use threads::review_thread_ui_state;
 use threads::{
     ReviewThreadHeaderState, ReviewThreadReplyComposerState, render_review_thread_header,
     render_review_thread_reply_composer,

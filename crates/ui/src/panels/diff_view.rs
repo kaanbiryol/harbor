@@ -29,12 +29,6 @@ use crate::diff::ParsedDiff;
 use crate::workspace::{AppView, ReviewComposer};
 
 use file_section::render_diff_file_section_header;
-#[cfg(test)]
-pub(crate) use inline_reviews::{
-    github_avatar_url_for_login, review_comment_action_visibility, review_comment_avatar_url,
-    review_comment_body_markdown, review_comment_ui_state, review_reaction_button_label,
-    review_reaction_emoji, review_thread_ui_state, visible_review_reaction_contents,
-};
 pub(crate) use layout::{continuous_diff_file_row_index, continuous_diff_hunk_row_index};
 use layout::{continuous_diff_row_count, continuous_diff_section_for_row};
 use row_render::render_continuous_diff_rows;

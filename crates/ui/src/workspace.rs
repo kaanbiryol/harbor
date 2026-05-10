@@ -49,10 +49,6 @@ pub(crate) use changed_files::{
     ChangedFileTypeFilter, changed_file_status_label, changed_file_tree_rows,
     changed_file_type_filters,
 };
-#[cfg(test)]
-pub(crate) use changed_files::{
-    changed_file_matches_filters, changed_file_matches_query, changed_file_type_key,
-};
 use external_apps::ExternalAppAvailability;
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
@@ -64,25 +60,11 @@ use state::{
     DiffSelectionState, PullRequestDetailLoadingState, PullRequestInboxState, ReviewComposerState,
     WorkflowLogState,
 };
-#[cfg(test)]
-pub(crate) use switchers::{
-    next_switcher_index, pull_request_matches_query, repository_matches_query,
-    repository_switcher_accepted_repository,
-};
 pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 
 pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {
     tracing::warn!(%error, "{}", context);
 }
-
-#[cfg(test)]
-pub(crate) use commands::{OpenSelectedPullRequestBehavior, open_selected_pull_request_behavior};
-#[cfg(test)]
-pub(crate) use local_commands::{OpenTargetStatus, open_target_for_app};
-#[cfg(test)]
-pub(crate) use navigation_commands::github_file_url;
-#[cfg(test)]
-pub(crate) use render::header::open_with_app_disabled;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub(crate) enum PullRequestInboxMode {
@@ -827,5 +809,22 @@ impl AppView {
             }
         })
         .detach();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_pull_request_inbox_to_open_mode() {
+        assert_eq!(PullRequestInboxMode::default(), PullRequestInboxMode::Open);
+        assert_eq!(PullRequestInboxMode::Open.label(), "Open");
+        assert_eq!(PullRequestInboxMode::Closed.label(), "Closed");
+        assert_eq!(PullRequestInboxMode::NeedsReview.label(), "Needs review");
+        assert_eq!(
+            PullRequestInboxMode::Closed.empty_message(),
+            "No closed pull requests"
+        );
     }
 }

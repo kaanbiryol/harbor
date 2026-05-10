@@ -80,3 +80,47 @@ fn author_initial(author: &str) -> String {
         .map(|character| character.to_uppercase().to_string())
         .unwrap_or_else(|| "?".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_review_comment_avatar_urls() {
+        let mut comment = review_comment();
+
+        assert_eq!(
+            review_comment_avatar_url(&comment).as_deref(),
+            Some("https://github.com/octocat.png?size=48")
+        );
+
+        comment.author_avatar_url =
+            Some("https://avatars.githubusercontent.com/u/1?v=4".to_string());
+        assert_eq!(
+            review_comment_avatar_url(&comment).as_deref(),
+            Some("https://avatars.githubusercontent.com/u/1?v=4")
+        );
+
+        assert_eq!(github_avatar_url_for_login("ghost"), None);
+        assert_eq!(github_avatar_url_for_login("bad login"), None);
+    }
+
+    fn review_comment() -> ReviewComment {
+        ReviewComment {
+            id: "comment".to_string(),
+            author: "octocat".to_string(),
+            author_avatar_url: None,
+            body: "Looks good".to_string(),
+            created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
+                .expect("valid test timestamp")
+                .with_timezone(&chrono::Utc),
+            updated_at: None,
+            position: None,
+            viewer_did_author: false,
+            viewer_can_update: false,
+            viewer_can_delete: false,
+            viewer_can_react: true,
+            reactions: Vec::new(),
+        }
+    }
+}

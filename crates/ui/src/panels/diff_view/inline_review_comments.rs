@@ -319,3 +319,57 @@ fn review_comment_time_label(comment: &ReviewComment) -> String {
 
     label
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_inline_review_comment_ui_state() {
+        let mut comment = review_comment();
+        comment.viewer_can_update = true;
+
+        let state = review_comment_ui_state(&comment, Some("comment"), true, Some("other"));
+
+        assert!(state.can_update);
+        assert!(!state.can_delete);
+        assert!(state.show_actions);
+        assert!(state.active_edit);
+        assert!(state.edit_submitting);
+        assert!(!state.action_running);
+
+        let state = review_comment_ui_state(&comment, None, true, Some("comment"));
+
+        assert!(!state.active_edit);
+        assert!(!state.edit_submitting);
+        assert!(state.action_running);
+    }
+
+    #[test]
+    fn preserves_review_comment_markdown_body() {
+        assert_eq!(
+            review_comment_body_markdown("**bold**\n\n- list item"),
+            "**bold**\n\n- list item"
+        );
+        assert_eq!(review_comment_body_markdown(" \n\t "), "empty comment");
+    }
+
+    fn review_comment() -> ReviewComment {
+        ReviewComment {
+            id: "comment".to_string(),
+            author: "octocat".to_string(),
+            author_avatar_url: None,
+            body: "Looks good".to_string(),
+            created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
+                .expect("valid test timestamp")
+                .with_timezone(&chrono::Utc),
+            updated_at: None,
+            position: None,
+            viewer_did_author: false,
+            viewer_can_update: false,
+            viewer_can_delete: false,
+            viewer_can_react: true,
+            reactions: Vec::new(),
+        }
+    }
+}

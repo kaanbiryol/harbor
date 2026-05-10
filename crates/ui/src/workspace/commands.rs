@@ -132,3 +132,59 @@ pub(crate) fn open_selected_pull_request_behavior(
 
     OpenSelectedPullRequestBehavior::ShowDetails { number, refresh }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opens_selected_pull_request_details_without_selection() {
+        assert_eq!(
+            open_selected_pull_request_behavior(None, false, false, false, false),
+            OpenSelectedPullRequestBehavior::NoSelection
+        );
+    }
+
+    #[test]
+    fn opens_selected_pull_request_details_and_refreshes_when_empty() {
+        assert_eq!(
+            open_selected_pull_request_behavior(Some(7), false, false, false, false),
+            OpenSelectedPullRequestBehavior::ShowDetails {
+                number: 7,
+                refresh: true
+            }
+        );
+    }
+
+    #[test]
+    fn opens_selected_pull_request_details_without_duplicate_refresh() {
+        assert_eq!(
+            open_selected_pull_request_behavior(Some(7), true, false, false, false),
+            OpenSelectedPullRequestBehavior::ShowDetails {
+                number: 7,
+                refresh: false
+            }
+        );
+        assert_eq!(
+            open_selected_pull_request_behavior(Some(7), false, true, false, false),
+            OpenSelectedPullRequestBehavior::ShowDetails {
+                number: 7,
+                refresh: false
+            }
+        );
+        assert_eq!(
+            open_selected_pull_request_behavior(Some(7), false, false, true, false),
+            OpenSelectedPullRequestBehavior::ShowDetails {
+                number: 7,
+                refresh: false
+            }
+        );
+        assert_eq!(
+            open_selected_pull_request_behavior(Some(7), false, false, false, true),
+            OpenSelectedPullRequestBehavior::ShowDetails {
+                number: 7,
+                refresh: false
+            }
+        );
+    }
+}

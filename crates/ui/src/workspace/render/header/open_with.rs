@@ -94,3 +94,16 @@ impl AppView {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disables_open_with_apps_without_local_path() {
+        assert!(open_with_app_disabled(false, false, true));
+        assert!(open_with_app_disabled(true, true, true));
+        assert!(open_with_app_disabled(true, false, false));
+        assert!(!open_with_app_disabled(true, false, true));
+    }
+}

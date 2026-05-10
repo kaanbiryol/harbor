@@ -323,3 +323,41 @@ pub(crate) fn review_comment_count_label(comment_count: usize) -> String {
         format!("{comment_count} comments")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_inline_review_thread_reply_ui_state() {
+        let thread = review_thread(ReviewThreadState::Unresolved);
+        let state = review_thread_ui_state(&thread, Some("thread"), false, true, Some("thread"));
+
+        assert!(state.active_reply);
+        assert!(state.action_running);
+        assert!(state.reply_submitting);
+        assert!(state.reply_disabled);
+        assert!(state.reply_button_disabled);
+        assert!(!state.is_resolved);
+        assert!(state.can_toggle_resolution);
+
+        let outdated_thread = review_thread(ReviewThreadState::Outdated);
+        let state = review_thread_ui_state(&outdated_thread, Some("other"), true, true, None);
+
+        assert!(!state.active_reply);
+        assert!(!state.reply_submitting);
+        assert!(state.reply_disabled);
+        assert!(state.reply_button_disabled);
+        assert!(!state.can_toggle_resolution);
+    }
+
+    fn review_thread(state: ReviewThreadState) -> ReviewThread {
+        ReviewThread {
+            id: "thread".to_string(),
+            path: "src/app.rs".to_string(),
+            range: None,
+            state,
+            comments: Vec::new(),
+        }
+    }
+}

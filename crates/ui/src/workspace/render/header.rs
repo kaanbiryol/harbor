@@ -3,9 +3,6 @@ mod open_with;
 #[path = "header/switchers.rs"]
 mod switchers;
 
-#[cfg(test)]
-pub(crate) use open_with::open_with_app_disabled;
-
 use gpui::{Context, IntoElement, div, prelude::*, rgb};
 use gpui_component::{
     IconName, Sizable, TitleBar,

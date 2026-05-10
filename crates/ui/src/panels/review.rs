@@ -445,6 +445,18 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn counts_review_threads_by_state() {
+        let threads = vec![
+            review_thread_with_state(ReviewThreadState::Unresolved),
+            review_thread_with_state(ReviewThreadState::Resolved),
+            review_thread_with_state(ReviewThreadState::Outdated),
+            review_thread_with_state(ReviewThreadState::Unresolved),
+        ];
+
+        assert_eq!(review_thread_counts(&threads), (2, 1, 1));
+    }
+
     #[gpui::test]
     async fn review_panel_reply_button_opens_and_cancel_clears_reply_mode(cx: &mut TestAppContext) {
         let (view_entity, cx) = init_visual_review_panel_test(cx);
@@ -578,11 +590,15 @@ mod tests {
     }
 
     fn review_thread() -> ReviewThread {
+        review_thread_with_state(ReviewThreadState::Unresolved)
+    }
+
+    fn review_thread_with_state(state: ReviewThreadState) -> ReviewThread {
         ReviewThread {
             id: "thread-1".to_string(),
             path: "src/lib.rs".to_string(),
             range: None,
-            state: ReviewThreadState::Unresolved,
+            state,
             comments: vec![ReviewComment {
                 id: "comment-1".to_string(),
                 author: "maria".to_string(),

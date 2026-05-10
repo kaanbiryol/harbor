@@ -396,3 +396,34 @@ fn open_with_status(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use harbor_domain::{DiffFile, FileStatus};
+    use harbor_git::{ExternalApp, OpenTarget};
+
+    use super::*;
+
+    #[test]
+    fn opens_worktree_root_for_removed_local_files() {
+        let root = std::path::Path::new("/tmp/harbor-worktree");
+        let file = diff_file("src/deleted.rs", FileStatus::Removed);
+
+        let (target, status) = open_target_for_app(ExternalApp::Zed, root, Some(&file));
+
+        assert_eq!(target, OpenTarget::Directory(root.to_path_buf()));
+        assert_eq!(status, OpenTargetStatus::RemovedFile);
+    }
+
+    fn diff_file(path: &str, status: FileStatus) -> DiffFile {
+        DiffFile {
+            path: path.to_string(),
+            previous_path: None,
+            status,
+            additions: 1,
+            deletions: 0,
+            changes: 1,
+            patch: Some("@@ -1 +1 @@".to_string()),
+        }
+    }
+}

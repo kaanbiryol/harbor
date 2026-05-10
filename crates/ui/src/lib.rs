@@ -6,6 +6,3 @@ mod workspace;
 
 pub use actions::bind_keys;
 pub use workspace::AppView;
-
-#[cfg(test)]
-mod tests;

@@ -226,3 +226,123 @@ pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
         Some(RepoId::new(owner, name))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId};
+
+    use super::*;
+
+    #[test]
+    fn parses_owner_and_repo() {
+        let repo = parse_repo_id("acme/app").unwrap();
+
+        assert_eq!(repo.owner, "acme");
+        assert_eq!(repo.name, "app");
+
+        let repo = parse_repo_id("  Acme/Mobile-App  ").unwrap();
+
+        assert_eq!(repo.owner, "Acme");
+        assert_eq!(repo.name, "Mobile-App");
+    }
+
+    #[test]
+    fn rejects_invalid_repo_values() {
+        assert!(parse_repo_id("").is_none());
+        assert!(parse_repo_id("acme").is_none());
+        assert!(parse_repo_id("/app").is_none());
+        assert!(parse_repo_id("acme/").is_none());
+        assert!(parse_repo_id("acme/app/extra").is_none());
+        assert!(parse_repo_id("acme /app").is_none());
+        assert!(parse_repo_id("acme/app name").is_none());
+    }
+
+    #[test]
+    fn normalizes_switcher_search_queries() {
+        assert_eq!(normalized_search_query("  Acme/App  "), "acme/app");
+    }
+
+    #[test]
+    fn matches_repositories_for_switcher_search() {
+        let repository = RepoId::new("Acme", "Mobile-App");
+
+        assert!(repository_matches_query(&repository, ""));
+        assert!(repository_matches_query(&repository, "mobile"));
+        assert!(repository_matches_query(&repository, "acme/mobile"));
+        assert!(!repository_matches_query(&repository, "backend"));
+    }
+
+    #[test]
+    fn repository_switcher_accepts_selected_existing_repository_first() {
+        let repositories = vec![RepoId::new("acme", "app"), RepoId::new("octo", "tools")];
+
+        assert_eq!(
+            repository_switcher_accepted_repository(&repositories, 1, "typed/repo"),
+            Some(RepoId::new("octo", "tools"))
+        );
+    }
+
+    #[test]
+    fn repository_switcher_accepts_typed_repository_without_matches() {
+        assert_eq!(
+            repository_switcher_accepted_repository(&[], 0, "  typed/repo  "),
+            Some(RepoId::new("typed", "repo"))
+        );
+    }
+
+    #[test]
+    fn repository_switcher_rejects_invalid_typed_repository_without_matches() {
+        assert_eq!(
+            repository_switcher_accepted_repository(&[], 0, "typed"),
+            None
+        );
+    }
+
+    #[test]
+    fn matches_pull_requests_for_switcher_search() {
+        let pull_request = pull_request();
+
+        assert!(pull_request_matches_query(&pull_request, ""));
+        assert!(pull_request_matches_query(&pull_request, "feature"));
+        assert!(pull_request_matches_query(&pull_request, "7"));
+        assert!(pull_request_matches_query(&pull_request, "octo"));
+        assert!(!pull_request_matches_query(&pull_request, "backend"));
+    }
+
+    #[test]
+    fn wraps_switcher_selection_indexes() {
+        assert_eq!(next_switcher_index(0, 0, 1), 0);
+        assert_eq!(next_switcher_index(0, 3, 1), 1);
+        assert_eq!(next_switcher_index(2, 3, 1), 0);
+        assert_eq!(next_switcher_index(0, 3, -1), 2);
+        assert_eq!(next_switcher_index(10, 3, 1), 0);
+    }
+
+    fn pull_request() -> PullRequest {
+        PullRequest {
+            repo: RepoId::new("acme", "app"),
+            node_id: "pr-node".to_string(),
+            number: 7,
+            title: "Add feature".to_string(),
+            body: None,
+            author: "octocat".to_string(),
+            url: "https://github.com/acme/app/pull/7".to_string(),
+            state: PullRequestState::Open,
+            is_draft: false,
+            head_ref: "feature".to_string(),
+            base_ref: "main".to_string(),
+            head_sha: "abc123".to_string(),
+            review_decision: None,
+            merge_state: Some(MergeState::Clean),
+            labels: Vec::new(),
+            checks_summary: ChecksSummary {
+                total: 1,
+                passed: 1,
+                failed: 0,
+                pending: 0,
+                skipped: 0,
+            },
+            unresolved_threads: 0,
+        }
+    }
+}
