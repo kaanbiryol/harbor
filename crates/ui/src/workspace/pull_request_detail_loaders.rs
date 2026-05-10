@@ -113,8 +113,7 @@ impl AppView {
         }
 
         match self.active_tab {
-            PanelTab::Diff => {}
-            PanelTab::Review => {
+            PanelTab::Diff | PanelTab::Review => {
                 if !self.detail_loaded.reviews && !self.detail_loading.reviews {
                     self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
                 }

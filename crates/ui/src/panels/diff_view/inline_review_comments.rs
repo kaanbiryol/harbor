@@ -35,7 +35,7 @@ pub(in crate::panels::diff_view) struct ReviewCommentListRenderState<'a> {
 
 pub(super) struct ReviewCommentRenderState<'a> {
     comment: &'a ReviewComment,
-    separated: bool,
+    is_reply: bool,
     thread_resolved: bool,
     ui_state: ReviewCommentUiState,
     review_comment_edit_input: Entity<InputState>,
@@ -60,7 +60,7 @@ pub(crate) struct ReviewCommentUiState {
 impl<'a> ReviewCommentRenderState<'a> {
     pub(super) fn new(
         comment: &'a ReviewComment,
-        separated: bool,
+        is_reply: bool,
         thread_resolved: bool,
         list_state: &ReviewCommentListRenderState<'a>,
     ) -> Self {
@@ -85,7 +85,7 @@ impl<'a> ReviewCommentRenderState<'a> {
 
         Self {
             comment,
-            separated,
+            is_reply,
             thread_resolved,
             ui_state,
             review_comment_edit_input: list_state.review_comment_edit_input.clone(),
@@ -102,7 +102,7 @@ impl<'a> ReviewCommentRenderState<'a> {
 pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) -> AnyElement {
     let ReviewCommentRenderState {
         comment,
-        separated,
+        is_reply,
         thread_resolved,
         ui_state,
         review_comment_edit_input,
@@ -130,7 +130,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
     } else {
         rgb(0xcbd5e1)
     };
-    let separator_color = if thread_resolved {
+    let reply_rail_color = if thread_resolved {
         rgb(0x213040)
     } else {
         rgb(0x263241)
@@ -138,8 +138,13 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
 
     div()
         .pt_2()
-        .when(separated, |element| {
-            element.mt_2().border_t_1().border_color(separator_color)
+        .when(is_reply, |element| {
+            element
+                .mt_1()
+                .ml(px(28.0))
+                .border_l_1()
+                .border_color(reply_rail_color)
+                .pl_2()
         })
         .flex()
         .items_start()

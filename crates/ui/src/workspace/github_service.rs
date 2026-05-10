@@ -894,17 +894,24 @@ mod tests {
             vec![
                 "list_repository_pull_requests",
                 "get_pull_request",
-                "list_pull_request_files"
+                "list_pull_request_files",
+                "current_user",
+                "list_pull_request_reviews",
+                "list_review_threads"
             ]
         );
     }
 
     #[gpui::test]
-    async fn defers_panel_specific_pull_request_fetches_until_panel_opens(cx: &mut TestAppContext) {
+    async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestAppContext) {
         let api = Arc::new(FakeGitHubApi::default());
         let pull_request = pull_request();
+        let thread = review_thread(ReviewThreadState::Unresolved);
         api.push_pull_request_detail(Ok(pull_request.clone()));
         api.push_files(Ok(vec![test_diff_file()]));
+        api.push_current_user(Ok("octocat".to_string()));
+        api.push_reviews(Ok(Vec::new()));
+        api.push_review_threads(Ok(vec![thread.clone()]));
         api.push_check_runs(Ok(Vec::new()));
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -917,8 +924,17 @@ mod tests {
 
         assert_eq!(
             api.calls(),
-            vec!["get_pull_request", "list_pull_request_files"]
+            vec![
+                "get_pull_request",
+                "list_pull_request_files",
+                "current_user",
+                "list_pull_request_reviews",
+                "list_review_threads"
+            ]
         );
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(view.review_threads, vec![thread]);
+        });
 
         view_entity.update(cx, |view, cx| {
             view.select_panel_tab(PanelTab::Checks, cx);
@@ -930,6 +946,9 @@ mod tests {
             vec![
                 "get_pull_request",
                 "list_pull_request_files",
+                "current_user",
+                "list_pull_request_reviews",
+                "list_review_threads",
                 "list_check_runs"
             ]
         );
@@ -945,6 +964,9 @@ mod tests {
             vec![
                 "get_pull_request",
                 "list_pull_request_files",
+                "current_user",
+                "list_pull_request_reviews",
+                "list_review_threads",
                 "list_check_runs"
             ]
         );
