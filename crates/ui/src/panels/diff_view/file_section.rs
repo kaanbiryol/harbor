@@ -166,10 +166,6 @@ pub(super) fn render_diff_file_section_header(
         .into_any_element()
 }
 
-pub(super) fn render_diff_file_section_header_spacer() -> impl IntoElement {
-    div().h(px(DIFF_ROW_HEIGHT)).w_full()
-}
-
 pub(super) fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {
     div()
         .id(format!("diff-unavailable-{row_index}"))

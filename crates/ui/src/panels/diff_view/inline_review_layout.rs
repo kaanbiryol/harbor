@@ -1,42 +1,9 @@
-use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide, ReviewThread};
+use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide};
 
 use crate::{
     diff::{DiffLine, DiffLineKind},
-    diff_reviews::review_thread_inline_rows,
     workspace::ReviewLineTarget,
 };
-
-use super::{
-    REVIEW_COMMENT_EDIT_ROWS, REVIEW_COMPOSER_ROWS, REVIEW_COMPOSER_ROWS_WITH_ERROR,
-    REVIEW_THREAD_REPLY_ROWS,
-};
-
-pub(super) fn review_thread_inline_rows_with_controls(
-    thread: &ReviewThread,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
-) -> usize {
-    review_thread_inline_rows(thread)
-        + usize::from(active_review_thread_reply == Some(thread.id.as_str()))
-            * REVIEW_THREAD_REPLY_ROWS
-        + active_review_comment_edit
-            .and_then(|comment_id| {
-                thread
-                    .comments
-                    .iter()
-                    .any(|comment| comment.id == comment_id)
-                    .then_some(REVIEW_COMMENT_EDIT_ROWS)
-            })
-            .unwrap_or(0)
-}
-
-pub(super) fn review_composer_row_count(error: Option<&str>) -> usize {
-    if error.is_some() {
-        REVIEW_COMPOSER_ROWS_WITH_ERROR
-    } else {
-        REVIEW_COMPOSER_ROWS
-    }
-}
 
 pub(super) fn review_line_target_for_line(
     file: &DiffFile,
@@ -104,14 +71,26 @@ pub(super) fn review_comment_range_matches_file(
 
 pub(super) fn review_comment_range_label(range: &ReviewCommentRange) -> String {
     let side = match range.side {
-        ReviewSide::Left => "left",
-        ReviewSide::Right => "right",
+        ReviewSide::Left => "old",
+        ReviewSide::Right => "new",
     };
 
     if let Some(start_line) = range.start_line {
-        format!("{side} lines {start_line}-{}", range.line)
+        format!("{side} lines {start_line}-{} in {}", range.line, range.path)
     } else {
-        format!("{side} line {}", range.line)
+        format!("{side} line {} in {}", range.line, range.path)
+    }
+}
+
+pub(super) fn review_diff_line_anchor_label(file: &DiffFile, line: &DiffLine) -> Option<String> {
+    match line.kind {
+        DiffLineKind::Removed => line
+            .old_line
+            .map(|line_number| format!("old line {line_number} in {}", file.path)),
+        DiffLineKind::Added | DiffLineKind::Context => line
+            .new_line
+            .map(|line_number| format!("new line {line_number} in {}", file.path)),
+        DiffLineKind::Metadata => None,
     }
 }
 
@@ -121,12 +100,9 @@ fn path_matches_file(file: &DiffFile, path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{FileStatus, ReviewComment, ReviewSide, ReviewThreadState};
+    use harbor_domain::{FileStatus, ReviewSide};
 
-    use crate::{
-        diff::parse_unified_diff, diff_reviews::review_thread_inline_rows,
-        workspace::review_range_from_targets,
-    };
+    use crate::{diff::parse_unified_diff, workspace::review_range_from_targets};
 
     use super::*;
 
@@ -157,16 +133,6 @@ mod tests {
     }
 
     #[test]
-    fn expands_review_thread_row_for_active_reply() {
-        let thread = test_review_thread("thread-1", "comment-1");
-
-        assert_eq!(
-            review_thread_inline_rows_with_controls(&thread, Some("thread-1"), None),
-            review_thread_inline_rows(&thread) + REVIEW_THREAD_REPLY_ROWS
-        );
-    }
-
-    #[test]
     fn builds_multiline_right_side_review_range() {
         let file = test_file("src/lib.rs");
         let diff = parse_unified_diff("@@ -1 +1,3 @@\n context\n+added\n+again\n");
@@ -182,6 +148,22 @@ mod tests {
         assert_eq!(range.start_line, Some(2));
         assert_eq!(range.start_side, Some(ReviewSide::Right));
         assert_eq!(range.line, 3);
+    }
+
+    #[test]
+    fn labels_review_comment_anchor_with_path_and_diff_side() {
+        let range = ReviewCommentRange {
+            path: "src/lib.rs".to_string(),
+            line: 42,
+            side: ReviewSide::Right,
+            start_line: Some(40),
+            start_side: Some(ReviewSide::Right),
+        };
+
+        assert_eq!(
+            review_comment_range_label(&range),
+            "new lines 40-42 in src/lib.rs"
+        );
     }
 
     #[test]
@@ -208,31 +190,6 @@ mod tests {
             deletions: 1,
             changes: 2,
             patch: None,
-        }
-    }
-
-    fn test_review_thread(thread_id: &str, comment_id: &str) -> ReviewThread {
-        ReviewThread {
-            id: thread_id.to_string(),
-            path: "src/lib.rs".to_string(),
-            range: None,
-            state: ReviewThreadState::Unresolved,
-            comments: vec![ReviewComment {
-                id: comment_id.to_string(),
-                author: "maria".to_string(),
-                author_avatar_url: None,
-                body: "Please check this line.".to_string(),
-                created_at: chrono::DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
-                    .expect("valid test timestamp")
-                    .with_timezone(&chrono::Utc),
-                updated_at: None,
-                position: None,
-                viewer_did_author: false,
-                viewer_can_update: false,
-                viewer_can_delete: false,
-                viewer_can_react: true,
-                reactions: Vec::new(),
-            }],
         }
     }
 }

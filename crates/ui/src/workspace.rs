@@ -28,8 +28,8 @@ use std::{
 };
 
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
-    UniformListScrollHandle, Window,
+    App, AppContext, Context, Entity, FocusHandle, ListAlignment, ListOffset, ListState,
+    ScrollStrategy, Subscription, Task, UniformListScrollHandle, Window, px,
 };
 use gpui_component::{ActiveTheme, input::InputState};
 use harbor_domain::{
@@ -41,7 +41,8 @@ use harbor_storage::SqliteStore;
 use crate::actions::PanelTab;
 use crate::diff::{ParsedDiff, parse_files_with_syntax};
 use crate::panels::{
-    ContinuousDiffLayoutInput, continuous_diff_file_row_index, workflow_run_failed,
+    ContinuousDiffLayoutInput, DiffListItem, continuous_diff_file_item_index,
+    continuous_diff_items, sync_diff_list_state, workflow_run_failed,
 };
 
 pub(crate) use cache::{
@@ -71,6 +72,8 @@ pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {
     tracing::warn!(%error, "{}", context);
 }
+
+const DIFF_LIST_OVERDRAW: f32 = 240.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub(crate) enum PullRequestInboxMode {
@@ -138,7 +141,8 @@ pub struct AppView {
     external_app_availability_task: Option<Task<()>>,
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
-    diff_list_scroll: UniformListScrollHandle,
+    diff_list_state: ListState,
+    diff_list_items: Vec<DiffListItem>,
     review_list_scroll: UniformListScrollHandle,
     selected_pr: usize,
     diff_selection: DiffSelectionState,
@@ -342,7 +346,8 @@ impl AppView {
             external_app_availability_task: None,
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
-            diff_list_scroll: UniformListScrollHandle::new(),
+            diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
+            diff_list_items: Vec::new(),
             review_list_scroll: UniformListScrollHandle::new(),
             selected_pr: 0,
             diff_selection: DiffSelectionState::default(),
@@ -507,10 +512,10 @@ impl AppView {
             .position(|row| matches!(row, ChangedFileTreeRow::File(file_row) if file_row.file_index == file_index))
     }
 
-    fn diff_row_index_for_file(&self, file_index: usize, cx: &App) -> Option<usize> {
+    fn diff_item_index_for_file(&self, file_index: usize, cx: &App) -> Option<usize> {
         let visible_file_indices = self.visible_file_indices(cx);
 
-        continuous_diff_file_row_index(
+        continuous_diff_file_item_index(
             ContinuousDiffLayoutInput {
                 files: &self.files,
                 diffs: &self.diffs,
@@ -518,18 +523,33 @@ impl AppView {
                 reviewed_file_paths: &self.reviewed_file_paths,
                 review_threads: &self.review_threads,
                 review_composer: self.review_composer_state.composer.as_ref(),
-                review_comment_error: self.review_comment_error.as_deref(),
-                active_review_thread_reply: self
-                    .review_composer_state
-                    .thread_reply_thread_id
-                    .as_deref(),
-                active_review_comment_edit: self
-                    .review_composer_state
-                    .comment_edit_comment_id
-                    .as_deref(),
             },
             file_index,
         )
+    }
+
+    fn sync_diff_list_items(&mut self, cx: &App) {
+        let visible_file_indices = self.visible_file_indices(cx);
+        let next_items = continuous_diff_items(ContinuousDiffLayoutInput {
+            files: &self.files,
+            diffs: &self.diffs,
+            visible_file_indices: &visible_file_indices,
+            reviewed_file_paths: &self.reviewed_file_paths,
+            review_threads: &self.review_threads,
+            review_composer: self.review_composer_state.composer.as_ref(),
+        });
+        sync_diff_list_state(&self.diff_list_state, &mut self.diff_list_items, next_items);
+    }
+
+    pub(super) fn scroll_diff_list_to_item(&mut self, item_index: usize) {
+        self.diff_list_state.scroll_to(ListOffset {
+            item_ix: item_index,
+            offset_in_item: px(0.0),
+        });
+    }
+
+    pub(super) fn reset_diff_list_scroll(&mut self) {
+        self.scroll_diff_list_to_item(0);
     }
 
     fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
@@ -541,15 +561,15 @@ impl AppView {
         if let Some(file_index) = visible_files.first().copied() {
             self.select_diff_file_index(file_index);
             self.clear_review_composer_state();
+            self.sync_diff_list_items(cx);
             if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
                 self.file_list_scroll
                     .scroll_to_item(row_index, ScrollStrategy::Center);
             }
-            if let Some(row_index) = self.diff_row_index_for_file(file_index, cx) {
-                self.diff_list_scroll
-                    .scroll_to_item(row_index, ScrollStrategy::Top);
+            if let Some(item_index) = self.diff_item_index_for_file(file_index, cx) {
+                self.scroll_diff_list_to_item(item_index);
             } else {
-                self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                self.reset_diff_list_scroll();
             }
         }
     }
@@ -611,7 +631,7 @@ impl AppView {
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.reset_diff_list_scroll();
         self.review_list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
         self.status = format!("Selected {}", self.selected_pr_label());
@@ -650,13 +670,13 @@ impl AppView {
             self.select_diff_file_index(index);
             self.active_tab = PanelTab::Diff;
             self.clear_review_composer_state();
+            self.sync_diff_list_items(cx);
             if let Some(row_index) = self.file_tree_row_index_for_file(index, cx) {
                 self.file_list_scroll
                     .scroll_to_item(row_index, ScrollStrategy::Center);
             }
-            if let Some(row_index) = self.diff_row_index_for_file(index, cx) {
-                self.diff_list_scroll
-                    .scroll_to_item(row_index, ScrollStrategy::Top);
+            if let Some(item_index) = self.diff_item_index_for_file(index, cx) {
+                self.scroll_diff_list_to_item(item_index);
             }
             self.status = format!("Selected {path}");
         }

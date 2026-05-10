@@ -17,10 +17,7 @@ use gpui_component::{
 };
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
-use crate::{
-    diff_reviews::review_thread_inline_rows,
-    workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError},
-};
+use crate::workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError};
 
 use super::{
     DIFF_ROW_HEIGHT, REVIEW_COMPOSER_MAX_WIDTH, REVIEW_MARKER_WIDTH,
@@ -40,7 +37,6 @@ pub(super) struct ReviewComposerRenderState {
     pub(super) body_empty: bool,
     pub(super) is_submitting: bool,
     pub(super) error: Option<String>,
-    pub(super) row_count: usize,
     pub(super) line_number_width: f32,
     pub(super) review_marker_width: f32,
     pub(super) view_entity: Entity<AppView>,
@@ -48,6 +44,7 @@ pub(super) struct ReviewComposerRenderState {
 
 pub(super) struct ReviewThreadRenderState<'a> {
     pub(super) thread: &'a ReviewThread,
+    pub(super) anchor_label: Option<String>,
     pub(super) line_number_width: f32,
     pub(super) active_review_thread_reply: Option<&'a str>,
     pub(super) review_thread_reply_input: Entity<InputState>,
@@ -68,17 +65,15 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
         body_empty,
         is_submitting,
         error,
-        row_count,
         line_number_width,
         review_marker_width,
         view_entity,
     } = state;
     let target_label = review_comment_range_label(&composer.range);
     let submit_disabled = body_empty || is_submitting;
-    let height = row_count as f32 * DIFF_ROW_HEIGHT;
 
     div()
-        .h(px(height))
+        .min_h(px(DIFF_ROW_HEIGHT))
         .w_full()
         .flex()
         .items_start()
@@ -230,15 +225,12 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
         )
 }
 
-pub(super) fn render_review_composer_spacer() -> impl IntoElement {
-    div().h(px(DIFF_ROW_HEIGHT)).w_full()
-}
-
 pub(super) fn render_review_thread_inline(
     state: ReviewThreadRenderState<'_>,
 ) -> impl IntoElement + use<> {
     let ReviewThreadRenderState {
         thread,
+        anchor_label,
         line_number_width,
         active_review_thread_reply,
         review_thread_reply_input,
@@ -257,7 +249,6 @@ pub(super) fn render_review_thread_inline(
         is_submitting_reply,
         action_thread_id,
     );
-    let height = review_thread_inline_rows(thread) as f32 * DIFF_ROW_HEIGHT;
     let is_resolved = ui_state.is_resolved;
     let card_border_color = if is_resolved {
         rgb(0x223142)
@@ -278,14 +269,13 @@ pub(super) fn render_review_thread_inline(
     let thread_id = thread.id.clone();
 
     div()
-        .h(px(height))
+        .min_h(px(DIFF_ROW_HEIGHT))
         .w_full()
         .flex()
         .items_start()
         .bg(rgb(0x0c0f12))
         .text_color(rgb(0xcbd5e1))
         .font_family(".SystemUIFont")
-        .whitespace_nowrap()
         .child(render_line_number(None, line_number_width))
         .child(render_line_number(None, line_number_width))
         .child(render_review_marker(
@@ -313,6 +303,7 @@ pub(super) fn render_review_thread_inline(
                         .child(render_review_thread_header(ReviewThreadHeaderState {
                             thread_id: thread_id.clone(),
                             thread_state: thread.state,
+                            anchor_label,
                             comment_count: thread.comments.len(),
                             active_reply: ui_state.active_reply,
                             reply_button_disabled: ui_state.reply_button_disabled,
@@ -394,6 +385,8 @@ pub(super) fn render_review_marker(
         .w(px(width))
         .flex_none()
         .text_center()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_color(color)
         .child(marker)
 }
@@ -403,6 +396,8 @@ fn render_review_menu_marker(width: f32) -> impl IntoElement {
         .w(px(width))
         .flex_none()
         .text_center()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_color(rgb(0x93c5fd))
         .child("")
 }
@@ -591,6 +586,7 @@ mod tests {
 
             render_review_thread_inline(ReviewThreadRenderState {
                 thread: &self.thread,
+                anchor_label: Some("new line 12 in src/lib.rs".to_string()),
                 line_number_width: 44.0,
                 active_review_thread_reply: active_reply_thread_id,
                 review_thread_reply_input: render_state.reply_input.clone(),

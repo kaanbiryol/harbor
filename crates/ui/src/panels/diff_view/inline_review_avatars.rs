@@ -1,55 +1,18 @@
-use gpui::{AnyElement, IntoElement, div, img, prelude::*, px, rgb};
-use gpui_component::StyledExt;
+use gpui::{IntoElement, div, prelude::*, px};
+use gpui_component::{Sizable, avatar::Avatar};
 use harbor_domain::ReviewComment;
 
 pub(super) fn render_review_comment_avatar(comment: &ReviewComment) -> impl IntoElement {
-    let initial = author_initial(&comment.author);
-    let avatar = div()
-        .mt(px(1.0))
-        .w(px(20.0))
-        .h(px(20.0))
-        .flex_none()
-        .rounded_xs()
-        .border_1()
-        .border_color(rgb(0x334155))
-        .bg(rgb(0x1d2734))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_xs()
-        .font_medium()
-        .text_color(rgb(0xcbd5e1));
-
-    if let Some(avatar_url) = review_comment_avatar_url(comment) {
-        let loading_initial = initial.clone();
-        let fallback_initial = initial.clone();
-        avatar
-            .overflow_hidden()
-            .child(
-                img(avatar_url)
-                    .w(px(20.0))
-                    .h(px(20.0))
-                    .with_loading(move || render_review_comment_avatar_initial(&loading_initial))
-                    .with_fallback(move || render_review_comment_avatar_initial(&fallback_initial)),
-            )
-            .into_any_element()
+    let avatar = Avatar::new()
+        .name(comment.author.clone())
+        .with_size(px(20.0));
+    let avatar = if let Some(avatar_url) = review_comment_avatar_url(comment) {
+        avatar.src(avatar_url)
     } else {
-        avatar.child(initial).into_any_element()
-    }
-}
+        avatar
+    };
 
-fn render_review_comment_avatar_initial(initial: &str) -> AnyElement {
-    div()
-        .w(px(20.0))
-        .h(px(20.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_xs()
-        .font_medium()
-        .text_color(rgb(0xcbd5e1))
-        .child(initial.to_string())
-        .into_any_element()
+    div().mt(px(1.0)).flex_none().child(avatar)
 }
 
 pub(crate) fn review_comment_avatar_url(comment: &ReviewComment) -> Option<String> {
@@ -71,14 +34,6 @@ pub(crate) fn github_avatar_url_for_login(login: &str) -> Option<String> {
     } else {
         Some(format!("https://github.com/{login}.png?size=48"))
     }
-}
-
-fn author_initial(author: &str) -> String {
-    author
-        .chars()
-        .find(|character| character.is_alphanumeric())
-        .map(|character| character.to_uppercase().to_string())
-        .unwrap_or_else(|| "?".to_string())
 }
 
 #[cfg(test)]

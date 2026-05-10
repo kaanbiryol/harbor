@@ -1,5 +1,5 @@
 use gpui::{Entity, IntoElement, div, prelude::*, px, rgb};
-use gpui_component::input::InputState;
+use gpui_component::{StyledExt, input::InputState};
 use harbor_domain::ReviewThreadState;
 
 use crate::{
@@ -24,6 +24,7 @@ use super::super::DIFF_ROW_HEIGHT;
 pub(super) struct ReviewThreadHeaderState {
     pub(super) thread_id: String,
     pub(super) thread_state: ReviewThreadState,
+    pub(super) anchor_label: Option<String>,
     pub(super) comment_count: usize,
     pub(super) active_reply: bool,
     pub(super) reply_button_disabled: bool,
@@ -45,6 +46,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
     let ReviewThreadHeaderState {
         thread_id,
         thread_state,
+        anchor_label,
         comment_count,
         active_reply,
         reply_button_disabled,
@@ -86,8 +88,42 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
                 .items_center()
                 .gap_2()
                 .child(render_review_thread_status_pill(label, color))
+                .when_some(anchor_label, |element, anchor_label| {
+                    element.child(
+                        div()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(if is_resolved {
+                                        rgb(0x8aa0b8)
+                                    } else {
+                                        rgb(0xdbeafe)
+                                    })
+                                    .child("Comment on"),
+                            )
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_xs()
+                                    .text_color(if is_resolved {
+                                        rgb(0x697789)
+                                    } else {
+                                        rgb(0x93c5fd)
+                                    })
+                                    .child(anchor_label),
+                            ),
+                    )
+                })
                 .child(
                     div()
+                        .flex_none()
                         .text_xs()
                         .text_color(comment_count_color)
                         .child(review_comment_count_label(comment_count)),

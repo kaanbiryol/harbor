@@ -75,7 +75,7 @@ impl AppView {
 
     pub(super) fn reset_detail_scrolls(&mut self) {
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.reset_diff_list_scroll();
         self.review_list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
         self.log_state

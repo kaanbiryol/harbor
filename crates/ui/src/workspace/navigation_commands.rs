@@ -2,7 +2,7 @@ use gpui::{App, ClipboardItem, Context, ScrollStrategy, Window};
 use harbor_domain::{DiffFile, FileStatus, PullRequest};
 
 use crate::actions::*;
-use crate::panels::{ContinuousDiffLayoutInput, continuous_diff_hunk_row_index};
+use crate::panels::{ContinuousDiffLayoutInput, continuous_diff_hunk_item_index};
 use crate::workspace::AppView;
 
 impl AppView {
@@ -197,6 +197,7 @@ impl AppView {
         self.diff_selection.file_index = file_index;
         self.diff_selection.hunk_index = hunk_index;
         self.active_tab = PanelTab::Diff;
+        self.sync_diff_list_items(cx);
 
         if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
             self.file_list_scroll
@@ -204,7 +205,7 @@ impl AppView {
         }
 
         let visible_file_indices = self.visible_file_indices(cx);
-        if let Some(row_index) = continuous_diff_hunk_row_index(
+        if let Some(item_index) = continuous_diff_hunk_item_index(
             ContinuousDiffLayoutInput {
                 files: &self.files,
                 diffs: &self.diffs,
@@ -212,21 +213,11 @@ impl AppView {
                 reviewed_file_paths: &self.reviewed_file_paths,
                 review_threads: &self.review_threads,
                 review_composer: self.review_composer_state.composer.as_ref(),
-                review_comment_error: self.review_comment_error.as_deref(),
-                active_review_thread_reply: self
-                    .review_composer_state
-                    .thread_reply_thread_id
-                    .as_deref(),
-                active_review_comment_edit: self
-                    .review_composer_state
-                    .comment_edit_comment_id
-                    .as_deref(),
             },
             file_index,
             hunk_index,
         ) {
-            self.diff_list_scroll
-                .scroll_to_item(row_index, ScrollStrategy::Center);
+            self.scroll_diff_list_to_item(item_index);
         }
 
         let path = self

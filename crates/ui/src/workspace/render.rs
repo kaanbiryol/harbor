@@ -48,6 +48,10 @@ impl Render for AppView {
             self.did_focus = true;
         }
 
+        if self.active_tab == PanelTab::Diff {
+            self.sync_diff_list_items(cx);
+        }
+
         let selected_pr = self.selected_pull_request().cloned();
 
         div()
@@ -193,18 +197,11 @@ impl AppView {
                                     reviewed_file_paths: &self.reviewed_file_paths,
                                     review_threads: &self.review_threads,
                                     review_composer: self.review_composer_state.composer.as_ref(),
-                                    review_comment_error: self.review_comment_error.as_deref(),
-                                    active_review_thread_reply: self
-                                        .review_composer_state
-                                        .thread_reply_thread_id
-                                        .as_deref(),
-                                    active_review_comment_edit: self
-                                        .review_composer_state
-                                        .comment_edit_comment_id
-                                        .as_deref(),
+                                    active_file_index: self.active_file_index(),
                                     is_loading: self.detail_loading.files,
                                     error: self.files_error.as_deref(),
-                                    scroll_handle: self.diff_list_scroll.clone(),
+                                    list_state: self.diff_list_state.clone(),
+                                    list_items: &self.diff_list_items,
                                 },
                                 cx,
                             )

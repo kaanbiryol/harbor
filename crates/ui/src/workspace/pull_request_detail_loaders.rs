@@ -195,7 +195,7 @@ impl AppView {
                                     .unwrap_or(0);
                                 view.file_list_scroll
                                     .scroll_to_item(row_index, ScrollStrategy::Top);
-                                view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                                view.reset_diff_list_scroll();
                                 view.files_error = None;
                                 view.status =
                                     format!("Loaded {count} changed files for PR #{number}");
@@ -210,7 +210,7 @@ impl AppView {
                                 view.reset_diff_selection();
                                 view.clear_review_composer_state();
                                 view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                                view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                                view.reset_diff_list_scroll();
                                 view.files_error = Some(error.to_string());
                                 view.status =
                                     format!("Failed to load changed files for PR #{number}");

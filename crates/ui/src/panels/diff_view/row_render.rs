@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ops::Range};
+use std::collections::HashSet;
 
 use gpui::{AnyElement, Entity, IntoElement, MouseButton, StyledText, div, prelude::*, px, rgb};
 use harbor_domain::{DiffFile, ReviewThreadState};
@@ -10,374 +10,304 @@ use crate::{
 };
 
 use super::{
-    DIFF_FILE_HEADER_ROWS, DIFF_ROW_HEIGHT, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
-    file_section::{
-        render_diff_file_section_header, render_diff_file_section_header_spacer,
-        render_diff_unavailable_row,
-    },
+    DIFF_ROW_HEIGHT, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
+    file_section::{render_diff_file_section_header, render_diff_unavailable_row},
     inline_review_layout::{
         review_comment_range_matches_file, review_comment_range_matches_line,
-        review_composer_row_count, review_line_target_for_line,
-        review_thread_inline_rows_with_controls,
+        review_diff_line_anchor_label, review_line_target_for_line,
     },
     inline_reviews::{
         ReviewCommentListRenderState, ReviewComposerRenderState, ReviewThreadRenderState,
-        render_review_composer_inline, render_review_composer_spacer, render_review_marker,
-        render_review_thread_inline,
+        render_review_composer_inline, render_review_marker, render_review_thread_inline,
     },
-    layout::{
-        ContinuousDiffLayoutInput, continuous_diff_section_body_row_count, file_is_reviewed,
-        inline_block_render_anchor, line_number_width_for_diff, parsed_diff_for_file, row_in_range,
-    },
+    layout::{DiffListItem, file_is_reviewed, line_number_width_for_diff, parsed_diff_for_file},
     row_state::DiffRowRenderState,
 };
 
-pub(super) fn render_continuous_diff_rows(
+pub(super) fn render_diff_list_item(
+    item: Option<&DiffListItem>,
     files: &[DiffFile],
     diffs: &[Option<ParsedDiff>],
-    visible_file_indices: &[usize],
     reviewed_file_paths: &HashSet<String>,
     row_state: &DiffRowRenderState<'_>,
-    range: Range<usize>,
-) -> Vec<AnyElement> {
-    let mut rows = Vec::with_capacity(range.len());
-    let mut row_index = 0;
-    let layout_input = ContinuousDiffLayoutInput {
-        files,
-        diffs,
-        visible_file_indices,
-        reviewed_file_paths,
-        review_threads: row_state.review_threads,
-        review_composer: row_state.review_composer,
-        review_comment_error: row_state.review_comment_error,
-        active_review_thread_reply: row_state.active_review_thread_reply,
-        active_review_comment_edit: row_state.active_review_comment_edit,
+    item_index: usize,
+) -> AnyElement {
+    let Some(item) = item else {
+        return div().into_any_element();
     };
 
-    for file_index in visible_file_indices {
-        if row_index >= range.end {
-            break;
+    match item {
+        DiffListItem::FileHeader { file_index } => {
+            let Some(file) = files.get(*file_index).cloned() else {
+                return div().into_any_element();
+            };
+            let hunk_count = parsed_diff_for_file(diffs, *file_index).map(|diff| diff.hunks.len());
+            let reviewed = file_is_reviewed(&file, reviewed_file_paths);
+
+            render_diff_file_section_header(
+                *file_index,
+                file,
+                hunk_count,
+                *file_index == row_state.active_file,
+                reviewed,
+                false,
+                row_state.view_entity.clone(),
+            )
+            .into_any_element()
         }
-
-        let Some(file) = files.get(*file_index) else {
-            continue;
-        };
-        let parsed_diff = parsed_diff_for_file(diffs, *file_index);
-        let hunk_count = parsed_diff.map(|diff| diff.hunks.len());
-        let reviewed = file_is_reviewed(file, reviewed_file_paths);
-        let body_row_count =
-            continuous_diff_section_body_row_count(layout_input, *file_index, file);
-        let section_row_count = DIFF_FILE_HEADER_ROWS + body_row_count;
-
-        if row_index + section_row_count <= range.start {
-            row_index += section_row_count;
-            continue;
+        DiffListItem::Hunk {
+            file_index,
+            hunk_index,
+        } => {
+            let Some(hunk) = parsed_diff_for_file(diffs, *file_index)
+                .and_then(|diff| diff.hunks.get(*hunk_index))
+            else {
+                return div().into_any_element();
+            };
+            render_diff_hunk_row(
+                hunk,
+                *hunk_index,
+                *file_index == row_state.active_file && *hunk_index == row_state.active_hunk,
+            )
+            .into_any_element()
         }
-
-        let header_start_row = row_index;
-        let visible_header_row =
-            inline_block_render_anchor(header_start_row, DIFF_FILE_HEADER_ROWS, &range);
-
-        for header_row in 0..DIFF_FILE_HEADER_ROWS {
-            if row_index >= range.end {
-                row_index += DIFF_FILE_HEADER_ROWS - header_row;
-                break;
-            }
-
-            if row_in_range(row_index, &range) {
-                if let Some((render_row, visible_row_offset)) = visible_header_row
-                    && render_row == row_index
-                {
-                    rows.push(render_virtualized_inline_block(
-                        render_diff_file_section_header(
-                            *file_index,
-                            file.clone(),
-                            hunk_count,
-                            *file_index == row_state.active_file,
-                            reviewed,
-                            false,
-                            row_state.view_entity.clone(),
-                        ),
-                        visible_row_offset,
-                    ));
-                } else {
-                    rows.push(render_diff_file_section_header_spacer().into_any_element());
-                }
-            }
-
-            row_index += 1;
-        }
-
-        if reviewed {
-            continue;
-        }
-
-        if let Some(parsed_diff) = parsed_diff {
-            let line_number_width = line_number_width_for_diff(parsed_diff);
-            render_diff_rows(
-                DiffRowsRenderInput {
-                    diff: parsed_diff,
-                    file,
-                    row_state,
-                    active_hunk: (*file_index == row_state.active_file)
-                        .then_some(row_state.active_hunk),
-                    line_number_width,
-                    range: &range,
-                },
-                &mut row_index,
-                &mut rows,
-            );
-        } else {
-            if row_in_range(row_index, &range) {
-                rows.push(render_diff_unavailable_row(row_index).into_any_element());
-            }
-            row_index += 1;
+        DiffListItem::Line {
+            file_index,
+            hunk_index,
+            line_index,
+        } => render_diff_line_item(
+            files,
+            diffs,
+            *file_index,
+            *hunk_index,
+            *line_index,
+            row_state,
+            item_index,
+        ),
+        DiffListItem::ReviewComposer {
+            file_index,
+            hunk_index,
+            line_index,
+        } => render_review_composer_item(
+            files,
+            diffs,
+            *file_index,
+            *hunk_index,
+            *line_index,
+            row_state,
+        ),
+        DiffListItem::ReviewThread {
+            file_index,
+            hunk_index,
+            line_index,
+            thread_id,
+        } => render_review_thread_item(
+            files,
+            diffs,
+            *file_index,
+            *hunk_index,
+            *line_index,
+            thread_id,
+            row_state,
+        ),
+        DiffListItem::DiffUnavailable { .. } => {
+            render_diff_unavailable_row(item_index).into_any_element()
         }
     }
-
-    rows
 }
 
-struct DiffRowsRenderInput<'a, 'b> {
-    diff: &'a ParsedDiff,
-    file: &'a DiffFile,
-    row_state: &'a DiffRowRenderState<'b>,
-    active_hunk: Option<usize>,
-    line_number_width: f32,
-    range: &'a Range<usize>,
-}
+fn render_diff_line_item(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    file_index: usize,
+    hunk_index: usize,
+    line_index: usize,
+    row_state: &DiffRowRenderState<'_>,
+    item_index: usize,
+) -> AnyElement {
+    let Some(file) = files.get(file_index) else {
+        return div().into_any_element();
+    };
+    let Some(diff) = parsed_diff_for_file(diffs, file_index) else {
+        return div().into_any_element();
+    };
+    let Some(line) = diff
+        .hunks
+        .get(hunk_index)
+        .and_then(|hunk| hunk.lines.get(line_index))
+    else {
+        return div().into_any_element();
+    };
 
-fn render_diff_rows(
-    input: DiffRowsRenderInput<'_, '_>,
-    row_index: &mut usize,
-    rows: &mut Vec<AnyElement>,
-) {
-    let DiffRowsRenderInput {
-        diff,
-        file,
-        row_state,
-        active_hunk,
-        line_number_width,
-        range,
-    } = input;
     let anchored_threads = anchored_review_threads(file, row_state.review_threads);
-    let review_marker_width = REVIEW_MARKER_WIDTH;
+    let matching_threads = review_threads_for_line(&anchored_threads, line);
     let active_selection_range = row_state.review_line_selection.and_then(|selection| {
         crate::workspace::review_range_from_targets(&selection.anchor, &selection.current).ok()
     });
+    let review_line_target = review_line_target_for_line(file, hunk_index, line_index, line);
+    let selected_for_comment = row_state
+        .review_composer
+        .is_some_and(|composer| review_comment_range_matches_line(file, &composer.range, line));
+    let dragging_for_comment = active_selection_range
+        .as_ref()
+        .is_some_and(|range| review_comment_range_matches_line(file, range, line));
+    let has_unresolved_thread = matching_threads
+        .iter()
+        .any(|thread| thread.state == ReviewThreadState::Unresolved);
+    let has_thread_anchor = !matching_threads.is_empty();
+    let has_thread_range = row_state
+        .review_threads
+        .iter()
+        .filter_map(|thread| thread.range.as_ref())
+        .any(|range| review_comment_range_matches_line(file, range, line));
 
-    for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
-        if *row_index >= range.end {
-            break;
-        }
-
-        if row_in_range(*row_index, range) {
-            rows.push(
-                render_diff_hunk_row(hunk, hunk_index, active_hunk == Some(hunk_index))
-                    .into_any_element(),
-            );
-        }
-        *row_index += 1;
-
-        for (line_index, line) in hunk.lines.iter().enumerate() {
-            if *row_index >= range.end {
-                break;
-            }
-
-            let matching_threads = review_threads_for_line(&anchored_threads, line);
-            let review_line_target =
-                review_line_target_for_line(file, hunk_index, line_index, line);
-            let selected_for_comment = row_state.review_composer.is_some_and(|composer| {
-                review_comment_range_matches_line(file, &composer.range, line)
-            });
-            let dragging_for_comment = active_selection_range
-                .as_ref()
-                .is_some_and(|range| review_comment_range_matches_line(file, range, line));
-            let has_unresolved_thread = matching_threads
-                .iter()
-                .any(|thread| thread.state == ReviewThreadState::Unresolved);
-            let has_thread_range = row_state
-                .review_threads
-                .iter()
-                .filter_map(|thread| thread.range.as_ref())
-                .any(|range| review_comment_range_matches_line(file, range, line));
-
-            if row_in_range(*row_index, range) {
-                rows.push(
-                    render_diff_line(DiffLineRenderInput {
-                        row_index: *row_index,
-                        line,
-                        thread_count: matching_threads.len(),
-                        has_unresolved_thread,
-                        dragging_for_comment,
-                        selected_for_comment,
-                        has_thread_range,
-                        review_line_target: review_line_target.clone(),
-                        line_number_width,
-                        review_marker_width,
-                        view_entity: row_state.view_entity.clone(),
-                    })
-                    .into_any_element(),
-                );
-            }
-            *row_index += 1;
-
-            let composer_ends_here = row_state.review_composer.is_some_and(|composer| {
-                review_comment_range_matches_file(file, &composer.range)
-                    && composer.anchor.hunk_index == hunk_index
-                    && composer.anchor.line_index == line_index
-            });
-
-            if composer_ends_here {
-                let composer_row_count = review_composer_row_count(row_state.review_comment_error);
-                let composer_start_row = *row_index;
-                let visible_composer_row =
-                    inline_block_render_anchor(composer_start_row, composer_row_count, range);
-
-                for composer_row in 0..composer_row_count {
-                    if *row_index >= range.end {
-                        *row_index += composer_row_count - composer_row;
-                        break;
-                    }
-
-                    if row_in_range(*row_index, range) {
-                        if let Some((render_row, visible_row_offset)) = visible_composer_row
-                            && render_row == *row_index
-                        {
-                            if let Some(composer) = row_state.review_composer.cloned() {
-                                rows.push(render_virtualized_inline_block(
-                                    render_review_composer_inline(ReviewComposerRenderState {
-                                        composer,
-                                        has_pending_review: row_state.pending_review.is_some(),
-                                        input: row_state.review_comment_input.clone(),
-                                        body_empty: row_state.review_comment_body_empty,
-                                        is_submitting: row_state.is_submitting_review_comment,
-                                        error: row_state
-                                            .review_comment_error
-                                            .map(ToString::to_string),
-                                        row_count: composer_row_count,
-                                        line_number_width,
-                                        review_marker_width,
-                                        view_entity: row_state.view_entity.clone(),
-                                    })
-                                    .into_any_element(),
-                                    visible_row_offset,
-                                ));
-                            }
-                        } else {
-                            rows.push(render_review_composer_spacer().into_any_element());
-                        }
-                    }
-
-                    *row_index += 1;
-                }
-            }
-
-            let comment_state = ReviewCommentListRenderState {
-                active_review_comment_edit: row_state.active_review_comment_edit,
-                review_comment_edit_input: row_state.review_comment_edit_input.clone(),
-                edit_body_empty: row_state.review_comment_edit_body_empty,
-                is_submitting_edit: row_state.is_submitting_review_comment_edit,
-                edit_error: row_state.review_comment_edit_error,
-                action_comment_id: row_state.review_comment_action_comment_id,
-                comment_action_error: row_state.review_comment_action_error,
-                reaction_action: row_state.review_reaction_action,
-                reaction_error: row_state.review_reaction_error,
-                view_entity: row_state.view_entity.clone(),
-            };
-
-            for thread in matching_threads {
-                let thread_row_count = review_thread_inline_rows_with_controls(
-                    thread,
-                    row_state.active_review_thread_reply,
-                    row_state.active_review_comment_edit,
-                );
-                let thread_start_row = *row_index;
-                let visible_thread_row =
-                    inline_block_render_anchor(thread_start_row, thread_row_count, range);
-
-                for thread_row in 0..thread_row_count {
-                    if *row_index >= range.end {
-                        *row_index += thread_row_count - thread_row;
-                        break;
-                    }
-
-                    if row_in_range(*row_index, range) {
-                        if let Some((render_row, visible_row_offset)) = visible_thread_row
-                            && render_row == *row_index
-                        {
-                            rows.push(render_virtualized_inline_block(
-                                render_review_thread_inline(ReviewThreadRenderState {
-                                    thread,
-                                    line_number_width,
-                                    active_review_thread_reply: row_state
-                                        .active_review_thread_reply,
-                                    review_thread_reply_input: row_state
-                                        .review_thread_reply_input
-                                        .clone(),
-                                    reply_body_empty: row_state.review_thread_reply_body_empty,
-                                    is_submitting_reply: row_state
-                                        .is_submitting_review_thread_reply,
-                                    reply_error: row_state.review_thread_reply_error,
-                                    action_thread_id: row_state.review_thread_action_thread_id,
-                                    action_error: row_state.review_thread_action_error,
-                                    comments: comment_state.clone(),
-                                    view_entity: row_state.view_entity.clone(),
-                                })
-                                .into_any_element(),
-                                visible_row_offset,
-                            ));
-                        } else {
-                            rows.push(render_review_composer_spacer().into_any_element());
-                        }
-                    }
-
-                    *row_index += 1;
-                }
-            }
-        }
-    }
+    render_diff_line(DiffLineRenderInput {
+        item_index,
+        line,
+        thread_count: matching_threads.len(),
+        has_unresolved_thread,
+        dragging_for_comment,
+        selected_for_comment,
+        has_thread_anchor,
+        has_thread_range,
+        review_line_target,
+        line_number_width: line_number_width_for_diff(diff),
+        review_marker_width: REVIEW_MARKER_WIDTH,
+        view_entity: row_state.view_entity.clone(),
+    })
+    .into_any_element()
 }
 
-fn render_virtualized_inline_block(content: AnyElement, visible_row_offset: usize) -> AnyElement {
-    div()
-        .h(px(DIFF_ROW_HEIGHT))
-        .w_full()
-        .relative()
-        .child(
-            div()
-                .absolute()
-                .top(px(-((visible_row_offset as f32) * DIFF_ROW_HEIGHT)))
-                .left(px(0.0))
-                .w_full()
-                .child(content),
-        )
-        .into_any_element()
+fn render_review_composer_item(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    file_index: usize,
+    hunk_index: usize,
+    line_index: usize,
+    row_state: &DiffRowRenderState<'_>,
+) -> AnyElement {
+    let Some(file) = files.get(file_index) else {
+        return div().into_any_element();
+    };
+    let Some(diff) = parsed_diff_for_file(diffs, file_index) else {
+        return div().into_any_element();
+    };
+    let Some(composer) = row_state.review_composer.cloned() else {
+        return div().into_any_element();
+    };
+    if !review_comment_range_matches_file(file, &composer.range)
+        || composer.anchor.hunk_index != hunk_index
+        || composer.anchor.line_index != line_index
+    {
+        return div().into_any_element();
+    }
+
+    render_review_composer_inline(ReviewComposerRenderState {
+        composer,
+        has_pending_review: row_state.pending_review.is_some(),
+        input: row_state.review_comment_input.clone(),
+        body_empty: row_state.review_comment_body_empty,
+        is_submitting: row_state.is_submitting_review_comment,
+        error: row_state.review_comment_error.map(ToString::to_string),
+        line_number_width: line_number_width_for_diff(diff),
+        review_marker_width: REVIEW_MARKER_WIDTH,
+        view_entity: row_state.view_entity.clone(),
+    })
+    .into_any_element()
+}
+
+fn render_review_thread_item(
+    files: &[DiffFile],
+    diffs: &[Option<ParsedDiff>],
+    file_index: usize,
+    hunk_index: usize,
+    line_index: usize,
+    thread_id: &str,
+    row_state: &DiffRowRenderState<'_>,
+) -> AnyElement {
+    let Some(file) = files.get(file_index) else {
+        return div().into_any_element();
+    };
+    let Some(diff) = parsed_diff_for_file(diffs, file_index) else {
+        return div().into_any_element();
+    };
+    let anchor_label = diff
+        .hunks
+        .get(hunk_index)
+        .and_then(|hunk| hunk.lines.get(line_index))
+        .and_then(|line| review_diff_line_anchor_label(file, line));
+    let Some(thread) = row_state
+        .review_threads
+        .iter()
+        .find(|thread| thread.id == thread_id)
+    else {
+        return div().into_any_element();
+    };
+
+    render_review_thread_inline(ReviewThreadRenderState {
+        thread,
+        anchor_label,
+        line_number_width: line_number_width_for_diff(diff),
+        active_review_thread_reply: row_state.active_review_thread_reply,
+        review_thread_reply_input: row_state.review_thread_reply_input.clone(),
+        reply_body_empty: row_state.review_thread_reply_body_empty,
+        is_submitting_reply: row_state.is_submitting_review_thread_reply,
+        reply_error: row_state.review_thread_reply_error,
+        action_thread_id: row_state.review_thread_action_thread_id,
+        action_error: row_state.review_thread_action_error,
+        comments: review_comment_list_state(row_state),
+        view_entity: row_state.view_entity.clone(),
+    })
+    .into_any_element()
+}
+
+fn review_comment_list_state<'a>(
+    row_state: &DiffRowRenderState<'a>,
+) -> ReviewCommentListRenderState<'a> {
+    ReviewCommentListRenderState {
+        active_review_comment_edit: row_state.active_review_comment_edit,
+        review_comment_edit_input: row_state.review_comment_edit_input.clone(),
+        edit_body_empty: row_state.review_comment_edit_body_empty,
+        is_submitting_edit: row_state.is_submitting_review_comment_edit,
+        edit_error: row_state.review_comment_edit_error,
+        action_comment_id: row_state.review_comment_action_comment_id,
+        comment_action_error: row_state.review_comment_action_error,
+        reaction_action: row_state.review_reaction_action,
+        reaction_error: row_state.review_reaction_error,
+        view_entity: row_state.view_entity.clone(),
+    }
 }
 
 fn render_diff_hunk_row(hunk: &DiffHunk, index: usize, active: bool) -> impl IntoElement {
     div()
         .h(px(DIFF_ROW_HEIGHT))
         .w_full()
+        .min_w_0()
         .flex()
         .items_center()
         .gap_2()
+        .overflow_hidden()
         .px_2()
         .border_1()
         .border_color(if active { rgb(0x3b82f6) } else { rgb(0x1a2029) })
         .bg(if active { rgb(0x172033) } else { rgb(0x1a2029) })
         .text_color(rgb(0x93c5fd))
         .whitespace_nowrap()
-        .child(format!("hunk {}  {}", index + 1, hunk.header))
+        .child(div().min_w_0().flex_1().truncate().child(format!(
+            "hunk {}  {}",
+            index + 1,
+            hunk.header
+        )))
 }
 
 struct DiffLineRenderInput<'a> {
-    row_index: usize,
+    item_index: usize,
     line: &'a DiffLine,
     thread_count: usize,
     has_unresolved_thread: bool,
     dragging_for_comment: bool,
     selected_for_comment: bool,
+    has_thread_anchor: bool,
     has_thread_range: bool,
     review_line_target: Option<ReviewLineTarget>,
     line_number_width: f32,
@@ -387,12 +317,13 @@ struct DiffLineRenderInput<'a> {
 
 fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
     let DiffLineRenderInput {
-        row_index,
+        item_index,
         line,
         thread_count,
         has_unresolved_thread,
         dragging_for_comment,
         selected_for_comment,
+        has_thread_anchor,
         has_thread_range,
         review_line_target,
         line_number_width,
@@ -423,10 +354,17 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         DiffLineKind::Removed => rgb(0x301d20),
         DiffLineKind::Metadata => rgb(0x141b24),
     };
+    let thread_anchor_bg = match line.kind {
+        DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x272210),
+        DiffLineKind::Added => rgb(0x253119),
+        DiffLineKind::Removed => rgb(0x38221b),
+    };
     let bg = if dragging_for_comment {
         dragging_bg
     } else if selected_for_comment {
         selected_bg
+    } else if has_thread_anchor {
+        thread_anchor_bg
     } else if has_thread_range {
         thread_range_bg
     } else {
@@ -444,6 +382,8 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
             DiffLineKind::Removed => rgb(0x5a3239),
             DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x243a55),
         }
+    } else if has_thread_anchor {
+        rgb(0x342b14)
     } else if has_thread_range {
         match line.kind {
             DiffLineKind::Added => rgb(0x193326),
@@ -453,7 +393,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
     } else {
         rgb(0x18212b)
     };
-    let line_id = format!("diff-line-{row_index}");
+    let line_id = format!("diff-line-{item_index}");
     let code_text_color = if line.syntax_highlights.is_empty() {
         text_color
     } else {
@@ -462,13 +402,15 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
 
     div()
         .id(line_id)
-        .h(px(DIFF_ROW_HEIGHT))
+        .min_h(px(DIFF_ROW_HEIGHT))
         .w_full()
+        .min_w_0()
         .flex()
         .items_start()
         .bg(bg)
         .text_color(text_color)
-        .whitespace_nowrap()
+        .font_family("Menlo")
+        .line_height(px(DIFF_ROW_HEIGHT))
         .child(render_line_number(line.old_line, line_number_width))
         .child(render_line_number(line.new_line, line_number_width))
         .child(render_review_marker(
@@ -483,9 +425,17 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
                 .text_color(text_color)
                 .child(prefix),
         )
-        .child(div().flex_none().text_color(code_text_color).child(
-            StyledText::new(line.text.clone()).with_highlights(line.syntax_highlights.clone()),
-        ))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .text_color(code_text_color)
+                .whitespace_normal()
+                .child(
+                    StyledText::new(line.text.clone())
+                        .with_highlights(line.syntax_highlights.clone()),
+                ),
+        )
         .when_some(review_line_target, move |element, target| {
             let view_entity = view_entity.clone();
             let move_view_entity = view_entity.clone();
@@ -524,6 +474,145 @@ pub(crate) fn render_line_number(line: Option<u32>, width: f32) -> impl IntoElem
         .flex_none()
         .pr_2()
         .text_right()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_color(rgb(0x64748b))
         .child(line.map_or_else(String::new, |line| line.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{
+        Context, Entity, IntoElement, Render, TestAppContext, VisualTestContext, Window, div, px,
+    };
+    use gpui_component::{Root, Theme, ThemeMode};
+
+    use crate::workspace::AppView;
+
+    use super::*;
+
+    #[gpui::test]
+    async fn wraps_long_diff_line_in_narrow_panel(cx: &mut TestAppContext) {
+        let cx = init_visual_diff_line_test(cx);
+
+        cx.refresh().expect("test window should refresh");
+        cx.run_until_parked();
+
+        let bounds = cx
+            .debug_bounds("diff-line-wrap-harness")
+            .expect("diff line should render");
+        assert!(
+            bounds.size.height > px(DIFF_ROW_HEIGHT),
+            "wrapped diff line height should exceed one row, got {:?}",
+            bounds.size.height
+        );
+    }
+
+    #[gpui::test]
+    async fn keeps_line_numbers_single_line_in_wrapped_rows(cx: &mut TestAppContext) {
+        let cx = init_visual_diff_line_test(cx);
+
+        cx.refresh().expect("test window should refresh");
+        cx.run_until_parked();
+
+        let bounds = cx
+            .debug_bounds("diff-line-number-wrap-harness")
+            .expect("diff line should render");
+        assert_eq!(
+            bounds.size.height,
+            px(DIFF_ROW_HEIGHT),
+            "line number wrapping should not expand a one-line diff row"
+        );
+    }
+
+    fn init_visual_diff_line_test(cx: &mut TestAppContext) -> &mut VisualTestContext {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+        });
+
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            let harness = cx.new(|_| DiffLineWrapHarness { view_entity: view });
+            Root::new(harness, window, cx)
+        });
+
+        cx
+    }
+
+    struct DiffLineWrapHarness {
+        view_entity: Entity<AppView>,
+    }
+
+    impl Render for DiffLineWrapHarness {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let line = DiffLine {
+                kind: DiffLineKind::Added,
+                old_line: None,
+                new_line: Some(12),
+                text: "this long diff line should wrap within the narrow panel ".repeat(8),
+                syntax_highlights: Vec::new(),
+            };
+
+            div().children([
+                div()
+                    .id("diff-line-wrap-harness")
+                    .debug_selector(|| "diff-line-wrap-harness".to_string())
+                    .w(px(220.0))
+                    .child(render_diff_line(DiffLineRenderInput {
+                        item_index: 0,
+                        line: &line,
+                        thread_count: 0,
+                        has_unresolved_thread: false,
+                        dragging_for_comment: false,
+                        selected_for_comment: false,
+                        has_thread_anchor: false,
+                        has_thread_range: false,
+                        review_line_target: None,
+                        line_number_width: 36.0,
+                        review_marker_width: REVIEW_MARKER_WIDTH,
+                        view_entity: self.view_entity.clone(),
+                    })),
+                div()
+                    .id("diff-line-number-wrap-harness")
+                    .debug_selector(|| "diff-line-number-wrap-harness".to_string())
+                    .w(px(220.0))
+                    .child(render_diff_line(DiffLineRenderInput {
+                        item_index: 1,
+                        line: &DiffLine {
+                            kind: DiffLineKind::Context,
+                            old_line: Some(143),
+                            new_line: Some(143),
+                            text: "short line".to_string(),
+                            syntax_highlights: Vec::new(),
+                        },
+                        thread_count: 0,
+                        has_unresolved_thread: false,
+                        dragging_for_comment: false,
+                        selected_for_comment: false,
+                        has_thread_anchor: false,
+                        has_thread_range: false,
+                        review_line_target: None,
+                        line_number_width: line_number_width_for_diff(&ParsedDiff {
+                            hunks: vec![DiffHunk {
+                                header: "@@ -143,1 +143,1 @@".to_string(),
+                                old_start: 143,
+                                old_lines: 1,
+                                new_start: 143,
+                                new_lines: 1,
+                                lines: vec![DiffLine {
+                                    kind: DiffLineKind::Context,
+                                    old_line: Some(143),
+                                    new_line: Some(143),
+                                    text: "short line".to_string(),
+                                    syntax_highlights: Vec::new(),
+                                }],
+                            }],
+                        }),
+                        review_marker_width: REVIEW_MARKER_WIDTH,
+                        view_entity: self.view_entity.clone(),
+                    })),
+            ])
+        }
+    }
 }
