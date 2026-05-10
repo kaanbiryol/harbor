@@ -210,7 +210,6 @@ impl AppView {
     }
 
     #[cfg(test)]
-    #[allow(dead_code)]
     pub(crate) fn new_with_github_api(
         github_api: Arc<dyn GitHubApi>,
         window: &mut Window,
