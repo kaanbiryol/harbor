@@ -7,7 +7,7 @@ use super::{PullRequestListFilter, SubmitPullRequestReviewEvent};
 
 pub(super) const REPOSITORY_PULL_REQUESTS_QUERY: &str = r#"
 query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
-  search(query: $searchQuery, type: ISSUE, first: 50, after: $after) {
+  search(query: $searchQuery, type: ISSUE, first: 100, after: $after) {
     pageInfo {
       hasNextPage
       endCursor
@@ -36,6 +36,20 @@ query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
         headRefOid
         reviewDecision
         mergeStateStatus
+        statusCheckRollup {
+          contexts(first: 50) {
+            nodes {
+              __typename
+              ... on CheckRun {
+                status
+                conclusion
+              }
+              ... on StatusContext {
+                state
+              }
+            }
+          }
+        }
         labels(first: 20) {
           nodes {
             name

@@ -1,6 +1,6 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
-use harbor_domain::RepoId;
+use harbor_domain::{PullRequest, RepoId};
 
 use crate::{
     actions::PanelTab,
@@ -21,6 +21,21 @@ enum PullRequestDetailFetchPolicy {
     Refresh,
 }
 
+impl PullRequestDetailFetchPolicy {
+    fn load_scope(self) -> PullRequestDetailLoadScope {
+        match self {
+            Self::PreferCache => PullRequestDetailLoadScope::ActivePanel,
+            Self::Refresh => PullRequestDetailLoadScope::Full,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestDetailLoadScope {
+    ActivePanel,
+    Full,
+}
+
 #[derive(Clone, Debug)]
 struct SelectedPullRequestLoad {
     repo: RepoId,
@@ -28,6 +43,20 @@ struct SelectedPullRequestLoad {
     name: String,
     number: u64,
     head_sha: String,
+}
+
+impl SelectedPullRequestLoad {
+    fn from_pull_request(pull_request: &PullRequest) -> Self {
+        let repo = pull_request.repo.clone();
+
+        Self {
+            owner: repo.owner.clone(),
+            name: repo.name.clone(),
+            repo,
+            number: pull_request.number,
+            head_sha: pull_request.head_sha.clone(),
+        }
+    }
 }
 
 impl AppView {
@@ -47,14 +76,7 @@ impl AppView {
         let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };
-        let repo = pull_request.repo;
-        let load = SelectedPullRequestLoad {
-            owner: repo.owner.clone(),
-            name: repo.name.clone(),
-            repo,
-            number: pull_request.number,
-            head_sha: pull_request.head_sha,
-        };
+        let load = SelectedPullRequestLoad::from_pull_request(&pull_request);
 
         if fetch_policy == PullRequestDetailFetchPolicy::PreferCache
             && self.restore_selected_pull_request_detail_snapshot(cx)
@@ -63,21 +85,66 @@ impl AppView {
         }
 
         self.reset_selected_pull_request_detail_state(load.number);
-        let review_data_generation = self.next_review_data_generation();
 
         self.spawn_pull_request_metadata_loader(load.clone(), cx);
         self.spawn_pull_request_files_loader(load.clone(), cx);
-        self.spawn_pull_request_checks_loader(load.clone(), cx);
-        self.spawn_pull_request_workflows_loader(load.clone(), cx);
-        self.spawn_review_data_loader(
-            ReviewDataLoadTarget::new(load.repo, load.number, review_data_generation),
-            ReviewDataLoadMode::Initial,
-            cx,
-        );
+
+        match fetch_policy.load_scope() {
+            PullRequestDetailLoadScope::ActivePanel => self.load_active_panel_data_if_needed(cx),
+            PullRequestDetailLoadScope::Full => {
+                self.spawn_pull_request_checks_loader(load.clone(), cx);
+                self.spawn_pull_request_workflows_loader(load.clone(), cx);
+                self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
+            }
+        }
+    }
+
+    pub(super) fn load_active_panel_data_if_needed(&mut self, cx: &mut Context<Self>) {
+        let Some(pull_request) = self.selected_pull_request().cloned() else {
+            return;
+        };
+        let load = SelectedPullRequestLoad::from_pull_request(&pull_request);
+
+        if !self.detail_loaded.details && !self.detail_loading.details {
+            self.spawn_pull_request_metadata_loader(load.clone(), cx);
+        }
+        if !self.detail_loaded.files && !self.detail_loading.files {
+            self.spawn_pull_request_files_loader(load.clone(), cx);
+        }
+
+        match self.active_tab {
+            PanelTab::Diff => {}
+            PanelTab::Review => {
+                if !self.detail_loaded.reviews && !self.detail_loading.reviews {
+                    self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
+                }
+            }
+            PanelTab::Checks => {
+                if !self.detail_loaded.checks && !self.detail_loading.checks {
+                    self.spawn_pull_request_checks_loader(load, cx);
+                }
+            }
+            PanelTab::Actions => {
+                if !self.detail_loaded.workflows && !self.detail_loading.workflows {
+                    self.spawn_pull_request_workflows_loader(load, cx);
+                }
+            }
+            PanelTab::Logs => {
+                if !self.detail_loaded.workflows && !self.detail_loading.workflows {
+                    self.spawn_pull_request_workflows_loader(load, cx);
+                } else if !self.log_state.is_loading
+                    && self.log_state.chunk.is_none()
+                    && self.log_state.error.is_none()
+                {
+                    self.load_selected_workflow_logs(cx);
+                }
+            }
+        }
     }
 
     fn reset_selected_pull_request_detail_state(&mut self, number: u64) {
-        self.set_detail_loading(true);
+        self.set_detail_loading(false);
+        self.clear_detail_loaded_state();
         self.clear_detail_errors();
         self.clear_log_error();
         self.clear_action_errors();
@@ -92,11 +159,30 @@ impl AppView {
         self.status = format!("Loading PR #{number} details and changed files");
     }
 
+    fn spawn_selected_review_data_loader(
+        &mut self,
+        load: SelectedPullRequestLoad,
+        mode: ReviewDataLoadMode,
+        cx: &mut Context<Self>,
+    ) {
+        let review_data_generation = self.next_review_data_generation();
+        self.spawn_review_data_loader(
+            ReviewDataLoadTarget::new(load.repo, load.number, review_data_generation),
+            mode,
+            cx,
+        );
+    }
+
     fn spawn_pull_request_metadata_loader(
         &mut self,
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        if self.detail_loading.details || self.detail_loaded.details {
+            return;
+        }
+
+        self.detail_loading.details = true;
         let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
@@ -116,15 +202,20 @@ impl AppView {
                         }
 
                         view.detail_loading.details = false;
+                        view.detail_loaded.details = true;
                         match result {
                             Ok(detail) => {
                                 if let Some(selected) = view.pull_requests.get_mut(view.selected_pr)
                                 {
                                     let review_decision = selected.review_decision;
+                                    let checks_summary = selected.checks_summary;
+                                    let unresolved_threads = selected.unresolved_threads;
                                     *selected = detail;
                                     if selected.review_decision.is_none() {
                                         selected.review_decision = review_decision;
                                     }
+                                    selected.checks_summary = checks_summary;
+                                    selected.unresolved_threads = unresolved_threads;
                                 }
                                 view.details_error = None;
                                 view.status = format!("Loaded PR #{number} details");
@@ -148,6 +239,11 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        if self.detail_loading.files || self.detail_loaded.files {
+            return;
+        }
+
+        self.detail_loading.files = true;
         let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
@@ -176,6 +272,7 @@ impl AppView {
                         }
 
                         view.detail_loading.files = false;
+                        view.detail_loaded.files = true;
                         match result {
                             Ok((files, diffs)) => {
                                 let count = files.len();
@@ -269,6 +366,11 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        if self.detail_loading.checks || self.detail_loaded.checks {
+            return;
+        }
+
+        self.detail_loading.checks = true;
         let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
@@ -293,6 +395,7 @@ impl AppView {
                         }
 
                         view.detail_loading.checks = false;
+                        view.detail_loaded.checks = true;
                         match result {
                             Ok(check_runs) => {
                                 let count = check_runs.len();
@@ -327,6 +430,11 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        if self.detail_loading.workflows || self.detail_loaded.workflows {
+            return;
+        }
+
+        self.detail_loading.workflows = true;
         let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn({
             let repo = load.repo;
@@ -353,6 +461,7 @@ impl AppView {
                         }
 
                         view.detail_loading.workflows = false;
+                        view.detail_loaded.workflows = true;
                         match result {
                             Ok(workflow_runs) => {
                                 let count = workflow_runs.len();

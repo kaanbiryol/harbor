@@ -7,6 +7,7 @@ use harbor_domain::{
 };
 use harbor_logs::LogChunk;
 
+use super::state::PullRequestDetailLoadedState;
 use crate::{
     actions::PanelTab,
     diff::ParsedDiff,
@@ -52,6 +53,7 @@ pub(crate) struct PullRequestDetailSnapshot {
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
     pub(super) review_threads: Vec<ReviewThread>,
+    detail_loaded: PullRequestDetailLoadedState,
     pub(super) pending_review: Option<PendingReviewSession>,
     log_chunk: Option<LogChunk>,
     current_user_login: Option<String>,
@@ -75,6 +77,7 @@ pub(crate) struct PullRequestInboxSnapshot {
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
     review_threads: Vec<ReviewThread>,
+    detail_loaded: PullRequestDetailLoadedState,
     pending_review: Option<PendingReviewSession>,
     log_chunk: Option<LogChunk>,
     current_user_login: Option<String>,
@@ -161,6 +164,7 @@ impl AppView {
             workflow_jobs: self.workflow_jobs.clone(),
             pull_request_reviews: self.pull_request_reviews.clone(),
             review_threads: self.review_threads.clone(),
+            detail_loaded: self.detail_loaded,
             pending_review: self.pending_review.clone(),
             log_chunk: self.log_state.chunk.clone(),
             current_user_login: self.current_user_login.clone(),
@@ -205,6 +209,7 @@ impl AppView {
         self.workflow_jobs = snapshot.workflow_jobs;
         self.pull_request_reviews = snapshot.pull_request_reviews;
         self.review_threads = snapshot.review_threads;
+        self.detail_loaded = snapshot.detail_loaded;
         self.pending_review = snapshot.pending_review;
         self.log_state.chunk = snapshot.log_chunk;
         self.current_user_login = snapshot.current_user_login;
@@ -222,6 +227,7 @@ impl AppView {
             .scroll_to_item(self.selected_pr, ScrollStrategy::Center);
         self.reset_detail_scrolls();
         self.status = format!("Showing cached PR #{} details", key.number);
+        self.load_active_panel_data_if_needed(cx);
         cx.notify();
         true
     }
@@ -236,6 +242,7 @@ impl AppView {
             workflow_jobs: self.workflow_jobs.clone(),
             pull_request_reviews: self.pull_request_reviews.clone(),
             review_threads: self.review_threads.clone(),
+            detail_loaded: self.detail_loaded,
             pending_review: self.pending_review.clone(),
             log_chunk: self.log_state.chunk.clone(),
             current_user_login: self.current_user_login.clone(),
@@ -282,6 +289,7 @@ impl AppView {
         self.workflow_jobs = snapshot.workflow_jobs;
         self.pull_request_reviews = snapshot.pull_request_reviews;
         self.review_threads = snapshot.review_threads;
+        self.detail_loaded = snapshot.detail_loaded;
         self.pending_review = snapshot.pending_review;
         self.log_state.chunk = snapshot.log_chunk;
         self.current_user_login = snapshot.current_user_login;
@@ -306,6 +314,7 @@ impl AppView {
             key.mode.status_label(),
             key.repository.full_name()
         );
+        self.load_active_panel_data_if_needed(cx);
         cx.notify();
         true
     }

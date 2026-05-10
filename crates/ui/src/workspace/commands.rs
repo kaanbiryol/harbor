@@ -66,8 +66,9 @@ impl AppView {
                 self.status = format!("Opened PR #{number} details");
 
                 if refresh {
-                    self.refresh_selected_pull_request(cx);
+                    self.load_selected_pull_request(cx);
                 } else {
+                    self.load_active_panel_data_if_needed(cx);
                     cx.notify();
                 }
             }

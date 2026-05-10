@@ -88,6 +88,31 @@ mod tests {
                             "headRefOid": "abc123",
                             "reviewDecision": "REVIEW_REQUIRED",
                             "mergeStateStatus": "CLEAN",
+                            "statusCheckRollup": {
+                                "contexts": {
+                                    "nodes": [
+                                        {
+                                            "__typename": "CheckRun",
+                                            "status": "COMPLETED",
+                                            "conclusion": "SUCCESS"
+                                        },
+                                        {
+                                            "__typename": "CheckRun",
+                                            "status": "COMPLETED",
+                                            "conclusion": "FAILURE"
+                                        },
+                                        {
+                                            "__typename": "CheckRun",
+                                            "status": "IN_PROGRESS",
+                                            "conclusion": null
+                                        },
+                                        {
+                                            "__typename": "StatusContext",
+                                            "state": "SUCCESS"
+                                        }
+                                    ]
+                                }
+                            },
                             "labels": {
                                 "nodes": [{ "name": "performance", "color": "34d399" }]
                             }
@@ -155,6 +180,10 @@ mod tests {
             Some(ReviewDecision::ReviewRequired)
         );
         assert_eq!(page.pull_requests[0].merge_state, Some(MergeState::Clean));
+        assert_eq!(page.pull_requests[0].checks_summary.total, 4);
+        assert_eq!(page.pull_requests[0].checks_summary.passed, 2);
+        assert_eq!(page.pull_requests[0].checks_summary.failed, 1);
+        assert_eq!(page.pull_requests[0].checks_summary.pending, 1);
         assert_eq!(page.pull_requests[0].labels[0].name, "performance");
         assert_eq!(page.pull_requests[1].state, PullRequestState::Closed);
         assert_eq!(page.pull_requests[2].state, PullRequestState::Merged);

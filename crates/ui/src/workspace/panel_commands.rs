@@ -39,6 +39,7 @@ impl AppView {
 
         self.active_tab = tab;
         self.status = format!("Switched to {} panel", tab.label());
+        self.load_active_panel_data_if_needed(cx);
         cx.notify();
     }
 
@@ -98,9 +99,10 @@ impl AppView {
     }
 
     pub(super) fn open_logs(&mut self, _: &OpenLogs, _: &mut Window, cx: &mut Context<Self>) {
-        self.active_tab = PanelTab::Logs;
         if self.selected_pull_request().is_some() {
-            self.load_selected_workflow_logs(cx);
+            self.active_tab = PanelTab::Logs;
+            self.load_active_panel_data_if_needed(cx);
+            cx.notify();
         } else {
             self.set_placeholder_status("Open logs", cx);
         }

@@ -64,8 +64,8 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    DiffSelectionState, PullRequestDetailLoadingState, PullRequestInboxState, ReviewComposerState,
-    WorkflowLogState,
+    DiffSelectionState, PullRequestDetailLoadedState, PullRequestDetailLoadingState,
+    PullRequestInboxState, ReviewComposerState, WorkflowLogState,
 };
 pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 
@@ -167,6 +167,7 @@ pub struct AppView {
     owned_file_paths: HashSet<String>,
     is_loading_repositories: bool,
     is_loading_prs: bool,
+    detail_loaded: PullRequestDetailLoadedState,
     detail_loading: PullRequestDetailLoadingState,
     is_running_action: bool,
     is_running_pr_action: bool,
@@ -372,6 +373,7 @@ impl AppView {
             owned_file_paths: HashSet::new(),
             is_loading_repositories: start_startup_tasks,
             is_loading_prs: false,
+            detail_loaded: PullRequestDetailLoadedState::default(),
             detail_loading: PullRequestDetailLoadingState::default(),
             is_running_action: false,
             is_running_pr_action: false,
@@ -617,6 +619,7 @@ impl AppView {
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
+        self.clear_detail_loaded_state();
         self.workflow_jobs.clear();
         self.clear_log_content();
         self.pull_request_reviews.clear();

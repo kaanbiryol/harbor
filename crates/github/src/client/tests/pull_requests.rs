@@ -45,6 +45,7 @@ fn queries_repository_pull_request_filters() {
             .expect("graphql calls mutex should not be poisoned");
         assert_eq!(calls.len(), 1);
         assert!(calls[0].0.contains("HarborRepositoryPullRequests"));
+        assert!(calls[0].0.contains("first: 100"));
         assert_eq!(
             calls[0].1,
             json!({

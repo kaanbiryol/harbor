@@ -823,7 +823,7 @@ mod tests {
     use harbor_github::GitHubError;
 
     use crate::{
-        actions::{PullRequestAction, WorkflowAction},
+        actions::{PanelTab, PullRequestAction, WorkflowAction},
         test_fixtures::{diff_file, pull_request, review_thread, test_time},
         workspace::{AppView, github_service::test_support::FakeGitHubApi},
     };
@@ -848,9 +848,64 @@ mod tests {
             assert_eq!(view.load_error, None);
             assert!(!view.is_loading_prs);
         });
-        assert!(
-            api.calls()
-                .contains(&"list_repository_pull_requests".to_string())
+        assert_eq!(
+            api.calls(),
+            vec![
+                "list_repository_pull_requests",
+                "get_pull_request",
+                "list_pull_request_files"
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn defers_panel_specific_pull_request_fetches_until_panel_opens(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let pull_request = pull_request();
+        api.push_pull_request_detail(Ok(pull_request.clone()));
+        api.push_files(Ok(vec![test_diff_file()]));
+        api.push_check_runs(Ok(Vec::new()));
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request];
+            view.selected_pr = 0;
+            view.load_selected_pull_request(cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            api.calls(),
+            vec!["get_pull_request", "list_pull_request_files"]
+        );
+
+        view_entity.update(cx, |view, cx| {
+            view.select_panel_tab(PanelTab::Checks, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            api.calls(),
+            vec![
+                "get_pull_request",
+                "list_pull_request_files",
+                "list_check_runs"
+            ]
+        );
+
+        view_entity.update(cx, |view, cx| {
+            view.select_panel_tab(PanelTab::Diff, cx);
+            view.select_panel_tab(PanelTab::Checks, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            api.calls(),
+            vec![
+                "get_pull_request",
+                "list_pull_request_files",
+                "list_check_runs"
+            ]
         );
     }
 

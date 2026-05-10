@@ -236,6 +236,7 @@ impl AppView {
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
+        self.clear_detail_loaded_state();
         self.set_detail_loading(false);
         self.set_log_loading(false);
         self.status = pull_request_inbox_loading_status(&repo, mode);
@@ -264,6 +265,7 @@ impl AppView {
                             view.clear_changed_file_state();
                             view.clear_workflow_state();
                             view.clear_review_data_state();
+                            view.clear_detail_loaded_state();
                             view.clear_review_submission_errors();
                             view.clear_log_content();
                             view.selected_pr = 0;
@@ -272,7 +274,7 @@ impl AppView {
                             view.reset_detail_scrolls();
                             view.load_error = None;
                             view.status = status;
-                            view.refresh_selected_pull_request(cx);
+                            view.load_selected_pull_request(cx);
                         }
                         Err(error) => {
                             let status = pull_request_inbox_failed_status(&repo, mode);
@@ -280,6 +282,7 @@ impl AppView {
                             view.clear_changed_file_state();
                             view.clear_workflow_state();
                             view.clear_review_data_state();
+                            view.clear_detail_loaded_state();
                             view.clear_review_submission_errors();
                             view.clear_log_content();
                             view.selected_pr = 0;

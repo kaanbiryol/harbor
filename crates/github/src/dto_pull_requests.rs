@@ -1,6 +1,6 @@
 use harbor_domain::{
-    ChecksSummary, DiffFile, FileStatus, Label, MergeState, PullRequest, PullRequestState, RepoId,
-    ReviewDecision,
+    CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
+    PullRequest, PullRequestState, RepoId, ReviewDecision,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -107,6 +107,8 @@ struct GraphQlPullRequestSearchNode {
     review_decision: Option<String>,
     #[serde(default, rename = "mergeStateStatus")]
     merge_state_status: Option<String>,
+    #[serde(default, rename = "statusCheckRollup")]
+    status_check_rollup: Option<GraphQlStatusCheckRollup>,
     #[serde(default)]
     labels: GraphQlNodes<GraphQlLabel>,
 }
@@ -127,6 +129,24 @@ struct GraphQlRepositoryOwner {
 struct GraphQlNodes<T> {
     #[serde(default)]
     nodes: Vec<Option<T>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlStatusCheckRollup {
+    #[serde(default)]
+    contexts: GraphQlNodes<GraphQlStatusCheckContext>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlStatusCheckContext {
+    #[serde(default, rename = "__typename")]
+    typename: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    conclusion: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
 }
 
 impl<T> Default for GraphQlNodes<T> {
@@ -289,7 +309,10 @@ impl GraphQlPullRequestSearchNode {
                     color: label.color,
                 })
                 .collect(),
-            checks_summary: ChecksSummary::default(),
+            checks_summary: self
+                .status_check_rollup
+                .map(checks_summary_from_graphql_rollup)
+                .unwrap_or_default(),
             unresolved_threads: 0,
         })
     }
@@ -338,6 +361,68 @@ fn map_review_decision(decision: &str) -> Option<ReviewDecision> {
         "approved" => Some(ReviewDecision::Approved),
         "changes_requested" => Some(ReviewDecision::ChangesRequested),
         "review_required" => Some(ReviewDecision::ReviewRequired),
+        _ => None,
+    }
+}
+
+fn checks_summary_from_graphql_rollup(rollup: GraphQlStatusCheckRollup) -> ChecksSummary {
+    let mut summary = ChecksSummary::default();
+
+    for context in rollup.contexts.nodes.into_iter().flatten() {
+        summary.total += 1;
+        match context.typename.as_deref() {
+            Some("CheckRun") => match (
+                context.status.as_deref().map(map_graphql_check_status),
+                context
+                    .conclusion
+                    .as_deref()
+                    .and_then(map_graphql_check_conclusion),
+            ) {
+                (Some(CheckStatus::Completed), Some(CheckConclusion::Success)) => {
+                    summary.passed += 1;
+                }
+                (
+                    Some(CheckStatus::Completed),
+                    Some(CheckConclusion::Skipped | CheckConclusion::Neutral),
+                ) => {
+                    summary.skipped += 1;
+                }
+                (Some(CheckStatus::Completed), _) => {
+                    summary.failed += 1;
+                }
+                (Some(CheckStatus::InProgress | CheckStatus::Queued), _) | (None, _) => {
+                    summary.pending += 1;
+                }
+            },
+            Some("StatusContext") => match context.state.as_deref() {
+                Some("SUCCESS") => summary.passed += 1,
+                Some("ERROR" | "FAILURE") => summary.failed += 1,
+                _ => summary.pending += 1,
+            },
+            _ => summary.pending += 1,
+        }
+    }
+
+    summary
+}
+
+fn map_graphql_check_status(status: &str) -> CheckStatus {
+    match status {
+        "COMPLETED" => CheckStatus::Completed,
+        "IN_PROGRESS" => CheckStatus::InProgress,
+        _ => CheckStatus::Queued,
+    }
+}
+
+fn map_graphql_check_conclusion(conclusion: &str) -> Option<CheckConclusion> {
+    match conclusion {
+        "SUCCESS" => Some(CheckConclusion::Success),
+        "FAILURE" | "STARTUP_FAILURE" | "STALE" => Some(CheckConclusion::Failure),
+        "NEUTRAL" => Some(CheckConclusion::Neutral),
+        "CANCELLED" => Some(CheckConclusion::Cancelled),
+        "SKIPPED" => Some(CheckConclusion::Skipped),
+        "TIMED_OUT" => Some(CheckConclusion::TimedOut),
+        "ACTION_REQUIRED" => Some(CheckConclusion::ActionRequired),
         _ => None,
     }
 }

@@ -121,9 +121,15 @@ impl AppView {
         mode: ReviewDataLoadMode,
         cx: &mut Context<Self>,
     ) {
+        self.detail_loading.reviews = true;
+        self.detail_loaded.reviews = false;
+        let cached_current_user_login = self.current_user_login.clone();
         let github_api = self.github_api.clone();
         self.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
-            let current_user_result = github_api.current_user().await;
+            let current_user_result = match cached_current_user_login {
+                Some(login) => Ok(login),
+                None => github_api.current_user().await,
+            };
             let reviews_result = github_api
                 .list_pull_request_reviews(&target.owner, &target.name, target.number)
                 .await;
@@ -162,6 +168,7 @@ impl AppView {
                 }
 
                 view.detail_loading.reviews = false;
+                view.detail_loaded.reviews = true;
                 view.reviews_error = None;
                 let current_user_login = match current_user_result {
                     Ok(login) => Some(login),

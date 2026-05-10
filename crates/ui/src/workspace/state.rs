@@ -40,6 +40,15 @@ pub(crate) struct PullRequestDetailLoadingState {
     pub(crate) reviews: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct PullRequestDetailLoadedState {
+    pub(crate) details: bool,
+    pub(crate) files: bool,
+    pub(crate) checks: bool,
+    pub(crate) workflows: bool,
+    pub(crate) reviews: bool,
+}
+
 pub(crate) struct ReviewComposerState {
     pub(crate) composer: Option<ReviewComposer>,
     pub(crate) line_selection: Option<ReviewLineSelection>,

@@ -1,5 +1,6 @@
 use gpui::ScrollStrategy;
 
+use super::state::PullRequestDetailLoadedState;
 use crate::workspace::AppView;
 
 impl AppView {
@@ -19,6 +20,10 @@ impl AppView {
         self.detail_loading.checks = loading;
         self.detail_loading.workflows = loading;
         self.detail_loading.reviews = loading;
+    }
+
+    pub(super) fn clear_detail_loaded_state(&mut self) {
+        self.detail_loaded = PullRequestDetailLoadedState::default();
     }
 
     pub(super) fn clear_detail_errors(&mut self) {
