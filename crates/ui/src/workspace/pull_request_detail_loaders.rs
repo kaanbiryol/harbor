@@ -77,44 +77,18 @@ impl AppView {
     }
 
     fn reset_selected_pull_request_detail_state(&mut self, number: u64) {
-        self.detail_loading.details = true;
-        self.detail_loading.files = true;
-        self.detail_loading.checks = true;
-        self.detail_loading.workflows = true;
-        self.detail_loading.reviews = true;
-        self.details_error = None;
-        self.files_error = None;
-        self.checks_error = None;
-        self.workflows_error = None;
-        self.reviews_error = None;
-        self.log_state.error = None;
-        self.action_error = None;
-        self.pr_action_error = None;
+        self.set_detail_loading(true);
+        self.clear_detail_errors();
+        self.clear_log_error();
+        self.clear_action_errors();
         self.pr_detail_tasks.clear();
-        self.files.clear();
-        self.diffs.clear();
-        self.collapsed_file_tree_folders.clear();
-        self.reviewed_file_paths.clear();
-        self.reset_changed_file_filters();
-        self.owned_file_paths.clear();
-        self.check_runs.clear();
-        self.workflow_runs.clear();
-        self.workflow_jobs.clear();
-        self.pull_request_reviews.clear();
-        self.review_threads.clear();
-        self.clear_review_composer_state();
-        self.review_comment_error = None;
-        self.pending_review_error = None;
-        self.log_state.chunk = None;
-        self.diff_selection.file_index = 0;
-        self.diff_selection.hunk_index = 0;
-        self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.review_list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
-        self.log_state
-            .list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
+        self.clear_changed_file_state();
+        self.clear_workflow_state();
+        self.clear_review_data_state();
+        self.clear_review_submission_errors();
+        self.clear_log_content();
+        self.reset_diff_selection();
+        self.reset_detail_scrolls();
         self.status = format!("Loading PR #{number} details and changed files");
     }
 
@@ -204,8 +178,7 @@ impl AppView {
                             let count = files.len();
                             view.files = files;
                             view.diffs = diffs;
-                            view.diff_selection.file_index = 0;
-                            view.diff_selection.hunk_index = 0;
+                            view.reset_diff_selection();
                             view.reset_changed_file_filters();
                             view.prune_reviewed_file_paths();
                             view.ensure_active_file_visible(cx);
@@ -227,8 +200,7 @@ impl AppView {
                             view.reviewed_file_paths.clear();
                             view.reset_changed_file_filters();
                             view.owned_file_paths.clear();
-                            view.diff_selection.file_index = 0;
-                            view.diff_selection.hunk_index = 0;
+                            view.reset_diff_selection();
                             view.clear_review_composer_state();
                             view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                             view.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);

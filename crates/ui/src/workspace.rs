@@ -14,6 +14,7 @@ mod review_interactions;
 mod review_state;
 mod review_submissions;
 mod reviews;
+mod state_reset;
 mod switchers;
 mod workflow_log_loaders;
 
@@ -577,8 +578,7 @@ impl AppView {
         }
 
         if let Some(file_index) = visible_files.first().copied() {
-            self.diff_selection.file_index = file_index;
-            self.diff_selection.hunk_index = 0;
+            self.select_diff_file_index(file_index);
             self.clear_review_composer_state();
             if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
                 self.file_list_scroll
@@ -631,20 +631,19 @@ impl AppView {
             return;
         }
 
-        self.diff_selection.file_index = 0;
-        self.diff_selection.hunk_index = 0;
+        self.reset_diff_selection();
         self.collapsed_file_tree_folders.clear();
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
         self.workflow_jobs.clear();
-        self.log_state.chunk = None;
+        self.clear_log_content();
         self.pull_request_reviews.clear();
         self.review_threads.clear();
         self.clear_review_composer_state();
         self.pending_review = None;
         self.reviews_error = None;
-        self.log_state.error = None;
+        self.clear_log_error();
         self.pr_action_error = None;
         self.review_comment_error = None;
         self.pending_review_error = None;
@@ -673,23 +672,12 @@ impl AppView {
         } else {
             self.pull_request_inbox.mode = mode;
             self.pull_requests.clear();
-            self.files.clear();
-            self.diffs.clear();
-            self.collapsed_file_tree_folders.clear();
-            self.reviewed_file_paths.clear();
-            self.reset_changed_file_filters();
-            self.owned_file_paths.clear();
-            self.check_runs.clear();
-            self.workflow_runs.clear();
-            self.workflow_jobs.clear();
-            self.pull_request_reviews.clear();
-            self.review_threads.clear();
-            self.clear_review_composer_state();
-            self.pending_review = None;
-            self.log_state.chunk = None;
+            self.clear_changed_file_state();
+            self.clear_workflow_state();
+            self.clear_review_data_state();
+            self.clear_log_content();
             self.selected_pr = 0;
-            self.diff_selection.file_index = 0;
-            self.diff_selection.hunk_index = 0;
+            self.reset_diff_selection();
             self.status =
                 "Select a repository from the header before loading pull requests".to_string();
             cx.notify();
@@ -698,8 +686,7 @@ impl AppView {
 
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(path) = self.files.get(index).map(|file| file.path.clone()) {
-            self.diff_selection.file_index = index;
-            self.diff_selection.hunk_index = 0;
+            self.select_diff_file_index(index);
             self.active_tab = PanelTab::Diff;
             self.clear_review_composer_state();
             if let Some(row_index) = self.file_tree_row_index_for_file(index, cx) {
@@ -891,7 +878,10 @@ impl AppView {
                 view.ensure_active_file_visible(cx);
                 cx.notify();
             }) {
-                tracing::warn!(%error, "failed to update file ownership filters");
+                crate::workspace::log_entity_update_error(
+                    "failed to update file ownership filters",
+                    error,
+                );
             }
         })
         .detach();

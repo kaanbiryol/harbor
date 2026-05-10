@@ -187,22 +187,12 @@ impl AppView {
         };
 
         self.pr_detail_tasks.clear();
-        self.detail_loading.details = false;
-        self.detail_loading.files = false;
-        self.detail_loading.checks = false;
-        self.detail_loading.workflows = false;
-        self.detail_loading.reviews = false;
-        self.log_state.is_loading = false;
-        self.details_error = None;
-        self.files_error = None;
-        self.checks_error = None;
-        self.workflows_error = None;
-        self.reviews_error = None;
-        self.log_state.error = None;
-        self.action_error = None;
-        self.pr_action_error = None;
-        self.review_comment_error = None;
-        self.pending_review_error = None;
+        self.set_detail_loading(false);
+        self.set_log_loading(false);
+        self.clear_detail_errors();
+        self.clear_log_error();
+        self.clear_action_errors();
+        self.clear_review_submission_errors();
         self.clear_review_composer_state();
 
         if let Some(selected) = self.pull_requests.get_mut(self.selected_pr) {
@@ -230,13 +220,7 @@ impl AppView {
 
         self.pr_list_scroll
             .scroll_to_item(self.selected_pr, ScrollStrategy::Center);
-        self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.review_list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
-        self.log_state
-            .list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
+        self.reset_detail_scrolls();
         self.status = format!("Showing cached PR #{} details", key.number);
         cx.notify();
         true
@@ -281,23 +265,13 @@ impl AppView {
         self.pr_list_task = None;
         self.pr_detail_tasks.clear();
         self.is_loading_prs = false;
-        self.detail_loading.details = false;
-        self.detail_loading.files = false;
-        self.detail_loading.checks = false;
-        self.detail_loading.workflows = false;
-        self.detail_loading.reviews = false;
-        self.log_state.is_loading = false;
+        self.set_detail_loading(false);
+        self.set_log_loading(false);
         self.load_error = None;
-        self.details_error = None;
-        self.files_error = None;
-        self.checks_error = None;
-        self.workflows_error = None;
-        self.reviews_error = None;
-        self.log_state.error = None;
-        self.action_error = None;
-        self.pr_action_error = None;
-        self.review_comment_error = None;
-        self.pending_review_error = None;
+        self.clear_detail_errors();
+        self.clear_log_error();
+        self.clear_action_errors();
+        self.clear_review_submission_errors();
         self.clear_review_composer_state();
 
         self.pull_requests = snapshot.pull_requests;
@@ -326,13 +300,7 @@ impl AppView {
 
         self.pr_list_scroll
             .scroll_to_item(self.selected_pr, ScrollStrategy::Center);
-        self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.diff_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.review_list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
-        self.log_state
-            .list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
+        self.reset_detail_scrolls();
         self.status = format!(
             "Showing cached {} from {}",
             key.mode.status_label(),

@@ -31,10 +31,10 @@ impl AppView {
         }
 
         self.active_tab = PanelTab::Logs;
-        self.log_state.is_loading = true;
-        self.log_state.error = None;
+        self.set_log_loading(true);
+        self.clear_log_error();
         self.workflow_jobs.clear();
-        self.log_state.chunk = None;
+        self.clear_log_content();
         self.log_state
             .list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
@@ -57,7 +57,7 @@ impl AppView {
                     return;
                 }
 
-                view.log_state.is_loading = false;
+                view.set_log_loading(false);
 
                 match jobs_result {
                     Ok(jobs) => {
@@ -80,7 +80,7 @@ impl AppView {
                         }
                     }
                     Err(error) => {
-                        view.log_state.chunk = None;
+                        view.clear_log_content();
                         let message = format!("Failed to load workflow logs: {error}");
                         view.log_state.error = Some(message.clone());
                         view.status = message;
