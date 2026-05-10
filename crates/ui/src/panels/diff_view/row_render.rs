@@ -1,8 +1,3 @@
-#![expect(
-    clippy::too_many_arguments,
-    reason = "diff row render helpers pass explicit immutable row state to keep virtualized row rendering local"
-)]
-
 use std::{collections::HashSet, ops::Range};
 
 use gpui::{AnyElement, Entity, IntoElement, MouseButton, StyledText, div, prelude::*, px, rgb};
@@ -31,8 +26,8 @@ use super::{
         render_review_thread_inline,
     },
     layout::{
-        continuous_diff_section_body_row_count, file_is_reviewed, inline_block_render_anchor,
-        line_number_width_for_diff, parsed_diff_for_file, row_in_range,
+        ContinuousDiffLayoutInput, continuous_diff_section_body_row_count, file_is_reviewed,
+        inline_block_render_anchor, line_number_width_for_diff, parsed_diff_for_file, row_in_range,
     },
     row_state::DiffRowRenderState,
 };
@@ -47,6 +42,17 @@ pub(super) fn render_continuous_diff_rows(
 ) -> Vec<AnyElement> {
     let mut rows = Vec::with_capacity(range.len());
     let mut row_index = 0;
+    let layout_input = ContinuousDiffLayoutInput {
+        files,
+        diffs,
+        visible_file_indices,
+        reviewed_file_paths,
+        review_threads: row_state.review_threads,
+        review_composer: row_state.review_composer,
+        review_comment_error: row_state.review_comment_error,
+        active_review_thread_reply: row_state.active_review_thread_reply,
+        active_review_comment_edit: row_state.active_review_comment_edit,
+    };
 
     for file_index in visible_file_indices {
         if row_index >= range.end {
@@ -59,17 +65,8 @@ pub(super) fn render_continuous_diff_rows(
         let parsed_diff = parsed_diff_for_file(diffs, *file_index);
         let hunk_count = parsed_diff.map(|diff| diff.hunks.len());
         let reviewed = file_is_reviewed(file, reviewed_file_paths);
-        let body_row_count = continuous_diff_section_body_row_count(
-            *file_index,
-            file,
-            diffs,
-            reviewed_file_paths,
-            row_state.review_threads,
-            row_state.review_composer,
-            row_state.review_comment_error,
-            row_state.active_review_thread_reply,
-            row_state.active_review_comment_edit,
-        );
+        let body_row_count =
+            continuous_diff_section_body_row_count(layout_input, *file_index, file);
         let section_row_count = DIFF_FILE_HEADER_ROWS + body_row_count;
 
         if row_index + section_row_count <= range.start {
@@ -118,13 +115,16 @@ pub(super) fn render_continuous_diff_rows(
         if let Some(parsed_diff) = parsed_diff {
             let line_number_width = line_number_width_for_diff(parsed_diff);
             render_diff_rows(
-                parsed_diff,
-                file,
-                row_state,
-                (*file_index == row_state.active_file).then_some(row_state.active_hunk),
-                line_number_width,
+                DiffRowsRenderInput {
+                    diff: parsed_diff,
+                    file,
+                    row_state,
+                    active_hunk: (*file_index == row_state.active_file)
+                        .then_some(row_state.active_hunk),
+                    line_number_width,
+                    range: &range,
+                },
                 &mut row_index,
-                &range,
                 &mut rows,
             );
         } else {
@@ -138,16 +138,28 @@ pub(super) fn render_continuous_diff_rows(
     rows
 }
 
-fn render_diff_rows(
-    diff: &ParsedDiff,
-    file: &DiffFile,
-    row_state: &DiffRowRenderState<'_>,
+struct DiffRowsRenderInput<'a, 'b> {
+    diff: &'a ParsedDiff,
+    file: &'a DiffFile,
+    row_state: &'a DiffRowRenderState<'b>,
     active_hunk: Option<usize>,
     line_number_width: f32,
+    range: &'a Range<usize>,
+}
+
+fn render_diff_rows(
+    input: DiffRowsRenderInput<'_, '_>,
     row_index: &mut usize,
-    range: &Range<usize>,
     rows: &mut Vec<AnyElement>,
 ) {
+    let DiffRowsRenderInput {
+        diff,
+        file,
+        row_state,
+        active_hunk,
+        line_number_width,
+        range,
+    } = input;
     let anchored_threads = anchored_review_threads(file, row_state.review_threads);
     let review_marker_width = REVIEW_MARKER_WIDTH;
     let active_selection_range = row_state.review_line_selection.and_then(|selection| {
@@ -192,19 +204,19 @@ fn render_diff_rows(
 
             if row_in_range(*row_index, range) {
                 rows.push(
-                    render_diff_line(
-                        *row_index,
+                    render_diff_line(DiffLineRenderInput {
+                        row_index: *row_index,
                         line,
-                        matching_threads.len(),
+                        thread_count: matching_threads.len(),
                         has_unresolved_thread,
                         dragging_for_comment,
                         selected_for_comment,
                         has_thread_range,
-                        review_line_target.clone(),
+                        review_line_target: review_line_target.clone(),
                         line_number_width,
                         review_marker_width,
-                        row_state.view_entity.clone(),
-                    )
+                        view_entity: row_state.view_entity.clone(),
+                    })
                     .into_any_element(),
                 );
             }
@@ -359,9 +371,9 @@ fn render_diff_hunk_row(hunk: &DiffHunk, index: usize, active: bool) -> impl Int
         .child(format!("hunk {}  {}", index + 1, hunk.header))
 }
 
-fn render_diff_line(
+struct DiffLineRenderInput<'a> {
     row_index: usize,
-    line: &DiffLine,
+    line: &'a DiffLine,
     thread_count: usize,
     has_unresolved_thread: bool,
     dragging_for_comment: bool,
@@ -371,7 +383,22 @@ fn render_diff_line(
     line_number_width: f32,
     review_marker_width: f32,
     view_entity: Entity<AppView>,
-) -> impl IntoElement {
+}
+
+fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
+    let DiffLineRenderInput {
+        row_index,
+        line,
+        thread_count,
+        has_unresolved_thread,
+        dragging_for_comment,
+        selected_for_comment,
+        has_thread_range,
+        review_line_target,
+        line_number_width,
+        review_marker_width,
+        view_entity,
+    } = input;
     let (prefix, bg, text_color) = match line.kind {
         DiffLineKind::Context => (" ", rgb(0x0c0f12), rgb(0xcbd5e1)),
         DiffLineKind::Added => ("+", rgb(0x10231a), rgb(0xa7f3d0)),

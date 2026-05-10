@@ -1,8 +1,3 @@
-#![expect(
-    clippy::too_many_arguments,
-    reason = "diff render helpers pass explicit immutable row state to keep virtualized row rendering local"
-)]
-
 #[path = "diff_view/file_section.rs"]
 mod file_section;
 #[path = "diff_view/inline_review_layout.rs"]
@@ -29,7 +24,9 @@ use crate::diff::ParsedDiff;
 use crate::workspace::{AppView, ReviewComposer};
 
 use file_section::render_diff_file_section_header;
-pub(crate) use layout::{continuous_diff_file_row_index, continuous_diff_hunk_row_index};
+pub(crate) use layout::{
+    ContinuousDiffLayoutInput, continuous_diff_file_row_index, continuous_diff_hunk_row_index,
+};
 use layout::{continuous_diff_row_count, continuous_diff_section_for_row};
 use row_render::render_continuous_diff_rows;
 pub(super) use row_render::render_line_number;
@@ -49,22 +46,42 @@ const REVIEW_COMMENT_EDIT_ROWS: usize = 4;
 const REVIEW_MARKER_WIDTH: f32 = 24.0;
 const PREFIX_WIDTH: f32 = 16.0;
 
+pub(crate) struct DiffPanelRenderInput<'a> {
+    pub(crate) files: &'a [DiffFile],
+    pub(crate) diffs: &'a [Option<ParsedDiff>],
+    pub(crate) visible_file_indices: &'a [usize],
+    pub(crate) reviewed_file_paths: &'a HashSet<String>,
+    pub(crate) review_threads: &'a [ReviewThread],
+    pub(crate) review_composer: Option<&'a ReviewComposer>,
+    pub(crate) review_comment_error: Option<&'a str>,
+    pub(crate) active_review_thread_reply: Option<&'a str>,
+    pub(crate) active_review_comment_edit: Option<&'a str>,
+    pub(crate) is_loading: bool,
+    pub(crate) error: Option<&'a str>,
+    pub(crate) scroll_handle: UniformListScrollHandle,
+}
+
+impl<'a> DiffPanelRenderInput<'a> {
+    fn layout_input(&self) -> ContinuousDiffLayoutInput<'a> {
+        ContinuousDiffLayoutInput {
+            files: self.files,
+            diffs: self.diffs,
+            visible_file_indices: self.visible_file_indices,
+            reviewed_file_paths: self.reviewed_file_paths,
+            review_threads: self.review_threads,
+            review_composer: self.review_composer,
+            review_comment_error: self.review_comment_error,
+            active_review_thread_reply: self.active_review_thread_reply,
+            active_review_comment_edit: self.active_review_comment_edit,
+        }
+    }
+}
+
 pub(crate) fn render_diff_panel(
-    files: &[DiffFile],
-    diffs: &[Option<ParsedDiff>],
-    visible_file_indices: &[usize],
-    reviewed_file_paths: &HashSet<String>,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
-    is_loading: bool,
-    error: Option<&str>,
-    scroll_handle: UniformListScrollHandle,
+    input: DiffPanelRenderInput<'_>,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
-    if is_loading {
+    if input.is_loading {
         return div()
             .flex()
             .flex_col()
@@ -88,7 +105,7 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     }
 
-    if let Some(error) = error {
+    if let Some(error) = input.error {
         return div()
             .flex()
             .flex_col()
@@ -112,7 +129,7 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     }
 
-    if visible_file_indices.is_empty() {
+    if input.visible_file_indices.is_empty() {
         return div()
             .flex()
             .flex_col()
@@ -131,7 +148,7 @@ pub(crate) fn render_diff_panel(
                     .bg(rgb(0x0c0f12))
                     .p_3()
                     .text_color(rgb(0x9aa4b2))
-                    .child(if files.is_empty() {
+                    .child(if input.files.is_empty() {
                         "No changed files to preview"
                     } else {
                         "No changed files match the current filters"
@@ -140,17 +157,7 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     }
 
-    let row_count = continuous_diff_row_count(
-        files,
-        diffs,
-        visible_file_indices,
-        reviewed_file_paths,
-        review_threads,
-        review_composer,
-        review_comment_error,
-        active_review_thread_reply,
-        active_review_comment_edit,
-    );
+    let row_count = continuous_diff_row_count(input.layout_input());
     let view_entity = cx.entity().clone();
     let processor_view_entity = view_entity.clone();
 
@@ -175,7 +182,7 @@ pub(crate) fn render_diff_panel(
                     div()
                         .text_xs()
                         .text_color(rgb(0x9aa4b2))
-                        .child(format!("{} files", visible_file_indices.len())),
+                        .child(format!("{} files", input.visible_file_indices.len())),
                 ),
         )
         .child(
@@ -216,7 +223,7 @@ pub(crate) fn render_diff_panel(
                     .with_decoration(DiffStickyHeaderDecoration {
                         view_entity: view_entity.clone(),
                     })
-                    .track_scroll(&scroll_handle)
+                    .track_scroll(&input.scroll_handle)
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
@@ -249,18 +256,8 @@ impl UniformListDecoration for DiffStickyHeaderDecoration {
         let view = self.view_entity.read(cx);
         let visible_file_indices = view.visible_file_indices(cx);
         let Some(section) = continuous_diff_section_for_row(
-            view.diff_files(),
-            view.parsed_diffs(),
-            &visible_file_indices,
-            view.reviewed_file_paths(),
+            layout_input_from_view(view, &visible_file_indices),
             visible_range.start,
-            &view.review_threads,
-            view.review_composer_state.composer.as_ref(),
-            view.review_comment_error.as_deref(),
-            view.review_composer_state.thread_reply_thread_id.as_deref(),
-            view.review_composer_state
-                .comment_edit_comment_id
-                .as_deref(),
         ) else {
             return div().into_any_element();
         };
@@ -296,5 +293,25 @@ impl UniformListDecoration for DiffStickyHeaderDecoration {
                     )),
             )
             .into_any_element()
+    }
+}
+
+fn layout_input_from_view<'a>(
+    view: &'a AppView,
+    visible_file_indices: &'a [usize],
+) -> ContinuousDiffLayoutInput<'a> {
+    ContinuousDiffLayoutInput {
+        files: view.diff_files(),
+        diffs: view.parsed_diffs(),
+        visible_file_indices,
+        reviewed_file_paths: view.reviewed_file_paths(),
+        review_threads: &view.review_threads,
+        review_composer: view.review_composer_state.composer.as_ref(),
+        review_comment_error: view.review_comment_error.as_deref(),
+        active_review_thread_reply: view.review_composer_state.thread_reply_thread_id.as_deref(),
+        active_review_comment_edit: view
+            .review_composer_state
+            .comment_edit_comment_id
+            .as_deref(),
     }
 }

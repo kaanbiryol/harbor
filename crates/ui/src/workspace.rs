@@ -38,7 +38,9 @@ use harbor_storage::SqliteStore;
 
 use crate::actions::PanelTab;
 use crate::diff::{ParsedDiff, parse_files_with_syntax};
-use crate::panels::{continuous_diff_file_row_index, workflow_run_failed};
+use crate::panels::{
+    ContinuousDiffLayoutInput, continuous_diff_file_row_index, workflow_run_failed,
+};
 
 pub(crate) use cache::{
     PullRequestDetailCacheKey, PullRequestDetailSnapshot, PullRequestInboxCacheKey,
@@ -481,18 +483,24 @@ impl AppView {
         let visible_file_indices = self.visible_file_indices(cx);
 
         continuous_diff_file_row_index(
-            &self.files,
-            &self.diffs,
-            &visible_file_indices,
-            &self.reviewed_file_paths,
+            ContinuousDiffLayoutInput {
+                files: &self.files,
+                diffs: &self.diffs,
+                visible_file_indices: &visible_file_indices,
+                reviewed_file_paths: &self.reviewed_file_paths,
+                review_threads: &self.review_threads,
+                review_composer: self.review_composer_state.composer.as_ref(),
+                review_comment_error: self.review_comment_error.as_deref(),
+                active_review_thread_reply: self
+                    .review_composer_state
+                    .thread_reply_thread_id
+                    .as_deref(),
+                active_review_comment_edit: self
+                    .review_composer_state
+                    .comment_edit_comment_id
+                    .as_deref(),
+            },
             file_index,
-            &self.review_threads,
-            self.review_composer_state.composer.as_ref(),
-            self.review_comment_error.as_deref(),
-            self.review_composer_state.thread_reply_thread_id.as_deref(),
-            self.review_composer_state
-                .comment_edit_comment_id
-                .as_deref(),
         )
     }
 

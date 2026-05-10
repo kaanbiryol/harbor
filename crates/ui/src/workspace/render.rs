@@ -5,8 +5,8 @@ use harbor_domain::PullRequest;
 
 use crate::actions::*;
 use crate::panels::{
-    render_actions_panel, render_checks_panel, render_diff_panel, render_logs_panel,
-    render_review_panel,
+    DiffPanelRenderInput, render_actions_panel, render_checks_panel, render_diff_panel,
+    render_logs_panel, render_review_panel,
 };
 use crate::workspace::AppView;
 
@@ -186,20 +186,26 @@ impl AppView {
                         PanelTab::Diff => {
                             let visible_file_indices = self.visible_file_indices(cx);
                             render_diff_panel(
-                                &self.files,
-                                &self.diffs,
-                                &visible_file_indices,
-                                &self.reviewed_file_paths,
-                                &self.review_threads,
-                                self.review_composer_state.composer.as_ref(),
-                                self.review_comment_error.as_deref(),
-                                self.review_composer_state.thread_reply_thread_id.as_deref(),
-                                self.review_composer_state
-                                    .comment_edit_comment_id
-                                    .as_deref(),
-                                self.detail_loading.files,
-                                self.files_error.as_deref(),
-                                self.diff_list_scroll.clone(),
+                                DiffPanelRenderInput {
+                                    files: &self.files,
+                                    diffs: &self.diffs,
+                                    visible_file_indices: &visible_file_indices,
+                                    reviewed_file_paths: &self.reviewed_file_paths,
+                                    review_threads: &self.review_threads,
+                                    review_composer: self.review_composer_state.composer.as_ref(),
+                                    review_comment_error: self.review_comment_error.as_deref(),
+                                    active_review_thread_reply: self
+                                        .review_composer_state
+                                        .thread_reply_thread_id
+                                        .as_deref(),
+                                    active_review_comment_edit: self
+                                        .review_composer_state
+                                        .comment_edit_comment_id
+                                        .as_deref(),
+                                    is_loading: self.detail_loading.files,
+                                    error: self.files_error.as_deref(),
+                                    scroll_handle: self.diff_list_scroll.clone(),
+                                },
                                 cx,
                             )
                             .into_any_element()

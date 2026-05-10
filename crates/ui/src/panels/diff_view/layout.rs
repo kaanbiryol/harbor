@@ -1,8 +1,3 @@
-#![expect(
-    clippy::too_many_arguments,
-    reason = "diff row layout helpers share explicit review state to keep row math pure and testable"
-)]
-
 use std::{collections::HashSet, ops::Range};
 
 use harbor_domain::{DiffFile, ReviewThread};
@@ -21,93 +16,80 @@ use super::{
     },
 };
 
-pub(crate) fn continuous_diff_row_count(
-    files: &[DiffFile],
-    diffs: &[Option<ParsedDiff>],
-    visible_file_indices: &[usize],
-    reviewed_file_paths: &HashSet<String>,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
-) -> usize {
-    visible_file_indices
+#[derive(Clone, Copy)]
+pub(crate) struct ContinuousDiffLayoutInput<'a> {
+    pub(crate) files: &'a [DiffFile],
+    pub(crate) diffs: &'a [Option<ParsedDiff>],
+    pub(crate) visible_file_indices: &'a [usize],
+    pub(crate) reviewed_file_paths: &'a HashSet<String>,
+    pub(crate) review_threads: &'a [ReviewThread],
+    pub(crate) review_composer: Option<&'a ReviewComposer>,
+    pub(crate) review_comment_error: Option<&'a str>,
+    pub(crate) active_review_thread_reply: Option<&'a str>,
+    pub(crate) active_review_comment_edit: Option<&'a str>,
+}
+
+impl<'a> ContinuousDiffLayoutInput<'a> {
+    fn review_controls(self) -> ReviewLayoutControls<'a> {
+        ReviewLayoutControls {
+            review_threads: self.review_threads,
+            review_composer: self.review_composer,
+            review_comment_error: self.review_comment_error,
+            active_review_thread_reply: self.active_review_thread_reply,
+            active_review_comment_edit: self.active_review_comment_edit,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ReviewLayoutControls<'a> {
+    review_threads: &'a [ReviewThread],
+    review_composer: Option<&'a ReviewComposer>,
+    review_comment_error: Option<&'a str>,
+    active_review_thread_reply: Option<&'a str>,
+    active_review_comment_edit: Option<&'a str>,
+}
+
+pub(crate) fn continuous_diff_row_count(input: ContinuousDiffLayoutInput<'_>) -> usize {
+    input
+        .visible_file_indices
         .iter()
-        .filter_map(|file_index| files.get(*file_index).map(|file| (*file_index, file)))
-        .map(|(file_index, file)| {
-            continuous_diff_section_row_count(
-                file_index,
-                file,
-                diffs,
-                reviewed_file_paths,
-                review_threads,
-                review_composer,
-                review_comment_error,
-                active_review_thread_reply,
-                active_review_comment_edit,
-            )
-        })
+        .filter_map(|file_index| input.files.get(*file_index).map(|file| (*file_index, file)))
+        .map(|(file_index, file)| continuous_diff_section_row_count(input, file_index, file))
         .sum()
 }
 
 pub(crate) fn continuous_diff_file_row_index(
-    files: &[DiffFile],
-    diffs: &[Option<ParsedDiff>],
-    visible_file_indices: &[usize],
-    reviewed_file_paths: &HashSet<String>,
+    input: ContinuousDiffLayoutInput<'_>,
     target_file_index: usize,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
 ) -> Option<usize> {
     let mut row_index = 0;
 
-    for file_index in visible_file_indices {
-        let file = files.get(*file_index)?;
+    for file_index in input.visible_file_indices {
+        let file = input.files.get(*file_index)?;
         if *file_index == target_file_index {
             return Some(row_index);
         }
 
-        row_index += continuous_diff_section_row_count(
-            *file_index,
-            file,
-            diffs,
-            reviewed_file_paths,
-            review_threads,
-            review_composer,
-            review_comment_error,
-            active_review_thread_reply,
-            active_review_comment_edit,
-        );
+        row_index += continuous_diff_section_row_count(input, *file_index, file);
     }
 
     None
 }
 
 pub(crate) fn continuous_diff_hunk_row_index(
-    files: &[DiffFile],
-    diffs: &[Option<ParsedDiff>],
-    visible_file_indices: &[usize],
-    reviewed_file_paths: &HashSet<String>,
+    input: ContinuousDiffLayoutInput<'_>,
     target_file_index: usize,
     target_hunk_index: usize,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
 ) -> Option<usize> {
     let mut row_index = 0;
 
-    for file_index in visible_file_indices {
-        let file = files.get(*file_index)?;
-        let parsed_diff = parsed_diff_for_file(diffs, *file_index);
+    for file_index in input.visible_file_indices {
+        let file = input.files.get(*file_index)?;
+        let parsed_diff = parsed_diff_for_file(input.diffs, *file_index);
 
         if *file_index == target_file_index {
-            if file_is_reviewed(file, reviewed_file_paths) {
+            if file_is_reviewed(file, input.reviewed_file_paths) {
                 return None;
             }
 
@@ -116,27 +98,13 @@ pub(crate) fn continuous_diff_hunk_row_index(
                 parsed_diff,
                 target_hunk_index,
                 file,
-                review_threads,
-                review_composer,
-                review_comment_error,
-                active_review_thread_reply,
-                active_review_comment_edit,
+                input.review_controls(),
             )?;
 
             return Some(row_index + DIFF_FILE_HEADER_ROWS + local_row_index);
         }
 
-        row_index += continuous_diff_section_row_count(
-            *file_index,
-            file,
-            diffs,
-            reviewed_file_paths,
-            review_threads,
-            review_composer,
-            review_comment_error,
-            active_review_thread_reply,
-            active_review_comment_edit,
-        );
+        row_index += continuous_diff_section_row_count(input, *file_index, file);
     }
 
     None
@@ -157,56 +125,25 @@ pub(super) fn file_is_reviewed(file: &DiffFile, reviewed_file_paths: &HashSet<St
 }
 
 pub(super) fn continuous_diff_section_body_row_count(
+    input: ContinuousDiffLayoutInput<'_>,
     file_index: usize,
     file: &DiffFile,
-    diffs: &[Option<ParsedDiff>],
-    reviewed_file_paths: &HashSet<String>,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
 ) -> usize {
-    if file_is_reviewed(file, reviewed_file_paths) {
+    if file_is_reviewed(file, input.reviewed_file_paths) {
         return 0;
     }
 
-    parsed_diff_for_file(diffs, file_index).map_or(1, |diff| {
-        diff_row_count_with_review_controls(
-            diff,
-            file,
-            review_threads,
-            review_composer,
-            review_comment_error,
-            active_review_thread_reply,
-            active_review_comment_edit,
-        )
+    parsed_diff_for_file(input.diffs, file_index).map_or(1, |diff| {
+        diff_row_count_with_review_controls(diff, file, input.review_controls())
     })
 }
 
 fn continuous_diff_section_row_count(
+    input: ContinuousDiffLayoutInput<'_>,
     file_index: usize,
     file: &DiffFile,
-    diffs: &[Option<ParsedDiff>],
-    reviewed_file_paths: &HashSet<String>,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
 ) -> usize {
-    DIFF_FILE_HEADER_ROWS
-        + continuous_diff_section_body_row_count(
-            file_index,
-            file,
-            diffs,
-            reviewed_file_paths,
-            review_threads,
-            review_composer,
-            review_comment_error,
-            active_review_thread_reply,
-            active_review_comment_edit,
-        )
+    DIFF_FILE_HEADER_ROWS + continuous_diff_section_body_row_count(input, file_index, file)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -218,39 +155,22 @@ pub(super) struct DiffFileSection {
 }
 
 pub(super) fn continuous_diff_section_for_row(
-    files: &[DiffFile],
-    diffs: &[Option<ParsedDiff>],
-    visible_file_indices: &[usize],
-    reviewed_file_paths: &HashSet<String>,
+    input: ContinuousDiffLayoutInput<'_>,
     target_row_index: usize,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
 ) -> Option<DiffFileSection> {
     let mut row_index = 0;
 
-    for file_index in visible_file_indices {
-        let file = files.get(*file_index)?;
-        let section_row_count = continuous_diff_section_row_count(
-            *file_index,
-            file,
-            diffs,
-            reviewed_file_paths,
-            review_threads,
-            review_composer,
-            review_comment_error,
-            active_review_thread_reply,
-            active_review_comment_edit,
-        );
+    for file_index in input.visible_file_indices {
+        let file = input.files.get(*file_index)?;
+        let section_row_count = continuous_diff_section_row_count(input, *file_index, file);
 
         if target_row_index < row_index + section_row_count {
             return Some(DiffFileSection {
                 file_index: *file_index,
                 header_row_index: row_index,
-                hunk_count: parsed_diff_for_file(diffs, *file_index).map(|diff| diff.hunks.len()),
-                reviewed: file_is_reviewed(file, reviewed_file_paths),
+                hunk_count: parsed_diff_for_file(input.diffs, *file_index)
+                    .map(|diff| diff.hunks.len()),
+                reviewed: file_is_reviewed(file, input.reviewed_file_paths),
             });
         }
 
@@ -279,13 +199,9 @@ pub(super) fn inline_block_render_anchor(
 fn diff_row_count_with_review_controls(
     diff: &ParsedDiff,
     file: &DiffFile,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
+    controls: ReviewLayoutControls<'_>,
 ) -> usize {
-    let anchored_threads = anchored_review_threads(file, review_threads);
+    let anchored_threads = anchored_review_threads(file, controls.review_threads);
     let mut row_count = diff
         .hunks
         .iter()
@@ -299,18 +215,19 @@ fn diff_row_count_with_review_controls(
                 .map(|thread| {
                     review_thread_inline_rows_with_controls(
                         thread,
-                        active_review_thread_reply,
-                        active_review_comment_edit,
+                        controls.active_review_thread_reply,
+                        controls.active_review_comment_edit,
                     )
                 })
                 .sum::<usize>();
         }
     }
 
-    if review_composer
+    if controls
+        .review_composer
         .is_some_and(|composer| review_comment_range_matches_file(file, &composer.range))
     {
-        row_count += review_composer_row_count(review_comment_error);
+        row_count += review_composer_row_count(controls.review_comment_error);
     }
 
     row_count
@@ -320,13 +237,9 @@ fn diff_hunk_row_index_with_review_controls(
     diff: &ParsedDiff,
     target_hunk_index: usize,
     file: &DiffFile,
-    review_threads: &[ReviewThread],
-    review_composer: Option<&ReviewComposer>,
-    review_comment_error: Option<&str>,
-    active_review_thread_reply: Option<&str>,
-    active_review_comment_edit: Option<&str>,
+    controls: ReviewLayoutControls<'_>,
 ) -> Option<usize> {
-    let anchored_threads = anchored_review_threads(file, review_threads);
+    let anchored_threads = anchored_review_threads(file, controls.review_threads);
     let mut row_index = 0;
 
     for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
@@ -338,12 +251,12 @@ fn diff_hunk_row_index_with_review_controls(
         for (line_index, line) in hunk.lines.iter().enumerate() {
             row_index += 1;
 
-            if review_composer.is_some_and(|composer| {
+            if controls.review_composer.is_some_and(|composer| {
                 review_comment_range_matches_file(file, &composer.range)
                     && composer.anchor.hunk_index == hunk_index
                     && composer.anchor.line_index == line_index
             }) {
-                row_index += review_composer_row_count(review_comment_error);
+                row_index += review_composer_row_count(controls.review_comment_error);
             }
 
             row_index += review_threads_for_line(&anchored_threads, line)
@@ -351,8 +264,8 @@ fn diff_hunk_row_index_with_review_controls(
                 .map(|thread| {
                     review_thread_inline_rows_with_controls(
                         thread,
-                        active_review_thread_reply,
-                        active_review_comment_edit,
+                        controls.active_review_thread_reply,
+                        controls.active_review_comment_edit,
                     )
                 })
                 .sum::<usize>();
@@ -380,7 +293,7 @@ pub(super) fn line_number_width_for_diff(diff: &ParsedDiff) -> f32 {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use harbor_domain::FileStatus;
+    use harbor_domain::{FileStatus, ReviewThread};
 
     use crate::{
         diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff, parse_unified_diff},
@@ -424,11 +337,7 @@ mod tests {
             diff_row_count_with_review_controls(
                 &diff,
                 &file,
-                &[],
-                Some(&composer),
-                None,
-                None,
-                None
+                test_review_controls(&[], Some(&composer), None, None, None)
             ),
             3 + REVIEW_COMPOSER_ROWS
         );
@@ -458,17 +367,12 @@ mod tests {
         let reviewed_file_paths = HashSet::new();
 
         assert_eq!(
-            continuous_diff_row_count(
+            continuous_diff_row_count(test_layout_input(
                 &files,
                 &diffs,
                 &visible_file_indices,
-                &reviewed_file_paths,
-                &[],
-                None,
-                None,
-                None,
-                None
-            ),
+                &reviewed_file_paths
+            )),
             12
         );
     }
@@ -489,17 +393,12 @@ mod tests {
         let rows_per_file = DIFF_FILE_HEADER_ROWS + hunk_count * (lines_per_hunk + 1);
 
         let started_at = Instant::now();
-        let row_count = continuous_diff_row_count(
+        let row_count = continuous_diff_row_count(test_layout_input(
             &files,
             &diffs,
             &visible_file_indices,
             &reviewed_file_paths,
-            &[],
-            None,
-            None,
-            None,
-            None,
-        );
+        ));
         let elapsed = started_at.elapsed();
 
         assert_eq!(row_count, file_count * rows_per_file);
@@ -509,32 +408,16 @@ mod tests {
         );
         assert_eq!(
             continuous_diff_file_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 file_count - 1,
-                &[],
-                None,
-                None,
-                None,
-                None,
             ),
             Some((file_count - 1) * rows_per_file)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 file_count - 1,
                 hunk_count - 1,
-                &[],
-                None,
-                None,
-                None,
-                None,
             ),
             Some(
                 (file_count - 1) * rows_per_file
@@ -561,48 +444,24 @@ mod tests {
 
         assert_eq!(
             continuous_diff_file_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 2,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(8)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 2,
                 0,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(10)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 1,
                 0,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             None
         );
@@ -624,63 +483,34 @@ mod tests {
         let reviewed_file_paths = HashSet::from(["src/a.rs".to_string()]);
 
         assert_eq!(
-            continuous_diff_row_count(
+            continuous_diff_row_count(test_layout_input(
                 &files,
                 &diffs,
                 &visible_file_indices,
-                &reviewed_file_paths,
-                &[],
-                None,
-                None,
-                None,
-                None
-            ),
+                &reviewed_file_paths
+            )),
             9
         );
         assert_eq!(
             continuous_diff_file_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 2,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(5)
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 0,
                 0,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             None
         );
         assert_eq!(
             continuous_diff_hunk_row_index(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 2,
                 0,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(7)
         );
@@ -703,16 +533,8 @@ mod tests {
 
         assert_eq!(
             continuous_diff_section_for_row(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 5,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(DiffFileSection {
                 file_index: 1,
@@ -723,16 +545,8 @@ mod tests {
         );
         assert_eq!(
             continuous_diff_section_for_row(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 6,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(DiffFileSection {
                 file_index: 1,
@@ -743,16 +557,8 @@ mod tests {
         );
         assert_eq!(
             continuous_diff_section_for_row(
-                &files,
-                &diffs,
-                &visible_file_indices,
-                &reviewed_file_paths,
+                test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
                 9,
-                &[],
-                None,
-                None,
-                None,
-                None
             ),
             Some(DiffFileSection {
                 file_index: 2,
@@ -780,11 +586,7 @@ mod tests {
                 &diff,
                 1,
                 &file,
-                &[],
-                Some(&composer),
-                None,
-                None,
-                None
+                test_review_controls(&[], Some(&composer), None, None, None)
             ),
             Some(2 + REVIEW_COMPOSER_ROWS)
         );
@@ -793,14 +595,45 @@ mod tests {
                 &diff,
                 1,
                 &other_file,
-                &[],
-                Some(&composer),
-                None,
-                None,
-                None
+                test_review_controls(&[], Some(&composer), None, None, None)
             ),
             Some(2)
         );
+    }
+
+    fn test_layout_input<'a>(
+        files: &'a [DiffFile],
+        diffs: &'a [Option<ParsedDiff>],
+        visible_file_indices: &'a [usize],
+        reviewed_file_paths: &'a HashSet<String>,
+    ) -> ContinuousDiffLayoutInput<'a> {
+        ContinuousDiffLayoutInput {
+            files,
+            diffs,
+            visible_file_indices,
+            reviewed_file_paths,
+            review_threads: &[],
+            review_composer: None,
+            review_comment_error: None,
+            active_review_thread_reply: None,
+            active_review_comment_edit: None,
+        }
+    }
+
+    fn test_review_controls<'a>(
+        review_threads: &'a [ReviewThread],
+        review_composer: Option<&'a ReviewComposer>,
+        review_comment_error: Option<&'a str>,
+        active_review_thread_reply: Option<&'a str>,
+        active_review_comment_edit: Option<&'a str>,
+    ) -> ReviewLayoutControls<'a> {
+        ReviewLayoutControls {
+            review_threads,
+            review_composer,
+            review_comment_error,
+            active_review_thread_reply,
+            active_review_comment_edit,
+        }
     }
 
     fn test_file(path: &str) -> DiffFile {
