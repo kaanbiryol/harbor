@@ -1050,8 +1050,8 @@ mod tests {
             assert_eq!(view.pull_requests.len(), 1);
             assert_eq!(view.pull_requests[0].number, pull_request.number);
             assert_eq!(view.pull_requests[0].title, pull_request.title);
-            assert_eq!(view.load_error, None);
-            assert!(!view.is_loading_prs);
+            assert_eq!(view.pull_request_inbox.load_error(), None);
+            assert!(!view.pull_request_inbox.is_loading());
         });
         assert_eq!(
             api.calls(),
@@ -1151,15 +1151,15 @@ mod tests {
         view_entity.read_with(cx, |view, _| {
             assert!(view.pull_requests.is_empty());
             assert!(
-                view.load_error
-                    .as_deref()
+                view.pull_request_inbox
+                    .load_error()
                     .is_some_and(|error| error.contains("inbox failed"))
             );
             assert_eq!(
                 view.status,
                 "Failed to load open pull requests from acme/app"
             );
-            assert!(!view.is_loading_prs);
+            assert!(!view.pull_request_inbox.is_loading());
         });
         assert_eq!(api.calls(), vec!["list_repository_pull_requests_light"]);
     }
@@ -1175,10 +1175,11 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.repository_state.configured_repo = Some(pull_request.repo.clone());
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
             view.pull_requests = vec![pull_request];
             view.selected_pr = 0;
-            view.sync_runtime.sync_states.insert(
+            view.sync_runtime.set_sync_state(
                 SyncTarget::ActiveInboxLight,
                 SyncState {
                     last_successful_fetch_at: Some(Utc::now() - Duration::seconds(31)),
@@ -1199,8 +1200,9 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.repository_state.configured_repo = Some(pull_request.repo.clone());
-            view.sync_runtime.sync_states.insert(
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
+            view.sync_runtime.set_sync_state(
                 SyncTarget::ActiveInboxLight,
                 SyncState {
                     last_successful_fetch_at: Some(Utc::now()),
@@ -1223,9 +1225,11 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.repository_state.configured_repo = Some(pull_request.repo.clone());
-            view.pull_request_inbox.mode = PullRequestInboxMode::NeedsReview;
-            view.sync_runtime.sync_states.insert(
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
+            view.pull_request_inbox
+                .set_mode(PullRequestInboxMode::NeedsReview);
+            view.sync_runtime.set_sync_state(
                 SyncTarget::ActiveInbox,
                 SyncState {
                     last_successful_fetch_at: Some(Utc::now() - Duration::seconds(31)),
@@ -1245,28 +1249,26 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api);
 
         view_entity.update(cx, |view, _| {
-            view.pull_request_inbox.mode = PullRequestInboxMode::Open;
+            view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
             view.mark_active_inbox_stale();
             assert!(
                 view.sync_runtime
-                    .sync_states
-                    .get(&SyncTarget::ActiveInboxLight)
+                    .sync_state(SyncTarget::ActiveInboxLight)
                     .is_some_and(|state| state.stale)
             );
             assert!(
                 !view
                     .sync_runtime
-                    .sync_states
-                    .get(&SyncTarget::ActiveInbox)
+                    .sync_state(SyncTarget::ActiveInbox)
                     .is_some_and(|state| state.stale)
             );
 
-            view.pull_request_inbox.mode = PullRequestInboxMode::NeedsReview;
+            view.pull_request_inbox
+                .set_mode(PullRequestInboxMode::NeedsReview);
             view.mark_active_inbox_stale();
             assert!(
                 view.sync_runtime
-                    .sync_states
-                    .get(&SyncTarget::ActiveInbox)
+                    .sync_state(SyncTarget::ActiveInbox)
                     .is_some_and(|state| state.stale)
             );
         });
@@ -1306,7 +1308,8 @@ mod tests {
         let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
         view_entity.update(cx, |view, cx| {
-            view.repository_state.configured_repo = Some(pull_request.repo.clone());
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
             view.pull_requests = vec![pull_request.clone()];
             view.selected_pr = 0;
             view.refresh_pull_requests(pull_request.repo, cx);

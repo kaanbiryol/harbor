@@ -6,9 +6,9 @@ use crate::workspace::AppView;
 
 impl AppView {
     pub(crate) fn switcher_repositories(&self) -> Vec<RepoId> {
-        let mut repositories = self.repository_state.repositories.clone();
+        let mut repositories = self.repository_state.repositories().to_vec();
 
-        if let Some(repository) = self.repository_state.configured_repo.clone()
+        if let Some(repository) = self.repository_state.configured_repo_cloned()
             && !repositories.iter().any(|existing| existing == &repository)
         {
             repositories.push(repository);
@@ -114,7 +114,7 @@ impl AppView {
             self.repository_state.repository_switcher_selection,
             &query,
         ) else {
-            self.status = if self.repository_state.is_loading_repositories {
+            self.status = if self.repository_state.is_loading() {
                 "Fetching repositories from GitHub...".to_string()
             } else {
                 "Type owner/repo to open a repository".to_string()

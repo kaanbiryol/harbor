@@ -101,10 +101,9 @@ impl PullRequestInboxSnapshot {
 impl AppView {
     pub(crate) fn current_pull_request_inbox_key(&self) -> Option<PullRequestInboxCacheKey> {
         self.repository_state
-            .configured_repo
-            .clone()
+            .configured_repo_cloned()
             .map(|repository| {
-                PullRequestInboxCacheKey::new(repository, self.pull_request_inbox.mode)
+                PullRequestInboxCacheKey::new(repository, self.pull_request_inbox.mode())
             })
     }
 
@@ -113,17 +112,15 @@ impl AppView {
             return;
         };
 
-        if self.is_loading_prs
+        if !self.pull_request_inbox.can_cache_snapshot()
             || self.detail_state.is_any_loading()
             || self.review_state.reviews_loading()
-            || self.load_error.is_some()
         {
             return;
         }
 
         self.pull_request_inbox
-            .cache
-            .insert(key, self.current_pull_request_inbox_snapshot());
+            .insert_snapshot(key, self.current_pull_request_inbox_snapshot());
     }
 
     pub(crate) fn selected_pull_request_detail_key(&self) -> Option<PullRequestDetailCacheKey> {
@@ -172,7 +169,7 @@ impl AppView {
                 .detail_state
                 .loaded_sections(self.review_state.reviews_finished()),
             pending_review: self.review_state.pending_review.clone(),
-            log_chunk: self.detail_state.log_state.chunk.clone(),
+            log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
@@ -216,18 +213,16 @@ impl AppView {
         self.detail_state.check_runs = snapshot.check_runs;
         self.detail_state.workflow_runs = snapshot.workflow_runs;
         self.detail_state.workflow_jobs = snapshot.workflow_jobs;
-        self.review_state.pull_request_reviews = snapshot.pull_request_reviews;
-        self.review_state.review_threads = snapshot.review_threads;
         self.detail_state
             .restore_loaded_sections(snapshot.detail_loaded);
-        if snapshot.detail_loaded.reviews {
-            self.review_state.apply_reviews_success();
-        } else {
-            self.review_state.reset_reviews_load();
-        }
-        self.review_state.pending_review = snapshot.pending_review;
-        self.detail_state.log_state.chunk = snapshot.log_chunk;
-        self.review_state.current_user_login = snapshot.current_user_login;
+        self.review_state.restore_review_snapshot(
+            snapshot.pull_request_reviews,
+            snapshot.review_threads,
+            snapshot.pending_review,
+            snapshot.current_user_login,
+            snapshot.detail_loaded.reviews,
+        );
+        self.detail_state.log_state.set_chunk(snapshot.log_chunk);
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
@@ -262,7 +257,7 @@ impl AppView {
                 .detail_state
                 .loaded_sections(self.review_state.reviews_finished()),
             pending_review: self.review_state.pending_review.clone(),
-            log_chunk: self.detail_state.log_state.chunk.clone(),
+            log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
@@ -281,19 +276,18 @@ impl AppView {
         key: PullRequestInboxCacheKey,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(snapshot) = self.pull_request_inbox.cache.get(&key).cloned() else {
+        let Some(snapshot) = self.pull_request_inbox.snapshot(&key).cloned() else {
             return false;
         };
 
         self.repository_state
             .select_repository(key.repository.clone());
-        self.pull_request_inbox.mode = key.mode;
+        self.pull_request_inbox.set_mode(key.mode);
         self.tasks.clear_pull_request_list_task();
         self.tasks.clear_pull_request_detail_tasks();
-        self.is_loading_prs = false;
+        self.pull_request_inbox.reset_load();
         self.set_detail_loading(false);
         self.set_log_loading(false);
-        self.load_error = None;
         self.clear_detail_errors();
         self.clear_log_error();
         self.clear_action_errors();
@@ -306,18 +300,16 @@ impl AppView {
         self.detail_state.check_runs = snapshot.check_runs;
         self.detail_state.workflow_runs = snapshot.workflow_runs;
         self.detail_state.workflow_jobs = snapshot.workflow_jobs;
-        self.review_state.pull_request_reviews = snapshot.pull_request_reviews;
-        self.review_state.review_threads = snapshot.review_threads;
         self.detail_state
             .restore_loaded_sections(snapshot.detail_loaded);
-        if snapshot.detail_loaded.reviews {
-            self.review_state.apply_reviews_success();
-        } else {
-            self.review_state.reset_reviews_load();
-        }
-        self.review_state.pending_review = snapshot.pending_review;
-        self.detail_state.log_state.chunk = snapshot.log_chunk;
-        self.review_state.current_user_login = snapshot.current_user_login;
+        self.review_state.restore_review_snapshot(
+            snapshot.pull_request_reviews,
+            snapshot.review_threads,
+            snapshot.pending_review,
+            snapshot.current_user_login,
+            snapshot.detail_loaded.reviews,
+        );
+        self.detail_state.log_state.set_chunk(snapshot.log_chunk);
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;

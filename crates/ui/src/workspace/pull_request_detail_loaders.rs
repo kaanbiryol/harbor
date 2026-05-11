@@ -179,9 +179,9 @@ impl AppView {
             PanelTab::Logs => {
                 if self.detail_state.should_load_workflows() {
                     self.spawn_pull_request_workflows_loader(load, cx);
-                } else if !self.detail_state.log_state.is_loading
-                    && self.detail_state.log_state.chunk.is_none()
-                    && self.detail_state.log_state.error.is_none()
+                } else if !self.detail_state.log_state.is_loading()
+                    && self.detail_state.log_state.chunk().is_none()
+                    && self.detail_state.log_state.error().is_none()
                 {
                     self.load_selected_workflow_logs(cx);
                 }
@@ -230,7 +230,7 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
-        let Some(store) = self.repository_state.repository_store.clone() else {
+        let Some(store) = self.repository_state.store() else {
             return;
         };
 
@@ -269,8 +269,7 @@ impl AppView {
         });
 
         self.tasks
-            .pr_detail_tasks
-            .push(cx.spawn(async move |this, cx| {
+            .push_pull_request_detail_task(cx.spawn(async move |this, cx| {
                 let result = task.await;
 
                 this.update_or_log(
@@ -324,8 +323,7 @@ impl AppView {
                             && view.review_state.pull_request_reviews.is_empty()
                             && view.review_state.review_threads.is_empty()
                         {
-                            view.review_state.pull_request_reviews = reviews;
-                            view.replace_loaded_review_threads(threads);
+                            view.replace_reviews_and_loaded_threads(reviews, threads);
                             view.refresh_owned_file_filters(cx);
                             applied_any = true;
                         }
@@ -350,8 +348,8 @@ impl AppView {
 
         self.detail_state.start_details_load();
         let github_api = self.github_api.clone();
-        let store = self.repository_state.repository_store.clone();
-        self.tasks.pr_detail_tasks.push(cx.spawn({
+        let store = self.repository_state.store();
+        self.tasks.push_pull_request_detail_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;
@@ -422,8 +420,8 @@ impl AppView {
 
         self.detail_state.start_files_load();
         let github_api = self.github_api.clone();
-        let store = self.repository_state.repository_store.clone();
-        self.tasks.pr_detail_tasks.push(cx.spawn({
+        let store = self.repository_state.store();
+        self.tasks.push_pull_request_detail_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;
@@ -580,8 +578,8 @@ impl AppView {
 
         self.detail_state.start_checks_load();
         let github_api = self.github_api.clone();
-        let store = self.repository_state.repository_store.clone();
-        self.tasks.pr_detail_tasks.push(cx.spawn({
+        let store = self.repository_state.store();
+        self.tasks.push_pull_request_detail_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;
@@ -666,8 +664,8 @@ impl AppView {
 
         self.detail_state.start_workflows_load();
         let github_api = self.github_api.clone();
-        let store = self.repository_state.repository_store.clone();
-        self.tasks.pr_detail_tasks.push(cx.spawn({
+        let store = self.repository_state.store();
+        self.tasks.push_pull_request_detail_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;
@@ -722,7 +720,7 @@ impl AppView {
                                     format!("Loaded {count} workflow runs for PR #{number}");
 
                                 if view.active_tab == PanelTab::Logs
-                                    && view.detail_state.log_state.error.is_none()
+                                    && view.detail_state.log_state.error().is_none()
                                     && !view.detail_state.workflow_runs.is_empty()
                                 {
                                     view.load_selected_workflow_logs(cx);

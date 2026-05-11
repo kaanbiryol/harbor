@@ -46,7 +46,7 @@ impl AppView {
         let has_repository = self.current_repository().is_some();
         let local_path = self.current_repository_local_path().cloned();
         let has_local_path = local_path.is_some();
-        let local_action_running = self.tasks.local_task.is_some();
+        let local_action_running = self.tasks.local_task_running();
         let app_availability = ExternalApp::ALL.map(|app| self.external_app_is_available(app));
 
         DropdownButton::new("open-with")

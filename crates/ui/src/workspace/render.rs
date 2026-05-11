@@ -48,7 +48,7 @@ pub(super) fn render_switcher_section_label(label: &'static str) -> impl IntoEle
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.sync_runtime.did_focus {
+        if !self.sync_runtime.did_focus() {
             if self.repository_state.repository_switcher_open {
                 self.repository_state
                     .repository_search_input
@@ -56,7 +56,7 @@ impl Render for AppView {
             } else {
                 window.focus(&self.focus_handle, cx);
             }
-            self.sync_runtime.did_focus = true;
+            self.sync_runtime.mark_focused_once();
         }
 
         if self.active_tab == PanelTab::Diff {
@@ -115,7 +115,7 @@ impl Render for AppView {
                     .overflow_hidden()
                     .gap_2()
                     .p_2()
-                    .when(self.pull_request_inbox.visible, |element| {
+                    .when(self.pull_request_inbox.is_visible(), |element| {
                         element.child(self.render_inbox(cx))
                     })
                     .child(self.render_details(selected_pr.as_ref(), cx))
@@ -127,12 +127,12 @@ impl Render for AppView {
 
 impl AppView {
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let inbox_toggle_icon = if self.pull_request_inbox.visible {
+        let inbox_toggle_icon = if self.pull_request_inbox.is_visible() {
             IconName::PanelLeft
         } else {
             IconName::PanelLeftOpen
         };
-        let inbox_toggle_tooltip = if self.pull_request_inbox.visible {
+        let inbox_toggle_tooltip = if self.pull_request_inbox.is_visible() {
             "Hide pull request inbox"
         } else {
             "Show pull request inbox"
@@ -302,9 +302,9 @@ impl AppView {
                         PanelTab::Logs => render_logs_panel(
                             self.selected_workflow_run_for_logs(),
                             &self.detail_state.workflow_jobs,
-                            self.detail_state.log_state.chunk.as_ref(),
-                            self.detail_state.log_state.is_loading,
-                            self.detail_state.log_state.error.as_deref(),
+                            self.detail_state.log_state.chunk(),
+                            self.detail_state.log_state.is_loading(),
+                            self.detail_state.log_state.error(),
                             self.detail_state.log_state.list_scroll.clone(),
                             cx,
                         )

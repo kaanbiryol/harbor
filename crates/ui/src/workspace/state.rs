@@ -8,18 +8,30 @@ use chrono::Utc;
 use gpui::{Entity, Task, UniformListScrollHandle};
 use gpui_component::input::InputState;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequestReview, RepoId, ReviewThread, ReviewThreadState, WorkflowJob,
+    CheckRun, DiffFile, PullRequestReview, ReactionContent, RepoId, ReviewComment,
+    ReviewCommentPosition, ReviewCommentRange, ReviewThread, ReviewThreadState, WorkflowJob,
     WorkflowRun,
 };
 use harbor_logs::LogChunk;
 use harbor_storage::SqliteStore;
-use harbor_sync::{ActivityState, SyncPolicy, SyncState, SyncTarget};
+use harbor_sync::{
+    ActivityState, SyncDecision, SyncPolicy, SyncReason, SyncSignals, SyncState, SyncTarget,
+};
 
 use super::{
     PendingReviewSession, PullRequestDetailCacheKey, PullRequestDetailSnapshot,
     PullRequestInboxCacheKey, PullRequestInboxMode, PullRequestInboxSnapshot, ReviewCommentUiError,
     ReviewComposer, ReviewLineSelection, ReviewLineTarget, ReviewReactionAction, ReviewReactionKey,
-    ReviewThreadUiError, notifications::NotificationSink,
+    ReviewThreadUiError,
+    notifications::NotificationSink,
+    reviews::{
+        LOCAL_REVIEW_COMMENT_ID_PREFIX, LOCAL_REVIEW_THREAD_ID_PREFIX,
+        OptimisticReviewCommentHandle, apply_review_reaction_overrides,
+        apply_review_thread_state_overrides, merge_optimistic_review_threads,
+        pending_review_from_reviews, remove_review_comment_from_threads,
+        review_position_from_range, rollback_pending_review_comment_count,
+        set_review_comment_reaction_state, unresolved_review_thread_count,
+    },
 };
 use crate::diff::ParsedDiff;
 
@@ -77,12 +89,12 @@ impl LoadStatus {
 
 #[derive(Default)]
 pub(crate) struct WorkspaceTasks {
-    pub(crate) pr_list_task: Option<Task<()>>,
-    pub(crate) pr_detail_tasks: Vec<Task<()>>,
-    pub(crate) repository_task: Option<Task<()>>,
-    pub(crate) local_task: Option<Task<()>>,
-    pub(crate) external_app_availability_task: Option<Task<()>>,
-    pub(crate) sync_task: Option<Task<()>>,
+    pr_list_task: Option<Task<()>>,
+    pr_detail_tasks: Vec<Task<()>>,
+    repository_task: Option<Task<()>>,
+    local_task: Option<Task<()>>,
+    external_app_availability_task: Option<Task<()>>,
+    sync_task: Option<Task<()>>,
 }
 
 impl WorkspaceTasks {
@@ -92,6 +104,10 @@ impl WorkspaceTasks {
 
     pub(crate) fn set_pull_request_list_task(&mut self, task: Task<()>) {
         self.pr_list_task = Some(task);
+    }
+
+    pub(crate) fn push_pull_request_detail_task(&mut self, task: Task<()>) {
+        self.pr_detail_tasks.push(task);
     }
 
     pub(crate) fn clear_pull_request_list_task(&mut self) {
@@ -121,21 +137,75 @@ impl WorkspaceTasks {
     pub(crate) fn set_sync_task(&mut self, task: Task<()>) {
         self.sync_task = Some(task);
     }
+
+    pub(crate) fn sync_task_running(&self) -> bool {
+        self.sync_task.is_some()
+    }
+
+    pub(crate) fn local_task_running(&self) -> bool {
+        self.local_task.is_some()
+    }
 }
 
 pub(crate) struct RepositoryUiState {
-    pub(crate) repositories: Vec<RepoId>,
+    repositories: Vec<RepoId>,
     pub(crate) repository_switcher_open: bool,
     pub(crate) repository_switcher_selection: usize,
     pub(crate) repository_search_input: Entity<InputState>,
-    pub(crate) configured_repo: Option<RepoId>,
-    pub(crate) repository_store: Option<SqliteStore>,
-    pub(crate) repository_local_paths: HashMap<RepoId, PathBuf>,
-    pub(crate) is_loading_repositories: bool,
-    pub(crate) repository_error: Option<String>,
+    configured_repo: Option<RepoId>,
+    repository_store: Option<SqliteStore>,
+    repository_local_paths: HashMap<RepoId, PathBuf>,
+    is_loading_repositories: bool,
+    repository_error: Option<String>,
 }
 
 impl RepositoryUiState {
+    pub(crate) fn new(repository_search_input: Entity<InputState>, is_loading: bool) -> Self {
+        Self {
+            repositories: Vec::new(),
+            repository_switcher_open: true,
+            repository_switcher_selection: 0,
+            repository_search_input,
+            configured_repo: None,
+            repository_store: None,
+            repository_local_paths: HashMap::new(),
+            is_loading_repositories: is_loading,
+            repository_error: None,
+        }
+    }
+
+    pub(crate) fn repositories(&self) -> &[RepoId] {
+        &self.repositories
+    }
+
+    pub(crate) fn configured_repo(&self) -> Option<&RepoId> {
+        self.configured_repo.as_ref()
+    }
+
+    pub(crate) fn configured_repo_cloned(&self) -> Option<RepoId> {
+        self.configured_repo.clone()
+    }
+
+    pub(crate) fn has_configured_repo(&self) -> bool {
+        self.configured_repo.is_some()
+    }
+
+    pub(crate) fn store(&self) -> Option<SqliteStore> {
+        self.repository_store.clone()
+    }
+
+    pub(crate) fn local_path(&self, repository: &RepoId) -> Option<&PathBuf> {
+        self.repository_local_paths.get(repository)
+    }
+
+    pub(crate) fn is_loading(&self) -> bool {
+        self.is_loading_repositories
+    }
+
+    pub(crate) fn error(&self) -> Option<&str> {
+        self.repository_error.as_deref()
+    }
+
     pub(crate) fn start_loading(&mut self) {
         self.is_loading_repositories = true;
     }
@@ -226,15 +296,40 @@ pub(crate) struct NotificationState {
 }
 
 pub(crate) struct SyncRuntimeState {
-    pub(crate) activity_state: ActivityState,
-    pub(crate) sync_policy: SyncPolicy,
-    pub(crate) sync_states: HashMap<SyncTarget, SyncState>,
-    pub(crate) did_focus: bool,
+    activity_state: ActivityState,
+    sync_policy: SyncPolicy,
+    sync_states: HashMap<SyncTarget, SyncState>,
+    did_focus: bool,
 }
 
 impl SyncRuntimeState {
+    pub(crate) fn new(activity_state: ActivityState, sync_policy: SyncPolicy) -> Self {
+        Self {
+            activity_state,
+            sync_policy,
+            sync_states: HashMap::new(),
+            did_focus: false,
+        }
+    }
+
     pub(crate) fn set_activity(&mut self, activity_state: ActivityState) {
         self.activity_state = activity_state;
+    }
+
+    pub(crate) fn activity_state(&self) -> ActivityState {
+        self.activity_state
+    }
+
+    pub(crate) fn is_background(&self) -> bool {
+        self.activity_state == ActivityState::Background
+    }
+
+    pub(crate) fn did_focus(&self) -> bool {
+        self.did_focus
+    }
+
+    pub(crate) fn mark_focused_once(&mut self) {
+        self.did_focus = true;
     }
 
     pub(crate) fn mark_attempt(&mut self, target: SyncTarget) {
@@ -258,13 +353,43 @@ impl SyncRuntimeState {
     pub(crate) fn mark_stale(&mut self, target: SyncTarget) {
         self.sync_states.entry(target).or_default().mark_stale();
     }
+
+    pub(crate) fn decision(
+        &self,
+        target: SyncTarget,
+        reason: SyncReason,
+        signals: SyncSignals,
+    ) -> SyncDecision {
+        let empty_state = SyncState::default();
+        let state = self.sync_states.get(&target).unwrap_or(&empty_state);
+
+        self.sync_policy.decision(
+            target,
+            reason,
+            self.activity_state,
+            state,
+            signals,
+            Utc::now(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sync_state(&self, target: SyncTarget) -> Option<&SyncState> {
+        self.sync_states.get(&target)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_sync_state(&mut self, target: SyncTarget, state: SyncState) {
+        self.sync_states.insert(target, state);
+    }
 }
 
 #[derive(Default)]
 pub(crate) struct PullRequestInboxState {
-    pub(crate) visible: bool,
-    pub(crate) mode: PullRequestInboxMode,
-    pub(crate) cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
+    visible: bool,
+    mode: PullRequestInboxMode,
+    cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
+    load: LoadStatus,
 }
 
 impl PullRequestInboxState {
@@ -273,6 +398,75 @@ impl PullRequestInboxState {
             visible: true,
             ..Self::default()
         }
+    }
+
+    pub(crate) fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    pub(crate) fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    pub(crate) fn toggle_visible(&mut self) {
+        self.visible = !self.visible;
+    }
+
+    pub(crate) fn mode(&self) -> PullRequestInboxMode {
+        self.mode
+    }
+
+    pub(crate) fn set_mode(&mut self, mode: PullRequestInboxMode) {
+        self.mode = mode;
+    }
+
+    pub(crate) fn start_loading(&mut self) {
+        self.load.start();
+    }
+
+    pub(crate) fn apply_success(&mut self) {
+        self.load.succeed();
+    }
+
+    pub(crate) fn apply_failure(&mut self, error: impl Into<String>) {
+        self.load.fail(error);
+    }
+
+    pub(crate) fn reset_load(&mut self) {
+        self.load.reset();
+    }
+
+    pub(crate) fn is_loading(&self) -> bool {
+        self.load.is_loading()
+    }
+
+    pub(crate) fn load_error(&self) -> Option<&str> {
+        self.load.error()
+    }
+
+    pub(crate) fn can_cache_snapshot(&self) -> bool {
+        !self.is_loading() && self.load_error().is_none()
+    }
+
+    pub(crate) fn insert_snapshot(
+        &mut self,
+        key: PullRequestInboxCacheKey,
+        snapshot: PullRequestInboxSnapshot,
+    ) {
+        self.cache.insert(key, snapshot);
+    }
+
+    pub(crate) fn snapshot(
+        &self,
+        key: &PullRequestInboxCacheKey,
+    ) -> Option<&PullRequestInboxSnapshot> {
+        self.cache.get(key)
+    }
+
+    pub(crate) fn snapshot_count(&self, key: &PullRequestInboxCacheKey) -> Option<usize> {
+        self.cache
+            .get(key)
+            .map(PullRequestInboxSnapshot::pull_request_count)
     }
 }
 
@@ -318,11 +512,11 @@ pub(crate) enum ReviewComposerMode {
 }
 
 pub(crate) struct WorkflowLogState {
-    pub(crate) chunk: Option<LogChunk>,
-    pub(crate) task: Option<Task<()>>,
+    chunk: Option<LogChunk>,
+    task: Option<Task<()>>,
     pub(crate) list_scroll: UniformListScrollHandle,
-    pub(crate) is_loading: bool,
-    pub(crate) error: Option<String>,
+    is_loading: bool,
+    error: Option<String>,
 }
 
 impl WorkflowLogState {
@@ -334,6 +528,30 @@ impl WorkflowLogState {
             is_loading: false,
             error: None,
         }
+    }
+
+    pub(crate) fn chunk(&self) -> Option<&LogChunk> {
+        self.chunk.as_ref()
+    }
+
+    pub(crate) fn set_chunk(&mut self, chunk: Option<LogChunk>) {
+        self.chunk = chunk;
+    }
+
+    pub(crate) fn set_task(&mut self, task: Task<()>) {
+        self.task = Some(task);
+    }
+
+    pub(crate) fn is_loading(&self) -> bool {
+        self.is_loading
+    }
+
+    pub(crate) fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    pub(crate) fn has_error(&self) -> bool {
+        self.error.is_some()
     }
 
     pub(crate) fn start_loading(&mut self) {
@@ -617,6 +835,249 @@ impl ReviewRuntimeState {
 
     pub(crate) fn clear_reviews_error(&mut self) {
         self.reviews_load.clear_error();
+    }
+
+    pub(crate) fn clear_composer_and_action_state(&mut self) {
+        self.review_composer_state.clear();
+        self.review_comment_error = None;
+        self.review_thread_reply_error = None;
+        self.review_comment_edit_error = None;
+        self.review_comment_action_comment_id = None;
+        self.review_comment_action_error = None;
+        self.review_reaction_action = None;
+        self.review_reaction_error = None;
+    }
+
+    pub(crate) fn clear_submission_errors(&mut self) {
+        self.review_comment_error = None;
+        self.pending_review_error = None;
+    }
+
+    pub(crate) fn clear_review_data(&mut self) {
+        self.pull_request_reviews.clear();
+        self.review_threads.clear();
+        self.clear_composer_and_action_state();
+        self.pending_review = None;
+    }
+
+    pub(crate) fn restore_review_snapshot(
+        &mut self,
+        pull_request_reviews: Vec<PullRequestReview>,
+        review_threads: Vec<ReviewThread>,
+        pending_review: Option<PendingReviewSession>,
+        current_user_login: Option<String>,
+        reviews_loaded: bool,
+    ) {
+        self.pull_request_reviews = pull_request_reviews;
+        self.review_threads = review_threads;
+        self.pending_review = pending_review;
+        self.current_user_login = current_user_login;
+        if reviews_loaded {
+            self.apply_reviews_success();
+        } else {
+            self.reset_reviews_load();
+        }
+    }
+
+    pub(crate) fn apply_loaded_review_data(
+        &mut self,
+        reviews: Vec<PullRequestReview>,
+        review_threads: Vec<ReviewThread>,
+        current_user_login: Option<String>,
+        pending_review_comment_count: Option<usize>,
+    ) -> usize {
+        let existing_pending_review = self.pending_review.clone();
+        self.current_user_login = current_user_login;
+        self.pending_review = pending_review_from_reviews(
+            &reviews,
+            self.current_user_login.as_deref(),
+            existing_pending_review.as_ref(),
+            pending_review_comment_count,
+        );
+        self.pull_request_reviews = reviews;
+        self.apply_loaded_review_threads(review_threads)
+    }
+
+    pub(crate) fn replace_loaded_review_threads(
+        &mut self,
+        review_threads: Vec<ReviewThread>,
+    ) -> usize {
+        self.apply_loaded_review_threads(review_threads)
+    }
+
+    pub(crate) fn replace_reviews_and_loaded_threads(
+        &mut self,
+        reviews: Vec<PullRequestReview>,
+        review_threads: Vec<ReviewThread>,
+    ) -> usize {
+        self.pull_request_reviews = reviews;
+        self.apply_loaded_review_threads(review_threads)
+    }
+
+    pub(crate) fn clear_pull_request_reviews(&mut self) {
+        self.pull_request_reviews.clear();
+    }
+
+    fn apply_loaded_review_threads(&mut self, mut review_threads: Vec<ReviewThread>) -> usize {
+        let settled_thread_state_overrides = apply_review_thread_state_overrides(
+            &mut review_threads,
+            &self.review_thread_state_overrides,
+        );
+        let settled_reaction_overrides =
+            apply_review_reaction_overrides(&mut review_threads, &self.review_reaction_overrides);
+        self.remove_review_thread_state_overrides(settled_thread_state_overrides);
+        self.remove_review_reaction_overrides(settled_reaction_overrides);
+        self.review_threads = merge_optimistic_review_threads(review_threads, &self.review_threads);
+        self.unresolved_thread_count()
+    }
+
+    pub(crate) fn unresolved_thread_count(&self) -> usize {
+        unresolved_review_thread_count(&self.review_threads)
+    }
+
+    pub(crate) fn set_review_thread_state(&mut self, thread_id: &str, state: ReviewThreadState) {
+        if let Some(thread) = self
+            .review_threads
+            .iter_mut()
+            .find(|thread| thread.id == thread_id)
+        {
+            thread.state = state;
+        }
+    }
+
+    pub(crate) fn review_comment(&self, comment_id: &str) -> Option<&ReviewComment> {
+        self.review_threads
+            .iter()
+            .flat_map(|thread| thread.comments.iter())
+            .find(|comment| comment.id == comment_id)
+    }
+
+    pub(crate) fn review_comment_mut(&mut self, comment_id: &str) -> Option<&mut ReviewComment> {
+        self.review_threads
+            .iter_mut()
+            .flat_map(|thread| thread.comments.iter_mut())
+            .find(|comment| comment.id == comment_id)
+    }
+
+    pub(crate) fn remove_review_comment(&mut self, comment_id: &str) {
+        remove_review_comment_from_threads(&mut self.review_threads, comment_id);
+    }
+
+    pub(crate) fn rollback_pending_review_comment_count(
+        &mut self,
+        previous_pending_review: Option<&PendingReviewSession>,
+    ) {
+        rollback_pending_review_comment_count(&mut self.pending_review, previous_pending_review);
+    }
+
+    pub(crate) fn set_pending_review(&mut self, pending_review: PendingReviewSession) {
+        self.pending_review = Some(pending_review);
+    }
+
+    pub(crate) fn set_review_comment_reaction(
+        &mut self,
+        comment_id: &str,
+        content: ReactionContent,
+        viewer_has_reacted: bool,
+    ) {
+        if let Some(comment) = self.review_comment_mut(comment_id) {
+            set_review_comment_reaction_state(comment, content, viewer_has_reacted);
+        }
+    }
+
+    pub(crate) fn insert_optimistic_review_thread(
+        &mut self,
+        range: ReviewCommentRange,
+        body: String,
+    ) -> OptimisticReviewCommentHandle {
+        let sequence = self.next_local_review_comment_sequence();
+        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
+        let comment = self.optimistic_review_comment(
+            comment_id.clone(),
+            Some(review_position_from_range(&range)),
+            body,
+        );
+
+        self.review_threads.push(ReviewThread {
+            id: format!("{LOCAL_REVIEW_THREAD_ID_PREFIX}{sequence}"),
+            path: range.path.clone(),
+            range: Some(range),
+            state: ReviewThreadState::Unresolved,
+            comments: vec![comment],
+        });
+
+        OptimisticReviewCommentHandle { comment_id }
+    }
+
+    pub(crate) fn append_optimistic_review_reply(
+        &mut self,
+        thread_id: &str,
+        body: String,
+    ) -> Option<OptimisticReviewCommentHandle> {
+        let thread_index = self
+            .review_threads
+            .iter()
+            .position(|thread| thread.id == thread_id)?;
+
+        let position = self.review_threads[thread_index]
+            .range
+            .as_ref()
+            .map(review_position_from_range)
+            .or_else(|| {
+                self.review_threads[thread_index]
+                    .comments
+                    .iter()
+                    .find_map(|comment| comment.position.clone())
+            });
+        let sequence = self.next_local_review_comment_sequence();
+        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
+        let comment = self.optimistic_review_comment(comment_id.clone(), position, body);
+
+        self.review_threads[thread_index].comments.push(comment);
+
+        Some(OptimisticReviewCommentHandle { comment_id })
+    }
+
+    fn optimistic_review_comment(
+        &self,
+        id: String,
+        position: Option<ReviewCommentPosition>,
+        body: String,
+    ) -> ReviewComment {
+        ReviewComment {
+            id,
+            author: self
+                .current_user_login
+                .clone()
+                .unwrap_or_else(|| "you".to_string()),
+            author_avatar_url: None,
+            body,
+            created_at: Utc::now(),
+            updated_at: None,
+            position,
+            viewer_did_author: true,
+            viewer_can_update: false,
+            viewer_can_delete: false,
+            viewer_can_react: false,
+            reactions: Vec::new(),
+        }
+    }
+
+    fn next_local_review_comment_sequence(&mut self) -> u64 {
+        self.local_review_comment_sequence = self.local_review_comment_sequence.saturating_add(1);
+        self.local_review_comment_sequence
+    }
+
+    fn remove_review_reaction_overrides(&mut self, keys: Vec<ReviewReactionKey>) {
+        for key in keys {
+            self.review_reaction_overrides.remove(&key);
+        }
+    }
+
+    fn remove_review_thread_state_overrides(&mut self, thread_ids: Vec<String>) {
+        for thread_id in thread_ids {
+            self.review_thread_state_overrides.remove(&thread_id);
+        }
     }
 }
 

@@ -134,8 +134,8 @@ impl AppView {
         let cached_current_user_login = self.review_state.current_user_login.clone();
         let existing_pending_review = self.review_state.pending_review.clone();
         let github_api = self.github_api.clone();
-        let store = self.repository_state.repository_store.clone();
-        self.tasks.pr_detail_tasks.push(cx.spawn(async move |this, cx| {
+        let store = self.repository_state.store();
+        self.tasks.push_pull_request_detail_task(cx.spawn(async move |this, cx| {
             let current_user_result = match cached_current_user_login {
                 Some(login) => Ok(login),
                 None => github_api.current_user().await,
@@ -254,7 +254,7 @@ impl AppView {
                     (Err(reviews_error), Ok(threads)) => {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         let thread_count = threads.len();
-                        view.review_state.pull_request_reviews.clear();
+                        view.review_state.clear_pull_request_reviews();
                         view.replace_loaded_review_threads(threads);
                         let message = format!("Failed to load review history: {reviews_error}");
                         append_review_error(&mut review_error, message);
@@ -275,7 +275,7 @@ impl AppView {
                     }
                     (Err(reviews_error), Err(threads_error)) => {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
-                        view.review_state.pull_request_reviews.clear();
+                        view.review_state.clear_pull_request_reviews();
                         let message = format!(
                             "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"
                         );

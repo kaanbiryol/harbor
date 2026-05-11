@@ -42,15 +42,11 @@ impl AppView {
     }
 
     pub(super) fn clear_review_submission_errors(&mut self) {
-        self.review_state.review_comment_error = None;
-        self.review_state.pending_review_error = None;
+        self.review_state.clear_submission_errors();
     }
 
     pub(super) fn clear_review_data_state(&mut self) {
-        self.review_state.pull_request_reviews.clear();
-        self.review_state.review_threads.clear();
-        self.clear_review_composer_state();
-        self.review_state.pending_review = None;
+        self.review_state.clear_review_data();
     }
 
     pub(super) fn clear_changed_file_state(&mut self) {

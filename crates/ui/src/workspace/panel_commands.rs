@@ -20,11 +20,11 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.pull_request_inbox.visible = !self.pull_request_inbox.visible;
+        self.pull_request_inbox.toggle_visible();
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         self.file_filter_popover_open = false;
-        self.status = if self.pull_request_inbox.visible {
+        self.status = if self.pull_request_inbox.is_visible() {
             "Pull request inbox shown".to_string()
         } else {
             "Pull request inbox hidden".to_string()
@@ -84,7 +84,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let selected_repository = repository.full_name();
-        if self.repository_state.configured_repo.as_ref() == Some(&repository) {
+        if self.repository_state.configured_repo() == Some(&repository) {
             self.status = format!("Selected repository {selected_repository}");
             cx.notify();
             return;

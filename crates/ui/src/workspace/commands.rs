@@ -61,7 +61,7 @@ impl AppView {
                 self.repository_state.repository_switcher_open = false;
                 self.pull_request_inbox_search_open = false;
                 self.file_filter_popover_open = false;
-                self.pull_request_inbox.visible = false;
+                self.pull_request_inbox.set_visible(false);
                 self.active_tab = PanelTab::Diff;
                 self.status = format!("Opened PR #{number} details");
 
@@ -83,7 +83,7 @@ impl AppView {
     ) {
         if self.selected_pull_request_number().is_some() {
             self.refresh_selected_pull_request(cx);
-        } else if let Some(repo) = self.repository_state.configured_repo.clone() {
+        } else if let Some(repo) = self.repository_state.configured_repo_cloned() {
             self.refresh_pull_requests(repo, cx);
         } else {
             self.status =

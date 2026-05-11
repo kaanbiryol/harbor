@@ -44,9 +44,7 @@ impl AppView {
         events: Vec<PullRequestChangeEvent>,
         cx: &mut Context<Self>,
     ) {
-        if self.sync_runtime.activity_state != harbor_sync::ActivityState::Background
-            || !self.notification_state.notifications_enabled
-        {
+        if !self.sync_runtime.is_background() || !self.notification_state.notifications_enabled {
             return;
         }
 
@@ -84,17 +82,17 @@ impl AppView {
     }
 
     pub(crate) fn catch_up_active_inbox_after_focus(&mut self, cx: &mut Context<Self>) {
-        if self.is_loading_prs {
+        if self.pull_request_inbox.is_loading() {
             return;
         }
 
         if self.active_inbox_focus_catch_up_due()
-            && let Some(repository) = self.repository_state.configured_repo.clone()
+            && let Some(repository) = self.repository_state.configured_repo_cloned()
         {
-            if self.pull_request_inbox.mode == PullRequestInboxMode::NeedsReview {
+            if self.pull_request_inbox.mode() == PullRequestInboxMode::NeedsReview {
                 tracing::info!(
                     repository = %repository.full_name(),
-                    mode = self.pull_request_inbox.mode.key(),
+                    mode = self.pull_request_inbox.mode().key(),
                     "github graphql source: focus catch-up inbox refresh"
                 );
             }

@@ -33,7 +33,7 @@ impl PullRequestInboxRefreshIntent {
 
 impl AppView {
     pub(super) fn load_recent_repositories(&mut self, cx: &mut Context<Self>) {
-        let configured_repo = self.repository_state.configured_repo.clone();
+        let configured_repo = self.repository_state.configured_repo_cloned();
         self.repository_state.start_loading();
         let task = cx.background_spawn(async move { load_repository_store(configured_repo).await });
 
@@ -49,18 +49,18 @@ impl AppView {
                         view.repository_state.set_store(load.store);
 
                         view.apply_recent_repositories(load.repositories);
-                        if let Some(repository) = view.repository_state.configured_repo.clone() {
+                        if let Some(repository) = view.repository_state.configured_repo_cloned() {
                             view.record_recent_repository(repository, cx);
                         } else if let Some(repository) = last_selected_repository {
                             view.status =
                                 format!("Opening last repository {}", repository.full_name());
                             view.load_repository_pull_requests_from_cache(
                                 repository,
-                                view.pull_request_inbox.mode,
+                                view.pull_request_inbox.mode(),
                                 cx,
                             );
-                        } else if view.repository_state.configured_repo.is_none()
-                            && !view.is_loading_prs
+                        } else if !view.repository_state.has_configured_repo()
+                            && !view.pull_request_inbox.is_loading()
                             && view.pull_requests.is_empty()
                         {
                             view.status = if repository_count == 0 {
@@ -111,8 +111,8 @@ impl AppView {
                             }
                             view.apply_recent_repositories(load.repositories);
 
-                            if view.repository_state.configured_repo.is_none()
-                                && !view.is_loading_prs
+                            if !view.repository_state.has_configured_repo()
+                                && !view.pull_request_inbox.is_loading()
                                 && view.pull_requests.is_empty()
                             {
                                 view.status = match (repository_count, repository_error) {
@@ -136,8 +136,8 @@ impl AppView {
                         }
                         Err(error) => {
                             view.repository_state.set_error(error.to_string());
-                            if view.repository_state.configured_repo.is_none()
-                                && !view.is_loading_prs
+                            if !view.repository_state.has_configured_repo()
+                                && !view.pull_request_inbox.is_loading()
                                 && view.pull_requests.is_empty()
                             {
                                 view.status = error.to_string();
@@ -163,7 +163,7 @@ impl AppView {
     pub(crate) fn record_recent_repository(&mut self, repository: RepoId, cx: &mut Context<Self>) {
         self.remember_repository(repository.clone());
 
-        let Some(store) = self.repository_state.repository_store.clone() else {
+        let Some(store) = self.repository_state.store() else {
             return;
         };
 
@@ -195,7 +195,7 @@ impl AppView {
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,
-            self.pull_request_inbox.mode,
+            self.pull_request_inbox.mode(),
             PullRequestInboxRefreshIntent::PreferCache,
             cx,
         );
@@ -218,7 +218,7 @@ impl AppView {
     pub(super) fn refresh_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,
-            self.pull_request_inbox.mode,
+            self.pull_request_inbox.mode(),
             PullRequestInboxRefreshIntent::ManualRefresh,
             cx,
         );
@@ -227,14 +227,14 @@ impl AppView {
     pub(crate) fn refresh_pull_requests_light(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,
-            self.pull_request_inbox.mode,
+            self.pull_request_inbox.mode(),
             PullRequestInboxRefreshIntent::LightRefresh,
             cx,
         );
     }
 
     pub(super) fn reload_pull_request_inbox(&mut self, cx: &mut Context<Self>) {
-        if let Some(repo) = self.repository_state.configured_repo.clone() {
+        if let Some(repo) = self.repository_state.configured_repo_cloned() {
             self.mark_active_inbox_stale();
             self.refresh_pull_requests(repo, cx);
         } else {
@@ -263,13 +263,12 @@ impl AppView {
         }
 
         self.repository_state.select_repository(repo.clone());
-        self.pull_request_inbox.mode = mode;
+        self.pull_request_inbox.set_mode(mode);
         self.ensure_sync_loop(cx);
         if refresh_intent != PullRequestInboxRefreshIntent::LightRefresh {
             self.record_recent_repository(repo.clone(), cx);
         }
-        self.is_loading_prs = true;
-        self.load_error = None;
+        self.pull_request_inbox.start_loading();
 
         if refresh_intent.resets_detail_state() {
             self.clear_detail_errors();
@@ -290,7 +289,7 @@ impl AppView {
         self.status = pull_request_inbox_loading_status(&repo, mode);
 
         if refresh_intent.uses_cache()
-            && let Some(store) = self.repository_state.repository_store.clone()
+            && let Some(store) = self.repository_state.store()
         {
             let load_repo = repo.clone();
             let load_key = key.clone();
@@ -369,11 +368,10 @@ impl AppView {
         force_enrichment: bool,
         cx: &mut Context<Self>,
     ) {
-        self.is_loading_prs = true;
-        self.load_error = None;
+        self.pull_request_inbox.start_loading();
         self.mark_sync_attempt(mode.active_sync_target());
         let github_api = self.github_api.clone();
-        let store = self.repository_state.repository_store.clone();
+        let store = self.repository_state.store();
         let previous_pull_requests = self.pull_requests.clone();
 
         self.tasks
@@ -400,7 +398,7 @@ impl AppView {
                             return;
                         }
 
-                        view.is_loading_prs = false;
+                        view.pull_request_inbox.apply_success();
                         if let Err(error) = cache_result {
                             view.repository_state.set_error(error);
                         }
@@ -408,7 +406,6 @@ impl AppView {
                         match refresh {
                             Ok(PullRequestInboxRefresh::NotModified) => {
                                 view.mark_sync_success(mode.active_sync_target());
-                                view.load_error = None;
                                 view.status = format!(
                                     "{} from {} unchanged",
                                     mode.status_label(),
@@ -433,7 +430,6 @@ impl AppView {
                                     true,
                                     cx,
                                 );
-                                view.load_error = None;
                                 view.status = enrichment_error
                                     .map(|error| format!("{status}; rich refresh failed: {error}"))
                                     .unwrap_or(status);
@@ -446,7 +442,7 @@ impl AppView {
                                 view.set_log_loading(false);
                                 view.is_running_action = false;
                                 view.is_running_pr_action = false;
-                                view.load_error = Some(error.to_string());
+                                view.pull_request_inbox.apply_failure(error.to_string());
                                 if !view.pull_requests.is_empty() {
                                     status = format!("{status}; showing cached data");
                                 } else {
@@ -488,7 +484,7 @@ impl AppView {
             .is_some_and(|key| key == &PullRequestInboxCacheKey::new(repo.clone(), mode));
 
         self.repository_state.select_repository(repo);
-        self.pull_request_inbox.mode = mode;
+        self.pull_request_inbox.set_mode(mode);
         self.pull_requests = pull_requests;
 
         self.selected_pr = previous_selected

@@ -27,7 +27,7 @@ impl AppView {
             return;
         };
 
-        if self.detail_state.log_state.is_loading {
+        if self.detail_state.log_state.is_loading() {
             self.status = format!("Already loading logs for {}", workflow_run_label(&run));
             cx.notify();
             return;
@@ -48,63 +48,65 @@ impl AppView {
         let run_label = workflow_run_label(&run);
         let github_api = self.github_api.clone();
 
-        self.detail_state.log_state.task = Some(cx.spawn(async move |this, cx| {
-            let jobs_result = github_api
-                .list_workflow_jobs_for_run(&owner, &name, run_id)
-                .await;
-            let log_result = match github_api.workflow_run_log(&owner, &name, run_id).await {
-                Ok(text) => Ok(cx
-                    .background_spawn(async move { parse_workflow_log(run_id, &text) })
-                    .await),
-                Err(error) => Err(error),
-            };
+        self.detail_state
+            .log_state
+            .set_task(cx.spawn(async move |this, cx| {
+                let jobs_result = github_api
+                    .list_workflow_jobs_for_run(&owner, &name, run_id)
+                    .await;
+                let log_result = match github_api.workflow_run_log(&owner, &name, run_id).await {
+                    Ok(text) => Ok(cx
+                        .background_spawn(async move { parse_workflow_log(run_id, &text) })
+                        .await),
+                    Err(error) => Err(error),
+                };
 
-            this.update_or_log(
-                cx,
-                "failed to update workflow log state",
-                move |view, cx| {
-                    if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
-                        return;
-                    }
-                    match jobs_result {
-                        Ok(jobs) => {
-                            view.detail_state.workflow_jobs = jobs;
+                this.update_or_log(
+                    cx,
+                    "failed to update workflow log state",
+                    move |view, cx| {
+                        if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
+                            return;
                         }
-                        Err(error) => {
-                            view.detail_state.workflow_jobs.clear();
-                            view.detail_state.log_state.apply_jobs_failure(format!(
-                                "Failed to load workflow jobs: {error}"
-                            ));
-                        }
-                    }
-
-                    match log_result {
-                        Ok(chunk) => {
-                            view.detail_state.log_state.apply_log_success(chunk);
-                            if view.detail_state.log_state.error.is_none() {
-                                view.status = format!("Loaded logs for {run_label}");
-                            } else {
-                                view.status =
-                                    format!("Loaded logs for {run_label}, but jobs failed");
+                        match jobs_result {
+                            Ok(jobs) => {
+                                view.detail_state.workflow_jobs = jobs;
+                            }
+                            Err(error) => {
+                                view.detail_state.workflow_jobs.clear();
+                                view.detail_state.log_state.apply_jobs_failure(format!(
+                                    "Failed to load workflow jobs: {error}"
+                                ));
                             }
                         }
-                        Err(error) => {
-                            let message = format!("Failed to load workflow logs: {error}");
-                            view.detail_state
-                                .log_state
-                                .apply_log_failure(message.clone());
-                            view.status = message;
-                        }
-                    }
 
-                    view.detail_state
-                        .log_state
-                        .list_scroll
-                        .scroll_to_item(0, ScrollStrategy::Top);
-                    view.cache_current_pull_request_detail_snapshot();
-                    cx.notify();
-                },
-            );
-        }));
+                        match log_result {
+                            Ok(chunk) => {
+                                view.detail_state.log_state.apply_log_success(chunk);
+                                if !view.detail_state.log_state.has_error() {
+                                    view.status = format!("Loaded logs for {run_label}");
+                                } else {
+                                    view.status =
+                                        format!("Loaded logs for {run_label}, but jobs failed");
+                                }
+                            }
+                            Err(error) => {
+                                let message = format!("Failed to load workflow logs: {error}");
+                                view.detail_state
+                                    .log_state
+                                    .apply_log_failure(message.clone());
+                                view.status = message;
+                            }
+                        }
+
+                        view.detail_state
+                            .log_state
+                            .list_scroll
+                            .scroll_to_item(0, ScrollStrategy::Top);
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    },
+                );
+            }));
     }
 }

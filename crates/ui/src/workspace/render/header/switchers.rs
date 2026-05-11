@@ -167,8 +167,8 @@ impl AppView {
             None
         };
         let current_repository = self.current_repository().cloned();
-        let repository_error = self.repository_state.repository_error.clone();
-        let is_loading_repositories = self.repository_state.is_loading_repositories;
+        let repository_error = self.repository_state.error().map(str::to_string);
+        let is_loading_repositories = self.repository_state.is_loading();
         let repository_selection = self
             .repository_state
             .repository_switcher_selection

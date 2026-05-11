@@ -133,7 +133,7 @@ impl AppView {
         path: PathBuf,
         cx: &mut Context<Self>,
     ) {
-        let store = self.repository_state.repository_store.clone();
+        let store = self.repository_state.store();
         let repository_for_task = repository.clone();
         let owner = repository.owner.clone();
         let repo_name = repository.name.clone();
@@ -197,12 +197,7 @@ impl AppView {
             return;
         };
 
-        let Some(repo_path) = self
-            .repository_state
-            .repository_local_paths
-            .get(&pr.repo)
-            .cloned()
-        else {
+        let Some(repo_path) = self.repository_state.local_path(&pr.repo).cloned() else {
             self.status = format!(
                 "Choose a local checkout for {} before opening with {}",
                 pr.repo.full_name(),
@@ -274,12 +269,7 @@ impl AppView {
             return;
         };
 
-        let Some(repo_path) = self
-            .repository_state
-            .repository_local_paths
-            .get(&pr.repo)
-            .cloned()
-        else {
+        let Some(repo_path) = self.repository_state.local_path(&pr.repo).cloned() else {
             self.status = format!(
                 "Choose a local checkout for {} before checkout",
                 pr.repo.full_name()

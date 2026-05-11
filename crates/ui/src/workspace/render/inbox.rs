@@ -18,17 +18,14 @@ use super::render_switcher_section_label;
 
 impl AppView {
     fn pull_request_inbox_mode_count(&self, mode: PullRequestInboxMode) -> Option<usize> {
-        let repository = self.repository_state.configured_repo.as_ref()?;
+        let repository = self.repository_state.configured_repo()?;
 
-        if mode == self.pull_request_inbox.mode {
+        if mode == self.pull_request_inbox.mode() {
             return Some(self.pull_requests.len());
         }
 
         let key = PullRequestInboxCacheKey::new(repository.clone(), mode);
-        self.pull_request_inbox
-            .cache
-            .get(&key)
-            .map(|snapshot| snapshot.pull_request_count())
+        self.pull_request_inbox.snapshot_count(&key)
     }
 
     fn render_pull_request_inbox_search(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -157,10 +154,12 @@ impl AppView {
     }
 
     pub(super) fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let show_list =
-            !self.is_loading_prs && self.load_error.is_none() && !self.pull_requests.is_empty();
-        let current_mode = self.pull_request_inbox.mode;
-        let empty_message = if self.repository_state.configured_repo.is_some() {
+        let show_list = !self.pull_request_inbox.is_loading()
+            && self.pull_request_inbox.load_error().is_none()
+            && !self.pull_requests.is_empty();
+        let current_mode = self.pull_request_inbox.mode();
+        let load_error = self.pull_request_inbox.load_error().map(str::to_string);
+        let empty_message = if self.repository_state.has_configured_repo() {
             current_mode.empty_message()
         } else {
             "Choose a repository from the header"
@@ -211,10 +210,8 @@ impl AppView {
                                             .compact()
                                             .icon(IconName::Redo)
                                             .tooltip("Refresh pull requests")
-                                            .loading(self.is_loading_prs)
-                                            .disabled(
-                                                self.repository_state.configured_repo.is_none(),
-                                            )
+                                            .loading(self.pull_request_inbox.is_loading())
+                                            .disabled(!self.repository_state.has_configured_repo())
                                             .on_click(cx.listener(|view, _, _, cx| {
                                                 view.reload_pull_request_inbox(cx);
                                             })),
@@ -230,7 +227,7 @@ impl AppView {
                         }),
                     )),
             )
-            .when(self.is_loading_prs, |element| {
+            .when(self.pull_request_inbox.is_loading(), |element| {
                 element.child(
                     div()
                         .flex_1()
@@ -242,7 +239,7 @@ impl AppView {
                 )
             })
             .when(
-                !self.is_loading_prs && self.load_error.is_some(),
+                !self.pull_request_inbox.is_loading() && load_error.is_some(),
                 |element| {
                     element.child(
                         div()
@@ -251,12 +248,14 @@ impl AppView {
                             .py_3()
                             .text_sm()
                             .text_color(rgb(0xf87171))
-                            .child(self.load_error.clone().unwrap_or_default()),
+                            .child(load_error.clone().unwrap_or_default()),
                     )
                 },
             )
             .when(
-                !self.is_loading_prs && self.load_error.is_none() && self.pull_requests.is_empty(),
+                !self.pull_request_inbox.is_loading()
+                    && self.pull_request_inbox.load_error().is_none()
+                    && self.pull_requests.is_empty(),
                 |element| {
                     element.child(
                         div()

@@ -23,11 +23,7 @@ mod switchers;
 mod sync_loop;
 mod workflow_log_loaders;
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, ListAlignment, ListOffset, ListState,
@@ -106,10 +102,8 @@ pub struct AppView {
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
     owned_file_paths: HashSet<String>,
-    is_loading_prs: bool,
     is_running_action: bool,
     is_running_pr_action: bool,
-    load_error: Option<String>,
     action_error: Option<String>,
     pr_action_error: Option<String>,
     status: String,
@@ -227,14 +221,13 @@ impl AppView {
                 } else {
                     ActivityState::Background
                 });
-            if view.sync_runtime.activity_state == ActivityState::Focused {
+            if view.sync_runtime.activity_state() == ActivityState::Focused {
                 view.catch_up_active_inbox_after_focus(cx);
             }
             view.ensure_sync_loop(cx);
             cx.notify();
         }));
         let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
-        let repositories = Vec::new();
         let status = if start_startup_tasks {
             "Fetching repositories from GitHub...".to_string()
         } else {
@@ -246,17 +239,7 @@ impl AppView {
             pull_requests,
             github_api,
             tasks: WorkspaceTasks::default(),
-            repository_state: RepositoryUiState {
-                repositories,
-                repository_switcher_open: true,
-                repository_switcher_selection: 0,
-                repository_search_input,
-                configured_repo: None,
-                repository_store: None,
-                repository_local_paths: HashMap::new(),
-                is_loading_repositories: start_startup_tasks,
-                repository_error: None,
-            },
+            repository_state: RepositoryUiState::new(repository_search_input, start_startup_tasks),
             detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
             review_state: ReviewRuntimeState::new(
                 pull_request_reviews,
@@ -273,16 +256,14 @@ impl AppView {
                 notification_dedupe: HashSet::new(),
                 notifications_enabled: true,
             },
-            sync_runtime: SyncRuntimeState {
-                activity_state: if window.is_window_active() {
+            sync_runtime: SyncRuntimeState::new(
+                if window.is_window_active() {
                     ActivityState::Focused
                 } else {
                     ActivityState::Background
                 },
-                sync_policy: SyncPolicy::default(),
-                sync_states: HashMap::new(),
-                did_focus: false,
-            },
+                SyncPolicy::default(),
+            ),
             pr_list_scroll: UniformListScrollHandle::new(),
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
@@ -302,10 +283,8 @@ impl AppView {
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
-            is_loading_prs: false,
             is_running_action: false,
             is_running_pr_action: false,
-            load_error: None,
             action_error: None,
             pr_action_error: None,
             status,
@@ -528,15 +507,11 @@ impl AppView {
         self.clear_detail_loaded_state();
         self.detail_state.workflow_jobs.clear();
         self.clear_log_content();
-        self.review_state.pull_request_reviews.clear();
-        self.review_state.review_threads.clear();
-        self.clear_review_composer_state();
-        self.review_state.pending_review = None;
+        self.clear_review_data_state();
         self.review_state.clear_reviews_error();
         self.clear_log_error();
         self.pr_action_error = None;
-        self.review_state.review_comment_error = None;
-        self.review_state.pending_review_error = None;
+        self.review_state.clear_submission_errors();
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -553,14 +528,14 @@ impl AppView {
         mode: PullRequestInboxMode,
         cx: &mut Context<Self>,
     ) {
-        if self.pull_request_inbox.mode == mode {
+        if self.pull_request_inbox.mode() == mode {
             return;
         }
 
-        if let Some(repository) = self.repository_state.configured_repo.clone() {
+        if let Some(repository) = self.repository_state.configured_repo_cloned() {
             self.load_repository_pull_requests_from_cache(repository, mode, cx);
         } else {
-            self.pull_request_inbox.mode = mode;
+            self.pull_request_inbox.set_mode(mode);
             self.pull_requests.clear();
             self.clear_changed_file_state();
             self.clear_workflow_state();
@@ -710,7 +685,7 @@ impl AppView {
     }
 
     pub(crate) fn current_repository(&self) -> Option<&RepoId> {
-        self.repository_state.configured_repo.as_ref().or_else(|| {
+        self.repository_state.configured_repo().or_else(|| {
             self.selected_pull_request()
                 .map(|pull_request| &pull_request.repo)
         })
@@ -718,7 +693,7 @@ impl AppView {
 
     pub(crate) fn current_repository_local_path(&self) -> Option<&PathBuf> {
         self.current_repository()
-            .and_then(|repository| self.repository_state.repository_local_paths.get(repository))
+            .and_then(|repository| self.repository_state.local_path(repository))
     }
 
     pub(crate) fn set_repository_local_path(&mut self, repository: RepoId, path: PathBuf) {

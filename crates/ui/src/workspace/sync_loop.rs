@@ -2,8 +2,7 @@ use std::time::Duration;
 
 use gpui::Context;
 use harbor_sync::{
-    SyncDecision, SyncReason, SyncSignals, SyncState, SyncTarget,
-    checks_have_running_or_pending_work,
+    SyncDecision, SyncReason, SyncSignals, SyncTarget, checks_have_running_or_pending_work,
 };
 
 use crate::{
@@ -15,7 +14,7 @@ const IDLE_SYNC_LOOP_DELAY: Duration = Duration::from_secs(60);
 
 impl AppView {
     pub(crate) fn ensure_sync_loop(&mut self, cx: &mut Context<Self>) {
-        if self.tasks.sync_task.is_some() {
+        if self.tasks.sync_task_running() {
             return;
         }
 
@@ -56,32 +55,32 @@ impl AppView {
 
     pub(crate) fn mark_active_inbox_stale(&mut self) {
         self.sync_runtime
-            .mark_stale(self.pull_request_inbox.mode.active_sync_target());
+            .mark_stale(self.pull_request_inbox.mode().active_sync_target());
     }
 
     fn run_scheduled_active_inbox_sync(&mut self, cx: &mut Context<Self>) {
-        let Some(repository) = self.repository_state.configured_repo.clone() else {
+        let Some(repository) = self.repository_state.configured_repo_cloned() else {
             return;
         };
-        if self.is_loading_prs {
+        if self.pull_request_inbox.is_loading() {
             return;
         }
 
         let decision = self.active_inbox_sync_decision(SyncReason::Scheduled);
         if matches!(decision, SyncDecision::RunNow) {
             let key =
-                PullRequestInboxCacheKey::new(repository.clone(), self.pull_request_inbox.mode);
-            if self.pull_request_inbox.mode.active_sync_target() == SyncTarget::ActiveInbox {
+                PullRequestInboxCacheKey::new(repository.clone(), self.pull_request_inbox.mode());
+            if self.pull_request_inbox.mode().active_sync_target() == SyncTarget::ActiveInbox {
                 tracing::info!(
                     repository = %repository.full_name(),
-                    mode = self.pull_request_inbox.mode.key(),
-                    activity_state = ?self.sync_runtime.activity_state,
+                    mode = self.pull_request_inbox.mode().key(),
+                    activity_state = ?self.sync_runtime.activity_state(),
                     "github graphql source: scheduled active inbox refresh"
                 );
             }
             self.spawn_pull_request_inbox_refresh(
                 repository,
-                self.pull_request_inbox.mode,
+                self.pull_request_inbox.mode(),
                 key,
                 false,
                 cx,
@@ -90,7 +89,7 @@ impl AppView {
     }
 
     fn next_sync_delay(&self) -> Duration {
-        if self.repository_state.configured_repo.is_none() {
+        if !self.repository_state.has_configured_repo() {
             return IDLE_SYNC_LOOP_DELAY;
         }
 
@@ -110,25 +109,12 @@ impl AppView {
     }
 
     fn active_inbox_sync_decision(&self, reason: SyncReason) -> SyncDecision {
-        self.sync_decision(self.pull_request_inbox.mode.active_sync_target(), reason)
+        self.sync_decision(self.pull_request_inbox.mode().active_sync_target(), reason)
     }
 
     fn sync_decision(&self, target: SyncTarget, reason: SyncReason) -> SyncDecision {
-        let empty_state = SyncState::default();
-        let state = self
-            .sync_runtime
-            .sync_states
-            .get(&target)
-            .unwrap_or(&empty_state);
-
-        self.sync_runtime.sync_policy.decision(
-            target,
-            reason,
-            self.sync_runtime.activity_state,
-            state,
-            self.sync_signals(),
-            chrono::Utc::now(),
-        )
+        self.sync_runtime
+            .decision(target, reason, self.sync_signals())
     }
 
     fn sync_signals(&self) -> SyncSignals {
@@ -151,7 +137,7 @@ impl AppView {
     }
 
     fn run_scheduled_selected_pull_request_sync(&mut self, cx: &mut Context<Self>) {
-        if self.sync_runtime.activity_state == harbor_sync::ActivityState::Background
+        if self.sync_runtime.is_background()
             || self.selected_pull_request().is_none()
             || self.detail_state.details_loading()
             || self.detail_state.files_loading()
@@ -205,9 +191,7 @@ impl AppView {
     }
 
     fn next_selected_pull_request_sync_delay(&self) -> Duration {
-        if self.sync_runtime.activity_state == harbor_sync::ActivityState::Background
-            || self.selected_pull_request().is_none()
-        {
+        if self.sync_runtime.is_background() || self.selected_pull_request().is_none() {
             return IDLE_SYNC_LOOP_DELAY;
         }
 
