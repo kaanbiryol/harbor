@@ -1275,6 +1275,95 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn cached_detail_restore_preserves_diff_position_without_refetch(
+        cx: &mut TestAppContext,
+    ) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.selection_state.reset_pull_request_index();
+            view.detail_state.files = vec![
+                diff_file("src/a.rs", FileStatus::Modified),
+                diff_file("src/b.rs", FileStatus::Modified),
+            ];
+            view.detail_state.diffs = vec![None, None];
+            mark_detail_sections_loaded(view);
+            view.selection_state.set_diff_position(1, 4);
+            view.active_tab = PanelTab::Diff;
+            view.cache_current_pull_request_detail_snapshot();
+
+            view.detail_state.files = vec![diff_file("src/other.rs", FileStatus::Modified)];
+            view.detail_state.diffs = vec![None];
+            view.selection_state.set_diff_position(0, 0);
+            view.active_tab = PanelTab::Review;
+
+            assert!(view.restore_selected_pull_request_detail_snapshot(cx));
+            assert_eq!(
+                view.detail_state
+                    .files
+                    .iter()
+                    .map(|file| file.path.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["src/a.rs", "src/b.rs"]
+            );
+            assert_eq!(view.active_file_index(), 1);
+            assert_eq!(view.active_hunk_index(), 4);
+            assert_eq!(view.active_tab, PanelTab::Diff);
+            assert_eq!(view.status, "Showing cached PR #7 details");
+        });
+        cx.run_until_parked();
+
+        assert!(api.calls().is_empty());
+    }
+
+    #[gpui::test]
+    async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let pull_request = pull_request();
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
+            view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+            view.pull_requests = vec![pull_request.clone()];
+            view.detail_state.files = vec![test_diff_file()];
+            view.detail_state.diffs = vec![None];
+            mark_detail_sections_loaded(view);
+            view.selection_state.set_pull_request_index(9);
+            view.selection_state.set_diff_position(7, 2);
+
+            let key = view
+                .current_pull_request_inbox_key()
+                .expect("configured repository should produce inbox cache key");
+            view.cache_current_pull_request_inbox_snapshot();
+            assert_eq!(view.pull_request_inbox.snapshot_count(&key), Some(1));
+
+            view.pull_requests.clear();
+            view.detail_state.files.clear();
+            view.detail_state.diffs.clear();
+            view.selection_state.set_pull_request_index(3);
+            view.selection_state.set_diff_position(3, 0);
+
+            assert!(view.restore_pull_request_inbox_snapshot(key, cx));
+            assert_eq!(view.pull_requests.len(), 1);
+            assert_eq!(view.selected_pull_request_index(), 0);
+            assert_eq!(view.selected_pull_request_number(), Some(7));
+            assert_eq!(view.active_file_index(), 0);
+            assert_eq!(view.active_hunk_index(), 2);
+            assert_eq!(
+                view.status,
+                "Showing cached open pull requests from acme/app"
+            );
+        });
+        cx.run_until_parked();
+
+        assert!(api.calls().is_empty());
+    }
+
+    #[gpui::test]
     async fn selected_metadata_refresh_does_not_refetch_files(cx: &mut TestAppContext) {
         let api = Arc::new(FakeGitHubApi::default());
         let mut updated_pull_request = pull_request();
@@ -1583,6 +1672,14 @@ mod tests {
         api.push_current_user(Ok("octocat".to_string()));
         api.push_reviews(Ok(Vec::new()));
         api.push_review_threads(Ok(Vec::new()));
+    }
+
+    fn mark_detail_sections_loaded(view: &mut AppView) {
+        view.detail_state.apply_details_success();
+        view.detail_state.apply_files_success();
+        view.detail_state.apply_checks_success();
+        view.detail_state.apply_workflows_success();
+        view.review_state.apply_reviews_success();
     }
 
     fn test_diff_file() -> DiffFile {
