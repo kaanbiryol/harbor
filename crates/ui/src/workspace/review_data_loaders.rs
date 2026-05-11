@@ -132,7 +132,7 @@ impl AppView {
     ) {
         self.review_state.start_reviews_load();
         let cached_current_user_login = self.review_state.current_user_login.clone();
-        let existing_pending_review = self.review_state.pending_review.clone();
+        let existing_pending_review = self.review_state.pending_review_cloned();
         let github_api = self.github_api.clone();
         let store = self.repository_state.store();
         self.tasks.push_pull_request_detail_task(cx.spawn(async move |this, cx| {

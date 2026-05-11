@@ -168,7 +168,7 @@ impl AppView {
             detail_loaded: self
                 .detail_state
                 .loaded_sections(self.review_state.reviews_finished()),
-            pending_review: self.review_state.pending_review.clone(),
+            pending_review: self.review_state.pending_review_cloned(),
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
@@ -256,7 +256,7 @@ impl AppView {
             detail_loaded: self
                 .detail_state
                 .loaded_sections(self.review_state.reviews_finished()),
-            pending_review: self.review_state.pending_review.clone(),
+            pending_review: self.review_state.pending_review_cloned(),
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),

@@ -636,18 +636,16 @@ mod tests {
                         .value()
                         .trim()
                         .is_empty(),
-                    is_submitting_reply: view.review_state.is_submitting_review_thread_reply,
+                    is_submitting_reply: view.review_state.is_submitting_review_thread_reply(),
                     review_thread_reply_error: view
                         .review_state
-                        .review_thread_reply_error
-                        .as_ref()
+                        .review_thread_reply_error()
                         .cloned(),
-                    action_thread_id: view.review_state.review_thread_action_thread_id.clone(),
-                    action_error: view
+                    action_thread_id: view
                         .review_state
-                        .review_thread_action_error
-                        .as_ref()
-                        .cloned(),
+                        .review_thread_action_thread_id()
+                        .map(str::to_string),
+                    action_error: view.review_state.review_thread_action_error().cloned(),
                     active_comment_edit_id: view
                         .review_state
                         .review_composer_state
@@ -666,20 +664,18 @@ mod tests {
                         .value()
                         .trim()
                         .is_empty(),
-                    is_submitting_edit: view.review_state.is_submitting_review_comment_edit,
+                    is_submitting_edit: view.review_state.is_submitting_review_comment_edit(),
                     review_comment_edit_error: view
                         .review_state
-                        .review_comment_edit_error
-                        .as_ref()
+                        .review_comment_edit_error()
                         .cloned(),
-                    action_comment_id: view.review_state.review_comment_action_comment_id.clone(),
-                    comment_action_error: view
+                    action_comment_id: view
                         .review_state
-                        .review_comment_action_error
-                        .as_ref()
-                        .cloned(),
-                    reaction_action: view.review_state.review_reaction_action.clone(),
-                    reaction_error: view.review_state.review_reaction_error.as_ref().cloned(),
+                        .review_comment_action_comment_id()
+                        .map(str::to_string),
+                    comment_action_error: view.review_state.review_comment_action_error().cloned(),
+                    reaction_action: view.review_state.review_reaction_action().cloned(),
+                    reaction_error: view.review_state.review_reaction_error().cloned(),
                 });
             let active_reply_thread_id = render_state.active_reply_thread_id.as_deref();
             let action_thread_id = render_state.action_thread_id.as_deref();

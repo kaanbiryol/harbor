@@ -3,7 +3,7 @@ use harbor_github::GitHubError;
 
 use crate::workspace::{
     AppView, PendingReviewSession, PullRequestDetailCacheKey, ReviewCommentSubmission,
-    async_updates::AppViewAsyncUpdateExt, reviews::increment_pending_review_comment_count,
+    async_updates::AppViewAsyncUpdateExt,
 };
 
 impl AppView {
@@ -12,7 +12,7 @@ impl AppView {
         submission: ReviewCommentSubmission,
         cx: &mut Context<Self>,
     ) {
-        if self.review_state.is_submitting_review_comment {
+        if self.review_state.is_submitting_review_comment() {
             self.status = "A review comment is already being submitted".to_string();
             cx.notify();
             return;
@@ -24,8 +24,8 @@ impl AppView {
             .inline_composer()
             .cloned()
         else {
-            self.review_state.review_comment_error =
-                Some("Select diff lines before commenting".to_string());
+            self.review_state
+                .set_review_comment_error("Select diff lines before commenting");
             self.status = "Select diff lines before commenting".to_string();
             cx.notify();
             return;
@@ -36,8 +36,8 @@ impl AppView {
             .line_selection()
             .cloned();
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_state.review_comment_error =
-                Some("Select a pull request before commenting".to_string());
+            self.review_state
+                .set_review_comment_error("Select a pull request before commenting");
             self.status = "Select a pull request before commenting".to_string();
             cx.notify();
             return;
@@ -52,8 +52,8 @@ impl AppView {
             .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
-            self.review_state.review_comment_error =
-                Some("Enter a comment before sending".to_string());
+            self.review_state
+                .set_review_comment_error("Enter a comment before sending");
             self.status = "Enter a comment before sending".to_string();
             cx.notify();
             return;
@@ -61,9 +61,9 @@ impl AppView {
 
         let pending_review_node_id = match submission {
             ReviewCommentSubmission::AddToReview => {
-                let Some(pending_review) = self.review_state.pending_review.clone() else {
-                    self.review_state.review_comment_error =
-                        Some("Start a review before adding a review comment".to_string());
+                let Some(pending_review) = self.review_state.pending_review_cloned() else {
+                    self.review_state
+                        .set_review_comment_error("Start a review before adding a review comment");
                     self.status = "Start a review before adding a review comment".to_string();
                     cx.notify();
                     return;
@@ -74,8 +74,8 @@ impl AppView {
         };
 
         if submission == ReviewCommentSubmission::StartReview && pr.node_id.is_empty() {
-            self.review_state.review_comment_error =
-                Some("GitHub did not return a pull request node id".to_string());
+            self.review_state
+                .set_review_comment_error("GitHub did not return a pull request node id");
             self.status = "Cannot start review without a pull request node id".to_string();
             cx.notify();
             return;
@@ -87,18 +87,16 @@ impl AppView {
             self.insert_optimistic_review_thread(composer.range.clone(), body.clone());
         let increments_pending_review_count = submission == ReviewCommentSubmission::AddToReview;
         let pending_review_before_increment = if increments_pending_review_count {
-            self.review_state.pending_review.clone()
+            self.review_state.pending_review_cloned()
         } else {
             None
         };
         if increments_pending_review_count {
-            increment_pending_review_comment_count(&mut self.review_state.pending_review);
+            self.review_state.increment_pending_review_comment_count();
         }
 
-        self.review_state.is_submitting_review_comment =
-            submission == ReviewCommentSubmission::StartReview;
-        self.review_state.review_composer_state.clear();
-        self.review_state.review_comment_error = None;
+        self.review_state
+            .start_review_comment_submission(submission == ReviewCommentSubmission::StartReview);
         self.status = match submission {
             ReviewCommentSubmission::SingleComment => {
                 format!("Added comment locally on PR #{}; syncing", pr.number)
@@ -156,7 +154,7 @@ impl AppView {
                 "failed to update review comment submission state",
                 move |view, cx| {
                     if submission == ReviewCommentSubmission::StartReview {
-                        view.review_state.is_submitting_review_comment = false;
+                        view.review_state.finish_review_comment_submission();
                     }
 
                     match result {
@@ -175,7 +173,7 @@ impl AppView {
 
                             if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
                             {
-                                view.review_state.review_comment_error = None;
+                                view.review_state.clear_review_comment_error();
                                 view.status = match submission {
                                     ReviewCommentSubmission::SingleComment => {
                                         format!("Posted comment on PR #{}", pr.number)
@@ -216,7 +214,7 @@ impl AppView {
                                         .review_composer_state
                                         .open_inline(composer, line_selection);
                                 }
-                                view.review_state.review_comment_error = Some(message.clone());
+                                view.review_state.set_review_comment_error(message.clone());
                                 view.status = message;
                             }
                         }

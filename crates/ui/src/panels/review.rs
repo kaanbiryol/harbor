@@ -165,19 +165,16 @@ pub(crate) fn render_review_panel(
                                                     .is_empty(),
                                                 is_submitting_reply: view
                                                     .review_state
-                                                    .is_submitting_review_thread_reply,
+                                                    .is_submitting_review_thread_reply(),
                                                 reply_error: view
                                                     .review_state
-                                                    .review_thread_reply_error
-                                                    .as_ref(),
+                                                    .review_thread_reply_error(),
                                                 action_thread_id: view
                                                     .review_state
-                                                    .review_thread_action_thread_id
-                                                    .as_deref(),
+                                                    .review_thread_action_thread_id(),
                                                 action_error: view
                                                     .review_state
-                                                    .review_thread_action_error
-                                                    .as_ref(),
+                                                    .review_thread_action_error(),
                                                 view_entity: view_entity.clone(),
                                             },
                                         ));
@@ -510,8 +507,7 @@ mod tests {
         assert_eq!(
             view_entity.read_with(cx, |view, _| {
                 view.review_state
-                    .review_thread_action_error
-                    .as_ref()
+                    .review_thread_action_error()
                     .map(|error| (error.thread_id.clone(), error.message.clone()))
             }),
             Some((
@@ -576,18 +572,13 @@ mod tests {
                             .value()
                             .trim()
                             .is_empty(),
-                        is_submitting_reply: view.review_state.is_submitting_review_thread_reply,
-                        reply_error: view
+                        is_submitting_reply: view.review_state.is_submitting_review_thread_reply(),
+                        reply_error: view.review_state.review_thread_reply_error().cloned(),
+                        action_thread_id: view
                             .review_state
-                            .review_thread_reply_error
-                            .as_ref()
-                            .cloned(),
-                        action_thread_id: view.review_state.review_thread_action_thread_id.clone(),
-                        action_error: view
-                            .review_state
-                            .review_thread_action_error
-                            .as_ref()
-                            .cloned(),
+                            .review_thread_action_thread_id()
+                            .map(str::to_string),
+                        action_error: view.review_state.review_thread_action_error().cloned(),
                     });
 
             render_review_thread_row(ReviewThreadRowRenderState {

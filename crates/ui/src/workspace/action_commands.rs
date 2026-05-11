@@ -196,7 +196,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.review_state.pending_review.is_some() {
+        if self.review_state.has_pending_review() {
             match action {
                 PullRequestAction::Approve => {
                     self.submit_pending_pull_request_review(

@@ -1,6 +1,6 @@
 use gpui::{Context, Window};
 
-use crate::workspace::{AppView, ReviewCommentUiError, async_updates::AppViewAsyncUpdateExt};
+use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
 impl AppView {
     pub(crate) fn open_review_comment_edit(
@@ -13,7 +13,7 @@ impl AppView {
         self.review_state
             .review_composer_state
             .open_comment_edit(comment_id);
-        self.review_state.review_comment_edit_error = None;
+        self.review_state.clear_review_comment_edit_error();
         self.review_state
             .review_composer_state
             .comment_edit_input
@@ -31,7 +31,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.review_state.review_composer_state.clear();
-        self.review_state.review_comment_edit_error = None;
+        self.review_state.clear_review_comment_edit_error();
         self.review_state
             .review_composer_state
             .comment_edit_input
@@ -47,37 +47,33 @@ impl AppView {
         comment_id: String,
         cx: &mut Context<Self>,
     ) {
-        if self.review_state.is_submitting_review_comment_edit {
+        if self.review_state.is_submitting_review_comment_edit() {
             self.status = "A review comment edit is already being submitted".to_string();
             cx.notify();
             return;
         }
 
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_state.review_comment_edit_error = Some(ReviewCommentUiError {
-                comment_id,
-                message: "Select a pull request before editing".to_string(),
-            });
+            self.review_state
+                .set_review_comment_edit_error(comment_id, "Select a pull request before editing");
             self.status = "Select a pull request before editing".to_string();
             cx.notify();
             return;
         };
 
         let Some(comment) = self.review_comment(&comment_id) else {
-            self.review_state.review_comment_edit_error = Some(ReviewCommentUiError {
-                comment_id,
-                message: "Review comment is no longer loaded".to_string(),
-            });
+            self.review_state
+                .set_review_comment_edit_error(comment_id, "Review comment is no longer loaded");
             self.status = "Review comment is no longer loaded".to_string();
             cx.notify();
             return;
         };
 
         if !comment.viewer_can_update {
-            self.review_state.review_comment_edit_error = Some(ReviewCommentUiError {
+            self.review_state.set_review_comment_edit_error(
                 comment_id,
-                message: "GitHub does not allow you to edit this comment".to_string(),
-            });
+                "GitHub does not allow you to edit this comment",
+            );
             self.status = "GitHub does not allow you to edit this comment".to_string();
             cx.notify();
             return;
@@ -92,20 +88,15 @@ impl AppView {
             .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
-            self.review_state.review_comment_edit_error = Some(ReviewCommentUiError {
-                comment_id,
-                message: "Enter a comment before saving".to_string(),
-            });
+            self.review_state
+                .set_review_comment_edit_error(comment_id, "Enter a comment before saving");
             self.status = "Enter a comment before saving".to_string();
             cx.notify();
             return;
         }
 
-        self.review_state.is_submitting_review_comment_edit = true;
         self.review_state
-            .review_composer_state
-            .open_comment_edit(comment_id.clone());
-        self.review_state.review_comment_edit_error = None;
+            .start_review_comment_edit_submission(comment_id.clone());
         self.status = format!("Updating review comment on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
@@ -117,7 +108,7 @@ impl AppView {
                 cx,
                 "failed to update review comment edit state",
                 move |view, cx| {
-                    view.review_state.is_submitting_review_comment_edit = false;
+                    view.review_state.finish_review_comment_edit_submission();
 
                     match result {
                         Ok(()) => {
@@ -125,17 +116,14 @@ impl AppView {
                                 comment.body = body;
                             }
                             view.review_state.review_composer_state.clear();
-                            view.review_state.review_comment_edit_error = None;
+                            view.review_state.clear_review_comment_edit_error();
                             view.status = format!("Updated review comment on PR #{}", pr.number);
                             view.load_selected_review_data(cx);
                         }
                         Err(error) => {
                             let message = format!("Failed to update review comment: {error}");
-                            view.review_state.review_comment_edit_error =
-                                Some(ReviewCommentUiError {
-                                    comment_id,
-                                    message: message.clone(),
-                                });
+                            view.review_state
+                                .set_review_comment_edit_error(comment_id, message.clone());
                             view.status = message;
                         }
                     }
@@ -148,44 +136,42 @@ impl AppView {
     }
 
     pub(crate) fn delete_review_comment(&mut self, comment_id: String, cx: &mut Context<Self>) {
-        if self.review_state.review_comment_action_comment_id.is_some() {
+        if self.review_state.comment_action_running() {
             self.status = "A review comment action is already running".to_string();
             cx.notify();
             return;
         }
 
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_state.review_comment_action_error = Some(ReviewCommentUiError {
+            self.review_state.set_review_comment_action_error(
                 comment_id,
-                message: "Select a pull request before deleting".to_string(),
-            });
+                "Select a pull request before deleting",
+            );
             self.status = "Select a pull request before deleting".to_string();
             cx.notify();
             return;
         };
 
         let Some(comment) = self.review_comment(&comment_id) else {
-            self.review_state.review_comment_action_error = Some(ReviewCommentUiError {
-                comment_id,
-                message: "Review comment is no longer loaded".to_string(),
-            });
+            self.review_state
+                .set_review_comment_action_error(comment_id, "Review comment is no longer loaded");
             self.status = "Review comment is no longer loaded".to_string();
             cx.notify();
             return;
         };
 
         if !comment.viewer_can_delete {
-            self.review_state.review_comment_action_error = Some(ReviewCommentUiError {
+            self.review_state.set_review_comment_action_error(
                 comment_id,
-                message: "GitHub does not allow you to delete this comment".to_string(),
-            });
+                "GitHub does not allow you to delete this comment",
+            );
             self.status = "GitHub does not allow you to delete this comment".to_string();
             cx.notify();
             return;
         }
 
-        self.review_state.review_comment_action_comment_id = Some(comment_id.clone());
-        self.review_state.review_comment_action_error = None;
+        self.review_state
+            .start_review_comment_action(comment_id.clone());
         self.status = format!("Deleting review comment on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
@@ -197,7 +183,7 @@ impl AppView {
                 cx,
                 "failed to update review comment action state",
                 move |view, cx| {
-                    view.review_state.review_comment_action_comment_id = None;
+                    view.review_state.finish_review_comment_action();
 
                     match result {
                         Ok(()) => {
@@ -205,18 +191,15 @@ impl AppView {
                             view.review_state
                                 .review_composer_state
                                 .take_active_comment_edit_if(|active_id| active_id == comment_id);
-                            view.review_state.review_comment_action_error = None;
+                            view.review_state.clear_review_comment_action_error();
                             view.sync_unresolved_thread_count();
                             view.status = format!("Deleted review comment on PR #{}", pr.number);
                             view.load_selected_review_data(cx);
                         }
                         Err(error) => {
                             let message = format!("Failed to delete review comment: {error}");
-                            view.review_state.review_comment_action_error =
-                                Some(ReviewCommentUiError {
-                                    comment_id,
-                                    message: message.clone(),
-                                });
+                            view.review_state
+                                .set_review_comment_action_error(comment_id, message.clone());
                             view.status = message;
                         }
                     }

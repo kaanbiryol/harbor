@@ -23,7 +23,7 @@ impl AppView {
             .review_composer_state
             .pending_review_body_input
             .clone();
-        let submitting = self.review_state.is_submitting_pending_review;
+        let submitting = self.review_state.is_submitting_pending_review();
         let body_empty = self
             .review_state
             .review_composer_state
@@ -122,7 +122,7 @@ impl AppView {
                         ),
                 )
                 .when_some(
-                    self.review_state.pending_review_error.clone(),
+                    self.review_state.pending_review_error().map(str::to_string),
                     |element, error| {
                         element.child(
                             div()

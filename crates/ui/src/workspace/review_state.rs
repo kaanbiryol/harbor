@@ -69,13 +69,11 @@ impl AppView {
     }
 
     pub(super) fn next_review_data_generation(&mut self) -> u64 {
-        self.review_state.review_data_generation =
-            self.review_state.review_data_generation.saturating_add(1);
-        self.review_state.review_data_generation
+        self.review_state.next_review_data_generation()
     }
 
     pub(super) fn review_data_generation(&self) -> u64 {
-        self.review_state.review_data_generation
+        self.review_state.review_data_generation()
     }
 
     pub(crate) fn review_comment(&self, comment_id: &str) -> Option<&ReviewComment> {

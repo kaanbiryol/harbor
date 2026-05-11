@@ -2,7 +2,7 @@ use gpui::Context;
 use harbor_domain::ReactionContent;
 
 use crate::workspace::{
-    AppView, ReviewCommentUiError, ReviewReactionAction,
+    AppView, ReviewReactionAction,
     async_updates::AppViewAsyncUpdateExt,
     reviews::{ReviewReactionKey, review_reaction},
 };
@@ -14,37 +14,33 @@ impl AppView {
         content: ReactionContent,
         cx: &mut Context<Self>,
     ) {
-        if self.review_state.review_reaction_action.is_some() {
+        if self.review_state.reaction_action_running() {
             self.status = "A review reaction action is already running".to_string();
             cx.notify();
             return;
         }
 
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_state.review_reaction_error = Some(ReviewCommentUiError {
-                comment_id,
-                message: "Select a pull request before reacting".to_string(),
-            });
+            self.review_state
+                .set_review_reaction_error(comment_id, "Select a pull request before reacting");
             self.status = "Select a pull request before reacting".to_string();
             cx.notify();
             return;
         };
 
         let Some(comment) = self.review_comment(&comment_id) else {
-            self.review_state.review_reaction_error = Some(ReviewCommentUiError {
-                comment_id,
-                message: "Review comment is no longer loaded".to_string(),
-            });
+            self.review_state
+                .set_review_reaction_error(comment_id, "Review comment is no longer loaded");
             self.status = "Review comment is no longer loaded".to_string();
             cx.notify();
             return;
         };
 
         if !comment.viewer_can_react {
-            self.review_state.review_reaction_error = Some(ReviewCommentUiError {
+            self.review_state.set_review_reaction_error(
                 comment_id,
-                message: "GitHub does not allow you to react to this comment".to_string(),
-            });
+                "GitHub does not allow you to react to this comment",
+            );
             self.status = "GitHub does not allow you to react to this comment".to_string();
             cx.notify();
             return;
@@ -56,13 +52,12 @@ impl AppView {
         let reaction_key = ReviewReactionKey::new(comment_id.clone(), content);
         self.set_review_comment_reaction(&comment_id, content, viewer_has_reacted);
         self.review_state
-            .review_reaction_overrides
-            .insert(reaction_key.clone(), viewer_has_reacted);
-        self.review_state.review_reaction_action = Some(ReviewReactionAction {
-            comment_id: comment_id.clone(),
-            content,
-        });
-        self.review_state.review_reaction_error = None;
+            .set_review_reaction_override(reaction_key.clone(), viewer_has_reacted);
+        self.review_state
+            .start_review_reaction_action(ReviewReactionAction {
+                comment_id: comment_id.clone(),
+                content,
+            });
         self.status = format!("Updating reaction on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
@@ -82,24 +77,21 @@ impl AppView {
                 cx,
                 "failed to update review reaction state",
                 move |view, cx| {
-                    view.review_state.review_reaction_action = None;
+                    view.review_state.finish_review_reaction_action();
 
                     match result {
                         Ok(()) => {
-                            view.review_state.review_reaction_error = None;
+                            view.review_state.clear_review_reaction_error();
                             view.status = format!("Updated reaction on PR #{}", pr.number);
                             view.load_selected_review_data(cx);
                         }
                         Err(error) => {
                             view.review_state
-                                .review_reaction_overrides
-                                .remove(&reaction_key);
+                                .remove_review_reaction_override(&reaction_key);
                             view.set_review_comment_reaction(&comment_id, content, had_reacted);
                             let message = format!("Failed to update reaction: {error}");
-                            view.review_state.review_reaction_error = Some(ReviewCommentUiError {
-                                comment_id,
-                                message: message.clone(),
-                            });
+                            view.review_state
+                                .set_review_reaction_error(comment_id, message.clone());
                             view.status = message;
                         }
                     }

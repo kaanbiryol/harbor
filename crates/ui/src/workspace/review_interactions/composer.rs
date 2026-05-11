@@ -18,7 +18,7 @@ impl AppView {
         self.review_state
             .review_composer_state
             .start_line_selection(target);
-        self.review_state.review_comment_error = None;
+        self.review_state.clear_review_comment_error();
         self.active_tab = PanelTab::Diff;
         self.status = "Started review line selection".to_string();
         cx.notify();
@@ -62,12 +62,12 @@ impl AppView {
                 self.review_state
                     .review_composer_state
                     .open_inline(composer, selection);
-                self.review_state.review_comment_error = None;
+                self.review_state.clear_review_comment_error();
                 self.status = format!("Opened review composer for {label}");
             }
             Err(message) => {
                 self.review_state.review_composer_state.clear();
-                self.review_state.review_comment_error = Some(message.clone());
+                self.review_state.set_review_comment_error(message.clone());
                 self.status = message;
             }
         }

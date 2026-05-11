@@ -43,7 +43,7 @@ impl<'a> DiffRowRenderState<'a> {
             review_threads: &view.review_state.review_threads,
             review_composer: view.review_state.review_composer_state.inline_composer(),
             review_line_selection: view.review_state.review_composer_state.line_selection(),
-            pending_review: view.review_state.pending_review.as_ref(),
+            pending_review: view.review_state.pending_review(),
             review_comment_input: view
                 .review_state
                 .review_composer_state
@@ -57,8 +57,8 @@ impl<'a> DiffRowRenderState<'a> {
                 .value()
                 .trim()
                 .is_empty(),
-            is_submitting_review_comment: view.review_state.is_submitting_review_comment,
-            review_comment_error: view.review_state.review_comment_error.as_deref(),
+            is_submitting_review_comment: view.review_state.is_submitting_review_comment(),
+            review_comment_error: view.review_state.review_comment_error(),
             active_review_thread_reply: view
                 .review_state
                 .review_composer_state
@@ -76,13 +76,12 @@ impl<'a> DiffRowRenderState<'a> {
                 .value()
                 .trim()
                 .is_empty(),
-            is_submitting_review_thread_reply: view.review_state.is_submitting_review_thread_reply,
-            review_thread_reply_error: view.review_state.review_thread_reply_error.as_ref(),
-            review_thread_action_thread_id: view
+            is_submitting_review_thread_reply: view
                 .review_state
-                .review_thread_action_thread_id
-                .as_deref(),
-            review_thread_action_error: view.review_state.review_thread_action_error.as_ref(),
+                .is_submitting_review_thread_reply(),
+            review_thread_reply_error: view.review_state.review_thread_reply_error(),
+            review_thread_action_thread_id: view.review_state.review_thread_action_thread_id(),
+            review_thread_action_error: view.review_state.review_thread_action_error(),
             active_review_comment_edit: view
                 .review_state
                 .review_composer_state
@@ -100,15 +99,14 @@ impl<'a> DiffRowRenderState<'a> {
                 .value()
                 .trim()
                 .is_empty(),
-            is_submitting_review_comment_edit: view.review_state.is_submitting_review_comment_edit,
-            review_comment_edit_error: view.review_state.review_comment_edit_error.as_ref(),
-            review_comment_action_comment_id: view
+            is_submitting_review_comment_edit: view
                 .review_state
-                .review_comment_action_comment_id
-                .as_deref(),
-            review_comment_action_error: view.review_state.review_comment_action_error.as_ref(),
-            review_reaction_action: view.review_state.review_reaction_action.as_ref(),
-            review_reaction_error: view.review_state.review_reaction_error.as_ref(),
+                .is_submitting_review_comment_edit(),
+            review_comment_edit_error: view.review_state.review_comment_edit_error(),
+            review_comment_action_comment_id: view.review_state.review_comment_action_comment_id(),
+            review_comment_action_error: view.review_state.review_comment_action_error(),
+            review_reaction_action: view.review_state.review_reaction_action(),
+            review_reaction_error: view.review_state.review_reaction_error(),
             active_file: view.active_file_index(),
             active_hunk: view.active_hunk_index(),
             view_entity,

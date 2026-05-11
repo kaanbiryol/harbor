@@ -164,7 +164,7 @@ impl AppView {
                             ),
                     )
                     .when_some(
-                        self.review_state.pending_review.clone(),
+                        self.review_state.pending_review_cloned(),
                         |element, pending_review| {
                             element.child(self.render_pending_review_bar(pending_review, cx))
                         },

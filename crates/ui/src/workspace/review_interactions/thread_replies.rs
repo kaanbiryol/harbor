@@ -1,9 +1,8 @@
 use gpui::{Context, Window};
 
 use crate::workspace::{
-    AppView, PullRequestDetailCacheKey, ReviewThreadUiError,
-    async_updates::AppViewAsyncUpdateExt,
-    reviews::{increment_pending_review_comment_count, is_local_review_thread_id},
+    AppView, PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt,
+    reviews::is_local_review_thread_id,
 };
 
 impl AppView {
@@ -16,7 +15,7 @@ impl AppView {
         self.review_state
             .review_composer_state
             .open_thread_reply(thread_id);
-        self.review_state.review_thread_reply_error = None;
+        self.review_state.clear_review_thread_reply_error();
         self.review_state
             .review_composer_state
             .thread_reply_input
@@ -34,7 +33,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.review_state.review_composer_state.clear();
-        self.review_state.review_thread_reply_error = None;
+        self.review_state.clear_review_thread_reply_error();
         self.review_state
             .review_composer_state
             .thread_reply_input
@@ -47,10 +46,8 @@ impl AppView {
 
     pub(crate) fn submit_review_thread_reply(&mut self, thread_id: String, cx: &mut Context<Self>) {
         let Some(pr) = self.selected_pull_request().cloned() else {
-            self.review_state.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Select a pull request before replying".to_string(),
-            });
+            self.review_state
+                .set_review_thread_reply_error(thread_id, "Select a pull request before replying");
             self.status = "Select a pull request before replying".to_string();
             cx.notify();
             return;
@@ -65,20 +62,18 @@ impl AppView {
             .to_string();
         let body = body.trim().to_string();
         if body.is_empty() {
-            self.review_state.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Enter a reply before sending".to_string(),
-            });
+            self.review_state
+                .set_review_thread_reply_error(thread_id, "Enter a reply before sending");
             self.status = "Enter a reply before sending".to_string();
             cx.notify();
             return;
         }
 
         if is_local_review_thread_id(&thread_id) {
-            self.review_state.review_thread_reply_error = Some(ReviewThreadUiError {
+            self.review_state.set_review_thread_reply_error(
                 thread_id,
-                message: "Wait for the review thread to finish syncing before replying".to_string(),
-            });
+                "Wait for the review thread to finish syncing before replying",
+            );
             self.status =
                 "Wait for the review thread to finish syncing before replying".to_string();
             cx.notify();
@@ -91,10 +86,8 @@ impl AppView {
             .iter()
             .any(|thread| thread.id == thread_id)
         {
-            self.review_state.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Review thread is no longer loaded".to_string(),
-            });
+            self.review_state
+                .set_review_thread_reply_error(thread_id, "Review thread is no longer loaded");
             self.status = "Review thread is no longer loaded".to_string();
             cx.notify();
             return;
@@ -102,12 +95,11 @@ impl AppView {
 
         let pending_review_node_id = self
             .review_state
-            .pending_review
-            .as_ref()
+            .pending_review()
             .map(|pending_review| pending_review.node_id.clone());
         let increments_pending_review_count = pending_review_node_id.is_some();
         let pending_review_before_increment = if increments_pending_review_count {
-            self.review_state.pending_review.clone()
+            self.review_state.pending_review_cloned()
         } else {
             None
         };
@@ -116,22 +108,20 @@ impl AppView {
         let Some(optimistic_comment) =
             self.append_optimistic_review_reply(&thread_id, body.clone())
         else {
-            self.review_state.review_thread_reply_error = Some(ReviewThreadUiError {
-                thread_id,
-                message: "Review thread is no longer loaded".to_string(),
-            });
+            self.review_state
+                .set_review_thread_reply_error(thread_id, "Review thread is no longer loaded");
             self.status = "Review thread is no longer loaded".to_string();
             cx.notify();
             return;
         };
 
         if increments_pending_review_count {
-            increment_pending_review_comment_count(&mut self.review_state.pending_review);
+            self.review_state.increment_pending_review_comment_count();
         }
 
-        self.review_state.is_submitting_review_thread_reply = false;
+        self.review_state.finish_review_thread_reply_submission();
         self.review_state.review_composer_state.clear();
-        self.review_state.review_thread_reply_error = None;
+        self.review_state.clear_review_thread_reply_error();
         self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
@@ -149,7 +139,7 @@ impl AppView {
                         Ok(()) => {
                             if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
                             {
-                                view.review_state.review_thread_reply_error = None;
+                                view.review_state.clear_review_thread_reply_error();
                                 view.status = format!("Posted reply on PR #{}", pr.number);
                                 view.load_selected_review_data(cx);
                             }
@@ -179,11 +169,8 @@ impl AppView {
                                         .review_composer_state
                                         .open_thread_reply(thread_id.clone());
                                 }
-                                view.review_state.review_thread_reply_error =
-                                    Some(ReviewThreadUiError {
-                                        thread_id,
-                                        message: message.clone(),
-                                    });
+                                view.review_state
+                                    .set_review_thread_reply_error(thread_id, message.clone());
                                 view.status = message;
                             }
                         }
