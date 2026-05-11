@@ -18,13 +18,23 @@ impl AppView {
             return;
         }
 
-        let Some(composer) = self.review_state.review_composer_state.composer.clone() else {
+        let Some(composer) = self
+            .review_state
+            .review_composer_state
+            .inline_composer()
+            .cloned()
+        else {
             self.review_state.review_comment_error =
                 Some("Select diff lines before commenting".to_string());
             self.status = "Select diff lines before commenting".to_string();
             cx.notify();
             return;
         };
+        let line_selection = self
+            .review_state
+            .review_composer_state
+            .line_selection()
+            .cloned();
         let Some(pr) = self.selected_pull_request().cloned() else {
             self.review_state.review_comment_error =
                 Some("Select a pull request before commenting".to_string());
@@ -87,8 +97,7 @@ impl AppView {
 
         self.review_state.is_submitting_review_comment =
             submission == ReviewCommentSubmission::StartReview;
-        self.review_state.review_composer_state.composer = None;
-        self.review_state.review_composer_state.line_selection = None;
+        self.review_state.review_composer_state.clear();
         self.review_state.review_comment_error = None;
         self.status = match submission {
             ReviewCommentSubmission::SingleComment => {
@@ -196,9 +205,16 @@ impl AppView {
                             let message = format!("Failed to submit review comment: {error}");
                             if view.selected_pull_request_detail_key().as_ref() == Some(&detail_key)
                             {
-                                if view.review_state.review_composer_state.composer.is_none() {
-                                    view.review_state.review_composer_state.composer =
-                                        Some(composer);
+                                if view
+                                    .review_state
+                                    .review_composer_state
+                                    .inline_composer()
+                                    .is_none()
+                                    && let Some(line_selection) = line_selection
+                                {
+                                    view.review_state
+                                        .review_composer_state
+                                        .open_inline(composer, line_selection);
                                 }
                                 view.review_state.review_comment_error = Some(message.clone());
                                 view.status = message;

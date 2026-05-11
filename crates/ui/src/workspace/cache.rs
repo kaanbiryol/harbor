@@ -114,11 +114,8 @@ impl AppView {
         };
 
         if self.is_loading_prs
-            || self.detail_state.detail_loading.details
-            || self.detail_state.detail_loading.files
-            || self.detail_state.detail_loading.checks
-            || self.detail_state.detail_loading.workflows
-            || self.detail_state.detail_loading.reviews
+            || self.detail_state.is_any_loading()
+            || self.review_state.reviews_loading()
             || self.load_error.is_some()
         {
             return;
@@ -144,13 +141,9 @@ impl AppView {
             return;
         };
 
-        if self.detail_state.detail_loading.details
-            || self.detail_state.detail_loading.files
-            || self.detail_state.detail_loading.checks
-            || self.detail_state.detail_loading.workflows
-            || self.detail_state.detail_loading.reviews
-            || self.detail_state.details_error.is_some()
-            || self.detail_state.files_error.is_some()
+        if self.detail_state.is_any_loading()
+            || self.review_state.reviews_loading()
+            || self.detail_state.has_cache_blocking_error()
         {
             return;
         }
@@ -175,7 +168,9 @@ impl AppView {
             workflow_jobs: self.detail_state.workflow_jobs.clone(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
             review_threads: self.review_state.review_threads.clone(),
-            detail_loaded: self.detail_state.detail_loaded,
+            detail_loaded: self
+                .detail_state
+                .loaded_sections(self.review_state.reviews_finished()),
             pending_review: self.review_state.pending_review.clone(),
             log_chunk: self.detail_state.log_state.chunk.clone(),
             current_user_login: self.review_state.current_user_login.clone(),
@@ -206,7 +201,7 @@ impl AppView {
             return false;
         };
 
-        self.tasks.pr_detail_tasks.clear();
+        self.tasks.clear_pull_request_detail_tasks();
         self.set_detail_loading(false);
         self.set_log_loading(false);
         self.clear_detail_errors();
@@ -223,7 +218,13 @@ impl AppView {
         self.detail_state.workflow_jobs = snapshot.workflow_jobs;
         self.review_state.pull_request_reviews = snapshot.pull_request_reviews;
         self.review_state.review_threads = snapshot.review_threads;
-        self.detail_state.detail_loaded = snapshot.detail_loaded;
+        self.detail_state
+            .restore_loaded_sections(snapshot.detail_loaded);
+        if snapshot.detail_loaded.reviews {
+            self.review_state.apply_reviews_success();
+        } else {
+            self.review_state.reset_reviews_load();
+        }
         self.review_state.pending_review = snapshot.pending_review;
         self.detail_state.log_state.chunk = snapshot.log_chunk;
         self.review_state.current_user_login = snapshot.current_user_login;
@@ -257,7 +258,9 @@ impl AppView {
             workflow_jobs: self.detail_state.workflow_jobs.clone(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
             review_threads: self.review_state.review_threads.clone(),
-            detail_loaded: self.detail_state.detail_loaded,
+            detail_loaded: self
+                .detail_state
+                .loaded_sections(self.review_state.reviews_finished()),
             pending_review: self.review_state.pending_review.clone(),
             log_chunk: self.detail_state.log_state.chunk.clone(),
             current_user_login: self.review_state.current_user_login.clone(),
@@ -282,10 +285,11 @@ impl AppView {
             return false;
         };
 
-        self.repository_state.configured_repo = Some(key.repository.clone());
+        self.repository_state
+            .select_repository(key.repository.clone());
         self.pull_request_inbox.mode = key.mode;
-        self.tasks.pr_list_task = None;
-        self.tasks.pr_detail_tasks.clear();
+        self.tasks.clear_pull_request_list_task();
+        self.tasks.clear_pull_request_detail_tasks();
         self.is_loading_prs = false;
         self.set_detail_loading(false);
         self.set_log_loading(false);
@@ -304,7 +308,13 @@ impl AppView {
         self.detail_state.workflow_jobs = snapshot.workflow_jobs;
         self.review_state.pull_request_reviews = snapshot.pull_request_reviews;
         self.review_state.review_threads = snapshot.review_threads;
-        self.detail_state.detail_loaded = snapshot.detail_loaded;
+        self.detail_state
+            .restore_loaded_sections(snapshot.detail_loaded);
+        if snapshot.detail_loaded.reviews {
+            self.review_state.apply_reviews_success();
+        } else {
+            self.review_state.reset_reviews_load();
+        }
         self.review_state.pending_review = snapshot.pending_review;
         self.detail_state.log_state.chunk = snapshot.log_chunk;
         self.review_state.current_user_login = snapshot.current_user_login;

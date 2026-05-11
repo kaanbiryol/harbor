@@ -262,11 +262,10 @@ impl AppView {
                                     review_composer: self
                                         .review_state
                                         .review_composer_state
-                                        .composer
-                                        .as_ref(),
+                                        .inline_composer(),
                                     active_file_index: self.active_file_index(),
-                                    is_loading: self.detail_state.detail_loading.files,
-                                    error: self.detail_state.files_error.as_deref(),
+                                    is_loading: self.detail_state.files_loading(),
+                                    error: self.detail_state.files_error(),
                                     list_state: self.diff_list_state.clone(),
                                     list_items: &self.diff_list_items,
                                 },
@@ -277,8 +276,8 @@ impl AppView {
                         PanelTab::Review => render_review_panel(
                             &self.review_state.pull_request_reviews,
                             &self.review_state.review_threads,
-                            self.detail_state.detail_loading.reviews,
-                            self.review_state.reviews_error.as_deref(),
+                            self.review_state.reviews_loading(),
+                            self.review_state.reviews_error(),
                             self.review_list_scroll.clone(),
                             cx,
                         )
@@ -286,15 +285,15 @@ impl AppView {
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             &self.detail_state.check_runs,
-                            self.detail_state.detail_loading.checks,
-                            self.detail_state.checks_error.as_deref(),
+                            self.detail_state.checks_loading(),
+                            self.detail_state.checks_error(),
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
                             pr,
                             &self.detail_state.workflow_runs,
-                            self.detail_state.detail_loading.workflows,
-                            self.detail_state.workflows_error.as_deref(),
+                            self.detail_state.workflows_loading(),
+                            self.detail_state.workflows_error(),
                             self.action_error.as_deref(),
                             self.is_running_action,
                             cx,

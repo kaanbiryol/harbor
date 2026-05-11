@@ -12,7 +12,7 @@ impl AppView {
     ) {
         self.review_state
             .review_composer_state
-            .comment_edit_comment_id = Some(comment_id);
+            .open_comment_edit(comment_id);
         self.review_state.review_comment_edit_error = None;
         self.review_state
             .review_composer_state
@@ -30,9 +30,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.review_state
-            .review_composer_state
-            .comment_edit_comment_id = None;
+        self.review_state.review_composer_state.clear();
         self.review_state.review_comment_edit_error = None;
         self.review_state
             .review_composer_state
@@ -106,7 +104,7 @@ impl AppView {
         self.review_state.is_submitting_review_comment_edit = true;
         self.review_state
             .review_composer_state
-            .comment_edit_comment_id = Some(comment_id.clone());
+            .open_comment_edit(comment_id.clone());
         self.review_state.review_comment_edit_error = None;
         self.status = format!("Updating review comment on PR #{}", pr.number);
         cx.notify();
@@ -126,9 +124,7 @@ impl AppView {
                             if let Some(comment) = view.review_comment_mut(&comment_id) {
                                 comment.body = body;
                             }
-                            view.review_state
-                                .review_composer_state
-                                .comment_edit_comment_id = None;
+                            view.review_state.review_composer_state.clear();
                             view.review_state.review_comment_edit_error = None;
                             view.status = format!("Updated review comment on PR #{}", pr.number);
                             view.load_selected_review_data(cx);
@@ -208,12 +204,7 @@ impl AppView {
                             view.remove_review_comment(&comment_id);
                             view.review_state
                                 .review_composer_state
-                                .comment_edit_comment_id = view
-                                .review_state
-                                .review_composer_state
-                                .comment_edit_comment_id
-                                .take()
-                                .filter(|active_id| active_id != &comment_id);
+                                .take_active_comment_edit_if(|active_id| active_id == comment_id);
                             view.review_state.review_comment_action_error = None;
                             view.sync_unresolved_thread_count();
                             view.status = format!("Deleted review comment on PR #{}", pr.number);

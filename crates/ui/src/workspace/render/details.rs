@@ -76,7 +76,7 @@ impl AppView {
                             .text_color(rgb(0x9aa4b2))
                             .child(format!("{} / {}", pr.repo.full_name(), pr.head_sha)),
                     )
-                    .when(self.detail_state.detail_loading.details, |element| {
+                    .when(self.detail_state.details_loading(), |element| {
                         element.child(
                             div()
                                 .pt_2()
@@ -85,15 +85,18 @@ impl AppView {
                                 .child("Loading latest PR details..."),
                         )
                     })
-                    .when_some(self.detail_state.details_error.clone(), |element, error| {
-                        element.child(
-                            div()
-                                .pt_2()
-                                .text_xs()
-                                .text_color(rgb(0xf87171))
-                                .child(error),
-                        )
-                    })
+                    .when_some(
+                        self.detail_state.details_error().map(str::to_string),
+                        |element, error| {
+                            element.child(
+                                div()
+                                    .pt_2()
+                                    .text_xs()
+                                    .text_color(rgb(0xf87171))
+                                    .child(error),
+                            )
+                        },
+                    )
                     .child(
                         div()
                             .pt_2()
@@ -177,7 +180,7 @@ impl AppView {
                     }),
             )
             .child(self.render_changed_files_header(cx))
-            .when(self.detail_state.detail_loading.files, |element| {
+            .when(self.detail_state.files_loading(), |element| {
                 element.child(
                     div()
                         .flex_1()
@@ -188,20 +191,23 @@ impl AppView {
                         .child("Loading changed files..."),
                 )
             })
-            .when_some(self.detail_state.files_error.clone(), |element, error| {
-                element.child(
-                    div()
-                        .flex_1()
-                        .px_3()
-                        .py_3()
-                        .text_sm()
-                        .text_color(rgb(0xf87171))
-                        .child(error),
-                )
-            })
+            .when_some(
+                self.detail_state.files_error().map(str::to_string),
+                |element, error| {
+                    element.child(
+                        div()
+                            .flex_1()
+                            .px_3()
+                            .py_3()
+                            .text_sm()
+                            .text_color(rgb(0xf87171))
+                            .child(error),
+                    )
+                },
+            )
             .when(
-                !self.detail_state.detail_loading.files
-                    && self.detail_state.files_error.is_none()
+                !self.detail_state.files_loading()
+                    && self.detail_state.files_error().is_none()
                     && self.detail_state.files.is_empty(),
                 |element| {
                     element.child(
@@ -216,8 +222,8 @@ impl AppView {
                 },
             )
             .when(
-                !self.detail_state.detail_loading.files
-                    && self.detail_state.files_error.is_none()
+                !self.detail_state.files_loading()
+                    && self.detail_state.files_error().is_none()
                     && !self.detail_state.files.is_empty()
                     && self.changed_file_tree_rows(cx).is_empty(),
                 |element| {
@@ -233,8 +239,8 @@ impl AppView {
                 },
             )
             .when(
-                !self.detail_state.detail_loading.files
-                    && self.detail_state.files_error.is_none()
+                !self.detail_state.files_loading()
+                    && self.detail_state.files_error().is_none()
                     && !self.detail_state.files.is_empty()
                     && !self.changed_file_tree_rows(cx).is_empty(),
                 |element| {

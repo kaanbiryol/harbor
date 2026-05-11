@@ -55,19 +55,20 @@ impl AppView {
     pub(crate) fn refresh_external_app_availability(&mut self, cx: &mut Context<Self>) {
         let task = cx.background_spawn(async { ExternalAppAvailability::detect() });
 
-        self.tasks.external_app_availability_task = Some(cx.spawn(async move |this, cx| {
-            let availability = task.await;
+        self.tasks
+            .set_external_app_availability_task(cx.spawn(async move |this, cx| {
+                let availability = task.await;
 
-            this.update_or_log(
-                cx,
-                "failed to update external app availability",
-                move |view, cx| {
-                    view.external_app_availability = availability;
-                    view.tasks.external_app_availability_task = None;
-                    cx.notify();
-                },
-            );
-        }));
+                this.update_or_log(
+                    cx,
+                    "failed to update external app availability",
+                    move |view, cx| {
+                        view.external_app_availability = availability;
+                        view.tasks.clear_external_app_availability_task();
+                        cx.notify();
+                    },
+                );
+            }));
     }
 }
 

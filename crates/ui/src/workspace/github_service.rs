@@ -1415,8 +1415,7 @@ mod tests {
             assert!(view.review_state.review_threads.is_empty());
             assert!(
                 view.review_state
-                    .reviews_error
-                    .as_deref()
+                    .reviews_error()
                     .is_some_and(|error| error.contains("Failed to load review threads"))
             );
             assert_eq!(
@@ -1448,8 +1447,7 @@ mod tests {
             assert_eq!(view.review_state.review_threads, vec![thread]);
             assert!(
                 view.review_state
-                    .reviews_error
-                    .as_deref()
+                    .reviews_error()
                     .is_some_and(|error| error.contains("Failed to load review history"))
             );
             assert_eq!(

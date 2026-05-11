@@ -41,12 +41,8 @@ impl<'a> DiffRowRenderState<'a> {
     pub(super) fn from_view(view: &'a AppView, cx: &App, view_entity: Entity<AppView>) -> Self {
         Self {
             review_threads: &view.review_state.review_threads,
-            review_composer: view.review_state.review_composer_state.composer.as_ref(),
-            review_line_selection: view
-                .review_state
-                .review_composer_state
-                .line_selection
-                .as_ref(),
+            review_composer: view.review_state.review_composer_state.inline_composer(),
+            review_line_selection: view.review_state.review_composer_state.line_selection(),
             pending_review: view.review_state.pending_review.as_ref(),
             review_comment_input: view
                 .review_state
@@ -66,8 +62,7 @@ impl<'a> DiffRowRenderState<'a> {
             active_review_thread_reply: view
                 .review_state
                 .review_composer_state
-                .thread_reply_thread_id
-                .as_deref(),
+                .active_thread_reply(),
             review_thread_reply_input: view
                 .review_state
                 .review_composer_state
@@ -91,8 +86,7 @@ impl<'a> DiffRowRenderState<'a> {
             active_review_comment_edit: view
                 .review_state
                 .review_composer_state
-                .comment_edit_comment_id
-                .as_deref(),
+                .active_comment_edit(),
             review_comment_edit_input: view
                 .review_state
                 .review_composer_state

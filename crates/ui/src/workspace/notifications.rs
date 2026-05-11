@@ -72,7 +72,7 @@ impl AppView {
                     move |view, cx| {
                         if let Err(error) = result {
                             let message = format!("Failed to send notification: {error}");
-                            view.repository_state.repository_error = Some(message.clone());
+                            view.repository_state.set_error(message.clone());
                             view.status = message;
                             cx.notify();
                         }

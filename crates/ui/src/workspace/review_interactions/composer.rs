@@ -4,7 +4,7 @@ use gpui_component::input::{InputEvent, InputState};
 use crate::{
     actions::PanelTab,
     workspace::{
-        AppView, ReviewLineSelection, ReviewLineTarget,
+        AppView, ReviewLineTarget,
         reviews::{review_comment_range_label, review_composer_from_selection},
     },
 };
@@ -15,11 +15,9 @@ impl AppView {
         target: ReviewLineTarget,
         cx: &mut Context<Self>,
     ) {
-        self.review_state.review_composer_state.line_selection = Some(ReviewLineSelection {
-            anchor: target.clone(),
-            current: target,
-        });
-        self.review_state.review_composer_state.composer = None;
+        self.review_state
+            .review_composer_state
+            .start_line_selection(target);
         self.review_state.review_comment_error = None;
         self.active_tab = PanelTab::Diff;
         self.status = "Started review line selection".to_string();
@@ -31,14 +29,9 @@ impl AppView {
         target: ReviewLineTarget,
         cx: &mut Context<Self>,
     ) {
-        if let Some(selection) = self
-            .review_state
+        self.review_state
             .review_composer_state
-            .line_selection
-            .as_mut()
-        {
-            selection.current = target;
-        }
+            .extend_line_selection(target);
         cx.notify();
     }
 
@@ -50,8 +43,7 @@ impl AppView {
         let Some(selection) = self
             .review_state
             .review_composer_state
-            .line_selection
-            .take()
+            .take_line_selection()
         else {
             return;
         };
@@ -67,12 +59,14 @@ impl AppView {
                         input.set_value("", window, cx);
                         input.focus(window, cx);
                     });
-                self.review_state.review_composer_state.composer = Some(composer);
+                self.review_state
+                    .review_composer_state
+                    .open_inline(composer, selection);
                 self.review_state.review_comment_error = None;
                 self.status = format!("Opened review composer for {label}");
             }
             Err(message) => {
-                self.review_state.review_composer_state.composer = None;
+                self.review_state.review_composer_state.clear();
                 self.review_state.review_comment_error = Some(message.clone());
                 self.status = message;
             }

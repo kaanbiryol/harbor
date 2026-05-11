@@ -17,16 +17,9 @@ use crate::workspace::{
 
 impl AppView {
     pub(crate) fn clear_review_composer_state(&mut self) {
-        self.review_state.review_composer_state.composer = None;
-        self.review_state.review_composer_state.line_selection = None;
+        self.review_state.review_composer_state.clear();
         self.review_state.review_comment_error = None;
-        self.review_state
-            .review_composer_state
-            .thread_reply_thread_id = None;
         self.review_state.review_thread_reply_error = None;
-        self.review_state
-            .review_composer_state
-            .comment_edit_comment_id = None;
         self.review_state.review_comment_edit_error = None;
         self.review_state.review_comment_action_comment_id = None;
         self.review_state.review_comment_action_error = None;

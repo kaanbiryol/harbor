@@ -149,8 +149,7 @@ pub(crate) fn render_review_panel(
                                                 active_review_thread_reply: view
                                                     .review_state
                                                     .review_composer_state
-                                                    .thread_reply_thread_id
-                                                    .as_deref(),
+                                                    .active_thread_reply(),
                                                 review_thread_reply_input: view
                                                     .review_state
                                                     .review_composer_state
@@ -479,8 +478,8 @@ mod tests {
             view_entity.read_with(cx, |view, _| view
                 .review_state
                 .review_composer_state
-                .thread_reply_thread_id
-                .clone()),
+                .active_thread_reply()
+                .map(str::to_string)),
             Some("thread-1".to_string())
         );
 
@@ -493,7 +492,7 @@ mod tests {
         assert!(view_entity.read_with(cx, |view, _| {
             view.review_state
                 .review_composer_state
-                .thread_reply_thread_id
+                .active_thread_reply()
                 .is_none()
         }));
     }
@@ -562,8 +561,8 @@ mod tests {
                         active_reply_thread_id: view
                             .review_state
                             .review_composer_state
-                            .thread_reply_thread_id
-                            .clone(),
+                            .active_thread_reply()
+                            .map(str::to_string),
                         reply_input: view
                             .review_state
                             .review_composer_state

@@ -15,7 +15,7 @@ impl AppView {
     ) {
         self.review_state
             .review_composer_state
-            .thread_reply_thread_id = Some(thread_id);
+            .open_thread_reply(thread_id);
         self.review_state.review_thread_reply_error = None;
         self.review_state
             .review_composer_state
@@ -33,9 +33,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.review_state
-            .review_composer_state
-            .thread_reply_thread_id = None;
+        self.review_state.review_composer_state.clear();
         self.review_state.review_thread_reply_error = None;
         self.review_state
             .review_composer_state
@@ -132,9 +130,7 @@ impl AppView {
         }
 
         self.review_state.is_submitting_review_thread_reply = false;
-        self.review_state
-            .review_composer_state
-            .thread_reply_thread_id = None;
+        self.review_state.review_composer_state.clear();
         self.review_state.review_thread_reply_error = None;
         self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
@@ -176,12 +172,12 @@ impl AppView {
                                 if view
                                     .review_state
                                     .review_composer_state
-                                    .thread_reply_thread_id
+                                    .active_thread_reply()
                                     .is_none()
                                 {
                                     view.review_state
                                         .review_composer_state
-                                        .thread_reply_thread_id = Some(thread_id.clone());
+                                        .open_thread_reply(thread_id.clone());
                                 }
                                 view.review_state.review_thread_reply_error =
                                     Some(ReviewThreadUiError {

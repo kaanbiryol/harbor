@@ -1,6 +1,5 @@
 use gpui::ScrollStrategy;
 
-use super::state::PullRequestDetailLoadedState;
 use crate::workspace::AppView;
 
 impl AppView {
@@ -15,23 +14,26 @@ impl AppView {
     }
 
     pub(super) fn set_detail_loading(&mut self, loading: bool) {
-        self.detail_state.detail_loading.details = loading;
-        self.detail_state.detail_loading.files = loading;
-        self.detail_state.detail_loading.checks = loading;
-        self.detail_state.detail_loading.workflows = loading;
-        self.detail_state.detail_loading.reviews = loading;
+        if loading {
+            self.detail_state.start_details_load();
+            self.detail_state.start_files_load();
+            self.detail_state.start_checks_load();
+            self.detail_state.start_workflows_load();
+            self.review_state.start_reviews_load();
+        } else {
+            self.detail_state.reset_for_selection();
+            self.review_state.reset_reviews_load();
+        }
     }
 
     pub(super) fn clear_detail_loaded_state(&mut self) {
-        self.detail_state.detail_loaded = PullRequestDetailLoadedState::default();
+        self.detail_state.reset_for_selection();
+        self.review_state.reset_reviews_load();
     }
 
     pub(super) fn clear_detail_errors(&mut self) {
-        self.detail_state.details_error = None;
-        self.detail_state.files_error = None;
-        self.detail_state.checks_error = None;
-        self.detail_state.workflows_error = None;
-        self.review_state.reviews_error = None;
+        self.detail_state.clear_errors();
+        self.review_state.clear_reviews_error();
     }
 
     pub(super) fn clear_action_errors(&mut self) {
@@ -67,15 +69,15 @@ impl AppView {
     }
 
     pub(super) fn clear_log_content(&mut self) {
-        self.detail_state.log_state.chunk = None;
+        self.detail_state.log_state.clear_content();
     }
 
     pub(super) fn clear_log_error(&mut self) {
-        self.detail_state.log_state.error = None;
+        self.detail_state.log_state.clear_error();
     }
 
     pub(super) fn set_log_loading(&mut self, loading: bool) {
-        self.detail_state.log_state.is_loading = loading;
+        self.detail_state.log_state.set_loading(loading);
     }
 
     pub(super) fn reset_detail_scrolls(&mut self) {

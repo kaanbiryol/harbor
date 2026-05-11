@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use chrono::Utc;
 use gpui::Context;
 use harbor_sync::{
     SyncDecision, SyncReason, SyncSignals, SyncState, SyncTarget,
@@ -20,7 +19,7 @@ impl AppView {
             return;
         }
 
-        self.tasks.sync_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.set_sync_task(cx.spawn(async move |this, cx| {
             loop {
                 let delay = match this.update(cx, |view, _| view.next_sync_delay()) {
                     Ok(delay) => delay,
@@ -44,35 +43,20 @@ impl AppView {
     }
 
     pub(crate) fn mark_sync_attempt(&mut self, target: SyncTarget) {
-        self.sync_runtime
-            .sync_states
-            .entry(target)
-            .or_default()
-            .mark_attempt(Utc::now());
+        self.sync_runtime.mark_attempt(target);
     }
 
     pub(crate) fn mark_sync_success(&mut self, target: SyncTarget) {
-        self.sync_runtime
-            .sync_states
-            .entry(target)
-            .or_default()
-            .mark_success(Utc::now());
+        self.sync_runtime.mark_success(target);
     }
 
     pub(crate) fn mark_sync_failure(&mut self, target: SyncTarget) {
-        self.sync_runtime
-            .sync_states
-            .entry(target)
-            .or_default()
-            .mark_failure();
+        self.sync_runtime.mark_failure(target);
     }
 
     pub(crate) fn mark_active_inbox_stale(&mut self) {
         self.sync_runtime
-            .sync_states
-            .entry(self.pull_request_inbox.mode.active_sync_target())
-            .or_default()
-            .mark_stale();
+            .mark_stale(self.pull_request_inbox.mode.active_sync_target());
     }
 
     fn run_scheduled_active_inbox_sync(&mut self, cx: &mut Context<Self>) {
@@ -143,7 +127,7 @@ impl AppView {
             self.sync_runtime.activity_state,
             state,
             self.sync_signals(),
-            Utc::now(),
+            chrono::Utc::now(),
         )
     }
 
@@ -169,11 +153,11 @@ impl AppView {
     fn run_scheduled_selected_pull_request_sync(&mut self, cx: &mut Context<Self>) {
         if self.sync_runtime.activity_state == harbor_sync::ActivityState::Background
             || self.selected_pull_request().is_none()
-            || self.detail_state.detail_loading.details
-            || self.detail_state.detail_loading.files
-            || self.detail_state.detail_loading.checks
-            || self.detail_state.detail_loading.workflows
-            || self.detail_state.detail_loading.reviews
+            || self.detail_state.details_loading()
+            || self.detail_state.files_loading()
+            || self.detail_state.checks_loading()
+            || self.detail_state.workflows_loading()
+            || self.review_state.reviews_loading()
         {
             return;
         }
@@ -206,13 +190,13 @@ impl AppView {
         self.mark_sync_attempt(target);
         match target {
             SyncTarget::SelectedPullRequestReviews => {
-                self.detail_state.detail_loaded.reviews = false;
+                self.review_state.mark_reviews_stale();
             }
             SyncTarget::SelectedPullRequestChecks => {
-                self.detail_state.detail_loaded.checks = false;
+                self.detail_state.mark_checks_stale();
             }
             SyncTarget::SelectedPullRequestWorkflows => {
-                self.detail_state.detail_loaded.workflows = false;
+                self.detail_state.mark_workflows_stale();
             }
             SyncTarget::ActiveInbox | SyncTarget::SelectedPullRequestMetadata => {}
             SyncTarget::ActiveInboxLight | SyncTarget::ActiveInboxEnrichment => {}

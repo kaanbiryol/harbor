@@ -213,7 +213,7 @@ impl AppView {
                 visible_file_indices: &visible_file_indices,
                 reviewed_file_paths: &self.reviewed_file_paths,
                 review_threads: &self.review_state.review_threads,
-                review_composer: self.review_state.review_composer_state.composer.as_ref(),
+                review_composer: self.review_state.review_composer_state.inline_composer(),
             },
             file_index,
             hunk_index,

@@ -65,8 +65,7 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    DiffSelectionState, NotificationState, PullRequestDetailLoadedState,
-    PullRequestDetailLoadingState, PullRequestDetailUiState, PullRequestInboxState,
+    DiffSelectionState, NotificationState, PullRequestDetailUiState, PullRequestInboxState,
     RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
     WorkspaceTasks,
 };
@@ -222,11 +221,12 @@ impl AppView {
             ),
         ];
         subscriptions.push(cx.observe_window_activation(window, |view, window, cx| {
-            view.sync_runtime.activity_state = if window.is_window_active() {
-                ActivityState::Focused
-            } else {
-                ActivityState::Background
-            };
+            view.sync_runtime
+                .set_activity(if window.is_window_active() {
+                    ActivityState::Focused
+                } else {
+                    ActivityState::Background
+                });
             if view.sync_runtime.activity_state == ActivityState::Focused {
                 view.catch_up_active_inbox_after_focus(cx);
             }
@@ -257,56 +257,17 @@ impl AppView {
                 is_loading_repositories: start_startup_tasks,
                 repository_error: None,
             },
-            detail_state: PullRequestDetailUiState {
-                files,
-                diffs,
-                check_runs: Vec::new(),
-                workflow_runs: Vec::new(),
-                workflow_jobs: Vec::new(),
-                pull_request_detail_cache: HashMap::new(),
-                detail_loaded: PullRequestDetailLoadedState::default(),
-                detail_loading: PullRequestDetailLoadingState::default(),
-                log_state: WorkflowLogState::new(),
-                details_error: None,
-                files_error: None,
-                checks_error: None,
-                workflows_error: None,
-            },
-            review_state: ReviewRuntimeState {
+            detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
+            review_state: ReviewRuntimeState::new(
                 pull_request_reviews,
                 review_threads,
-                review_composer_state: ReviewComposerState {
-                    composer: None,
-                    line_selection: None,
-                    comment_input: review_comment_input,
-                    thread_reply_thread_id: None,
-                    thread_reply_input: review_thread_reply_input,
-                    comment_edit_comment_id: None,
-                    comment_edit_input: review_comment_edit_input,
+                ReviewComposerState::new(
+                    review_comment_input,
+                    review_thread_reply_input,
+                    review_comment_edit_input,
                     pending_review_body_input,
-                },
-                pending_review: None,
-                is_submitting_review_comment: false,
-                is_submitting_review_thread_reply: false,
-                is_submitting_review_comment_edit: false,
-                is_submitting_pending_review: false,
-                review_thread_action_thread_id: None,
-                review_comment_action_comment_id: None,
-                review_reaction_action: None,
-                review_thread_state_overrides: HashMap::new(),
-                review_reaction_overrides: HashMap::new(),
-                reviews_error: None,
-                review_comment_error: None,
-                review_thread_reply_error: None,
-                review_thread_action_error: None,
-                review_comment_edit_error: None,
-                review_comment_action_error: None,
-                review_reaction_error: None,
-                pending_review_error: None,
-                current_user_login: None,
-                local_review_comment_sequence: 0,
-                review_data_generation: 0,
-            },
+                ),
+            ),
             notification_state: NotificationState {
                 notification_sink: Arc::new(NativeNotificationSink),
                 notification_dedupe: HashSet::new(),
@@ -467,7 +428,7 @@ impl AppView {
                 visible_file_indices: &visible_file_indices,
                 reviewed_file_paths: &self.reviewed_file_paths,
                 review_threads: &self.review_state.review_threads,
-                review_composer: self.review_state.review_composer_state.composer.as_ref(),
+                review_composer: self.review_state.review_composer_state.inline_composer(),
             },
             file_index,
         )
@@ -481,7 +442,7 @@ impl AppView {
             visible_file_indices: &visible_file_indices,
             reviewed_file_paths: &self.reviewed_file_paths,
             review_threads: &self.review_state.review_threads,
-            review_composer: self.review_state.review_composer_state.composer.as_ref(),
+            review_composer: self.review_state.review_composer_state.inline_composer(),
         });
         sync_diff_list_state(&self.diff_list_state, &mut self.diff_list_items, next_items);
     }
@@ -571,7 +532,7 @@ impl AppView {
         self.review_state.review_threads.clear();
         self.clear_review_composer_state();
         self.review_state.pending_review = None;
-        self.review_state.reviews_error = None;
+        self.review_state.clear_reviews_error();
         self.clear_log_error();
         self.pr_action_error = None;
         self.review_state.review_comment_error = None;
@@ -745,10 +706,7 @@ impl AppView {
     }
 
     pub(crate) fn remember_repository(&mut self, repository: RepoId) {
-        self.repository_state
-            .repositories
-            .retain(|existing| existing != &repository);
-        self.repository_state.repositories.insert(0, repository);
+        self.repository_state.remember_repository(repository);
     }
 
     pub(crate) fn current_repository(&self) -> Option<&RepoId> {
@@ -764,9 +722,7 @@ impl AppView {
     }
 
     pub(crate) fn set_repository_local_path(&mut self, repository: RepoId, path: PathBuf) {
-        self.repository_state
-            .repository_local_paths
-            .insert(repository, path);
+        self.repository_state.set_local_path(repository, path);
     }
 
     pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {

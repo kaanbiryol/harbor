@@ -533,8 +533,8 @@ mod tests {
             view_entity.read_with(cx, |view, _| view
                 .review_state
                 .review_composer_state
-                .thread_reply_thread_id
-                .clone()),
+                .active_thread_reply()
+                .map(str::to_string)),
             Some("thread-1".to_string())
         );
     }
@@ -566,7 +566,7 @@ mod tests {
         assert!(view_entity.read_with(cx, |view, _| {
             view.review_state
                 .review_composer_state
-                .comment_edit_comment_id
+                .active_comment_edit()
                 .is_none()
         }));
     }
@@ -621,8 +621,8 @@ mod tests {
                     active_reply_thread_id: view
                         .review_state
                         .review_composer_state
-                        .thread_reply_thread_id
-                        .clone(),
+                        .active_thread_reply()
+                        .map(str::to_string),
                     reply_input: view
                         .review_state
                         .review_composer_state
@@ -651,8 +651,8 @@ mod tests {
                     active_comment_edit_id: view
                         .review_state
                         .review_composer_state
-                        .comment_edit_comment_id
-                        .clone(),
+                        .active_comment_edit()
+                        .map(str::to_string),
                     comment_edit_input: view
                         .review_state
                         .review_composer_state

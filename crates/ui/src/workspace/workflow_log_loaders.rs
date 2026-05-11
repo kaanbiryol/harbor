@@ -13,26 +13,16 @@ impl AppView {
             .selected_pull_request()
             .map(|pull_request| pull_request.repo.clone())
         else {
-            self.detail_state.log_state.error =
-                Some("Workflow logs require a selected pull request and GitHub CLI auth".into());
-            self.status = self
-                .detail_state
-                .log_state
-                .error
-                .clone()
-                .unwrap_or_default();
+            let message = "Workflow logs require a selected pull request and GitHub CLI auth";
+            self.detail_state.log_state.apply_log_failure(message);
+            self.status = message.to_string();
             cx.notify();
             return;
         };
         let Some(run) = self.selected_workflow_run_for_logs().cloned() else {
-            self.detail_state.log_state.error =
-                Some("No workflow run is available for the selected PR head".into());
-            self.status = self
-                .detail_state
-                .log_state
-                .error
-                .clone()
-                .unwrap_or_default();
+            let message = "No workflow run is available for the selected PR head";
+            self.detail_state.log_state.apply_log_failure(message);
+            self.status = message.to_string();
             cx.notify();
             return;
         };
@@ -44,10 +34,8 @@ impl AppView {
         }
 
         self.active_tab = PanelTab::Logs;
-        self.set_log_loading(true);
-        self.clear_log_error();
+        self.detail_state.log_state.start_loading();
         self.detail_state.workflow_jobs.clear();
-        self.clear_log_content();
         self.detail_state
             .log_state
             .list_scroll
@@ -78,23 +66,21 @@ impl AppView {
                     if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
                         return;
                     }
-
-                    view.set_log_loading(false);
-
                     match jobs_result {
                         Ok(jobs) => {
                             view.detail_state.workflow_jobs = jobs;
                         }
                         Err(error) => {
                             view.detail_state.workflow_jobs.clear();
-                            view.detail_state.log_state.error =
-                                Some(format!("Failed to load workflow jobs: {error}"));
+                            view.detail_state.log_state.apply_jobs_failure(format!(
+                                "Failed to load workflow jobs: {error}"
+                            ));
                         }
                     }
 
                     match log_result {
                         Ok(chunk) => {
-                            view.detail_state.log_state.chunk = Some(chunk);
+                            view.detail_state.log_state.apply_log_success(chunk);
                             if view.detail_state.log_state.error.is_none() {
                                 view.status = format!("Loaded logs for {run_label}");
                             } else {
@@ -103,9 +89,10 @@ impl AppView {
                             }
                         }
                         Err(error) => {
-                            view.clear_log_content();
                             let message = format!("Failed to load workflow logs: {error}");
-                            view.detail_state.log_state.error = Some(message.clone());
+                            view.detail_state
+                                .log_state
+                                .apply_log_failure(message.clone());
                             view.status = message;
                         }
                     }

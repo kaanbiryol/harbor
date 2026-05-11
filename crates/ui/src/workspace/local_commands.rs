@@ -159,7 +159,7 @@ impl AppView {
             Ok::<PathBuf, String>(local_repository.repo_path)
         });
 
-        self.tasks.local_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.set_local_task(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_or_log(
@@ -169,7 +169,7 @@ impl AppView {
                     match result {
                         Ok(repo_path) => {
                             view.set_repository_local_path(repository.clone(), repo_path.clone());
-                            view.repository_state.repository_error = None;
+                            view.repository_state.clear_error();
                             view.status = format!(
                                 "Saved local checkout for {} at {}",
                                 repository.full_name(),
@@ -178,12 +178,12 @@ impl AppView {
                             view.refresh_owned_file_filters(cx);
                         }
                         Err(error) => {
-                            view.repository_state.repository_error = Some(error.clone());
+                            view.repository_state.set_error(error.clone());
                             view.status = format!("Failed to save local checkout: {error}");
                         }
                     }
 
-                    view.tasks.local_task = None;
+                    view.tasks.clear_local_task();
                     cx.notify();
                 },
             );
@@ -248,7 +248,7 @@ impl AppView {
             ))
         });
 
-        self.tasks.local_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.set_local_task(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_or_log(cx, "failed to update open-with state", move |view, cx| {
@@ -256,7 +256,7 @@ impl AppView {
                     Ok(status) => status,
                     Err(error) => format!("Failed to open with {app_label}: {error}"),
                 };
-                view.tasks.local_task = None;
+                view.tasks.clear_local_task();
                 cx.notify();
             });
         }));
@@ -302,7 +302,7 @@ impl AppView {
             .map_err(|error| error.to_string())
         });
 
-        self.tasks.local_task = Some(cx.spawn(async move |this, cx| {
+        self.tasks.set_local_task(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_or_log(cx, "failed to update checkout state", move |view, cx| {
@@ -310,7 +310,7 @@ impl AppView {
                     Ok(status) => status,
                     Err(error) => format!("Failed to prepare PR worktree: {error}"),
                 };
-                view.tasks.local_task = None;
+                view.tasks.clear_local_task();
                 cx.notify();
             });
         }));
