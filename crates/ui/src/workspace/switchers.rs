@@ -73,7 +73,7 @@ impl AppView {
         let pull_requests = self.filtered_switcher_pull_requests(cx);
         self.pull_request_switcher_selection = pull_requests
             .iter()
-            .position(|(index, _)| *index == self.selected_pr)
+            .position(|(index, _)| *index == self.selected_pull_request_index())
             .unwrap_or(0);
     }
 

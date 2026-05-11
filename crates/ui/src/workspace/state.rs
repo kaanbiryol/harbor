@@ -254,8 +254,7 @@ pub(crate) struct PullRequestDetailUiState {
     pub(crate) check_runs: Vec<CheckRun>,
     pub(crate) workflow_runs: Vec<WorkflowRun>,
     pub(crate) workflow_jobs: Vec<WorkflowJob>,
-    pub(crate) pull_request_detail_cache:
-        HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
+    pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
     details_load: LoadStatus,
     files_load: LoadStatus,
     checks_load: LoadStatus,
@@ -471,10 +470,62 @@ impl PullRequestInboxState {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct DiffSelectionState {
-    pub(crate) file_index: usize,
-    pub(crate) hunk_index: usize,
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct PullRequestSelectionState {
+    pull_request_index: usize,
+    file_index: usize,
+    hunk_index: usize,
+}
+
+impl PullRequestSelectionState {
+    pub(crate) fn pull_request_index(&self) -> usize {
+        self.pull_request_index
+    }
+
+    pub(crate) fn file_index(&self) -> usize {
+        self.file_index
+    }
+
+    pub(crate) fn hunk_index(&self) -> usize {
+        self.hunk_index
+    }
+
+    pub(crate) fn set_pull_request_index(&mut self, index: usize) {
+        self.pull_request_index = index;
+    }
+
+    pub(crate) fn restore_pull_request_index(&mut self, index: usize, pull_request_count: usize) {
+        self.pull_request_index = index.min(pull_request_count.saturating_sub(1));
+    }
+
+    pub(crate) fn reset_pull_request_index(&mut self) {
+        self.pull_request_index = 0;
+    }
+
+    pub(crate) fn reset_diff_selection(&mut self) {
+        self.file_index = 0;
+        self.hunk_index = 0;
+    }
+
+    pub(crate) fn select_file_index(&mut self, file_index: usize) {
+        self.file_index = file_index;
+        self.hunk_index = 0;
+    }
+
+    pub(crate) fn set_diff_position(&mut self, file_index: usize, hunk_index: usize) {
+        self.file_index = file_index;
+        self.hunk_index = hunk_index;
+    }
+
+    pub(crate) fn restore_diff_position(
+        &mut self,
+        file_index: usize,
+        hunk_index: usize,
+        file_count: usize,
+    ) {
+        self.file_index = file_index.min(file_count.saturating_sub(1));
+        self.hunk_index = hunk_index;
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -614,6 +665,56 @@ impl PullRequestDetailUiState {
         self.files_load.reset();
         self.checks_load.reset();
         self.workflows_load.reset();
+    }
+
+    pub(crate) fn cache_snapshot(
+        &mut self,
+        key: PullRequestDetailCacheKey,
+        snapshot: PullRequestDetailSnapshot,
+    ) {
+        self.pull_request_detail_cache.insert(key, snapshot);
+    }
+
+    pub(crate) fn snapshot(
+        &self,
+        key: &PullRequestDetailCacheKey,
+    ) -> Option<&PullRequestDetailSnapshot> {
+        self.pull_request_detail_cache.get(key)
+    }
+
+    pub(crate) fn remove_optimistic_comment_from_snapshot(
+        &mut self,
+        key: &PullRequestDetailCacheKey,
+        comment_id: &str,
+    ) {
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            remove_review_comment_from_threads(&mut snapshot.review_threads, comment_id);
+            snapshot.pull_request.unresolved_threads =
+                unresolved_review_thread_count(&snapshot.review_threads);
+        }
+    }
+
+    pub(crate) fn rollback_pending_review_comment_count_in_snapshot(
+        &mut self,
+        key: &PullRequestDetailCacheKey,
+        previous_pending_review: Option<&PendingReviewSession>,
+    ) {
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            rollback_pending_review_comment_count(
+                &mut snapshot.pending_review,
+                previous_pending_review,
+            );
+        }
+    }
+
+    pub(crate) fn set_pending_review_in_snapshot(
+        &mut self,
+        key: &PullRequestDetailCacheKey,
+        pending_review: PendingReviewSession,
+    ) {
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            snapshot.pending_review = Some(pending_review);
+        }
     }
 
     pub(crate) fn restore_loaded_sections(&mut self, sections: PullRequestDetailLoadedState) {
@@ -1551,6 +1652,30 @@ mod tests {
                 reviews: true,
             }
         );
+    }
+
+    #[test]
+    fn pull_request_selection_state_restores_indexes_with_bounds() {
+        let mut state = PullRequestSelectionState::default();
+
+        state.restore_pull_request_index(4, 2);
+        assert_eq!(state.pull_request_index(), 1);
+
+        state.set_diff_position(2, 3);
+        assert_eq!(state.file_index(), 2);
+        assert_eq!(state.hunk_index(), 3);
+
+        state.restore_diff_position(5, 8, 3);
+        assert_eq!(state.file_index(), 2);
+        assert_eq!(state.hunk_index(), 8);
+
+        state.select_file_index(1);
+        assert_eq!(state.file_index(), 1);
+        assert_eq!(state.hunk_index(), 0);
+
+        state.reset_pull_request_index();
+        state.reset_diff_selection();
+        assert_eq!(state, PullRequestSelectionState::default());
     }
 
     #[test]

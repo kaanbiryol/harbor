@@ -61,7 +61,7 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    DiffSelectionState, NotificationState, PullRequestDetailUiState, PullRequestInboxState,
+    NotificationState, PullRequestDetailUiState, PullRequestInboxState, PullRequestSelectionState,
     RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
     WorkspaceTasks,
 };
@@ -88,8 +88,7 @@ pub struct AppView {
     diff_list_state: ListState,
     diff_list_items: Vec<DiffListItem>,
     review_list_scroll: UniformListScrollHandle,
-    selected_pr: usize,
-    diff_selection: DiffSelectionState,
+    selection_state: PullRequestSelectionState,
     active_tab: PanelTab,
     pull_request_inbox: PullRequestInboxState,
     pull_request_inbox_search_open: bool,
@@ -269,8 +268,7 @@ impl AppView {
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
             diff_list_items: Vec::new(),
             review_list_scroll: UniformListScrollHandle::new(),
-            selected_pr: 0,
-            diff_selection: DiffSelectionState::default(),
+            selection_state: PullRequestSelectionState::default(),
             active_tab: PanelTab::Diff,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),
             pull_request_inbox_search_open: false,
@@ -301,11 +299,16 @@ impl AppView {
     }
 
     fn selected_pull_request(&self) -> Option<&PullRequest> {
-        self.pull_requests.get(self.selected_pr)
+        self.pull_requests
+            .get(self.selection_state.pull_request_index())
     }
 
     fn selected_pull_request_number(&self) -> Option<u64> {
         self.selected_pull_request().map(|pr| pr.number)
+    }
+
+    pub(crate) fn selected_pull_request_index(&self) -> usize {
+        self.selection_state.pull_request_index()
     }
 
     fn selected_pr_label(&self) -> String {
@@ -315,15 +318,15 @@ impl AppView {
     }
 
     pub(crate) fn active_file(&self) -> Option<&DiffFile> {
-        self.detail_state.files.get(self.diff_selection.file_index)
+        self.detail_state.files.get(self.active_file_index())
     }
 
     pub(crate) fn active_file_index(&self) -> usize {
-        self.diff_selection.file_index
+        self.selection_state.file_index()
     }
 
     pub(crate) fn active_hunk_index(&self) -> usize {
-        self.diff_selection.hunk_index
+        self.selection_state.hunk_index()
     }
 
     pub(crate) fn diff_files(&self) -> &[DiffFile] {
@@ -439,7 +442,7 @@ impl AppView {
 
     fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
         let visible_files = self.visible_file_indices(cx);
-        if visible_files.is_empty() || visible_files.contains(&self.diff_selection.file_index) {
+        if visible_files.is_empty() || visible_files.contains(&self.active_file_index()) {
             return;
         }
 
@@ -493,7 +496,7 @@ impl AppView {
         }
 
         self.cache_current_pull_request_detail_snapshot();
-        self.selected_pr = index;
+        self.selection_state.set_pull_request_index(index);
 
         if self.restore_selected_pull_request_detail_snapshot(cx) {
             return;
@@ -541,7 +544,7 @@ impl AppView {
             self.clear_workflow_state();
             self.clear_review_data_state();
             self.clear_log_content();
-            self.selected_pr = 0;
+            self.selection_state.reset_pull_request_index();
             self.reset_diff_selection();
             self.status =
                 "Select a repository from the header before loading pull requests".to_string();

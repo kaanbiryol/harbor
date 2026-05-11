@@ -77,7 +77,10 @@ impl AppView {
         &mut self,
         mut detail: PullRequest,
     ) {
-        let Some(selected) = self.pull_requests.get_mut(self.selected_pr) else {
+        let Some(selected) = self
+            .pull_requests
+            .get_mut(self.selection_state.pull_request_index())
+        else {
             return;
         };
 
@@ -306,7 +309,10 @@ impl AppView {
                         {
                             let summary = checks_summary_from_runs(&check_runs);
                             view.detail_state.check_runs = check_runs;
-                            if let Some(selected) = view.pull_requests.get_mut(view.selected_pr) {
+                            if let Some(selected) = view
+                                .pull_requests
+                                .get_mut(view.selection_state.pull_request_index())
+                            {
                                 selected.checks_summary = summary;
                             }
                             applied_any = true;
@@ -486,10 +492,7 @@ impl AppView {
                                 view.clear_review_composer_state();
                                 view.refresh_owned_file_filters(cx);
                                 let row_index = view
-                                    .file_tree_row_index_for_file(
-                                        view.diff_selection.file_index,
-                                        cx,
-                                    )
+                                    .file_tree_row_index_for_file(view.active_file_index(), cx)
                                     .unwrap_or(0);
                                 view.file_list_scroll
                                     .scroll_to_item(row_index, ScrollStrategy::Top);
@@ -630,7 +633,9 @@ impl AppView {
                                 view.detail_state.check_runs = check_runs;
                                 view.detail_state.apply_checks_success();
 
-                                if let Some(selected) = view.pull_requests.get_mut(view.selected_pr)
+                                if let Some(selected) = view
+                                    .pull_requests
+                                    .get_mut(view.selection_state.pull_request_index())
                                 {
                                     selected.checks_summary = summary;
                                 }

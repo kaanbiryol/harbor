@@ -146,9 +146,7 @@ impl AppView {
         }
 
         if let Some(snapshot) = self.current_pull_request_detail_snapshot() {
-            self.detail_state
-                .pull_request_detail_cache
-                .insert(key, snapshot);
+            self.detail_state.cache_snapshot(key, snapshot);
             self.cache_current_pull_request_inbox_snapshot();
         }
     }
@@ -176,8 +174,8 @@ impl AppView {
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
             show_files_owned_by_current_user: self.show_files_owned_by_current_user,
             owned_file_paths: self.owned_file_paths.clone(),
-            active_file: self.diff_selection.file_index,
-            active_hunk: self.diff_selection.hunk_index,
+            active_file: self.active_file_index(),
+            active_hunk: self.active_hunk_index(),
             active_tab: self.active_tab,
         })
     }
@@ -189,12 +187,7 @@ impl AppView {
         let Some(key) = self.selected_pull_request_detail_key() else {
             return false;
         };
-        let Some(snapshot) = self
-            .detail_state
-            .pull_request_detail_cache
-            .get(&key)
-            .cloned()
-        else {
+        let Some(snapshot) = self.detail_state.snapshot(&key).cloned() else {
             return false;
         };
 
@@ -228,14 +221,15 @@ impl AppView {
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
         self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
         self.owned_file_paths = snapshot.owned_file_paths;
-        self.diff_selection.file_index = snapshot
-            .active_file
-            .min(self.detail_state.files.len().saturating_sub(1));
-        self.diff_selection.hunk_index = snapshot.active_hunk;
+        self.selection_state.restore_diff_position(
+            snapshot.active_file,
+            snapshot.active_hunk,
+            self.detail_state.files.len(),
+        );
         self.active_tab = snapshot.active_tab;
 
         self.pr_list_scroll
-            .scroll_to_item(self.selected_pr, ScrollStrategy::Center);
+            .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
         self.reset_detail_scrolls();
         self.status = format!("Showing cached PR #{} details", key.number);
         self.load_active_panel_data_if_needed(cx);
@@ -264,9 +258,9 @@ impl AppView {
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
             show_files_owned_by_current_user: self.show_files_owned_by_current_user,
             owned_file_paths: self.owned_file_paths.clone(),
-            selected_pr: self.selected_pr,
-            active_file: self.diff_selection.file_index,
-            active_hunk: self.diff_selection.hunk_index,
+            selected_pr: self.selected_pull_request_index(),
+            active_file: self.active_file_index(),
+            active_hunk: self.active_hunk_index(),
             active_tab: self.active_tab,
         }
     }
@@ -315,17 +309,17 @@ impl AppView {
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
         self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
         self.owned_file_paths = snapshot.owned_file_paths;
-        self.selected_pr = snapshot
-            .selected_pr
-            .min(self.pull_requests.len().saturating_sub(1));
-        self.diff_selection.file_index = snapshot
-            .active_file
-            .min(self.detail_state.files.len().saturating_sub(1));
-        self.diff_selection.hunk_index = snapshot.active_hunk;
+        self.selection_state
+            .restore_pull_request_index(snapshot.selected_pr, self.pull_requests.len());
+        self.selection_state.restore_diff_position(
+            snapshot.active_file,
+            snapshot.active_hunk,
+            self.detail_state.files.len(),
+        );
         self.active_tab = snapshot.active_tab;
 
         self.pr_list_scroll
-            .scroll_to_item(self.selected_pr, ScrollStrategy::Center);
+            .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
         self.reset_detail_scrolls();
         self.status = format!(
             "Showing cached {} from {}",
@@ -335,5 +329,94 @@ impl AppView {
         self.load_active_panel_data_if_needed(cx);
         cx.notify();
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_fixtures::{pull_request, review_thread},
+        workspace::state::{PullRequestDetailUiState, WorkflowLogState},
+    };
+    use harbor_domain::ReviewThreadState;
+
+    fn detail_snapshot() -> PullRequestDetailSnapshot {
+        let mut pull_request = pull_request();
+        pull_request.unresolved_threads = 1;
+
+        PullRequestDetailSnapshot {
+            pull_request,
+            files: Vec::new(),
+            diffs: Vec::new(),
+            check_runs: Vec::new(),
+            workflow_runs: Vec::new(),
+            workflow_jobs: Vec::new(),
+            pull_request_reviews: Vec::new(),
+            review_threads: vec![review_thread(ReviewThreadState::Unresolved)],
+            detail_loaded: PullRequestDetailLoadedState::default(),
+            pending_review: Some(PendingReviewSession {
+                node_id: "pending-review".to_string(),
+                comment_count: 2,
+            }),
+            log_chunk: None,
+            current_user_login: None,
+            collapsed_file_tree_folders: HashSet::new(),
+            reviewed_file_paths: HashSet::new(),
+            excluded_file_type_filters: HashSet::new(),
+            show_files_owned_by_current_user: false,
+            owned_file_paths: HashSet::new(),
+            active_file: 0,
+            active_hunk: 0,
+            active_tab: PanelTab::Diff,
+        }
+    }
+
+    #[test]
+    fn detail_cache_helpers_update_review_snapshot_consistently() {
+        let mut detail_state =
+            PullRequestDetailUiState::new(Vec::new(), Vec::new(), WorkflowLogState::new());
+        let snapshot = detail_snapshot();
+        let key = PullRequestDetailCacheKey::new(
+            snapshot.pull_request.repo.clone(),
+            snapshot.pull_request.number,
+            snapshot.pull_request.head_sha.clone(),
+        );
+        let previous_pending_review = snapshot.pending_review.clone();
+
+        detail_state.cache_snapshot(key.clone(), snapshot);
+        detail_state.remove_optimistic_comment_from_snapshot(&key, "comment-1");
+        let snapshot = detail_state.snapshot(&key).expect("snapshot should exist");
+        assert!(snapshot.review_threads.is_empty());
+        assert_eq!(snapshot.pull_request.unresolved_threads, 0);
+
+        detail_state.rollback_pending_review_comment_count_in_snapshot(
+            &key,
+            previous_pending_review.as_ref(),
+        );
+        let snapshot = detail_state.snapshot(&key).expect("snapshot should exist");
+        assert_eq!(
+            snapshot
+                .pending_review
+                .as_ref()
+                .map(|pending_review| pending_review.comment_count),
+            Some(2)
+        );
+
+        detail_state.set_pending_review_in_snapshot(
+            &key,
+            PendingReviewSession {
+                node_id: "new-pending-review".to_string(),
+                comment_count: 1,
+            },
+        );
+        let snapshot = detail_state.snapshot(&key).expect("snapshot should exist");
+        assert_eq!(
+            snapshot
+                .pending_review
+                .as_ref()
+                .map(|pending_review| pending_review.node_id.as_str()),
+            Some("new-pending-review")
+        );
     }
 }

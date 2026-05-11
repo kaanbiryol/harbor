@@ -11,7 +11,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         if !self.pull_requests.is_empty() {
-            let next = (self.selected_pr + 1) % self.pull_requests.len();
+            let next = (self.selected_pull_request_index() + 1) % self.pull_requests.len();
             self.select_pull_request(next, cx);
         } else {
             self.status = "No pull requests to select".to_string();
@@ -26,10 +26,10 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         if !self.pull_requests.is_empty() {
-            let previous = if self.selected_pr == 0 {
+            let previous = if self.selected_pull_request_index() == 0 {
                 self.pull_requests.len() - 1
             } else {
-                self.selected_pr - 1
+                self.selected_pull_request_index() - 1
             };
             self.select_pull_request(previous, cx);
         } else {

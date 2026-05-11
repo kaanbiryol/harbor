@@ -1081,7 +1081,7 @@ mod tests {
 
         view_entity.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.load_selected_pull_request(cx);
         });
         cx.run_until_parked();
@@ -1178,7 +1178,7 @@ mod tests {
             view.repository_state
                 .select_repository(pull_request.repo.clone());
             view.pull_requests = vec![pull_request];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.sync_runtime.set_sync_state(
                 SyncTarget::ActiveInboxLight,
                 SyncState {
@@ -1284,7 +1284,7 @@ mod tests {
 
         view_entity.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.refresh_selected_pull_request_metadata_only(cx);
         });
         cx.run_until_parked();
@@ -1311,7 +1311,7 @@ mod tests {
             view.repository_state
                 .select_repository(pull_request.repo.clone());
             view.pull_requests = vec![pull_request.clone()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.refresh_pull_requests(pull_request.repo, cx);
         });
         cx.run_until_parked();
@@ -1342,16 +1342,16 @@ mod tests {
 
         view_entity.update(cx, |view, cx| {
             view.pull_requests = vec![first_pull_request, second_pull_request.clone()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             let generation_before = view.review_data_generation();
             view.refresh_selected_pull_request(cx);
             assert!(view.review_data_generation() > generation_before);
-            view.selected_pr = 1;
+            view.selection_state.set_pull_request_index(1);
         });
         cx.run_until_parked();
 
         view_entity.read_with(cx, |view, _| {
-            assert_eq!(view.selected_pr, 1);
+            assert_eq!(view.selected_pull_request_index(), 1);
             assert_eq!(view.pull_requests[1].title, "Selected detail");
             assert!(view.detail_state.files.is_empty());
             assert!(view.review_state.review_threads.is_empty());
@@ -1382,7 +1382,7 @@ mod tests {
 
         view_entity.update(cx, |view, _| {
             view.pull_requests = vec![row_pull_request.clone()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.replace_selected_pull_request_preserving_row_fields(metadata);
         });
 
@@ -1408,7 +1408,7 @@ mod tests {
 
         view_entity.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.load_selected_review_data(cx);
         });
         cx.run_until_parked();
@@ -1440,7 +1440,7 @@ mod tests {
 
         view_entity.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.load_selected_review_data(cx);
         });
         cx.run_until_parked();
@@ -1468,7 +1468,7 @@ mod tests {
 
         success_view.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.detail_state.workflow_runs = vec![workflow_run()];
             view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
             assert!(view.is_running_action);
@@ -1490,7 +1490,7 @@ mod tests {
 
         failure_view.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.detail_state.workflow_runs = vec![workflow_run()];
             view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
             assert_eq!(view.status, "Dispatching CI on feature");
@@ -1516,7 +1516,7 @@ mod tests {
 
         success_view.update_in(cx, |view, window, cx| {
             view.pull_requests = vec![pull_request()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.run_pull_request_action(PullRequestAction::Approve, window, cx);
             assert!(view.is_running_pr_action);
             assert_eq!(view.status, "Approving PR #7");
@@ -1536,7 +1536,7 @@ mod tests {
 
         failure_view.update_in(cx, |view, window, cx| {
             view.pull_requests = vec![pull_request()];
-            view.selected_pr = 0;
+            view.selection_state.reset_pull_request_index();
             view.run_pull_request_action(PullRequestAction::Approve, window, cx);
             assert_eq!(view.status, "Approving PR #7");
         });

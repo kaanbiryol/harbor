@@ -4,13 +4,11 @@ use crate::workspace::AppView;
 
 impl AppView {
     pub(super) fn reset_diff_selection(&mut self) {
-        self.diff_selection.file_index = 0;
-        self.diff_selection.hunk_index = 0;
+        self.selection_state.reset_diff_selection();
     }
 
     pub(super) fn select_diff_file_index(&mut self, file_index: usize) {
-        self.diff_selection.file_index = file_index;
-        self.diff_selection.hunk_index = 0;
+        self.selection_state.select_file_index(file_index);
     }
 
     pub(super) fn set_detail_loading(&mut self, loading: bool) {

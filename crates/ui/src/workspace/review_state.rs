@@ -5,10 +5,7 @@ use harbor_domain::{
 
 use crate::workspace::{
     AppView, PendingReviewSession, PullRequestDetailCacheKey,
-    reviews::{
-        OptimisticReviewCommentHandle, remove_review_comment_from_threads,
-        rollback_pending_review_comment_count, unresolved_review_thread_count,
-    },
+    reviews::OptimisticReviewCommentHandle,
 };
 
 impl AppView {
@@ -59,7 +56,10 @@ impl AppView {
     }
 
     fn set_selected_unresolved_thread_count(&mut self, unresolved_count: usize) {
-        if let Some(selected) = self.pull_requests.get_mut(self.selected_pr) {
+        if let Some(selected) = self
+            .pull_requests
+            .get_mut(self.selection_state.pull_request_index())
+        {
             selected.unresolved_threads = unresolved_count;
         }
     }
@@ -98,15 +98,8 @@ impl AppView {
             self.sync_unresolved_thread_count();
         }
 
-        if let Some(snapshot) = self
-            .detail_state
-            .pull_request_detail_cache
-            .get_mut(detail_key)
-        {
-            remove_review_comment_from_threads(&mut snapshot.review_threads, comment_id);
-            snapshot.pull_request.unresolved_threads =
-                unresolved_review_thread_count(&snapshot.review_threads);
-        }
+        self.detail_state
+            .remove_optimistic_comment_from_snapshot(detail_key, comment_id);
     }
 
     pub(super) fn rollback_pending_review_comment_count_for_detail(
@@ -119,16 +112,8 @@ impl AppView {
                 .rollback_pending_review_comment_count(previous_pending_review);
         }
 
-        if let Some(snapshot) = self
-            .detail_state
-            .pull_request_detail_cache
-            .get_mut(detail_key)
-        {
-            rollback_pending_review_comment_count(
-                &mut snapshot.pending_review,
-                previous_pending_review,
-            );
-        }
+        self.detail_state
+            .rollback_pending_review_comment_count_in_snapshot(detail_key, previous_pending_review);
     }
 
     pub(super) fn set_pending_review_for_detail(
@@ -140,13 +125,8 @@ impl AppView {
             self.review_state.set_pending_review(pending_review.clone());
         }
 
-        if let Some(snapshot) = self
-            .detail_state
-            .pull_request_detail_cache
-            .get_mut(detail_key)
-        {
-            snapshot.pending_review = Some(pending_review);
-        }
+        self.detail_state
+            .set_pending_review_in_snapshot(detail_key, pending_review);
     }
 
     pub(super) fn set_review_comment_reaction(

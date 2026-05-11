@@ -452,7 +452,7 @@ impl AppView {
                                     view.clear_detail_loaded_state();
                                     view.clear_review_submission_errors();
                                     view.clear_log_content();
-                                    view.selected_pr = 0;
+                                    view.selection_state.reset_pull_request_index();
                                     view.reset_diff_selection();
                                     view.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                                     view.reset_detail_scrolls();
@@ -487,15 +487,16 @@ impl AppView {
         self.pull_request_inbox.set_mode(mode);
         self.pull_requests = pull_requests;
 
-        self.selected_pr = previous_selected
+        let selected_pr = previous_selected
             .as_ref()
             .and_then(|(number, _)| {
                 self.pull_requests
                     .iter()
                     .position(|pull_request| pull_request.number == *number)
             })
-            .unwrap_or(0)
-            .min(self.pull_requests.len().saturating_sub(1));
+            .unwrap_or(0);
+        self.selection_state
+            .restore_pull_request_index(selected_pr, self.pull_requests.len());
 
         let selected_head_unchanged =
             previous_selected
@@ -519,7 +520,7 @@ impl AppView {
         }
 
         self.pr_list_scroll
-            .scroll_to_item(self.selected_pr, ScrollStrategy::Center);
+            .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
 
         if load_selected_detail && (!same_inbox || !selected_head_unchanged) {
             self.load_selected_pull_request(cx);

@@ -33,7 +33,7 @@ impl AppView {
         let pull_request_query =
             normalized_search_query(&self.pull_request_search_input.read(cx).value());
         let pull_requests = self.filtered_switcher_pull_requests(cx);
-        let selected_pull_request = self.selected_pr;
+        let selected_pull_request = self.selected_pull_request_index();
         let pull_request_selection = self
             .pull_request_switcher_selection
             .min(pull_requests.len().saturating_sub(1));
@@ -283,7 +283,7 @@ impl AppView {
                                 rows.push(render_pull_request_row(
                                     index,
                                     pr,
-                                    index == view.selected_pr,
+                                    index == view.selected_pull_request_index(),
                                     cx,
                                 ));
                             }
