@@ -35,8 +35,7 @@ impl AppView {
     }
 
     pub(super) fn clear_action_errors(&mut self) {
-        self.action_error = None;
-        self.pr_action_error = None;
+        self.action_runtime.clear_errors();
     }
 
     pub(super) fn clear_review_submission_errors(&mut self) {

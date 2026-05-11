@@ -61,9 +61,9 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    NotificationState, PullRequestDetailUiState, PullRequestInboxState, PullRequestSelectionState,
-    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
-    WorkspaceTasks,
+    ActionRuntimeState, NotificationState, PullRequestDetailUiState, PullRequestInboxState,
+    PullRequestSelectionState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
+    SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
 pub(crate) use switchers::{normalized_search_query, parse_repo_id};
 
@@ -101,10 +101,7 @@ pub struct AppView {
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
     owned_file_paths: HashSet<String>,
-    is_running_action: bool,
-    is_running_pr_action: bool,
-    action_error: Option<String>,
-    pr_action_error: Option<String>,
+    action_runtime: ActionRuntimeState,
     status: String,
     _subscriptions: Vec<Subscription>,
 }
@@ -281,10 +278,7 @@ impl AppView {
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
-            is_running_action: false,
-            is_running_pr_action: false,
-            action_error: None,
-            pr_action_error: None,
+            action_runtime: ActionRuntimeState::default(),
             status,
             _subscriptions: subscriptions,
         };
@@ -513,7 +507,7 @@ impl AppView {
         self.clear_review_data_state();
         self.review_state.clear_reviews_error();
         self.clear_log_error();
-        self.pr_action_error = None;
+        self.action_runtime.clear_pull_request_action_error();
         self.review_state.clear_submission_errors();
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);

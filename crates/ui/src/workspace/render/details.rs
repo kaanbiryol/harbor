@@ -34,9 +34,10 @@ impl AppView {
                 .into_any_element();
         };
 
+        let pull_request_action_running = self.action_runtime.pull_request_action_running();
         let review_action_disabled =
-            self.is_running_pr_action || review_action_blocker(pr).is_some();
-        let merge_action_disabled = self.is_running_pr_action || merge_blocker(pr).is_some();
+            pull_request_action_running || review_action_blocker(pr).is_some();
+        let merge_action_disabled = pull_request_action_running || merge_blocker(pr).is_some();
         let pull_request_url = pr.url.clone();
         let pull_request_number = pr.number;
 
@@ -122,7 +123,7 @@ impl AppView {
                                     .label("approve")
                                     .small()
                                     .outline()
-                                    .loading(self.is_running_pr_action)
+                                    .loading(pull_request_action_running)
                                     .disabled(review_action_disabled)
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.run_pull_request_action(
@@ -137,7 +138,7 @@ impl AppView {
                                     .label("changes")
                                     .small()
                                     .outline()
-                                    .loading(self.is_running_pr_action)
+                                    .loading(pull_request_action_running)
                                     .disabled(review_action_disabled)
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.run_pull_request_action(
@@ -152,7 +153,7 @@ impl AppView {
                                     .label("merge")
                                     .small()
                                     .outline()
-                                    .loading(self.is_running_pr_action)
+                                    .loading(pull_request_action_running)
                                     .disabled(merge_action_disabled)
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.run_pull_request_action(
@@ -169,15 +170,20 @@ impl AppView {
                             element.child(self.render_pending_review_bar(pending_review, cx))
                         },
                     )
-                    .when_some(self.pr_action_error.clone(), |element, error| {
-                        element.child(
-                            div()
-                                .pt_2()
-                                .text_xs()
-                                .text_color(rgb(0xf87171))
-                                .child(error),
-                        )
-                    }),
+                    .when_some(
+                        self.action_runtime
+                            .pull_request_action_error()
+                            .map(str::to_string),
+                        |element, error| {
+                            element.child(
+                                div()
+                                    .pt_2()
+                                    .text_xs()
+                                    .text_color(rgb(0xf87171))
+                                    .child(error),
+                            )
+                        },
+                    ),
             )
             .child(self.render_changed_files_header(cx))
             .when(self.detail_state.files_loading(), |element| {

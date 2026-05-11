@@ -1471,15 +1471,15 @@ mod tests {
             view.selection_state.reset_pull_request_index();
             view.detail_state.workflow_runs = vec![workflow_run()];
             view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
-            assert!(view.is_running_action);
+            assert!(view.action_runtime.workflow_action_running());
             assert_eq!(view.status, "Dispatching CI on feature");
             view.pull_requests.clear();
         });
         cx.run_until_parked();
 
         success_view.read_with(cx, |view, _| {
-            assert!(!view.is_running_action);
-            assert_eq!(view.action_error, None);
+            assert!(!view.action_runtime.workflow_action_running());
+            assert_eq!(view.action_runtime.workflow_action_error(), None);
             assert_eq!(view.status, "Dispatched CI on feature");
         });
         assert_eq!(success_api.calls(), vec!["dispatch_workflow"]);
@@ -1498,10 +1498,10 @@ mod tests {
         cx.run_until_parked();
 
         failure_view.read_with(cx, |view, _| {
-            assert!(!view.is_running_action);
+            assert!(!view.action_runtime.workflow_action_running());
             assert!(
-                view.action_error
-                    .as_deref()
+                view.action_runtime
+                    .workflow_action_error()
                     .is_some_and(|error| error.contains("Failed to dispatch workflow"))
             );
             assert!(view.status.contains("dispatch failed"));
@@ -1518,14 +1518,14 @@ mod tests {
             view.pull_requests = vec![pull_request()];
             view.selection_state.reset_pull_request_index();
             view.run_pull_request_action(PullRequestAction::Approve, window, cx);
-            assert!(view.is_running_pr_action);
+            assert!(view.action_runtime.pull_request_action_running());
             assert_eq!(view.status, "Approving PR #7");
         });
         cx.run_until_parked();
 
         success_view.read_with(cx, |view, _| {
-            assert!(!view.is_running_pr_action);
-            assert_eq!(view.pr_action_error, None);
+            assert!(!view.action_runtime.pull_request_action_running());
+            assert_eq!(view.action_runtime.pull_request_action_error(), None);
             assert_eq!(view.status, "Approved PR #7");
         });
         assert_eq!(success_api.calls(), vec!["approve_pull_request"]);
@@ -1543,10 +1543,10 @@ mod tests {
         cx.run_until_parked();
 
         failure_view.read_with(cx, |view, _| {
-            assert!(!view.is_running_pr_action);
+            assert!(!view.action_runtime.pull_request_action_running());
             assert!(
-                view.pr_action_error
-                    .as_deref()
+                view.action_runtime
+                    .pull_request_action_error()
                     .is_some_and(|error| error.contains("Failed to approve pull request"))
             );
             assert!(view.status.contains("approval failed"));

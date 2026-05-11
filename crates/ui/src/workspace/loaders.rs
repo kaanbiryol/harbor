@@ -440,8 +440,6 @@ impl AppView {
                                 let mut status = pull_request_inbox_failed_status(&repo, mode);
                                 view.set_detail_loading(false);
                                 view.set_log_loading(false);
-                                view.is_running_action = false;
-                                view.is_running_pr_action = false;
                                 view.pull_request_inbox.apply_failure(error.to_string());
                                 if !view.pull_requests.is_empty() {
                                     status = format!("{status}; showing cached data");

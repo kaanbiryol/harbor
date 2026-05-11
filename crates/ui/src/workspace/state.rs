@@ -88,6 +88,114 @@ impl LoadStatus {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+enum ActionStatus {
+    #[default]
+    Idle,
+    Running,
+    Failed(String),
+}
+
+impl ActionStatus {
+    fn start(&mut self) {
+        *self = Self::Running;
+    }
+
+    fn succeed(&mut self) {
+        *self = Self::Idle;
+    }
+
+    fn fail(&mut self, error: impl Into<String>) {
+        *self = Self::Failed(error.into());
+    }
+
+    fn reset(&mut self) {
+        *self = Self::Idle;
+    }
+
+    fn clear_error(&mut self) {
+        if matches!(self, Self::Failed(_)) {
+            self.reset();
+        }
+    }
+
+    fn is_running(&self) -> bool {
+        matches!(self, Self::Running)
+    }
+
+    fn error(&self) -> Option<&str> {
+        match self {
+            Self::Failed(error) => Some(error),
+            Self::Idle | Self::Running => None,
+        }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct ActionRuntimeState {
+    workflow_action: ActionStatus,
+    pull_request_action: ActionStatus,
+}
+
+impl ActionRuntimeState {
+    pub(crate) fn workflow_action_running(&self) -> bool {
+        self.workflow_action.is_running()
+    }
+
+    pub(crate) fn workflow_action_error(&self) -> Option<&str> {
+        self.workflow_action.error()
+    }
+
+    pub(crate) fn start_workflow_action(&mut self) {
+        self.workflow_action.start();
+    }
+
+    pub(crate) fn finish_workflow_action_success(&mut self) {
+        self.workflow_action.succeed();
+    }
+
+    pub(crate) fn finish_workflow_action_failure(&mut self, error: impl Into<String>) {
+        self.workflow_action.fail(error);
+    }
+
+    pub(crate) fn set_workflow_action_error(&mut self, error: impl Into<String>) {
+        self.workflow_action.fail(error);
+    }
+
+    pub(crate) fn pull_request_action_running(&self) -> bool {
+        self.pull_request_action.is_running()
+    }
+
+    pub(crate) fn pull_request_action_error(&self) -> Option<&str> {
+        self.pull_request_action.error()
+    }
+
+    pub(crate) fn start_pull_request_action(&mut self) {
+        self.pull_request_action.start();
+    }
+
+    pub(crate) fn finish_pull_request_action(&mut self) {
+        self.pull_request_action.succeed();
+    }
+
+    pub(crate) fn finish_pull_request_action_failure(&mut self, error: impl Into<String>) {
+        self.pull_request_action.fail(error);
+    }
+
+    pub(crate) fn set_pull_request_action_error(&mut self, error: impl Into<String>) {
+        self.pull_request_action.fail(error);
+    }
+
+    pub(crate) fn clear_errors(&mut self) {
+        self.workflow_action.clear_error();
+        self.pull_request_action.clear_error();
+    }
+
+    pub(crate) fn clear_pull_request_action_error(&mut self) {
+        self.pull_request_action.clear_error();
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct WorkspaceTasks {
     pr_list_task: Option<Task<()>>,
@@ -1614,6 +1722,39 @@ mod tests {
 
         status.reset();
         assert_eq!(status, LoadStatus::Idle);
+    }
+
+    #[test]
+    fn action_runtime_keeps_running_and_errors_exclusive() {
+        let mut state = ActionRuntimeState::default();
+        assert!(!state.workflow_action_running());
+        assert_eq!(state.workflow_action_error(), None);
+        assert!(!state.pull_request_action_running());
+        assert_eq!(state.pull_request_action_error(), None);
+
+        state.set_workflow_action_error("missing workflow");
+        assert!(!state.workflow_action_running());
+        assert_eq!(state.workflow_action_error(), Some("missing workflow"));
+
+        state.start_workflow_action();
+        assert!(state.workflow_action_running());
+        assert_eq!(state.workflow_action_error(), None);
+
+        state.finish_workflow_action_failure("dispatch failed");
+        assert!(!state.workflow_action_running());
+        assert_eq!(state.workflow_action_error(), Some("dispatch failed"));
+
+        state.start_pull_request_action();
+        assert!(state.pull_request_action_running());
+        assert_eq!(state.pull_request_action_error(), None);
+
+        state.finish_pull_request_action();
+        assert!(!state.pull_request_action_running());
+        assert_eq!(state.pull_request_action_error(), None);
+
+        state.clear_errors();
+        assert_eq!(state.workflow_action_error(), None);
+        assert_eq!(state.pull_request_action_error(), None);
     }
 
     #[test]

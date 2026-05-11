@@ -13,7 +13,9 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.review_state.is_submitting_pending_review() || self.is_running_pr_action {
+        if self.review_state.is_submitting_pending_review()
+            || self.action_runtime.pull_request_action_running()
+        {
             self.status = "A pull request action is already running".to_string();
             cx.notify();
             return;
@@ -63,7 +65,7 @@ impl AppView {
         };
 
         self.review_state.start_pending_review_submission();
-        self.is_running_pr_action = true;
+        self.action_runtime.start_pull_request_action();
         self.status = format!("Submitting pending review on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
@@ -78,10 +80,10 @@ impl AppView {
                 "failed to update pending review submission state",
                 move |view, window, cx| {
                     view.review_state.finish_pending_review_submission();
-                    view.is_running_pr_action = false;
 
                     match result {
                         Ok(()) => {
+                            view.action_runtime.finish_pull_request_action();
                             view.review_state.clear_pending_review();
                             view.review_state.clear_pending_review_error();
                             view.review_state
@@ -94,6 +96,7 @@ impl AppView {
                             view.reload_pull_request_inbox(cx);
                         }
                         Err(error) => {
+                            view.action_runtime.finish_pull_request_action();
                             let message = format!("Failed to submit pending review: {error}");
                             view.review_state.set_pending_review_error(message.clone());
                             view.status = message;

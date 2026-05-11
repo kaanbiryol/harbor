@@ -294,8 +294,8 @@ impl AppView {
                             &self.detail_state.workflow_runs,
                             self.detail_state.workflows_loading(),
                             self.detail_state.workflows_error(),
-                            self.action_error.as_deref(),
-                            self.is_running_action,
+                            self.action_runtime.workflow_action_error(),
+                            self.action_runtime.workflow_action_running(),
                             cx,
                         )
                         .into_any_element(),

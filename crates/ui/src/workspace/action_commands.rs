@@ -73,7 +73,7 @@ impl AppView {
     pub(crate) fn run_workflow_action(&mut self, action: WorkflowAction, cx: &mut Context<Self>) {
         self.active_tab = PanelTab::Actions;
 
-        if self.is_running_action {
+        if self.action_runtime.workflow_action_running() {
             self.status = "A workflow action is already running".to_string();
             cx.notify();
             return;
@@ -82,15 +82,15 @@ impl AppView {
         let request = match self.workflow_action_request(action) {
             Ok(request) => request,
             Err(message) => {
-                self.action_error = Some(message.clone());
+                self.action_runtime
+                    .set_workflow_action_error(message.clone());
                 self.status = message;
                 cx.notify();
                 return;
             }
         };
 
-        self.is_running_action = true;
-        self.action_error = None;
+        self.action_runtime.start_workflow_action();
         self.status = request.start_status();
         cx.notify();
         let github_api = self.github_api.clone();
@@ -120,17 +120,16 @@ impl AppView {
                 cx,
                 "failed to update workflow action state",
                 move |view, cx| {
-                    view.is_running_action = false;
-
                     match result {
                         Ok(()) => {
-                            view.action_error = None;
+                            view.action_runtime.finish_workflow_action_success();
                             view.refresh_selected_pull_request(cx);
                             view.status = request.success_status();
                         }
                         Err(error) => {
                             let message = format!("Failed to {}: {error}", request.failure_label());
-                            view.action_error = Some(message.clone());
+                            view.action_runtime
+                                .finish_workflow_action_failure(message.clone());
                             view.status = message;
                         }
                     }
@@ -218,7 +217,7 @@ impl AppView {
             }
         }
 
-        if self.is_running_pr_action {
+        if self.action_runtime.pull_request_action_running() {
             self.status = "A pull request action is already running".to_string();
             cx.notify();
             return;
@@ -227,15 +226,15 @@ impl AppView {
         let request = match self.pull_request_action_request(action) {
             Ok(request) => request,
             Err(message) => {
-                self.pr_action_error = Some(message.clone());
+                self.action_runtime
+                    .set_pull_request_action_error(message.clone());
                 self.status = message;
                 cx.notify();
                 return;
             }
         };
 
-        self.is_running_pr_action = true;
-        self.pr_action_error = None;
+        self.action_runtime.start_pull_request_action();
         self.status = request.start_status();
         cx.notify();
         let github_api = self.github_api.clone();
@@ -273,18 +272,17 @@ impl AppView {
                 cx,
                 "failed to update pull request action state",
                 move |view, cx| {
-                    view.is_running_pr_action = false;
-
                     match result {
                         Ok(()) => {
                             let status = request.success_status();
-                            view.pr_action_error = None;
+                            view.action_runtime.finish_pull_request_action();
                             view.reload_pull_request_inbox(cx);
                             view.status = status;
                         }
                         Err(error) => {
                             let message = format!("Failed to {}: {error}", request.failure_label());
-                            view.pr_action_error = Some(message.clone());
+                            view.action_runtime
+                                .finish_pull_request_action_failure(message.clone());
                             view.status = message;
                         }
                     }
