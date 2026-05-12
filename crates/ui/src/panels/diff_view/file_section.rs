@@ -1,11 +1,14 @@
-use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::DiffFile;
 
-use crate::workspace::AppView;
+use crate::{
+    visual::{color, font},
+    workspace::AppView,
+};
 
 use super::{DIFF_FILE_HEADER_HEIGHT, DIFF_ROW_HEIGHT};
 
@@ -77,26 +80,24 @@ pub(super) fn render_diff_file_section_header(
         .gap_4()
         .px_3()
         .border_1()
-        .border_color(if active {
-            rgb(0x3b82f6)
-        } else if sticky {
-            rgb(0x334155)
+        .border_color(if active || sticky {
+            color::border_strong()
         } else {
-            rgb(0x2f3a4a)
+            color::border()
         })
         .bg(if active {
-            rgb(0x18243b)
+            color::row_selected_subtle()
         } else if reviewed {
-            rgb(0x111820)
+            color::content_background()
         } else {
-            rgb(0x141c2a)
+            color::panel_background()
         })
-        .font_family(".SystemUIFont")
-        .text_color(rgb(0xf1f5f9))
+        .font_family(font::UI)
+        .text_color(color::text_primary())
         .whitespace_nowrap()
         .cursor_pointer()
         .when(sticky, |element| element.shadow_lg())
-        .hover(|element| element.bg(rgb(0x172033)))
+        .hover(|element| element.bg(color::row_hover()))
         .on_click(move |_, _, cx| {
             select_view_entity.update(cx, |view, cx| {
                 view.select_file(file_index, cx);
@@ -114,12 +115,12 @@ pub(super) fn render_diff_file_section_header(
                     div()
                         .min_w_0()
                         .truncate()
-                        .text_size(px(16.0))
+                        .text_size(px(15.0))
                         .font_medium()
                         .text_color(if reviewed {
-                            rgb(0xa7b0bd)
+                            color::text_muted()
                         } else {
-                            rgb(0xf1f5f9)
+                            color::text_primary()
                         })
                         .child(path),
                 ),
@@ -132,33 +133,33 @@ pub(super) fn render_diff_file_section_header(
                 .gap_3()
                 .text_xs()
                 .font_medium()
-                .text_color(rgb(0xa7b0bd))
+                .text_color(color::text_secondary())
                 .child(
                     div()
-                        .text_color(rgb(0xcbd5e1))
+                        .text_color(color::text_secondary())
                         .child(format!("{:?}", file.status)),
                 )
                 .child(
                     div()
-                        .text_color(rgb(0x34d399))
+                        .text_color(color::success())
                         .child(format!("+{}", file.additions)),
                 )
                 .child(
                     div()
-                        .text_color(rgb(0xf87171))
+                        .text_color(color::danger())
                         .child(format!("-{}", file.deletions)),
                 )
-                .child(div().text_color(rgb(0x9aa4b2)).child(hunk_label))
+                .child(div().text_color(color::text_muted()).child(hunk_label))
                 .when(reviewed, |element| {
                     element.child(
                         div()
                             .rounded_xs()
                             .border_1()
-                            .border_color(rgb(0x2f4f3e))
-                            .bg(rgb(0x12241b))
+                            .border_color(color::success_background())
+                            .bg(color::success_background())
                             .px_1()
                             .text_xs()
-                            .text_color(rgb(0x86efac))
+                            .text_color(color::success())
                             .child("reviewed"),
                     )
                 }),
@@ -174,9 +175,9 @@ pub(super) fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement 
         .flex()
         .items_center()
         .px_2()
-        .bg(rgb(0x0c0f12))
-        .font_family(".SystemUIFont")
-        .text_color(rgb(0xfbbf24))
+        .bg(color::content_background())
+        .font_family(font::UI)
+        .text_color(color::warning())
         .whitespace_nowrap()
         .child("Diff unavailable via GitHub API. Local checkout fallback will be added.")
 }

@@ -1,5 +1,7 @@
-use gpui::{IntoElement, div, prelude::*, rgb};
+use gpui::{IntoElement, div, prelude::*};
 use harbor_domain::{CheckConclusion, CheckRun, CheckStatus, ChecksSummary};
+
+use crate::visual::{Tone, color, tone_text};
 
 pub(crate) fn render_checks_panel(
     summary: ChecksSummary,
@@ -21,7 +23,7 @@ pub(crate) fn render_checks_panel(
                 .flex()
                 .gap_3()
                 .text_xs()
-                .text_color(rgb(0x9aa4b2))
+                .text_color(color::text_muted())
                 .child(format!("total {}", summary.total))
                 .child(format!("passed {}", summary.passed))
                 .child(format!("failed {}", summary.failed))
@@ -32,10 +34,10 @@ pub(crate) fn render_checks_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child("Loading check runs..."),
             )
         })
@@ -43,10 +45,10 @@ pub(crate) fn render_checks_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })
@@ -56,10 +58,10 @@ pub(crate) fn render_checks_panel(
                 element.child(
                     div()
                         .border_1()
-                        .border_color(rgb(0x242a31))
-                        .bg(rgb(0x0c0f12))
+                        .border_color(color::border())
+                        .bg(color::content_background())
                         .p_3()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("No check runs found for this PR head"),
                 )
             },
@@ -74,8 +76,8 @@ pub(crate) fn render_check_run(check_run: &CheckRun) -> impl IntoElement {
         .justify_between()
         .gap_3()
         .border_1()
-        .border_color(rgb(0x242a31))
-        .bg(rgb(0x0c0f12))
+        .border_color(color::border())
+        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
@@ -87,7 +89,7 @@ pub(crate) fn render_check_run(check_run: &CheckRun) -> impl IntoElement {
                 .child(
                     div()
                         .text_xs()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child(format!("{:?}", check_run.status)),
                 ),
         )
@@ -101,21 +103,19 @@ pub(crate) fn render_check_conclusion(
     conclusion: Option<CheckConclusion>,
     status: CheckStatus,
 ) -> impl IntoElement {
-    let (label, color) = match (status, conclusion) {
-        (CheckStatus::Completed, Some(CheckConclusion::Success)) => ("passed", rgb(0x34d399)),
-        (CheckStatus::Completed, Some(CheckConclusion::Skipped)) => ("skipped", rgb(0x9aa4b2)),
-        (CheckStatus::Completed, Some(CheckConclusion::Neutral)) => ("neutral", rgb(0x9aa4b2)),
-        (CheckStatus::Completed, Some(CheckConclusion::Cancelled)) => ("cancelled", rgb(0xfbbf24)),
-        (CheckStatus::Completed, Some(CheckConclusion::TimedOut)) => ("timed out", rgb(0xf87171)),
+    let (label, tone) = match (status, conclusion) {
+        (CheckStatus::Completed, Some(CheckConclusion::Success)) => ("passed", Tone::Success),
+        (CheckStatus::Completed, Some(CheckConclusion::Skipped)) => ("skipped", Tone::Neutral),
+        (CheckStatus::Completed, Some(CheckConclusion::Neutral)) => ("neutral", Tone::Neutral),
+        (CheckStatus::Completed, Some(CheckConclusion::Cancelled)) => ("cancelled", Tone::Warning),
+        (CheckStatus::Completed, Some(CheckConclusion::TimedOut)) => ("timed out", Tone::Danger),
         (CheckStatus::Completed, Some(CheckConclusion::ActionRequired)) => {
-            ("action required", rgb(0xfbbf24))
+            ("action required", Tone::Warning)
         }
-        (CheckStatus::Completed, Some(CheckConclusion::Failure) | None) => {
-            ("failed", rgb(0xf87171))
-        }
-        (CheckStatus::InProgress, _) => ("running", rgb(0x93c5fd)),
-        (CheckStatus::Queued, _) => ("queued", rgb(0xfbbf24)),
+        (CheckStatus::Completed, Some(CheckConclusion::Failure) | None) => ("failed", Tone::Danger),
+        (CheckStatus::InProgress, _) => ("running", Tone::Info),
+        (CheckStatus::Queued, _) => ("queued", Tone::Warning),
     };
 
-    div().text_sm().text_color(color).child(label)
+    div().text_sm().text_color(tone_text(tone)).child(label)
 }

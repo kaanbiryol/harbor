@@ -1,4 +1,4 @@
-use gpui::{AnyElement, Entity, IntoElement, StyleRefinement, div, prelude::*, px, rems, rgb};
+use gpui::{AnyElement, Entity, IntoElement, StyleRefinement, div, prelude::*, px, rems};
 use gpui_component::{
     StyledExt,
     input::InputState,
@@ -6,8 +6,9 @@ use gpui_component::{
 };
 use harbor_domain::ReviewComment;
 
-use crate::workspace::{
-    AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync,
+use crate::{
+    visual::color,
+    workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync},
 };
 
 use super::{
@@ -116,24 +117,24 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
     let comment_id = comment.id.clone();
     let comment_body = comment.body.clone();
     let author_color = if thread_resolved {
-        rgb(0xb7c0cd)
+        color::text_secondary()
     } else {
-        rgb(0xe5edf7)
+        color::text_primary()
     };
     let metadata_color = if thread_resolved {
-        rgb(0x526176)
+        color::text_disabled()
     } else {
-        rgb(0x64748b)
+        color::text_muted()
     };
     let body_color = if thread_resolved {
-        rgb(0x8996a8)
+        color::text_muted()
     } else {
-        rgb(0xcbd5e1)
+        color::text_secondary()
     };
     let reply_rail_color = if thread_resolved {
-        rgb(0x213040)
+        color::border_subtle()
     } else {
-        rgb(0x263241)
+        color::border()
     };
 
     div()
@@ -183,10 +184,10 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                                         div()
                                             .rounded_xs()
                                             .border_1()
-                                            .border_color(rgb(0x355071))
-                                            .bg(rgb(0x101b2a))
+                                            .border_color(color::border_strong())
+                                            .bg(color::row_selected_subtle())
                                             .px_1()
-                                            .text_color(rgb(0x93c5fd))
+                                            .text_color(color::accent())
                                             .child("syncing"),
                                     )
                                 }),
@@ -242,7 +243,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                         div()
                             .pt_1()
                             .text_xs()
-                            .text_color(rgb(0xf87171))
+                            .text_color(color::danger())
                             .child(error),
                     )
                 })
@@ -251,7 +252,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                         div()
                             .pt_1()
                             .text_xs()
-                            .text_color(rgb(0xf87171))
+                            .text_color(color::danger())
                             .child(error),
                     )
                 }),
@@ -279,7 +280,7 @@ fn review_comment_markdown_style() -> TextViewStyle {
         })
         .code_block(
             StyleRefinement::default()
-                .bg(rgb(0x0b1118))
+                .bg(color::input_background())
                 .p_1()
                 .text_size(px(11.0)),
         )

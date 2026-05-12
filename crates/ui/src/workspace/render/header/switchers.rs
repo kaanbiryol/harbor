@@ -1,6 +1,6 @@
 use gpui::{
     Anchor, App, Context, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::*, px,
-    rgb, uniform_list,
+    uniform_list,
 };
 use gpui_component::{
     Sizable, StyledExt,
@@ -10,7 +10,10 @@ use gpui_component::{
 };
 use harbor_domain::RepoId;
 
-use crate::workspace::{AppView, normalized_search_query, parse_repo_id};
+use crate::{
+    visual::color,
+    workspace::{AppView, normalized_search_query, parse_repo_id},
+};
 
 use super::super::render_switcher_section_label;
 
@@ -22,7 +25,7 @@ fn render_switcher_empty_row(label: impl Into<String>) -> impl IntoElement {
         .px_2()
         .py_2()
         .text_sm()
-        .text_color(rgb(0x7d8794))
+        .text_color(color::text_muted())
         .child(label.into())
 }
 
@@ -31,7 +34,7 @@ fn render_switcher_loading_row(label: &'static str) -> impl IntoElement {
         .px_2()
         .py_2()
         .text_sm()
-        .text_color(rgb(0x93c5fd))
+        .text_color(color::accent())
         .child(label)
 }
 
@@ -40,12 +43,12 @@ fn render_switcher_error_row(error: String) -> impl IntoElement {
         .mx_1()
         .mb_1()
         .border_1()
-        .border_color(rgb(0x4b2a2f))
-        .bg(rgb(0x211417))
+        .border_color(color::danger_background())
+        .bg(color::danger_background())
         .px_2()
         .py_2()
         .text_xs()
-        .text_color(rgb(0xf87171))
+        .text_color(color::danger())
         .child(error)
 }
 
@@ -67,22 +70,24 @@ fn render_switcher_repository_row(
         .py_1()
         .text_sm()
         .cursor_pointer()
-        .when(highlighted, |element| element.bg(rgb(0x263241)))
-        .when(current && !highlighted, |element| element.bg(rgb(0x202936)))
-        .hover(|element| element.bg(rgb(0x222a34)))
+        .when(highlighted, |element| element.bg(color::row_selected()))
+        .when(current && !highlighted, |element| {
+            element.bg(color::row_selected_subtle())
+        })
+        .hover(|element| element.bg(color::row_hover()))
         .child(
             div()
                 .min_w_0()
                 .truncate()
                 .font_medium()
-                .text_color(rgb(0xe6e8eb))
+                .text_color(color::text_primary())
                 .child(repository.full_name()),
         )
         .child(
             div()
                 .flex_none()
                 .text_xs()
-                .text_color(rgb(0x7d8794))
+                .text_color(color::text_muted())
                 .child(if current { "current" } else { "repo" }),
         )
 }
@@ -109,21 +114,21 @@ fn render_switcher_typed_repository_row(repository: &RepoId, highlighted: bool) 
         .py_1()
         .text_sm()
         .cursor_pointer()
-        .when(highlighted, |element| element.bg(rgb(0x263241)))
-        .hover(|element| element.bg(rgb(0x222a34)))
+        .when(highlighted, |element| element.bg(color::row_selected()))
+        .hover(|element| element.bg(color::row_hover()))
         .child(
             div()
                 .min_w_0()
                 .truncate()
                 .font_medium()
-                .text_color(rgb(0xe6e8eb))
+                .text_color(color::text_primary())
                 .child(format!("Open {}", repository.full_name())),
         )
         .child(
             div()
                 .flex_none()
                 .text_xs()
-                .text_color(rgb(0x7d8794))
+                .text_color(color::text_muted())
                 .child("typed"),
         )
 }
@@ -214,7 +219,7 @@ impl AppView {
                             .min_w_0()
                             .truncate()
                             .font_medium()
-                            .text_color(rgb(0xf1f5f9))
+                            .text_color(color::text_primary())
                             .child(repository_label),
                     ),
             )
@@ -233,8 +238,8 @@ impl AppView {
                     .max_h(px(520.))
                     .overflow_y_scroll()
                     .border_1()
-                    .border_color(rgb(0x343b44))
-                    .bg(rgb(0x171b20))
+                    .border_color(color::border_strong())
+                    .bg(color::elevated_background())
                     .p_2()
                     .shadow_lg()
                     .child(render_switcher_section_label("search repositories"))

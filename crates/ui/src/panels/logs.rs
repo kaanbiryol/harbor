@@ -1,12 +1,18 @@
 use gpui::{
     AnyElement, Context, IntoElement, ListHorizontalSizingBehavior, UniformListScrollHandle, div,
-    prelude::*, px, rgb, uniform_list,
+    prelude::*, px, uniform_list,
 };
-use gpui_component::{Disableable, Sizable, button::Button};
+use gpui_component::{
+    Disableable, Sizable,
+    button::{Button, ButtonVariants},
+};
 use harbor_domain::{WorkflowJob, WorkflowRun, WorkflowStep};
 use harbor_logs::{LogChunk, LogLine, LogSeverity};
 
-use crate::workspace::AppView;
+use crate::{
+    visual::{Tone, color, font, tone_text},
+    workspace::AppView,
+};
 
 use super::workflows::{render_workflow_conclusion, workflow_conclusion_label, workflow_run_label};
 
@@ -39,7 +45,7 @@ pub(crate) fn render_logs_panel(
                     Button::new("load-workflow-logs")
                         .label("load logs")
                         .small()
-                        .outline()
+                        .primary()
                         .loading(is_loading)
                         .disabled(run.is_none() || is_loading)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -47,19 +53,24 @@ pub(crate) fn render_logs_panel(
                         })),
                 ),
         )
-        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+        .child(
+            div()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(format!(
                     "target: {}",
                     run.map(workflow_run_label)
                         .unwrap_or_else(|| "no workflow run".to_string())
-                )))
+                )),
+        )
         .when(is_loading, |element| {
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child("Loading workflow jobs and logs..."),
             )
         })
@@ -67,10 +78,10 @@ pub(crate) fn render_logs_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x7f1d1d))
-                    .bg(rgb(0x2a1212))
+                    .border_color(color::danger_background())
+                    .bg(color::danger_background())
                     .p_3()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })
@@ -78,10 +89,10 @@ pub(crate) fn render_logs_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child("No workflow run found for this PR head"),
             )
         })
@@ -91,7 +102,7 @@ pub(crate) fn render_logs_panel(
                     div()
                         .pt_1()
                         .text_xs()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child(format!("jobs {}", jobs.len())),
                 )
                 .children(jobs.iter().map(render_workflow_job))
@@ -105,8 +116,8 @@ pub(crate) fn render_logs_panel(
                     .min_h_0()
                     .min_w_0()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .overflow_hidden()
                     .child(
                         uniform_list(
@@ -135,7 +146,7 @@ pub(crate) fn render_logs_panel(
                         .flex_1()
                         .min_h_0()
                         .min_w_0()
-                        .font_family("Menlo")
+                        .font_family(font::MONO)
                         .text_xs(),
                     ),
             )
@@ -146,10 +157,10 @@ pub(crate) fn render_logs_panel(
                 element.child(
                     div()
                         .border_1()
-                        .border_color(rgb(0x242a31))
-                        .bg(rgb(0x0c0f12))
+                        .border_color(color::border())
+                        .bg(color::content_background())
                         .p_3()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("Press l or load logs to fetch the workflow log output"),
                 )
             },
@@ -162,8 +173,8 @@ pub(crate) fn render_workflow_job(job: &WorkflowJob) -> impl IntoElement {
         .flex_col()
         .gap_1()
         .border_1()
-        .border_color(rgb(0x242a31))
-        .bg(rgb(0x0c0f12))
+        .border_color(color::border())
+        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
@@ -188,17 +199,17 @@ pub(crate) fn render_workflow_step(step: &WorkflowStep) -> impl IntoElement {
         .gap_3()
         .pl_3()
         .text_xs()
-        .text_color(rgb(0x9aa4b2))
+        .text_color(color::text_muted())
         .child(format!("{}. {}", step.number, step.name))
         .child(div().text_color(color).child(label))
 }
 
 pub(crate) fn render_log_line(line: &LogLine) -> AnyElement {
     let color = match line.severity {
-        LogSeverity::Trace => rgb(0x64748b),
-        LogSeverity::Info => rgb(0xcbd5e1),
-        LogSeverity::Warning => rgb(0xfbbf24),
-        LogSeverity::Error => rgb(0xf87171),
+        LogSeverity::Trace => color::text_muted(),
+        LogSeverity::Info => color::text_secondary(),
+        LogSeverity::Warning => tone_text(Tone::Warning),
+        LogSeverity::Error => tone_text(Tone::Danger),
     };
 
     div()
@@ -213,7 +224,7 @@ pub(crate) fn render_log_line(line: &LogLine) -> AnyElement {
                 .flex_none()
                 .pr_3()
                 .text_right()
-                .text_color(rgb(0x64748b))
+                .text_color(color::text_muted())
                 .child(line.number.to_string()),
         )
         .child(div().flex_none().child(line.text.clone()))

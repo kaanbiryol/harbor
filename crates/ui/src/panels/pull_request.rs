@@ -1,4 +1,4 @@
-use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
@@ -8,7 +8,10 @@ use harbor_domain::{
     PullRequest, PullRequestState, ReviewDecision,
 };
 
-use crate::workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label};
+use crate::{
+    visual::{Tone, color, tone_colors, tone_text},
+    workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label},
+};
 
 const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 44.;
 const MAX_PULL_REQUEST_ROW_SIGNALS: usize = 3;
@@ -148,7 +151,14 @@ pub(crate) fn render_review_decision(decision: Option<ReviewDecision>) -> impl I
         None => "no review",
     };
 
-    div().text_xs().text_color(rgb(0x93c5fd)).child(label)
+    let tone = match decision {
+        Some(ReviewDecision::Approved) => Tone::Success,
+        Some(ReviewDecision::ChangesRequested) => Tone::Danger,
+        Some(ReviewDecision::ReviewRequired) => Tone::Warning,
+        None => Tone::Info,
+    };
+
+    div().text_xs().text_color(tone_text(tone)).child(label)
 }
 
 pub(crate) fn render_merge_state(state: Option<MergeState>) -> impl IntoElement {
@@ -160,7 +170,14 @@ pub(crate) fn render_merge_state(state: Option<MergeState>) -> impl IntoElement 
         Some(MergeState::Unknown) | None => "unknown",
     };
 
-    div().text_xs().text_color(rgb(0x9aa4b2)).child(label)
+    let tone = match state {
+        Some(MergeState::Clean) => Tone::Success,
+        Some(MergeState::Dirty) | Some(MergeState::Blocked) => Tone::Danger,
+        Some(MergeState::Behind) => Tone::Warning,
+        Some(MergeState::Unknown) | None => Tone::Neutral,
+    };
+
+    div().text_xs().text_color(tone_text(tone)).child(label)
 }
 
 fn visible_pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
@@ -350,19 +367,22 @@ fn row_signal_tone(kind: PullRequestRowSignalKind) -> PullRequestRowSignalTone {
 }
 
 fn row_signal_tone_colors(tone: PullRequestRowSignalTone) -> (gpui::Rgba, gpui::Rgba, gpui::Rgba) {
-    match tone {
-        PullRequestRowSignalTone::Danger => (rgb(0xfca5a5), rgb(0x7f1d1d), rgb(0x2a1214)),
-        PullRequestRowSignalTone::Warning => (rgb(0xfcd34d), rgb(0x713f12), rgb(0x241a0c)),
-        PullRequestRowSignalTone::Success => (rgb(0x86efac), rgb(0x14532d), rgb(0x102016)),
-    }
+    let tone = match tone {
+        PullRequestRowSignalTone::Danger => Tone::Danger,
+        PullRequestRowSignalTone::Warning => Tone::Warning,
+        PullRequestRowSignalTone::Success => Tone::Success,
+    };
+    let colors = tone_colors(tone);
+
+    (colors.text, colors.border, colors.background)
 }
 
 fn row_rail_color(tone: PullRequestRowRailTone) -> gpui::Rgba {
     match tone {
-        PullRequestRowRailTone::Neutral => rgb(0x20252b),
-        PullRequestRowRailTone::Danger => rgb(0xef4444),
-        PullRequestRowRailTone::Warning => rgb(0xfbbf24),
-        PullRequestRowRailTone::Success => rgb(0x22c55e),
+        PullRequestRowRailTone::Neutral => color::border(),
+        PullRequestRowRailTone::Danger => color::danger(),
+        PullRequestRowRailTone::Warning => color::warning(),
+        PullRequestRowRailTone::Success => color::success(),
     }
 }
 
@@ -385,14 +405,14 @@ pub(crate) fn render_pull_request_row(
         .flex()
         .overflow_hidden()
         .border_1()
-        .border_color(rgb(0x20252b))
+        .border_color(color::border_subtle())
         .when(pr.is_draft, |element| element.opacity(0.72))
-        .when(selected, |element| element.bg(rgb(0x243244)))
-        .hover(|style| style.bg(rgb(0x202a35)))
+        .when(selected, |element| element.bg(color::row_selected()))
+        .hover(|style| style.bg(color::row_hover()))
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_pull_request(index, cx);
         }))
-        .child(div().h_full().w(px(4.)).flex_none().bg(rail_color))
+        .child(div().h_full().w(px(3.)).flex_none().bg(rail_color))
         .child(
             div()
                 .flex_1()
@@ -422,7 +442,7 @@ pub(crate) fn render_pull_request_row(
                                 .child(
                                     div()
                                         .flex_none()
-                                        .text_color(rgb(0x7d8794))
+                                        .text_color(color::text_muted())
                                         .child(format!("#{}", pr.number)),
                                 )
                                 .child(div().min_w_0().flex_1().truncate().child(pr.title.clone())),
@@ -446,7 +466,7 @@ pub(crate) fn render_pull_request_row(
                                 .min_w_0()
                                 .flex_1()
                                 .truncate()
-                                .text_color(rgb(0x9aa4b2))
+                                .text_color(color::text_secondary())
                                 .child(format!(
                                     "{} into {} by {}",
                                     pr.head_ref, pr.base_ref, pr.author
@@ -494,26 +514,26 @@ pub(crate) fn render_changed_folder_row(
         .gap_2()
         .text_sm()
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(0x202a35)))
+        .hover(|style| style.bg(color::row_hover()))
         .on_click(cx.listener(move |view, _, _, cx| {
             view.toggle_changed_file_folder(folder_path.clone(), cx);
         }))
-        .child(Icon::new(chevron).xsmall().text_color(rgb(0x9aa4b2)))
-        .child(Icon::new(folder_icon).xsmall().text_color(rgb(0x93c5fd)))
+        .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
+        .child(Icon::new(folder_icon).xsmall().text_color(color::accent()))
         .child(
             div()
                 .min_w_0()
                 .flex_1()
                 .truncate()
                 .font_medium()
-                .text_color(rgb(0xd5dde7))
+                .text_color(color::text_primary())
                 .child(folder.name.clone()),
         )
         .child(
             div()
                 .flex_none()
                 .text_xs()
-                .text_color(rgb(0x7d8794))
+                .text_color(color::text_muted())
                 .child(folder_review_summary(
                     folder.reviewed_file_count,
                     folder.file_count,
@@ -560,8 +580,8 @@ pub(crate) fn render_changed_file_row(
         .pl(file_tree_padding(row.depth))
         .pr_2()
         .gap_2()
-        .when(selected, |element| element.bg(rgb(0x243244)))
-        .hover(|style| style.bg(rgb(0x202a35)))
+        .when(selected, |element| element.bg(color::row_selected()))
+        .hover(|style| style.bg(color::row_hover()))
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_file(index, cx);
         }))
@@ -571,7 +591,11 @@ pub(crate) fn render_changed_file_row(
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(Icon::new(IconName::File).xsmall().text_color(rgb(0x9aa4b2))),
+                .child(
+                    Icon::new(IconName::File)
+                        .xsmall()
+                        .text_color(color::text_muted()),
+                ),
         )
         .child(
             div()
@@ -587,9 +611,9 @@ pub(crate) fn render_changed_file_row(
                         .truncate()
                         .text_sm()
                         .text_color(if reviewed {
-                            rgb(0x7d8794)
+                            color::text_muted()
                         } else {
-                            rgb(0xe6e8eb)
+                            color::text_primary()
                         })
                         .child(row.name.clone()),
                 )
@@ -611,12 +635,12 @@ pub(crate) fn render_changed_file_row(
                 .text_xs()
                 .child(
                     div()
-                        .text_color(diff_stat_color(file.additions, rgb(0x34d399)))
+                        .text_color(diff_stat_color(file.additions, color::success()))
                         .child(format!("+{}", file.additions)),
                 )
                 .child(
                     div()
-                        .text_color(diff_stat_color(file.deletions, rgb(0xf87171)))
+                        .text_color(diff_stat_color(file.deletions, color::danger()))
                         .child(format!("-{}", file.deletions)),
                 ),
         )
@@ -640,17 +664,17 @@ fn file_tree_padding(depth: usize) -> gpui::Pixels {
 
 fn file_status_color(status: FileStatus) -> gpui::Rgba {
     match status {
-        FileStatus::Added => rgb(0x34d399),
-        FileStatus::Removed => rgb(0xf87171),
-        FileStatus::Renamed | FileStatus::Copied => rgb(0x93c5fd),
-        FileStatus::Modified | FileStatus::Changed => rgb(0xfbbf24),
-        FileStatus::Unchanged => rgb(0x9aa4b2),
+        FileStatus::Added => color::success(),
+        FileStatus::Removed => color::danger(),
+        FileStatus::Renamed | FileStatus::Copied => color::accent(),
+        FileStatus::Modified | FileStatus::Changed => color::warning(),
+        FileStatus::Unchanged => color::text_muted(),
     }
 }
 
 fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {
     if count == 0 {
-        rgb(0x9aa4b2)
+        color::text_muted()
     } else {
         active_color
     }

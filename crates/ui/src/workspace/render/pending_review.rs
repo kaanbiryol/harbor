@@ -1,8 +1,15 @@
-use gpui::{Context, IntoElement, div, prelude::*, rgb};
-use gpui_component::{Disableable, Sizable, StyledExt, button::Button, input::Input};
+use gpui::{Context, IntoElement, div, prelude::*};
+use gpui_component::{
+    Disableable, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+    input::Input,
+};
 use harbor_github::SubmitPullRequestReviewEvent;
 
-use crate::workspace::{AppView, PendingReviewSession};
+use crate::{
+    visual::color,
+    workspace::{AppView, PendingReviewSession},
+};
 
 fn pending_review_comment_count_label(comment_count: usize) -> String {
     match comment_count {
@@ -38,8 +45,8 @@ impl AppView {
         div().pt_3().child(
             div()
                 .border_1()
-                .border_color(rgb(0x355071))
-                .bg(rgb(0x172033))
+                .border_color(color::border_strong())
+                .bg(color::row_selected_subtle())
                 .px_3()
                 .py_2()
                 .child(
@@ -52,10 +59,10 @@ impl AppView {
                         .child(
                             div()
                                 .font_medium()
-                                .text_color(rgb(0xe6e8eb))
+                                .text_color(color::text_primary())
                                 .child("pending review"),
                         )
-                        .child(div().text_color(rgb(0x93c5fd)).child(
+                        .child(div().text_color(color::accent()).child(
                             pending_review_comment_count_label(pending_review.comment_count),
                         )),
                 )
@@ -79,7 +86,7 @@ impl AppView {
                             Button::new("submit-pending-approve")
                                 .label("Approve")
                                 .small()
-                                .outline()
+                                .primary()
                                 .loading(submitting)
                                 .disabled(submitting)
                                 .on_click(cx.listener(|view, _, window, cx| {
@@ -95,6 +102,7 @@ impl AppView {
                                 .label("Comment")
                                 .small()
                                 .outline()
+                                .tooltip("Submit as a pull request comment")
                                 .loading(submitting)
                                 .disabled(comment_submit_disabled)
                                 .on_click(cx.listener(|view, _, window, cx| {
@@ -110,6 +118,7 @@ impl AppView {
                                 .label("Request changes")
                                 .small()
                                 .outline()
+                                .tooltip("Submit review and request changes")
                                 .loading(submitting)
                                 .disabled(submitting)
                                 .on_click(cx.listener(|view, _, window, cx| {
@@ -128,7 +137,7 @@ impl AppView {
                             div()
                                 .pt_2()
                                 .text_xs()
-                                .text_color(rgb(0xf87171))
+                                .text_color(color::danger())
                                 .child(error),
                         )
                     },

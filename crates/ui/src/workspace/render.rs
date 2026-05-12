@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::{
-    App, Context, FocusHandle, Focusable, IntoElement, Render, Window, div, prelude::*, px, rgb,
+    App, Context, FocusHandle, Focusable, IntoElement, Render, Window, div, prelude::*, px,
 };
 use gpui_component::{
     IconName, Sizable,
@@ -15,6 +15,7 @@ use crate::panels::{
     DiffPanelRenderInput, render_actions_panel, render_checks_panel, render_diff_panel,
     render_logs_panel, render_review_panel,
 };
+use crate::visual::{color, font};
 use crate::workspace::AppView;
 
 const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
@@ -42,7 +43,7 @@ pub(super) fn render_switcher_section_label(label: &'static str) -> impl IntoEle
         .px_2()
         .py_1()
         .text_xs()
-        .text_color(rgb(0x7d8794))
+        .text_color(color::text_muted())
         .child(label)
 }
 
@@ -103,8 +104,9 @@ impl Render for AppView {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(0x101214))
-            .text_color(rgb(0xe6e8eb))
+            .bg(color::app_background())
+            .text_color(color::text_primary())
+            .font_family(font::UI)
             .child(self.render_title_bar(cx))
             .child(
                 div()
@@ -147,10 +149,10 @@ impl AppView {
                 rate_limit
                     .as_ref()
                     .map(github_rate_limit_color)
-                    .unwrap_or_else(|| rgb(0x9aa4b2)),
+                    .unwrap_or_else(color::text_muted),
             )
         } else {
-            (None, rgb(0x9aa4b2))
+            (None, color::text_muted())
         };
 
         div()
@@ -160,9 +162,9 @@ impl AppView {
             .px_2()
             .py_1()
             .text_xs()
-            .text_color(rgb(0x9aa4b2))
+            .text_color(color::text_muted())
             .border_1()
-            .border_color(rgb(0x242a31))
+            .border_color(color::border())
             .child(
                 Button::new("toggle-pull-request-inbox")
                     .ghost()
@@ -197,8 +199,8 @@ impl AppView {
             .min_h_0()
             .min_w_0()
             .border_1()
-            .border_color(rgb(0x242a31))
-            .bg(rgb(0x15191e))
+            .border_color(color::border())
+            .bg(color::panel_background())
             .overflow_hidden()
             .child(
                 div()
@@ -206,7 +208,7 @@ impl AppView {
                     .gap_2()
                     .p_2()
                     .border_1()
-                    .border_color(rgb(0x242a31))
+                    .border_color(color::border())
                     .children(
                         PanelTab::ALL
                             .iter()
@@ -220,14 +222,25 @@ impl AppView {
                                     .id(("panel-tab", index))
                                     .px_3()
                                     .py_1()
+                                    .rounded_xs()
                                     .text_sm()
+                                    .text_color(if active {
+                                        color::text_primary()
+                                    } else {
+                                        color::text_secondary()
+                                    })
                                     .cursor_pointer()
-                                    .when(active, |element| element.bg(rgb(0x243244)))
+                                    .when(active, |element| {
+                                        element
+                                            .border_1()
+                                            .border_color(color::border_strong())
+                                            .bg(color::row_selected())
+                                    })
                                     .hover(move |element| {
                                         if active {
                                             element
                                         } else {
-                                            element.bg(rgb(0x1d2530))
+                                            element.bg(color::row_hover())
                                         }
                                     })
                                     .on_click(move |_, _, cx| {
@@ -375,11 +388,11 @@ fn github_rate_limits_label(rate_limits: &[GitHubRateLimitStatus]) -> Option<Str
 
 fn github_rate_limit_color(rate_limit: &GitHubRateLimitStatus) -> gpui::Rgba {
     if rate_limit.remaining == Some(0) {
-        rgb(0xf87171)
+        color::danger()
     } else if github_rate_limit_is_low(rate_limit) {
-        rgb(0xfbbf24)
+        color::warning()
     } else {
-        rgb(0x9aa4b2)
+        color::text_muted()
     }
 }
 

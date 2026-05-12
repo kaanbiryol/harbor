@@ -3,9 +3,10 @@ mod open_with;
 #[path = "header/switchers.rs"]
 mod switchers;
 
-use gpui::{Context, IntoElement, div, prelude::*, rgb};
+use gpui::{Context, IntoElement, div, prelude::*};
 use gpui_component::TitleBar;
 
+use crate::visual::color;
 use crate::workspace::AppView;
 
 impl AppView {
@@ -17,8 +18,8 @@ impl AppView {
 
     pub(super) fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         TitleBar::new()
-            .bg(rgb(0x101214))
-            .border_color(rgb(0x242a31))
+            .bg(color::app_background())
+            .border_color(color::border())
             .child(
                 div()
                     .flex()

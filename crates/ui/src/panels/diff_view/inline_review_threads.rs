@@ -1,4 +1,4 @@
-use gpui::{Entity, IntoElement, div, prelude::*, px, rgb};
+use gpui::{Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{StyledExt, input::InputState};
 use harbor_domain::ReviewThreadState;
 
@@ -14,6 +14,7 @@ use crate::{
             render_review_thread_status_pill, review_comment_count_label,
         },
     },
+    visual::color,
     workspace::AppView,
 };
 
@@ -57,22 +58,22 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
     let (label, color) = review_thread_state_label(thread_state);
     let is_resolved = thread_state == ReviewThreadState::Resolved;
     let comment_count_color = if is_resolved {
-        rgb(0x56657a)
+        color::text_disabled()
     } else {
-        rgb(0x64748b)
+        color::text_muted()
     };
 
     div()
         .border_b_1()
         .border_color(if is_resolved {
-            rgb(0x203040)
+            color::border_subtle()
         } else {
-            rgb(0x263241)
+            color::border()
         })
         .bg(if is_resolved {
-            rgb(0x121a24)
+            color::content_background()
         } else {
-            rgb(0x151e29)
+            color::row_selected_subtle()
         })
         .px_2()
         .py_1()
@@ -101,9 +102,9 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
                                     .text_xs()
                                     .font_medium()
                                     .text_color(if is_resolved {
-                                        rgb(0x8aa0b8)
+                                        color::text_secondary()
                                     } else {
-                                        rgb(0xdbeafe)
+                                        color::text_primary()
                                     })
                                     .child("Comment on"),
                             )
@@ -113,9 +114,9 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
                                     .truncate()
                                     .text_xs()
                                     .text_color(if is_resolved {
-                                        rgb(0x697789)
+                                        color::text_disabled()
                                     } else {
-                                        rgb(0x93c5fd)
+                                        color::accent()
                                     })
                                     .child(anchor_label),
                             ),

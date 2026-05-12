@@ -1,4 +1,4 @@
-use gpui::{Anchor, Entity, IntoElement, div, prelude::*, px, rgb};
+use gpui::{Anchor, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Disableable, IconName, Sizable,
     button::{Button, ButtonVariants},
@@ -7,7 +7,7 @@ use gpui_component::{
 };
 use harbor_domain::ReviewComment;
 
-use crate::workspace::AppView;
+use crate::{visual::color, workspace::AppView};
 
 pub(super) struct ReviewCommentActionsMenuState {
     pub(super) comment_id: String,
@@ -53,8 +53,8 @@ pub(super) fn render_review_comment_actions_menu(
             div()
                 .w(px(160.0))
                 .border_1()
-                .border_color(rgb(0x343b44))
-                .bg(rgb(0x171b20))
+                .border_color(color::border_strong())
+                .bg(color::elevated_background())
                 .p_1()
                 .shadow_lg()
                 .child(
@@ -142,8 +142,8 @@ pub(super) fn render_review_comment_edit_composer(
                 .mt_2()
                 .w_full()
                 .border_1()
-                .border_color(rgb(0x354252))
-                .bg(rgb(0x0b1118))
+                .border_color(color::border_strong())
+                .bg(color::input_background())
                 .px_2()
                 .py_1()
                 .child(
@@ -160,7 +160,7 @@ pub(super) fn render_review_comment_edit_composer(
                 div()
                     .pt_1()
                     .text_xs()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })

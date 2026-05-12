@@ -1,4 +1,4 @@
-use gpui::{Entity, IntoElement, Pixels, div, prelude::*, rgb};
+use gpui::{Entity, IntoElement, Pixels, div, prelude::*};
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
@@ -6,7 +6,10 @@ use gpui_component::{
 };
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
-use crate::workspace::AppView;
+use crate::{
+    visual::{Tone, color, tone_colors},
+    workspace::AppView,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ReviewThreadUiState {
@@ -198,17 +201,28 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         })
 }
 
-pub(crate) fn render_review_thread_status_pill(label: &str, color: gpui::Hsla) -> impl IntoElement {
+pub(crate) fn render_review_thread_status_pill(
+    label: &str,
+    text_color: gpui::Hsla,
+) -> impl IntoElement {
+    let tone = match label {
+        "unresolved" => Tone::Warning,
+        "resolved" => Tone::Success,
+        "outdated" => Tone::Neutral,
+        _ => Tone::Info,
+    };
+    let colors = tone_colors(tone);
+
     div()
         .rounded_xs()
         .border_1()
-        .border_color(rgb(0x334155))
-        .bg(rgb(0x0f1720))
+        .border_color(colors.border)
+        .bg(colors.background)
         .px_1()
         .py_0p5()
         .text_xs()
         .font_medium()
-        .text_color(color)
+        .text_color(text_color)
         .child(label.to_string())
 }
 
@@ -233,8 +247,8 @@ pub(crate) fn render_review_thread_reply_composer(
             |element| {
                 element
                     .border_t_1()
-                    .border_color(rgb(0x263241))
-                    .bg(rgb(0x101720))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .px_2()
                     .py_2()
             },
@@ -243,8 +257,8 @@ pub(crate) fn render_review_thread_reply_composer(
             div()
                 .w_full()
                 .border_1()
-                .border_color(rgb(0x354252))
-                .bg(rgb(0x0b1118))
+                .border_color(color::border_strong())
+                .bg(color::input_background())
                 .px_2()
                 .py_1()
                 .child(
@@ -262,7 +276,7 @@ pub(crate) fn render_review_thread_reply_composer(
                 div()
                     .pt_1()
                     .text_xs()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })

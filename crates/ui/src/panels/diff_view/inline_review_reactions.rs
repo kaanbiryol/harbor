@@ -1,4 +1,4 @@
-use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px, rgb};
+use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
@@ -6,7 +6,10 @@ use gpui_component::{
 };
 use harbor_domain::{ReactionContent, ReviewComment};
 
-use crate::workspace::{AppView, ReviewReactionAction, review_reaction};
+use crate::{
+    visual::color,
+    workspace::{AppView, ReviewReactionAction, review_reaction},
+};
 
 pub(super) fn render_review_reactions(
     comment: &ReviewComment,
@@ -51,9 +54,19 @@ fn render_review_reaction_button(
     let comment_id = comment.id.clone();
     let can_toggle = comment.viewer_can_react && !running;
     let (background, border_color, count_color, hover_background) = if viewer_has_reacted {
-        (rgb(0x10233a), rgb(0x2f5f8f), rgb(0x93c5fd), rgb(0x17304f))
+        (
+            color::row_selected_subtle(),
+            color::border_strong(),
+            color::accent(),
+            color::row_selected(),
+        )
     } else {
-        (rgb(0x111820), rgb(0x2b3644), rgb(0x9aa4b2), rgb(0x17212c))
+        (
+            color::content_background(),
+            color::border(),
+            color::text_muted(),
+            color::row_hover(),
+        )
     };
 
     div()
@@ -134,11 +147,11 @@ fn render_add_reaction_popover(
                     return div()
                         .w(px(256.0))
                         .border_1()
-                        .border_color(rgb(0x343b44))
-                        .bg(rgb(0x171b20))
+                        .border_color(color::border_strong())
+                        .bg(color::elevated_background())
                         .p_2()
                         .text_xs()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("Comment is no longer loaded")
                         .into_any_element();
                 };
@@ -146,8 +159,8 @@ fn render_add_reaction_popover(
                 div()
                     .w(px(256.0))
                     .border_1()
-                    .border_color(rgb(0x343b44))
-                    .bg(rgb(0x171b20))
+                    .border_color(color::border_strong())
+                    .bg(color::elevated_background())
                     .p_2()
                     .shadow_lg()
                     .child(div().grid().grid_cols(4).gap_1().children(

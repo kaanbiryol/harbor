@@ -9,7 +9,7 @@ mod reactions;
 #[path = "inline_review_threads.rs"]
 mod threads;
 
-use gpui::{Entity, IntoElement, div, prelude::*, px, rgb};
+use gpui::{Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
@@ -17,7 +17,10 @@ use gpui_component::{
 };
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
-use crate::workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError};
+use crate::{
+    visual::{color, font},
+    workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError},
+};
 
 use super::{
     DIFF_ROW_HEIGHT, REVIEW_COMPOSER_MAX_WIDTH, REVIEW_MARKER_WIDTH,
@@ -79,9 +82,9 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
         .w_full()
         .flex()
         .items_start()
-        .bg(rgb(0x0c0f12))
-        .text_color(rgb(0xcbd5e1))
-        .font_family(".SystemUIFont")
+        .bg(color::content_background())
+        .text_color(color::text_secondary())
+        .font_family(font::UI)
         .child(render_line_number(None, line_number_width))
         .child(render_line_number(None, line_number_width))
         .child(render_review_menu_marker(review_marker_width))
@@ -99,8 +102,8 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
                         .w_full()
                         .max_w(px(REVIEW_COMPOSER_MAX_WIDTH))
                         .border_1()
-                        .border_color(rgb(0x2c3745))
-                        .bg(rgb(0x121923))
+                        .border_color(color::border_strong())
+                        .bg(color::panel_background())
                         .px_3()
                         .py_2()
                         .child(
@@ -108,15 +111,15 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
                                 .pb_2()
                                 .text_xs()
                                 .font_medium()
-                                .text_color(rgb(0x9fc7ff))
+                                .text_color(color::accent())
                                 .child(format!("Comment on {target_label}")),
                         )
                         .child(
                             div()
                                 .w_full()
                                 .border_1()
-                                .border_color(rgb(0x354252))
-                                .bg(rgb(0x0b1118))
+                                .border_color(color::border_strong())
+                                .bg(color::input_background())
                                 .px_2()
                                 .py_1()
                                 .child(
@@ -134,7 +137,7 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
                                 div()
                                     .pt_2()
                                     .text_xs()
-                                    .text_color(rgb(0xf87171))
+                                    .text_color(color::danger())
                                     .child(error),
                             )
                         })
@@ -253,14 +256,14 @@ pub(super) fn render_review_thread_inline(
     );
     let is_resolved = ui_state.is_resolved;
     let card_border_color = if is_resolved {
-        rgb(0x223142)
+        color::border()
     } else {
-        rgb(0x2c3745)
+        color::border_strong()
     };
     let card_bg_color = if is_resolved {
-        rgb(0x0f151d)
+        color::content_background()
     } else {
-        rgb(0x121923)
+        color::panel_background()
     };
     let reply_error = reply_error
         .filter(|error| error.thread_id == thread.id)
@@ -277,9 +280,9 @@ pub(super) fn render_review_thread_inline(
         .w_full()
         .flex()
         .items_start()
-        .bg(rgb(0x0c0f12))
-        .text_color(rgb(0xcbd5e1))
-        .font_family(".SystemUIFont")
+        .bg(color::content_background())
+        .text_color(color::text_secondary())
+        .font_family(font::UI)
         .child(render_line_number(None, line_number_width))
         .child(render_line_number(None, line_number_width))
         .child(render_review_marker(
@@ -360,9 +363,9 @@ pub(super) fn render_review_thread_inline(
                                     .pb_2()
                                     .text_xs()
                                     .text_color(if is_resolved {
-                                        rgb(0x697789)
+                                        color::text_disabled()
                                     } else {
-                                        rgb(0x9aa4b2)
+                                        color::text_muted()
                                     })
                                     .child("No comments in this thread"),
                             )
@@ -389,7 +392,7 @@ pub(super) fn render_review_thread_inline(
                                     .px_2()
                                     .pb_2()
                                     .text_xs()
-                                    .text_color(rgb(0xf87171))
+                                    .text_color(color::danger())
                                     .child(error),
                             )
                         }),
@@ -424,17 +427,17 @@ fn render_hidden_review_comments_notice(
         .ml(px(28.0))
         .border_l_1()
         .border_color(if is_resolved {
-            rgb(0x213040)
+            color::border_subtle()
         } else {
-            rgb(0x263241)
+            color::border()
         })
         .pl_2()
         .py_1()
         .text_xs()
         .text_color(if is_resolved {
-            rgb(0x697789)
+            color::text_disabled()
         } else {
-            rgb(0x93a4b8)
+            color::text_secondary()
         })
         .child(label)
 }
@@ -450,9 +453,9 @@ pub(super) fn render_review_marker(
         count => format!("R{count}"),
     };
     let color = if has_unresolved_thread {
-        rgb(0xfbbf24)
+        color::warning()
     } else {
-        rgb(0x64748b)
+        color::text_muted()
     };
 
     div()
@@ -472,7 +475,7 @@ fn render_review_menu_marker(width: f32) -> impl IntoElement {
         .text_center()
         .whitespace_nowrap()
         .overflow_hidden()
-        .text_color(rgb(0x93c5fd))
+        .text_color(color::accent())
         .child("")
 }
 

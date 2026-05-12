@@ -1,6 +1,8 @@
-use gpui::{IntoElement, div, prelude::*, px, rgb};
+use gpui::{IntoElement, div, prelude::*, px};
 use gpui_component::{Sizable, StyledExt, avatar::Avatar};
 use harbor_domain::ReviewComment;
+
+use crate::visual::color;
 
 pub(super) fn render_review_comment_avatar(comment: &ReviewComment) -> impl IntoElement {
     let avatar = if let Some(avatar_url) = review_comment_avatar_url(comment) {
@@ -24,12 +26,12 @@ fn render_review_comment_fallback_avatar(comment: &ReviewComment) -> impl IntoEl
         .flex_none()
         .rounded_full()
         .border_1()
-        .border_color(rgb(0x3b255f))
-        .bg(rgb(0x1d1430))
+        .border_color(color::border_strong())
+        .bg(color::row_selected_subtle())
         .text_size(px(11.0))
         .line_height(px(20.0))
         .font_semibold()
-        .text_color(rgb(0xa78bfa))
+        .text_color(color::accent())
         .child(review_comment_avatar_initial(&comment.author))
 }
 

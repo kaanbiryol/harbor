@@ -1,11 +1,11 @@
-use gpui::{Context, Div, IntoElement, Stateful, div, prelude::*, px, rgb};
+use gpui::{Context, Div, IntoElement, Stateful, div, prelude::*, px};
 use gpui_component::{
     Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
 
-use crate::workspace::AppView;
+use crate::{visual::color, workspace::AppView};
 
 use super::render_switcher_section_label;
 
@@ -30,13 +30,15 @@ fn render_file_filter_row(
         .mb_1()
         .text_sm()
         .cursor_pointer()
-        .when(checked && !disabled, |element| element.bg(rgb(0x243244)))
+        .when(checked && !disabled, |element| {
+            element.bg(color::row_selected())
+        })
         .when(disabled, |element| element.cursor_default().opacity(0.45))
         .hover(move |element| {
             if disabled {
                 element
             } else {
-                element.bg(rgb(0x202a35))
+                element.bg(color::row_hover())
             }
         })
         .child(
@@ -55,7 +57,7 @@ fn render_file_filter_row(
                             element.child(
                                 Icon::new(IconName::Check)
                                     .xsmall()
-                                    .text_color(rgb(0x93c5fd)),
+                                    .text_color(color::accent()),
                             )
                         }),
                 )
@@ -64,9 +66,9 @@ fn render_file_filter_row(
                         .min_w_0()
                         .truncate()
                         .text_color(if disabled {
-                            rgb(0x7d8794)
+                            color::text_disabled()
                         } else {
-                            rgb(0xe6e8eb)
+                            color::text_primary()
                         })
                         .child(label),
                 ),
@@ -79,7 +81,7 @@ fn render_file_filter_row(
                     .px_1()
                     .text_align(gpui::TextAlign::Right)
                     .text_xs()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child(count.to_string()),
             )
         })
@@ -107,7 +109,7 @@ impl AppView {
             .px_3()
             .py_2()
             .border_1()
-            .border_color(rgb(0x242a31))
+            .border_color(color::border())
             .child(
                 div()
                     .flex()
@@ -118,12 +120,12 @@ impl AppView {
                     .child(
                         div()
                             .font_medium()
-                            .text_color(rgb(0xd5dde7))
+                            .text_color(color::text_primary())
                             .child("Changed files"),
                     )
                     .child(
                         div()
-                            .text_color(rgb(0x9aa4b2))
+                            .text_color(color::text_muted())
                             .child(format!("{reviewed_count}/{total_count} reviewed")),
                     ),
             )
@@ -172,8 +174,8 @@ impl AppView {
                                     .max_h(px(520.))
                                     .overflow_y_scroll()
                                     .border_1()
-                                    .border_color(rgb(0x343b44))
-                                    .bg(rgb(0x171b20))
+                                    .border_color(color::border_strong())
+                                    .bg(color::elevated_background())
                                     .p_2()
                                     .shadow_lg()
                                     .child(
@@ -188,15 +190,16 @@ impl AppView {
                                                 div()
                                                     .text_sm()
                                                     .font_medium()
-                                                    .text_color(rgb(0xe6e8eb))
+                                                    .text_color(color::text_primary())
                                                     .child("Filter changed files"),
                                             )
                                             .child(
-                                                div().text_xs().text_color(rgb(0x7d8794)).child(
-                                                    format!(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(color::text_muted())
+                                                    .child(format!(
                                                         "{visible_count}/{total_count} visible"
-                                                    ),
-                                                ),
+                                                    )),
                                             ),
                                     )
                                     .child(render_switcher_section_label("Ownership"))
@@ -242,7 +245,7 @@ impl AppView {
                                         div()
                                             .mt_2()
                                             .border_t_1()
-                                            .border_color(rgb(0x242a31))
+                                            .border_color(color::border())
                                             .pt_2()
                                             .child(render_switcher_section_label("File types")),
                                     )
@@ -292,16 +295,13 @@ impl AppView {
                                 menu
                             }),
                     )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(0x7d8794))
-                            .child(if has_active_filter {
-                                format!("{visible_count}/{total_count} visible")
-                            } else {
-                                format!("{visible_count} visible")
-                            }),
-                    ),
+                    .child(div().text_xs().text_color(color::text_muted()).child(
+                        if has_active_filter {
+                            format!("{visible_count}/{total_count} visible")
+                        } else {
+                            format!("{visible_count} visible")
+                        },
+                    )),
             )
     }
 }

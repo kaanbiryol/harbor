@@ -13,10 +13,11 @@ mod row_state;
 
 use std::collections::HashSet;
 
-use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px, rgb};
+use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{DiffFile, ReviewThread};
 
 use crate::diff::ParsedDiff;
+use crate::visual::{color, font};
 use crate::workspace::{AppView, ReviewComposer};
 
 use file_section::render_diff_file_section_header;
@@ -78,16 +79,16 @@ pub(crate) fn render_diff_panel(
             .gap_2()
             .child(
                 div()
-                    .text_color(rgb(0xf1f5f9))
+                    .text_color(color::text_primary())
                     .child("Unified diff preview"),
             )
             .child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child("Loading diff..."),
             )
             .into_any_element();
@@ -102,16 +103,16 @@ pub(crate) fn render_diff_panel(
             .gap_2()
             .child(
                 div()
-                    .text_color(rgb(0xf1f5f9))
+                    .text_color(color::text_primary())
                     .child("Unified diff preview"),
             )
             .child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error.to_string()),
             )
             .into_any_element();
@@ -126,16 +127,16 @@ pub(crate) fn render_diff_panel(
             .gap_2()
             .child(
                 div()
-                    .text_color(rgb(0xf1f5f9))
+                    .text_color(color::text_primary())
                     .child("Unified diff preview"),
             )
             .child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child(if input.files.is_empty() {
                         "No changed files to preview"
                     } else {
@@ -174,12 +175,12 @@ pub(crate) fn render_diff_panel(
                 .items_center()
                 .justify_between()
                 .gap_3()
-                .text_color(rgb(0xf1f5f9))
+                .text_color(color::text_primary())
                 .child("Unified diff preview")
                 .child(
                     div()
                         .text_xs()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child(format!("{} files", input.visible_file_indices.len())),
                 ),
         )
@@ -191,8 +192,8 @@ pub(crate) fn render_diff_panel(
                 .min_h_0()
                 .min_w_0()
                 .border_1()
-                .border_color(rgb(0x242a31))
-                .bg(rgb(0x0c0f12))
+                .border_color(color::border())
+                .bg(color::content_background())
                 .overflow_hidden()
                 .child(
                     div()
@@ -225,7 +226,7 @@ pub(crate) fn render_diff_panel(
                             .flex_1()
                             .min_h_0()
                             .min_w_0()
-                            .font_family("Menlo")
+                            .font_family(font::MONO)
                             .text_xs(),
                         )
                         .when_some(sticky_section, {

@@ -1,8 +1,12 @@
-use gpui::{Context, IntoElement, div, prelude::*, rgb};
-use gpui_component::{Disableable, Sizable, button::Button};
+use gpui::{Context, IntoElement, div, prelude::*};
+use gpui_component::{
+    Disableable, Sizable,
+    button::{Button, ButtonVariants},
+};
 use harbor_domain::{PullRequest, WorkflowConclusion, WorkflowRun, WorkflowStatus};
 
 use crate::actions::WorkflowAction;
+use crate::visual::{Tone, color, tone_text};
 use crate::workspace::AppView;
 
 pub(crate) fn render_actions_panel(
@@ -41,7 +45,7 @@ pub(crate) fn render_actions_panel(
                     Button::new("trigger-build")
                         .label("trigger build")
                         .small()
-                        .outline()
+                        .primary()
                         .loading(is_running_action)
                         .disabled(!can_dispatch)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -62,31 +66,42 @@ pub(crate) fn render_actions_panel(
                 .child(
                     div()
                         .text_xs()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("b / shift+r"),
                 ),
         )
-        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+        .child(
+            div()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(format!(
                     "dispatch target: {} on {}",
                     dispatch_target
                         .map(workflow_run_label)
                         .unwrap_or_else(|| "none".to_string()),
-                    pr.map(|pr| pr.head_ref.as_str()).unwrap_or("no selected branch")
-                )))
-        .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
+                    pr.map(|pr| pr.head_ref.as_str())
+                        .unwrap_or("no selected branch")
+                )),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(format!(
                     "rerun target: {}",
                     rerun_target
                         .map(workflow_run_label)
                         .unwrap_or_else(|| "none".to_string())
-                )))
+                )),
+        )
         .when_some(action_error.map(str::to_string), |element, error| {
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x7f1d1d))
-                    .bg(rgb(0x2a1212))
+                    .border_color(color::danger_background())
+                    .bg(color::danger_background())
                     .p_3()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })
@@ -94,10 +109,10 @@ pub(crate) fn render_actions_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child("Loading workflow runs..."),
             )
         })
@@ -105,10 +120,10 @@ pub(crate) fn render_actions_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })
@@ -118,10 +133,10 @@ pub(crate) fn render_actions_panel(
                 element.child(
                     div()
                         .border_1()
-                        .border_color(rgb(0x242a31))
-                        .bg(rgb(0x0c0f12))
+                        .border_color(color::border())
+                        .bg(color::content_background())
                         .p_3()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("No workflow runs found for this PR head"),
                 )
             },
@@ -158,8 +173,8 @@ pub(crate) fn render_workflow_run(run: &WorkflowRun) -> impl IntoElement {
         .justify_between()
         .gap_3()
         .border_1()
-        .border_color(rgb(0x242a31))
-        .bg(rgb(0x0c0f12))
+        .border_color(color::border())
+        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
@@ -168,12 +183,17 @@ pub(crate) fn render_workflow_run(run: &WorkflowRun) -> impl IntoElement {
                 .flex_col()
                 .gap_1()
                 .child(run.name.clone())
-                .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
-                    "{}  {}  {}",
-                    run.workflow_name.as_deref().unwrap_or("workflow"),
-                    run.event,
-                    run.head_branch
-                ))),
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(color::text_muted())
+                        .child(format!(
+                            "{}  {}  {}",
+                            run.workflow_name.as_deref().unwrap_or("workflow"),
+                            run.event,
+                            run.head_branch
+                        )),
+                ),
         )
         .child(render_workflow_conclusion(run.conclusion, run.status))
 }
@@ -191,26 +211,26 @@ pub(crate) fn workflow_conclusion_label(
     conclusion: Option<WorkflowConclusion>,
     status: WorkflowStatus,
 ) -> (&'static str, gpui::Hsla) {
-    let (label, color) = match (status, conclusion) {
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => ("passed", rgb(0x34d399)),
+    let (label, tone) = match (status, conclusion) {
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => ("passed", Tone::Success),
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => {
-            ("skipped", rgb(0x9aa4b2))
+            ("skipped", Tone::Neutral)
         }
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Cancelled)) => {
-            ("cancelled", rgb(0xfbbf24))
+            ("cancelled", Tone::Warning)
         }
         (WorkflowStatus::Completed, Some(WorkflowConclusion::TimedOut)) => {
-            ("timed out", rgb(0xf87171))
+            ("timed out", Tone::Danger)
         }
         (WorkflowStatus::Completed, Some(WorkflowConclusion::ActionRequired)) => {
-            ("action required", rgb(0xfbbf24))
+            ("action required", Tone::Warning)
         }
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Failure) | None) => {
-            ("failed", rgb(0xf87171))
+            ("failed", Tone::Danger)
         }
-        (WorkflowStatus::InProgress, _) => ("running", rgb(0x93c5fd)),
-        (WorkflowStatus::Queued, _) => ("queued", rgb(0xfbbf24)),
+        (WorkflowStatus::InProgress, _) => ("running", Tone::Info),
+        (WorkflowStatus::Queued, _) => ("queued", Tone::Warning),
     };
 
-    (label, color.into())
+    (label, tone_text(tone).into())
 }

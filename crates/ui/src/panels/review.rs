@@ -1,11 +1,14 @@
 use gpui::{
-    AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px, rgb,
+    AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px,
     uniform_list,
 };
 use gpui_component::input::InputState;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, ReviewThread, ReviewThreadState};
 
-use crate::workspace::{AppView, ReviewThreadUiError};
+use crate::{
+    visual::{Tone, color, tone_text},
+    workspace::{AppView, ReviewThreadUiError},
+};
 
 use super::review_thread_chrome::{
     ReviewThreadActionIds, ReviewThreadActionsState, ReviewThreadReplyComposerChrome,
@@ -53,18 +56,23 @@ pub(crate) fn render_review_panel(
                 .justify_between()
                 .gap_3()
                 .child("Review")
-                .child(div().text_xs().text_color(rgb(0x9aa4b2)).child(format!(
-                    "{} reviews  {} threads",
-                    reviews.len(),
-                    threads.len()
-                ))),
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(color::text_muted())
+                        .child(format!(
+                            "{} reviews  {} threads",
+                            reviews.len(),
+                            threads.len()
+                        )),
+                ),
         )
         .child(
             div()
                 .flex()
                 .gap_3()
                 .text_xs()
-                .text_color(rgb(0x9aa4b2))
+                .text_color(color::text_muted())
                 .child(format!("unresolved {unresolved}"))
                 .child(format!("resolved {resolved}"))
                 .child(format!("outdated {outdated}")),
@@ -75,7 +83,7 @@ pub(crate) fn render_review_panel(
                     div()
                         .pt_1()
                         .text_xs()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("latest reviews"),
                 )
                 .children(reviews.iter().rev().take(3).map(render_pull_request_review))
@@ -84,10 +92,10 @@ pub(crate) fn render_review_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .p_3()
-                    .text_color(rgb(0x9aa4b2))
+                    .text_color(color::text_muted())
                     .child("Loading review threads..."),
             )
         })
@@ -95,10 +103,10 @@ pub(crate) fn render_review_panel(
             element.child(
                 div()
                     .border_1()
-                    .border_color(rgb(0x7f1d1d))
-                    .bg(rgb(0x2a1212))
+                    .border_color(color::danger_background())
+                    .bg(color::danger_background())
                     .p_3()
-                    .text_color(rgb(0xf87171))
+                    .text_color(color::danger())
                     .child(error),
             )
         })
@@ -108,10 +116,10 @@ pub(crate) fn render_review_panel(
                 element.child(
                     div()
                         .border_1()
-                        .border_color(rgb(0x242a31))
-                        .bg(rgb(0x0c0f12))
+                        .border_color(color::border())
+                        .bg(color::content_background())
                         .p_3()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child("No review threads found for this pull request"),
                 )
             },
@@ -125,8 +133,8 @@ pub(crate) fn render_review_panel(
                     .min_h_0()
                     .min_w_0()
                     .border_1()
-                    .border_color(rgb(0x242a31))
-                    .bg(rgb(0x0c0f12))
+                    .border_color(color::border())
+                    .bg(color::content_background())
                     .overflow_hidden()
                     .child(
                         uniform_list(
@@ -202,8 +210,8 @@ pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl Int
         .justify_between()
         .gap_3()
         .border_1()
-        .border_color(rgb(0x242a31))
-        .bg(rgb(0x0c0f12))
+        .border_color(color::border())
+        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
@@ -218,7 +226,7 @@ pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl Int
                             div()
                                 .pt_1()
                                 .text_xs()
-                                .text_color(rgb(0x9aa4b2))
+                                .text_color(color::text_muted())
                                 .truncate()
                                 .child(body),
                         )
@@ -261,29 +269,29 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
     );
     let is_resolved = ui_state.is_resolved;
     let row_border_color = if is_resolved {
-        rgb(0x1f2d3a)
+        color::border_subtle()
     } else {
-        rgb(0x20252b)
+        color::border()
     };
     let row_bg_color = if is_resolved {
-        rgb(0x0f151d)
+        color::content_background()
     } else {
-        rgb(0x101214)
+        color::app_background()
     };
     let row_hover_bg_color = if is_resolved {
-        rgb(0x17212c)
+        color::row_selected_subtle()
     } else {
-        rgb(0x202a35)
+        color::row_hover()
     };
     let path_color = if is_resolved {
-        rgb(0xb7c0cd)
+        color::text_secondary()
     } else {
-        rgb(0xe6e8eb)
+        color::text_primary()
     };
     let metadata_color = if is_resolved {
-        rgb(0x637186)
+        color::text_disabled()
     } else {
-        rgb(0x9aa4b2)
+        color::text_muted()
     };
     let reply_error = reply_error
         .filter(|error| error.thread_id == thread.id)
@@ -372,7 +380,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
             }
         })
         .when_some(action_error, |element, error| {
-            element.child(div().text_xs().text_color(rgb(0xf87171)).child(error))
+            element.child(div().text_xs().text_color(color::danger()).child(error))
         })
         .into_any_element()
 }
@@ -416,19 +424,21 @@ pub(crate) fn pull_request_review_state_label(
     state: PullRequestReviewState,
 ) -> (&'static str, gpui::Hsla) {
     match state {
-        PullRequestReviewState::Pending => ("pending", rgb(0xfbbf24).into()),
-        PullRequestReviewState::Commented => ("commented", rgb(0x93c5fd).into()),
-        PullRequestReviewState::Approved => ("approved", rgb(0x34d399).into()),
-        PullRequestReviewState::ChangesRequested => ("changes requested", rgb(0xf87171).into()),
-        PullRequestReviewState::Dismissed => ("dismissed", rgb(0x9aa4b2).into()),
+        PullRequestReviewState::Pending => ("pending", tone_text(Tone::Warning).into()),
+        PullRequestReviewState::Commented => ("commented", tone_text(Tone::Info).into()),
+        PullRequestReviewState::Approved => ("approved", tone_text(Tone::Success).into()),
+        PullRequestReviewState::ChangesRequested => {
+            ("changes requested", tone_text(Tone::Danger).into())
+        }
+        PullRequestReviewState::Dismissed => ("dismissed", tone_text(Tone::Neutral).into()),
     }
 }
 
 pub(crate) fn review_thread_state_label(state: ReviewThreadState) -> (&'static str, gpui::Hsla) {
     match state {
-        ReviewThreadState::Unresolved => ("unresolved", rgb(0xfbbf24).into()),
-        ReviewThreadState::Resolved => ("resolved", rgb(0x34d399).into()),
-        ReviewThreadState::Outdated => ("outdated", rgb(0x9aa4b2).into()),
+        ReviewThreadState::Unresolved => ("unresolved", tone_text(Tone::Warning).into()),
+        ReviewThreadState::Resolved => ("resolved", tone_text(Tone::Success).into()),
+        ReviewThreadState::Outdated => ("outdated", tone_text(Tone::Neutral).into()),
     }
 }
 

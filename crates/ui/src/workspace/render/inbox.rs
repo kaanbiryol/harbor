@@ -1,6 +1,6 @@
 use gpui::{
     Anchor, AnyElement, App, Context, Div, Entity, IntoElement, KeyDownEvent, Stateful, div,
-    prelude::*, px, rgb, uniform_list,
+    prelude::*, px, uniform_list,
 };
 use gpui_component::{
     Disableable, IconName, Sizable, StyledExt,
@@ -11,6 +11,7 @@ use gpui_component::{
 
 use crate::{
     panels::render_pull_request_row,
+    visual::color,
     workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode, normalized_search_query},
 };
 
@@ -139,15 +140,19 @@ impl AppView {
                     .max_h(px(480.))
                     .overflow_hidden()
                     .border_1()
-                    .border_color(rgb(0x343b44))
-                    .bg(rgb(0x171b20))
+                    .border_color(color::border_strong())
+                    .bg(color::elevated_background())
                     .shadow_lg()
                     .child(
-                        div().p_2().border_b_1().border_color(rgb(0x242a31)).child(
-                            Input::new(&pull_request_search_input)
-                                .small()
-                                .cleanable(true),
-                        ),
+                        div()
+                            .p_2()
+                            .border_b_1()
+                            .border_color(color::border())
+                            .child(
+                                Input::new(&pull_request_search_input)
+                                    .small()
+                                    .cleanable(true),
+                            ),
                     )
                     .child(results)
             })
@@ -171,8 +176,8 @@ impl AppView {
             .flex_col()
             .min_h_0()
             .border_1()
-            .border_color(rgb(0x242a31))
-            .bg(rgb(0x15191e))
+            .border_color(color::border())
+            .bg(color::panel_background())
             .overflow_hidden()
             .child(
                 div()
@@ -180,7 +185,7 @@ impl AppView {
                     .pt_3()
                     .pb_2()
                     .border_b_1()
-                    .border_color(rgb(0x242a31))
+                    .border_color(color::border())
                     .child(
                         div()
                             .flex()
@@ -194,7 +199,7 @@ impl AppView {
                                     .truncate()
                                     .text_sm()
                                     .font_medium()
-                                    .text_color(rgb(0xf1f5f9))
+                                    .text_color(color::text_primary())
                                     .child("Pull requests"),
                             )
                             .child(
@@ -234,7 +239,7 @@ impl AppView {
                         .px_3()
                         .py_3()
                         .text_sm()
-                        .text_color(rgb(0x9aa4b2))
+                        .text_color(color::text_muted())
                         .child(format!("Loading {}...", current_mode.status_label())),
                 )
             })
@@ -247,7 +252,7 @@ impl AppView {
                             .px_3()
                             .py_3()
                             .text_sm()
-                            .text_color(rgb(0xf87171))
+                            .text_color(color::danger())
                             .child(load_error.clone().unwrap_or_default()),
                     )
                 },
@@ -263,7 +268,7 @@ impl AppView {
                             .px_3()
                             .py_3()
                             .text_sm()
-                            .text_color(rgb(0x9aa4b2))
+                            .text_color(color::text_muted())
                             .child(empty_message),
                     )
                 },
@@ -318,15 +323,19 @@ fn render_pull_request_inbox_mode_tab(
         .text_xs()
         .font_medium()
         .cursor_pointer()
-        .text_color(if active { rgb(0xf8fafc) } else { rgb(0x9aa4b2) })
+        .text_color(if active {
+            color::text_primary()
+        } else {
+            color::text_secondary()
+        })
         .when(active, |element| {
             element
                 .border_1()
-                .border_color(rgb(0x34465b))
-                .bg(rgb(0x243244))
+                .border_color(color::border_strong())
+                .bg(color::row_selected())
         })
         .when(!active, |element| {
-            element.hover(|style| style.bg(rgb(0x202a35)))
+            element.hover(|style| style.bg(color::row_hover()))
         })
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_pull_request_inbox_mode(mode, cx);
@@ -342,8 +351,16 @@ fn render_pull_request_inbox_mode_tab(
                     .justify_center()
                     .rounded_xs()
                     .px_1()
-                    .text_color(if active { rgb(0xcbd5e1) } else { rgb(0x7d8794) })
-                    .bg(if active { rgb(0x1b2837) } else { rgb(0x171b20) })
+                    .text_color(if active {
+                        color::text_secondary()
+                    } else {
+                        color::text_muted()
+                    })
+                    .bg(if active {
+                        color::row_selected_subtle()
+                    } else {
+                        color::elevated_background()
+                    })
                     .child(count.to_string()),
             )
         })
@@ -355,7 +372,7 @@ fn render_pull_request_inbox_search_empty_row(label: &'static str) -> impl IntoE
         .px_2()
         .py_2()
         .text_sm()
-        .text_color(rgb(0x7d8794))
+        .text_color(color::text_muted())
         .child(label)
 }
 
@@ -375,9 +392,11 @@ fn render_pull_request_inbox_search_row(
         .py_2()
         .text_sm()
         .cursor_pointer()
-        .when(highlighted, |element| element.bg(rgb(0x263241)))
-        .when(current && !highlighted, |element| element.bg(rgb(0x202936)))
-        .hover(|element| element.bg(rgb(0x222a34)))
+        .when(highlighted, |element| element.bg(color::row_selected()))
+        .when(current && !highlighted, |element| {
+            element.bg(color::row_selected_subtle())
+        })
+        .hover(|element| element.bg(color::row_hover()))
         .child(
             div()
                 .flex()
@@ -388,14 +407,14 @@ fn render_pull_request_inbox_search_row(
                     div()
                         .flex_none()
                         .font_medium()
-                        .text_color(rgb(0xe6e8eb))
+                        .text_color(color::text_primary())
                         .child(format!("#{number}")),
                 )
                 .child(
                     div()
                         .min_w_0()
                         .truncate()
-                        .text_color(rgb(0xcbd5e1))
+                        .text_color(color::text_secondary())
                         .child(title),
                 ),
         )
@@ -406,7 +425,7 @@ fn render_pull_request_inbox_search_row(
                 .items_center()
                 .gap_2()
                 .text_xs()
-                .text_color(rgb(0x7d8794))
+                .text_color(color::text_muted())
                 .child("by")
                 .child(div().min_w_0().truncate().child(author)),
         )
