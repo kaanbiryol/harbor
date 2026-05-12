@@ -73,7 +73,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
         .bg(if is_resolved {
             color::content_background()
         } else {
-            color::row_selected_subtle()
+            color::elevated_background()
         })
         .px_2()
         .py_1()
@@ -101,11 +101,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
                                     .flex_none()
                                     .text_xs()
                                     .font_medium()
-                                    .text_color(if is_resolved {
-                                        color::text_secondary()
-                                    } else {
-                                        color::text_primary()
-                                    })
+                                    .text_color(color::text_secondary())
                                     .child("Comment on"),
                             )
                             .child(

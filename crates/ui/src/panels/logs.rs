@@ -3,7 +3,7 @@ use gpui::{
     prelude::*, px, uniform_list,
 };
 use gpui_component::{
-    Disableable, Sizable,
+    Disableable, IconName, Sizable,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{WorkflowJob, WorkflowRun, WorkflowStep};
@@ -14,7 +14,11 @@ use crate::{
     workspace::AppView,
 };
 
-use super::workflows::{render_workflow_conclusion, workflow_conclusion_label, workflow_run_label};
+use super::{
+    render_empty_panel_card, render_error_panel_card, render_key_hint, render_panel_card,
+    render_panel_header, render_status_pill,
+    workflows::{render_workflow_conclusion, workflow_conclusion_tone, workflow_run_label},
+};
 
 pub(crate) fn render_logs_panel(
     run: Option<&WorkflowRun>,
@@ -40,9 +44,16 @@ pub(crate) fn render_logs_panel(
                 .items_center()
                 .justify_between()
                 .gap_3()
-                .child("Logs")
+                .child(render_panel_header(
+                    "Logs",
+                    Some(format!(
+                        "{} lines",
+                        log_chunk.map_or(0, |chunk| chunk.lines.len())
+                    )),
+                ))
                 .child(
                     Button::new("load-workflow-logs")
+                        .icon(IconName::Redo)
                         .label("load logs")
                         .small()
                         .primary()
@@ -53,48 +64,17 @@ pub(crate) fn render_logs_panel(
                         })),
                 ),
         )
-        .child(
-            div()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(format!(
-                    "target: {}",
-                    run.map(workflow_run_label)
-                        .unwrap_or_else(|| "no workflow run".to_string())
-                )),
-        )
+        .child(render_logs_target_card(run))
         .when(is_loading, |element| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::text_muted())
-                    .child("Loading workflow jobs and logs..."),
-            )
+            element.child(render_empty_panel_card("Loading workflow jobs and logs..."))
         })
         .when_some(error.map(str::to_string), |element, error| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::danger_background())
-                    .bg(color::danger_background())
-                    .p_3()
-                    .text_color(color::danger())
-                    .child(error),
-            )
+            element.child(render_error_panel_card(error))
         })
         .when(!is_loading && run.is_none(), |element| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::text_muted())
-                    .child("No workflow run found for this PR head"),
-            )
+            element.child(render_empty_panel_card(
+                "No workflow run found for this PR head",
+            ))
         })
         .when(!jobs.is_empty(), |element| {
             element
@@ -154,27 +134,42 @@ pub(crate) fn render_logs_panel(
         .when(
             !is_loading && run.is_some() && error.is_none() && log_chunk.is_none(),
             |element| {
-                element.child(
-                    div()
-                        .border_1()
-                        .border_color(color::border())
-                        .bg(color::content_background())
-                        .p_3()
-                        .text_color(color::text_muted())
-                        .child("Press l or load logs to fetch the workflow log output"),
-                )
+                element.child(render_empty_panel_card(
+                    "Press l or load logs to fetch the workflow log output",
+                ))
             },
         )
 }
 
+fn render_logs_target_card(run: Option<&WorkflowRun>) -> impl IntoElement {
+    render_panel_card()
+        .px_3()
+        .py_2()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .text_xs()
+        .text_color(color::text_muted())
+        .child(div().min_w_0().flex_1().truncate().child(format!(
+                    "target: {}",
+                    run.map(workflow_run_label)
+                        .unwrap_or_else(|| "no workflow run".to_string())
+                )))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(render_key_hint("l")),
+        )
+}
+
 pub(crate) fn render_workflow_job(job: &WorkflowJob) -> impl IntoElement {
-    div()
+    render_panel_card()
         .flex()
         .flex_col()
         .gap_1()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
@@ -190,7 +185,7 @@ pub(crate) fn render_workflow_job(job: &WorkflowJob) -> impl IntoElement {
 }
 
 pub(crate) fn render_workflow_step(step: &WorkflowStep) -> impl IntoElement {
-    let (label, color) = workflow_conclusion_label(step.conclusion, step.status);
+    let (label, tone) = workflow_conclusion_tone(step.conclusion, step.status);
 
     div()
         .flex()
@@ -201,7 +196,7 @@ pub(crate) fn render_workflow_step(step: &WorkflowStep) -> impl IntoElement {
         .text_xs()
         .text_color(color::text_muted())
         .child(format!("{}. {}", step.number, step.name))
-        .child(div().text_color(color).child(label))
+        .child(render_status_pill(label, tone))
 }
 
 pub(crate) fn render_log_line(line: &LogLine) -> AnyElement {

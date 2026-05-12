@@ -143,16 +143,22 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
     } = state;
     let toggle_label = if is_resolved { "Reopen" } else { "Resolve" };
 
+    let reply_button = Button::new(ids.reply_button)
+        .label(if active_reply { "Replying" } else { "Reply" })
+        .xsmall()
+        .disabled(reply_button_disabled);
+    let reply_button = if active_reply {
+        reply_button.primary()
+    } else {
+        reply_button.outline()
+    };
+
     div()
         .flex()
         .items_center()
         .gap_2()
         .child(
-            Button::new(ids.reply_button)
-                .label(if active_reply { "Replying" } else { "Reply" })
-                .xsmall()
-                .outline()
-                .disabled(reply_button_disabled)
+            reply_button
                 .debug_selector({
                     let selector = ids.reply_debug_selector.clone();
                     move || selector.clone()
@@ -171,9 +177,13 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
             let button = Button::new(ids.toggle_button)
                 .label(toggle_label)
                 .xsmall()
-                .ghost()
                 .loading(action_running)
                 .disabled(!can_toggle_resolution || action_running);
+            let button = if is_resolved {
+                button.ghost()
+            } else {
+                button.outline()
+            };
             let button = if show_toggle_icon {
                 button.icon(if is_resolved {
                     IconName::Undo2

@@ -2,6 +2,7 @@ use gpui::{
     AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px,
     uniform_list,
 };
+use gpui_component::StyledExt;
 use gpui_component::input::InputState;
 use harbor_domain::{PullRequestReview, PullRequestReviewState, ReviewThread, ReviewThreadState};
 
@@ -14,6 +15,10 @@ use super::review_thread_chrome::{
     ReviewThreadActionIds, ReviewThreadActionsState, ReviewThreadReplyComposerChrome,
     ReviewThreadReplyComposerIds, ReviewThreadReplyComposerState, render_review_thread_actions,
     render_review_thread_reply_composer, review_thread_ui_state,
+};
+use super::{
+    render_empty_panel_card, render_error_panel_card, render_metric_pill, render_panel_card,
+    render_panel_header, render_status_pill,
 };
 
 const REVIEW_THREAD_ROW_HEIGHT: f32 = 224.0;
@@ -49,33 +54,23 @@ pub(crate) fn render_review_panel(
         .flex_1()
         .min_h_0()
         .gap_2()
+        .child(render_panel_header(
+            "Review",
+            Some(format!(
+                "{} reviews  {} threads",
+                reviews.len(),
+                threads.len()
+            )),
+        ))
         .child(
             div()
                 .flex()
                 .items_center()
-                .justify_between()
-                .gap_3()
-                .child("Review")
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(color::text_muted())
-                        .child(format!(
-                            "{} reviews  {} threads",
-                            reviews.len(),
-                            threads.len()
-                        )),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .gap_3()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(format!("unresolved {unresolved}"))
-                .child(format!("resolved {resolved}"))
-                .child(format!("outdated {outdated}")),
+                .gap_2()
+                .flex_wrap()
+                .child(render_metric_pill("unresolved", unresolved, Tone::Warning))
+                .child(render_metric_pill("resolved", resolved, Tone::Success))
+                .child(render_metric_pill("outdated", outdated, Tone::Neutral)),
         )
         .when(!reviews.is_empty(), |element| {
             element
@@ -83,58 +78,34 @@ pub(crate) fn render_review_panel(
                     div()
                         .pt_1()
                         .text_xs()
-                        .text_color(color::text_muted())
+                        .font_medium()
+                        .text_color(color::text_secondary())
                         .child("latest reviews"),
                 )
                 .children(reviews.iter().rev().take(3).map(render_pull_request_review))
         })
         .when(is_loading, |element| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::text_muted())
-                    .child("Loading review threads..."),
-            )
+            element.child(render_empty_panel_card("Loading review threads..."))
         })
         .when_some(error.map(str::to_string), |element, error| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::danger_background())
-                    .bg(color::danger_background())
-                    .p_3()
-                    .text_color(color::danger())
-                    .child(error),
-            )
+            element.child(render_error_panel_card(error))
         })
         .when(
             !is_loading && error.is_none() && threads.is_empty(),
             |element| {
-                element.child(
-                    div()
-                        .border_1()
-                        .border_color(color::border())
-                        .bg(color::content_background())
-                        .p_3()
-                        .text_color(color::text_muted())
-                        .child("No review threads found for this pull request"),
-                )
+                element.child(render_empty_panel_card(
+                    "No review threads found for this pull request",
+                ))
             },
         )
         .when(!threads.is_empty(), |element| {
             element.child(
-                div()
+                render_panel_card()
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
                     .overflow_hidden()
                     .child(
                         uniform_list(
@@ -202,23 +173,22 @@ pub(crate) fn render_review_panel(
 }
 
 pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl IntoElement {
-    let (label, color) = pull_request_review_state_label(review.state);
+    let (label, tone) = pull_request_review_state_tone(review.state);
 
-    div()
+    render_panel_card()
         .flex()
         .items_center()
         .justify_between()
         .gap_3()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
             div()
                 .min_w_0()
                 .flex_1()
-                .child(format!("{} by {}", label, review.author))
+                .font_medium()
+                .text_color(color::text_primary())
+                .child(review.author.clone())
                 .when_some(
                     review.body.as_ref().map(|body| single_line(body)),
                     |element, body| {
@@ -235,9 +205,16 @@ pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl Int
         )
         .child(
             div()
+                .flex()
+                .items_center()
+                .gap_2()
                 .text_xs()
-                .text_color(color)
-                .child(review_time_label(review)),
+                .child(
+                    div()
+                        .text_color(color::text_muted())
+                        .child(review_time_label(review)),
+                )
+                .child(render_status_pill(label, tone)),
         )
 }
 
@@ -254,7 +231,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         action_error,
         view_entity,
     } = state;
-    let (label, color) = review_thread_state_label(thread.state);
+    let (label, tone) = review_thread_state_tone(thread.state);
     let latest_comment = thread.comments.last();
     let location = review_thread_location(thread);
     let preview = latest_comment
@@ -327,7 +304,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                         .text_color(path_color)
                         .child(thread.path.clone()),
                 )
-                .child(div().text_xs().text_color(color).child(label)),
+                .child(render_status_pill(label, tone)),
         )
         .child(div().text_xs().text_color(metadata_color).child(format!(
             "{}  {} comments",
@@ -356,7 +333,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                     is_resolved,
                     action_running: ui_state.action_running,
                     can_toggle_resolution: ui_state.can_toggle_resolution,
-                    show_toggle_icon: false,
+                    show_toggle_icon: true,
                     view_entity: view_entity.clone(),
                 })),
         )
@@ -420,25 +397,27 @@ pub(crate) fn single_line(value: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn pull_request_review_state_label(
-    state: PullRequestReviewState,
-) -> (&'static str, gpui::Hsla) {
+fn pull_request_review_state_tone(state: PullRequestReviewState) -> (&'static str, Tone) {
     match state {
-        PullRequestReviewState::Pending => ("pending", tone_text(Tone::Warning).into()),
-        PullRequestReviewState::Commented => ("commented", tone_text(Tone::Info).into()),
-        PullRequestReviewState::Approved => ("approved", tone_text(Tone::Success).into()),
-        PullRequestReviewState::ChangesRequested => {
-            ("changes requested", tone_text(Tone::Danger).into())
-        }
-        PullRequestReviewState::Dismissed => ("dismissed", tone_text(Tone::Neutral).into()),
+        PullRequestReviewState::Pending => ("pending", Tone::Warning),
+        PullRequestReviewState::Commented => ("commented", Tone::Info),
+        PullRequestReviewState::Approved => ("approved", Tone::Success),
+        PullRequestReviewState::ChangesRequested => ("changes requested", Tone::Danger),
+        PullRequestReviewState::Dismissed => ("dismissed", Tone::Neutral),
     }
 }
 
 pub(crate) fn review_thread_state_label(state: ReviewThreadState) -> (&'static str, gpui::Hsla) {
+    let (label, tone) = review_thread_state_tone(state);
+
+    (label, tone_text(tone).into())
+}
+
+fn review_thread_state_tone(state: ReviewThreadState) -> (&'static str, Tone) {
     match state {
-        ReviewThreadState::Unresolved => ("unresolved", tone_text(Tone::Warning).into()),
-        ReviewThreadState::Resolved => ("resolved", tone_text(Tone::Success).into()),
-        ReviewThreadState::Outdated => ("outdated", tone_text(Tone::Neutral).into()),
+        ReviewThreadState::Unresolved => ("unresolved", Tone::Warning),
+        ReviewThreadState::Resolved => ("resolved", Tone::Success),
+        ReviewThreadState::Outdated => ("outdated", Tone::Neutral),
     }
 }
 

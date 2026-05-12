@@ -3,13 +3,14 @@ use gpui_component::{
     IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
-use harbor_domain::DiffFile;
+use harbor_domain::{DiffFile, FileStatus};
 
 use crate::{
-    visual::{color, font},
+    visual::{Tone, color, font},
     workspace::AppView,
 };
 
+use super::super::render_status_pill;
 use super::{DIFF_FILE_HEADER_HEIGHT, DIFF_ROW_HEIGHT};
 
 pub(super) fn render_diff_file_section_header(
@@ -21,16 +22,7 @@ pub(super) fn render_diff_file_section_header(
     sticky: bool,
     view_entity: Entity<AppView>,
 ) -> AnyElement {
-    let hunk_label = hunk_count.map_or_else(
-        || "no parsed hunks".to_string(),
-        |count| {
-            if count == 1 {
-                "1 hunk".to_string()
-            } else {
-                format!("{count} hunks")
-            }
-        },
-    );
+    let hunk_label = hunk_count.map_or_else(|| "no parsed hunks".to_string(), hunk_count_label);
     let header_id = if sticky {
         format!("sticky-diff-file-header-{file_index}")
     } else {
@@ -134,37 +126,43 @@ pub(super) fn render_diff_file_section_header(
                 .text_xs()
                 .font_medium()
                 .text_color(color::text_secondary())
-                .child(
-                    div()
-                        .text_color(color::text_secondary())
-                        .child(format!("{:?}", file.status)),
-                )
-                .child(
-                    div()
-                        .text_color(color::success())
-                        .child(format!("+{}", file.additions)),
-                )
-                .child(
-                    div()
-                        .text_color(color::danger())
-                        .child(format!("-{}", file.deletions)),
-                )
-                .child(div().text_color(color::text_muted()).child(hunk_label))
+                .child(render_file_status_pill(file.status))
+                .child(render_status_pill(
+                    format!("+{}", file.additions),
+                    Tone::Success,
+                ))
+                .child(render_status_pill(
+                    format!("-{}", file.deletions),
+                    Tone::Danger,
+                ))
+                .child(render_status_pill(hunk_label, Tone::Neutral))
                 .when(reviewed, |element| {
-                    element.child(
-                        div()
-                            .rounded_xs()
-                            .border_1()
-                            .border_color(color::success_background())
-                            .bg(color::success_background())
-                            .px_1()
-                            .text_xs()
-                            .text_color(color::success())
-                            .child("reviewed"),
-                    )
+                    element.child(render_status_pill("reviewed", Tone::Success))
                 }),
         )
         .into_any_element()
+}
+
+fn render_file_status_pill(status: FileStatus) -> impl IntoElement {
+    let (label, tone) = match status {
+        FileStatus::Added => ("added", Tone::Success),
+        FileStatus::Modified => ("modified", Tone::Info),
+        FileStatus::Removed => ("removed", Tone::Danger),
+        FileStatus::Renamed => ("renamed", Tone::Warning),
+        FileStatus::Copied => ("copied", Tone::Neutral),
+        FileStatus::Changed => ("changed", Tone::Info),
+        FileStatus::Unchanged => ("unchanged", Tone::Neutral),
+    };
+
+    render_status_pill(label, tone)
+}
+
+fn hunk_count_label(count: usize) -> String {
+    if count == 1 {
+        "1 hunk".to_string()
+    } else {
+        format!("{count} hunks")
+    }
 }
 
 pub(super) fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {

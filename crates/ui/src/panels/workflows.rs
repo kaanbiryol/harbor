@@ -1,13 +1,18 @@
 use gpui::{Context, IntoElement, div, prelude::*};
 use gpui_component::{
-    Disableable, Sizable,
+    Disableable, IconName, Sizable,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{PullRequest, WorkflowConclusion, WorkflowRun, WorkflowStatus};
 
 use crate::actions::WorkflowAction;
-use crate::visual::{Tone, color, tone_text};
+use crate::visual::{Tone, color};
 use crate::workspace::AppView;
+
+use super::{
+    render_empty_panel_card, render_error_panel_card, render_key_hint, render_panel_card,
+    render_panel_header, render_status_pill,
+};
 
 pub(crate) fn render_actions_panel(
     pr: Option<&PullRequest>,
@@ -35,7 +40,10 @@ pub(crate) fn render_actions_panel(
         .min_h_0()
         .overflow_y_scroll()
         .gap_2()
-        .child("Workflow runs")
+        .child(render_panel_header(
+            "Workflow runs",
+            Some(format!("{} runs", workflow_runs.len())),
+        ))
         .child(
             div()
                 .flex()
@@ -43,6 +51,7 @@ pub(crate) fn render_actions_panel(
                 .gap_2()
                 .child(
                     Button::new("trigger-build")
+                        .icon(IconName::Redo)
                         .label("trigger build")
                         .small()
                         .primary()
@@ -54,6 +63,7 @@ pub(crate) fn render_actions_panel(
                 )
                 .child(
                     Button::new("rerun-failed-jobs")
+                        .icon(IconName::Redo)
                         .label("rerun failed")
                         .small()
                         .outline()
@@ -65,83 +75,68 @@ pub(crate) fn render_actions_panel(
                 )
                 .child(
                     div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
                         .text_xs()
                         .text_color(color::text_muted())
-                        .child("b / shift+r"),
+                        .child(render_key_hint("b"))
+                        .child(div().child("/"))
+                        .child(render_key_hint("shift+r")),
                 ),
         )
-        .child(
-            div()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(format!(
-                    "dispatch target: {} on {}",
-                    dispatch_target
-                        .map(workflow_run_label)
-                        .unwrap_or_else(|| "none".to_string()),
-                    pr.map(|pr| pr.head_ref.as_str())
-                        .unwrap_or("no selected branch")
-                )),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(format!(
-                    "rerun target: {}",
-                    rerun_target
-                        .map(workflow_run_label)
-                        .unwrap_or_else(|| "none".to_string())
-                )),
-        )
+        .child(render_workflow_action_targets(
+            pr,
+            dispatch_target,
+            rerun_target,
+        ))
         .when_some(action_error.map(str::to_string), |element, error| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::danger_background())
-                    .bg(color::danger_background())
-                    .p_3()
-                    .text_color(color::danger())
-                    .child(error),
-            )
+            element.child(render_error_panel_card(error))
         })
         .when(is_loading, |element| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::text_muted())
-                    .child("Loading workflow runs..."),
-            )
+            element.child(render_empty_panel_card("Loading workflow runs..."))
         })
         .when_some(error.map(str::to_string), |element, error| {
-            element.child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::danger())
-                    .child(error),
-            )
+            element.child(render_error_panel_card(error))
         })
         .when(
             !is_loading && error.is_none() && workflow_runs.is_empty(),
             |element| {
-                element.child(
-                    div()
-                        .border_1()
-                        .border_color(color::border())
-                        .bg(color::content_background())
-                        .p_3()
-                        .text_color(color::text_muted())
-                        .child("No workflow runs found for this PR head"),
-                )
+                element.child(render_empty_panel_card(
+                    "No workflow runs found for this PR head",
+                ))
             },
         )
         .children(workflow_runs.iter().map(render_workflow_run))
+}
+
+fn render_workflow_action_targets(
+    pr: Option<&PullRequest>,
+    dispatch_target: Option<&WorkflowRun>,
+    rerun_target: Option<&WorkflowRun>,
+) -> impl IntoElement {
+    render_panel_card()
+        .px_3()
+        .py_2()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .text_xs()
+        .text_color(color::text_muted())
+        .child(format!(
+            "dispatch target: {} on {}",
+            dispatch_target
+                .map(workflow_run_label)
+                .unwrap_or_else(|| "none".to_string()),
+            pr.map(|pr| pr.head_ref.as_str())
+                .unwrap_or("no selected branch")
+        ))
+        .child(format!(
+            "rerun target: {}",
+            rerun_target
+                .map(workflow_run_label)
+                .unwrap_or_else(|| "none".to_string())
+        ))
 }
 
 pub(crate) fn workflow_run_label(run: &WorkflowRun) -> String {
@@ -167,14 +162,11 @@ pub(crate) fn workflow_run_failed(run: &WorkflowRun) -> bool {
 }
 
 pub(crate) fn render_workflow_run(run: &WorkflowRun) -> impl IntoElement {
-    div()
+    render_panel_card()
         .flex()
         .items_center()
         .justify_between()
         .gap_3()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::content_background())
         .px_3()
         .py_2()
         .child(
@@ -202,15 +194,15 @@ pub(crate) fn render_workflow_conclusion(
     conclusion: Option<WorkflowConclusion>,
     status: WorkflowStatus,
 ) -> impl IntoElement {
-    let (label, color) = workflow_conclusion_label(conclusion, status);
+    let (label, tone) = workflow_conclusion_tone(conclusion, status);
 
-    div().text_sm().text_color(color).child(label)
+    render_status_pill(label, tone)
 }
 
-pub(crate) fn workflow_conclusion_label(
+pub(crate) fn workflow_conclusion_tone(
     conclusion: Option<WorkflowConclusion>,
     status: WorkflowStatus,
-) -> (&'static str, gpui::Hsla) {
+) -> (&'static str, Tone) {
     let (label, tone) = match (status, conclusion) {
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => ("passed", Tone::Success),
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => {
@@ -232,5 +224,5 @@ pub(crate) fn workflow_conclusion_label(
         (WorkflowStatus::Queued, _) => ("queued", Tone::Warning),
     };
 
-    (label, tone_text(tone).into())
+    (label, tone)
 }

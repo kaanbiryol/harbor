@@ -6,10 +6,11 @@ use harbor_domain::{DiffFile, ReviewThreadState};
 use crate::{
     diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff},
     diff_reviews::{anchored_review_threads, review_threads_for_line},
-    visual::{color, font},
+    visual::{Tone, color, font},
     workspace::{AppView, ReviewLineTarget},
 };
 
+use super::super::render_status_pill;
 use super::{
     DIFF_ROW_HEIGHT, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
     file_section::{render_diff_file_section_header, render_diff_unavailable_row},
@@ -300,13 +301,24 @@ fn render_diff_hunk_row(hunk: &DiffHunk, index: usize, active: bool) -> impl Int
         } else {
             color::border_subtle()
         })
-        .text_color(color::accent())
+        .text_color(color::text_secondary())
         .whitespace_nowrap()
-        .child(div().min_w_0().flex_1().truncate().child(format!(
-            "hunk {}  {}",
-            index + 1,
-            hunk.header
-        )))
+        .child(render_status_pill(
+            format!("hunk {}", index + 1),
+            Tone::Info,
+        ))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .text_color(if active {
+                    color::accent()
+                } else {
+                    color::text_muted()
+                })
+                .child(hunk.header.clone()),
+        )
 }
 
 struct DiffLineRenderInput<'a> {

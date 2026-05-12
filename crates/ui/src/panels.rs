@@ -1,5 +1,7 @@
 #[path = "panels/checks.rs"]
 mod checks;
+#[path = "panels/chrome.rs"]
+mod chrome;
 #[path = "panels/diff_view.rs"]
 mod diff_view;
 #[path = "panels/logs.rs"]
@@ -14,6 +16,7 @@ pub(crate) mod review_thread_chrome;
 mod workflows;
 
 pub(crate) use checks::*;
+pub(crate) use chrome::*;
 pub(crate) use diff_view::*;
 pub(crate) use logs::*;
 pub(crate) use pull_request::*;
