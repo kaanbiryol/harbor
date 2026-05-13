@@ -7,7 +7,7 @@ use harbor_domain::{
 use serde::{Serialize, de::DeserializeOwned};
 use sqlx::{
     Row, Sqlite, SqlitePool, Transaction,
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
 };
 use thiserror::Error;
 
@@ -57,6 +57,18 @@ pub struct RecentRepository {
     pub id: RepoId,
     pub pinned: bool,
     pub local_path: Option<PathBuf>,
+}
+
+fn recent_repositories_from_rows(rows: Vec<SqliteRow>) -> Vec<RecentRepository> {
+    rows.into_iter()
+        .map(|row| RecentRepository {
+            id: RepoId::new(row.get::<String, _>("owner"), row.get::<String, _>("name")),
+            pinned: row.get::<i64, _>("pinned") != 0,
+            local_path: row
+                .get::<Option<String>, _>("local_path")
+                .map(PathBuf::from),
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -132,21 +144,38 @@ impl SqliteStore {
         let rows = sqlx::query(
             "SELECT owner, name, pinned, local_path
              FROM recent_repositories
-             ORDER BY pinned DESC, last_opened_at DESC, owner ASC, name ASC",
+             ORDER BY
+                pinned DESC,
+                last_opened_at DESC,
+                last_seen_at DESC,
+                last_seen_position ASC,
+                owner ASC,
+                name ASC",
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| RecentRepository {
-                id: RepoId::new(row.get::<String, _>("owner"), row.get::<String, _>("name")),
-                pinned: row.get::<i64, _>("pinned") != 0,
-                local_path: row
-                    .get::<Option<String>, _>("local_path")
-                    .map(PathBuf::from),
-            })
-            .collect())
+        Ok(recent_repositories_from_rows(rows))
+    }
+
+    pub async fn recent_repositories_limited(&self, limit: usize) -> Result<Vec<RecentRepository>> {
+        let rows = sqlx::query(
+            "SELECT owner, name, pinned, local_path
+             FROM recent_repositories
+             ORDER BY
+                pinned DESC,
+                last_opened_at DESC,
+                last_seen_at DESC,
+                last_seen_position ASC,
+                owner ASC,
+                name ASC
+             LIMIT ?1",
+        )
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(recent_repositories_from_rows(rows))
     }
 
     pub async fn record_repository(&self, repository: &RepoId) -> Result<()> {
@@ -178,14 +207,18 @@ impl SqliteStore {
     }
 
     pub async fn sync_repositories(&self, repositories: &[RepoId]) -> Result<()> {
-        for repository in repositories {
+        for (position, repository) in repositories.iter().enumerate() {
             sqlx::query(
-                "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at)
-                 VALUES (?1, ?2, 0, 0)
-                 ON CONFLICT(owner, name) DO NOTHING",
+                "INSERT INTO recent_repositories
+                    (owner, name, pinned, last_opened_at, last_seen_at, last_seen_position)
+                 VALUES (?1, ?2, 0, 0, unixepoch(), ?3)
+                 ON CONFLICT(owner, name) DO UPDATE SET
+                    last_seen_at = unixepoch(),
+                    last_seen_position = excluded.last_seen_position",
             )
             .bind(&repository.owner)
             .bind(&repository.name)
+            .bind(position as i64)
             .execute(&self.pool)
             .await?;
         }
@@ -746,6 +779,8 @@ impl SqliteStore {
                 name TEXT NOT NULL,
                 pinned INTEGER NOT NULL DEFAULT 0,
                 last_opened_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                last_seen_at INTEGER NOT NULL DEFAULT 0,
+                last_seen_position INTEGER NOT NULL DEFAULT 0,
                 local_path TEXT,
                 PRIMARY KEY (owner, name)
             )",
@@ -759,11 +794,32 @@ impl SqliteStore {
         let has_local_path = columns
             .iter()
             .any(|row| row.get::<String, _>("name") == "local_path");
+        let has_last_seen_at = columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "last_seen_at");
+        let has_last_seen_position = columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "last_seen_position");
 
         if !has_local_path {
             sqlx::query("ALTER TABLE recent_repositories ADD COLUMN local_path TEXT")
                 .execute(&self.pool)
                 .await?;
+        }
+        if !has_last_seen_at {
+            sqlx::query(
+                "ALTER TABLE recent_repositories ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0",
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+        if !has_last_seen_position {
+            sqlx::query(
+                "ALTER TABLE recent_repositories
+                 ADD COLUMN last_seen_position INTEGER NOT NULL DEFAULT 0",
+            )
+            .execute(&self.pool)
+            .await?;
         }
 
         sqlx::query(
@@ -952,6 +1008,72 @@ mod tests {
             assert!(!repositories[0].pinned);
             assert_eq!(repositories[0].local_path, None);
             assert_eq!(repositories[1].id, old_repository);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn limits_recent_repository_results() {
+        smol::block_on(async {
+            let database_path = test_database_path("limits-repositories");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+
+            store
+                .sync_repositories(&[
+                    RepoId::new("acme", "one"),
+                    RepoId::new("acme", "two"),
+                    RepoId::new("acme", "three"),
+                ])
+                .await
+                .expect("sync repositories");
+
+            let repositories = store
+                .recent_repositories_limited(2)
+                .await
+                .expect("load limited repositories");
+
+            assert_eq!(repositories.len(), 2);
+
+            cleanup_database(database_path);
+        });
+    }
+
+    #[test]
+    fn latest_repository_sync_takes_priority_over_stale_synced_rows() {
+        smol::block_on(async {
+            let database_path = test_database_path("latest-sync-priority");
+            let store = SqliteStore::connect(StorageConfig {
+                database_path: database_path.clone(),
+            })
+            .await
+            .expect("connect sqlite store");
+            let stale_repository = RepoId::new("aaa", "stale");
+            let latest_repository = RepoId::new("zzz", "latest");
+
+            store
+                .sync_repositories(std::slice::from_ref(&stale_repository))
+                .await
+                .expect("sync stale repository");
+            sqlx::query("UPDATE recent_repositories SET last_seen_at = 1")
+                .execute(&store.pool)
+                .await
+                .expect("age synced repositories");
+            store
+                .sync_repositories(std::slice::from_ref(&latest_repository))
+                .await
+                .expect("sync latest repository");
+
+            let repositories = store
+                .recent_repositories_limited(1)
+                .await
+                .expect("load limited repositories");
+
+            assert_eq!(repositories[0].id, latest_repository);
 
             cleanup_database(database_path);
         });

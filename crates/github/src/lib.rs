@@ -3,7 +3,8 @@ mod dto;
 mod transport;
 
 pub use client::{
-    GitHubClient, PullRequestEnrichment, PullRequestListFilter, SubmitPullRequestReviewEvent,
+    GitHubClient, PullRequestEnrichment, PullRequestListFilter, RepositoryList,
+    SubmitPullRequestReviewEvent,
 };
 pub use transport::{GhCliTransport, GitHubTransport};
 

@@ -5,7 +5,7 @@ use harbor_domain::{
 };
 use harbor_github::{
     ConditionalFetch, GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus,
-    HttpCacheValidator, PullRequestEnrichment, PullRequestListFilter, Result,
+    HttpCacheValidator, PullRequestEnrichment, PullRequestListFilter, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
 use harbor_sync::PullRequestInboxSource;
@@ -43,7 +43,9 @@ pub(crate) trait GitHubRateLimitApi: Send + Sync {
 
 #[async_trait]
 pub(crate) trait GitHubRepositoryApi: Send + Sync {
-    async fn list_repositories(&self) -> Result<Vec<RepoId>>;
+    async fn list_repositories(&self) -> Result<RepositoryList>;
+
+    async fn get_repository(&self, repository: &RepoId) -> Result<RepoId>;
 }
 
 #[async_trait]
@@ -283,8 +285,12 @@ impl PullRequestInboxSource for RealGitHubApi {
 
 #[async_trait]
 impl GitHubRepositoryApi for RealGitHubApi {
-    async fn list_repositories(&self) -> Result<Vec<RepoId>> {
+    async fn list_repositories(&self) -> Result<RepositoryList> {
         self.client.list_repositories().await
+    }
+
+    async fn get_repository(&self, repository: &RepoId) -> Result<RepoId> {
+        self.client.get_repository(repository).await
     }
 }
 
@@ -552,7 +558,8 @@ pub(crate) mod test_support {
     };
     use harbor_github::{
         ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-        PullRequestEnrichment, PullRequestListFilter, Result, SubmitPullRequestReviewEvent,
+        PullRequestEnrichment, PullRequestListFilter, RepositoryList, Result,
+        SubmitPullRequestReviewEvent,
     };
 
     use harbor_sync::PullRequestInboxSource;
@@ -568,7 +575,8 @@ pub(crate) mod test_support {
     #[derive(Clone, Default)]
     pub(crate) struct FakeGitHubApi {
         calls: Arc<Mutex<Vec<String>>>,
-        repositories: FakeQueue<Vec<RepoId>>,
+        repositories: FakeQueue<RepositoryList>,
+        repository_lookups: FakeQueue<RepoId>,
         pull_requests: FakeQueue<Vec<PullRequest>>,
         light_pull_requests: FakeQueue<ConditionalFetch<Vec<PullRequest>>>,
         pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
@@ -601,6 +609,10 @@ pub(crate) mod test_support {
     }
 
     impl FakeGitHubApi {
+        pub(crate) fn push_repository_lookup(&self, result: Result<RepoId>) {
+            push_result(&self.repository_lookups, result);
+        }
+
         pub(crate) fn push_light_pull_requests(
             &self,
             result: Result<ConditionalFetch<Vec<PullRequest>>>,
@@ -733,9 +745,14 @@ pub(crate) mod test_support {
 
     #[async_trait]
     impl GitHubRepositoryApi for FakeGitHubApi {
-        async fn list_repositories(&self) -> Result<Vec<RepoId>> {
+        async fn list_repositories(&self) -> Result<RepositoryList> {
             self.record_call("list_repositories");
             pop_result(&self.repositories, "list_repositories")
+        }
+
+        async fn get_repository(&self, _repository: &RepoId) -> Result<RepoId> {
+            self.record_call("get_repository");
+            pop_result(&self.repository_lookups, "get_repository")
         }
     }
 
@@ -1018,8 +1035,8 @@ mod tests {
     use gpui_component::{Root, Theme, ThemeMode};
     use harbor_domain::{
         ChecksSummary, DiffFile, FileStatus, MergeState, PullRequest, PullRequestReview,
-        PullRequestReviewState, ReviewDecision, ReviewThreadState, WorkflowConclusion, WorkflowRun,
-        WorkflowStatus,
+        PullRequestReviewState, RepoId, ReviewDecision, ReviewThreadState, WorkflowConclusion,
+        WorkflowRun, WorkflowStatus,
     };
     use harbor_github::{ConditionalFetch, GitHubError, PullRequestEnrichment};
     use harbor_sync::{SyncState, SyncTarget};
@@ -1132,6 +1149,43 @@ mod tests {
                 "list_pull_request_reviews",
                 "list_review_threads",
                 "list_check_runs"
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let repository = RepoId::new("acme", "app");
+        let pull_request = pull_request();
+        api.push_repository_lookup(Ok(repository.clone()));
+        api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
+            value: vec![pull_request.clone()],
+            validator: None,
+        }));
+        enqueue_successful_detail_load(&api, &pull_request);
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.open_typed_repository_from_switcher(repository.clone(), cx);
+        });
+        cx.run_until_parked();
+
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(view.current_repository(), Some(&repository));
+            assert_eq!(view.pull_requests.len(), 1);
+            assert!(!view.repository_state.is_loading());
+        });
+        assert_eq!(
+            api.calls(),
+            vec![
+                "get_repository",
+                "list_repository_pull_requests_light",
+                "get_pull_request",
+                "list_pull_request_files",
+                "current_user",
+                "list_pull_request_reviews",
+                "list_review_threads"
             ]
         );
     }

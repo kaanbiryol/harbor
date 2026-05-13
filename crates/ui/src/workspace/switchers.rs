@@ -4,6 +4,20 @@ use harbor_domain::{PullRequest, RepoId};
 
 use crate::workspace::AppView;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RepositorySwitcherChoice {
+    Cached(RepoId),
+    Typed(RepoId),
+}
+
+impl RepositorySwitcherChoice {
+    pub(crate) fn repository(&self) -> &RepoId {
+        match self {
+            Self::Cached(repository) | Self::Typed(repository) => repository,
+        }
+    }
+}
+
 impl AppView {
     pub(crate) fn switcher_repositories(&self) -> Vec<RepoId> {
         let mut repositories = self.repository_state.repositories().to_vec();
@@ -41,6 +55,16 @@ impl AppView {
             .collect()
     }
 
+    pub(crate) fn repository_switcher_choices(&self, cx: &App) -> Vec<RepositorySwitcherChoice> {
+        let query = self
+            .repository_state
+            .repository_search_input
+            .read(cx)
+            .value();
+
+        repository_switcher_choices_for_query(self.filtered_switcher_repositories(cx), &query)
+    }
+
     pub(crate) fn filtered_switcher_pull_requests(&self, cx: &App) -> Vec<(usize, PullRequest)> {
         let query = normalized_search_query(&self.pull_request_search_input.read(cx).value());
 
@@ -59,12 +83,12 @@ impl AppView {
 
     pub(crate) fn reset_repository_switcher_selection(&mut self, cx: &App) {
         let current_repository = self.current_repository().cloned();
-        let repositories = self.filtered_switcher_repositories(cx);
+        let choices = self.repository_switcher_choices(cx);
         self.repository_state.repository_switcher_selection = current_repository
             .and_then(|current| {
-                repositories
+                choices
                     .iter()
-                    .position(|repository| *repository == current)
+                    .position(|choice| choice.repository() == &current)
             })
             .unwrap_or(0);
     }
@@ -82,7 +106,7 @@ impl AppView {
         delta: isize,
         cx: &mut Context<Self>,
     ) {
-        let len = self.filtered_switcher_repositories(cx).len();
+        let len = self.repository_switcher_choices(cx).len();
         self.repository_state.repository_switcher_selection = next_switcher_index(
             self.repository_state.repository_switcher_selection,
             len,
@@ -103,16 +127,10 @@ impl AppView {
     }
 
     pub(crate) fn accept_repository_switcher_selection(&mut self, cx: &mut Context<Self>) {
-        let repositories = self.filtered_switcher_repositories(cx);
-        let query = self
-            .repository_state
-            .repository_search_input
-            .read(cx)
-            .value();
-        let Some(repository) = repository_switcher_accepted_repository(
-            &repositories,
+        let choices = self.repository_switcher_choices(cx);
+        let Some(choice) = repository_switcher_accepted_choice(
+            &choices,
             self.repository_state.repository_switcher_selection,
-            &query,
         ) else {
             self.status = if self.repository_state.is_loading() {
                 "Fetching repositories from GitHub...".to_string()
@@ -123,7 +141,7 @@ impl AppView {
             return;
         };
 
-        self.select_repository_from_switcher(repository, cx);
+        self.select_repository_choice_from_switcher(choice, cx);
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         cx.notify();
@@ -182,21 +200,78 @@ impl AppView {
             _ => {}
         }
     }
+
+    pub(crate) fn select_repository_choice_from_switcher(
+        &mut self,
+        choice: RepositorySwitcherChoice,
+        cx: &mut Context<Self>,
+    ) {
+        match choice {
+            RepositorySwitcherChoice::Cached(repository) => {
+                self.select_repository_from_switcher(repository, cx);
+            }
+            RepositorySwitcherChoice::Typed(repository) => {
+                self.open_typed_repository_from_switcher(repository, cx);
+            }
+        }
+    }
 }
 
 pub(crate) fn normalized_search_query(query: &str) -> String {
     query.trim().to_lowercase()
 }
 
-pub(crate) fn repository_switcher_accepted_repository(
-    repositories: &[RepoId],
-    selected_index: usize,
+pub(crate) fn repository_switcher_choices_for_query(
+    repositories: Vec<RepoId>,
     query: &str,
-) -> Option<RepoId> {
-    repositories
-        .get(selected_index.min(repositories.len().saturating_sub(1)))
+) -> Vec<RepositorySwitcherChoice> {
+    let typed_repository = parse_repo_id(query);
+    let exact_match_index = typed_repository.as_ref().and_then(|typed_repository| {
+        repositories
+            .iter()
+            .position(|repository| repository_ids_match(repository, typed_repository))
+    });
+
+    match (typed_repository, exact_match_index) {
+        (Some(_), Some(index)) => {
+            let mut choices = Vec::with_capacity(repositories.len());
+            choices.push(RepositorySwitcherChoice::Cached(
+                repositories[index].clone(),
+            ));
+            choices.extend(
+                repositories
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(repository_index, _)| *repository_index != index)
+                    .map(|(_, repository)| RepositorySwitcherChoice::Cached(repository)),
+            );
+            choices
+        }
+        (Some(repository), None) => {
+            let mut choices = Vec::with_capacity(repositories.len() + 1);
+            choices.push(RepositorySwitcherChoice::Typed(repository));
+            choices.extend(
+                repositories
+                    .into_iter()
+                    .map(RepositorySwitcherChoice::Cached),
+            );
+            choices
+        }
+        (None, None) => repositories
+            .into_iter()
+            .map(RepositorySwitcherChoice::Cached)
+            .collect(),
+        (None, Some(_)) => unreachable!("exact match requires a typed repository"),
+    }
+}
+
+pub(crate) fn repository_switcher_accepted_choice(
+    choices: &[RepositorySwitcherChoice],
+    selected_index: usize,
+) -> Option<RepositorySwitcherChoice> {
+    choices
+        .get(selected_index.min(choices.len().saturating_sub(1)))
         .cloned()
-        .or_else(|| parse_repo_id(query))
 }
 
 pub(crate) fn repository_matches_query(repository: &RepoId, query: &str) -> bool {
@@ -205,6 +280,10 @@ pub(crate) fn repository_matches_query(repository: &RepoId, query: &str) -> bool
     }
 
     repository.full_name().to_lowercase().contains(query)
+}
+
+fn repository_ids_match(left: &RepoId, right: &RepoId) -> bool {
+    left.owner.eq_ignore_ascii_case(&right.owner) && left.name.eq_ignore_ascii_case(&right.name)
 }
 
 pub(crate) fn pull_request_matches_query(pull_request: &PullRequest, query: &str) -> bool {
@@ -289,29 +368,54 @@ mod tests {
     }
 
     #[test]
-    fn repository_switcher_accepts_selected_existing_repository_first() {
+    fn repository_switcher_accepts_selected_existing_repository() {
         let repositories = vec![RepoId::new("acme", "app"), RepoId::new("octo", "tools")];
+        let choices = repository_switcher_choices_for_query(repositories, "");
 
         assert_eq!(
-            repository_switcher_accepted_repository(&repositories, 1, "typed/repo"),
-            Some(RepoId::new("octo", "tools"))
+            repository_switcher_accepted_choice(&choices, 1),
+            Some(RepositorySwitcherChoice::Cached(RepoId::new(
+                "octo", "tools"
+            )))
         );
     }
 
     #[test]
-    fn repository_switcher_accepts_typed_repository_without_matches() {
+    fn repository_switcher_prefers_typed_repository_without_exact_match() {
+        let repositories = vec![RepoId::new("acme", "app-old")];
+        let choices = repository_switcher_choices_for_query(repositories, "acme/app");
+
         assert_eq!(
-            repository_switcher_accepted_repository(&[], 0, "  typed/repo  "),
-            Some(RepoId::new("typed", "repo"))
+            choices[0],
+            RepositorySwitcherChoice::Typed(RepoId::new("acme", "app"))
+        );
+        assert_eq!(
+            repository_switcher_accepted_choice(&choices, 0),
+            Some(RepositorySwitcherChoice::Typed(RepoId::new("acme", "app")))
+        );
+    }
+
+    #[test]
+    fn repository_switcher_prefers_exact_cached_match_over_typed_repository() {
+        let repositories = vec![RepoId::new("acme", "app-old"), RepoId::new("Acme", "App")];
+        let choices = repository_switcher_choices_for_query(repositories, "acme/app");
+
+        assert_eq!(
+            choices[0],
+            RepositorySwitcherChoice::Cached(RepoId::new("Acme", "App"))
+        );
+        assert!(
+            !choices
+                .iter()
+                .any(|choice| matches!(choice, RepositorySwitcherChoice::Typed(_)))
         );
     }
 
     #[test]
     fn repository_switcher_rejects_invalid_typed_repository_without_matches() {
-        assert_eq!(
-            repository_switcher_accepted_repository(&[], 0, "typed"),
-            None
-        );
+        let choices = repository_switcher_choices_for_query(Vec::new(), "typed");
+
+        assert_eq!(repository_switcher_accepted_choice(&choices, 0), None);
     }
 
     #[test]

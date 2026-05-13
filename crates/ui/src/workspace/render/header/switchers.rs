@@ -12,7 +12,7 @@ use harbor_domain::RepoId;
 
 use crate::{
     visual::color,
-    workspace::{AppView, normalized_search_query, parse_repo_id},
+    workspace::{AppView, RepositorySwitcherChoice, normalized_search_query},
 };
 
 use super::super::render_switcher_section_label;
@@ -50,6 +50,20 @@ fn render_switcher_error_row(error: String) -> impl IntoElement {
         .text_xs()
         .text_color(color::danger())
         .child(error)
+}
+
+fn render_switcher_notice_row(notice: String) -> impl IntoElement {
+    div()
+        .mx_1()
+        .mb_1()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::elevated_background())
+        .px_2()
+        .py_2()
+        .text_xs()
+        .text_color(color::text_muted())
+        .child(notice)
 }
 
 fn render_switcher_repository_row(
@@ -165,19 +179,15 @@ impl AppView {
             .read(cx)
             .value();
         let repository_query = normalized_search_query(&repository_search_value);
-        let repositories = self.filtered_switcher_repositories(cx);
-        let typed_repository = if repositories.is_empty() {
-            parse_repo_id(&repository_search_value)
-        } else {
-            None
-        };
+        let choices = self.repository_switcher_choices(cx);
         let current_repository = self.current_repository().cloned();
         let repository_error = self.repository_state.error().map(str::to_string);
+        let repository_notice = self.repository_state.notice().map(str::to_string);
         let is_loading_repositories = self.repository_state.is_loading();
         let repository_selection = self
             .repository_state
             .repository_switcher_selection
-            .min(repositories.len().saturating_sub(1));
+            .min(choices.len().saturating_sub(1));
         let repository_search_input = self.repository_state.repository_search_input.clone();
         let has_repository_query = !repository_query.is_empty();
 
@@ -255,48 +265,27 @@ impl AppView {
                     menu = menu.child(render_switcher_error_row(error));
                 }
 
+                if let Some(notice) = repository_notice.clone() {
+                    menu = menu.child(render_switcher_notice_row(notice));
+                }
+
                 if is_loading_repositories {
                     menu = menu.child(render_switcher_loading_row(
                         "Fetching repositories from GitHub...",
                     ));
                 }
 
-                if repositories.is_empty() {
-                    if let Some(repository) = typed_repository.clone() {
-                        let selected_repository = repository.clone();
-                        let view = view.clone();
-                        let popover = popover.clone();
-
-                        menu = menu.child(
-                            render_switcher_typed_repository_row(&repository, true).on_click(
-                                move |_, window, cx| {
-                                    view.update(cx, |view, cx| {
-                                        view.select_repository_from_switcher(
-                                            selected_repository.clone(),
-                                            cx,
-                                        );
-                                        view.repository_state.repository_switcher_open = false;
-                                        view.pull_request_inbox_search_open = false;
-                                        cx.notify();
-                                    });
-                                    popover.update(cx, |popover, cx| {
-                                        popover.dismiss(window, cx);
-                                    });
-                                },
-                            ),
-                        );
+                if choices.is_empty() {
+                    let label = if has_repository_query || is_loading_repositories {
+                        "Type owner/repo to open a repository"
                     } else {
-                        let label = if has_repository_query || is_loading_repositories {
-                            "Type owner/repo to open a repository"
-                        } else {
-                            "No repositories found. Type owner/repo to open a repository"
-                        };
-                        menu = menu.child(render_switcher_empty_row(label));
-                    }
+                        "No repositories found. Type owner/repo to open a repository"
+                    };
+                    menu = menu.child(render_switcher_empty_row(label));
                 } else {
-                    let repository_count = repositories.len();
-                    let list_height = repository_switcher_list_height(repository_count);
-                    let repositories = repositories.clone();
+                    let choice_count = choices.len();
+                    let list_height = repository_switcher_list_height(choice_count);
+                    let choices = choices.clone();
                     let current_repository = current_repository.clone();
                     let view = view.clone();
                     let popover = popover.clone();
@@ -304,44 +293,50 @@ impl AppView {
                     menu = menu.child(
                         uniform_list(
                             "repository-switcher-list",
-                            repository_count,
+                            choice_count,
                             move |range, _window, _cx| {
                                 let mut rows = Vec::with_capacity(range.len());
 
                                 for row_index in range {
-                                    let Some(repository) = repositories.get(row_index).cloned()
-                                    else {
+                                    let Some(choice) = choices.get(row_index).cloned() else {
                                         continue;
                                     };
-                                    let current = current_repository.as_ref() == Some(&repository);
+                                    let current =
+                                        current_repository.as_ref() == Some(choice.repository());
                                     let highlighted = row_index == repository_selection;
                                     let view = view.clone();
                                     let popover = popover.clone();
 
-                                    rows.push(
-                                        render_switcher_repository_row(
-                                            &repository,
-                                            current,
-                                            highlighted,
-                                        )
-                                        .on_click(
-                                            move |_, window, cx| {
-                                                view.update(cx, |view, cx| {
-                                                    view.select_repository_from_switcher(
-                                                        repository.clone(),
-                                                        cx,
-                                                    );
-                                                    view.repository_state
-                                                        .repository_switcher_open = false;
-                                                    view.pull_request_inbox_search_open = false;
-                                                    cx.notify();
-                                                });
-                                                popover.update(cx, |popover, cx| {
-                                                    popover.dismiss(window, cx);
-                                                });
-                                            },
-                                        ),
-                                    );
+                                    let row = match &choice {
+                                        RepositorySwitcherChoice::Cached(repository) => {
+                                            render_switcher_repository_row(
+                                                repository,
+                                                current,
+                                                highlighted,
+                                            )
+                                        }
+                                        RepositorySwitcherChoice::Typed(repository) => {
+                                            render_switcher_typed_repository_row(
+                                                repository,
+                                                highlighted,
+                                            )
+                                        }
+                                    };
+
+                                    rows.push(row.on_click(move |_, window, cx| {
+                                        view.update(cx, |view, cx| {
+                                            view.select_repository_choice_from_switcher(
+                                                choice.clone(),
+                                                cx,
+                                            );
+                                            view.repository_state.repository_switcher_open = false;
+                                            view.pull_request_inbox_search_open = false;
+                                            cx.notify();
+                                        });
+                                        popover.update(cx, |popover, cx| {
+                                            popover.dismiss(window, cx);
+                                        });
+                                    }));
                                 }
 
                                 rows

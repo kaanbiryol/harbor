@@ -65,7 +65,7 @@ use state::{
     PullRequestSelectionState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
     SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
-pub(crate) use switchers::{normalized_search_query, parse_repo_id};
+pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
 
 pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {
     tracing::warn!(%error, "{}", context);

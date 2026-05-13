@@ -266,6 +266,7 @@ pub(crate) struct RepositoryUiState {
     repository_local_paths: HashMap<RepoId, PathBuf>,
     is_loading_repositories: bool,
     repository_error: Option<String>,
+    repository_notice: Option<String>,
 }
 
 impl RepositoryUiState {
@@ -280,6 +281,7 @@ impl RepositoryUiState {
             repository_local_paths: HashMap::new(),
             is_loading_repositories: is_loading,
             repository_error: None,
+            repository_notice: None,
         }
     }
 
@@ -315,6 +317,10 @@ impl RepositoryUiState {
         self.repository_error.as_deref()
     }
 
+    pub(crate) fn notice(&self) -> Option<&str> {
+        self.repository_notice.as_deref()
+    }
+
     pub(crate) fn start_loading(&mut self) {
         self.is_loading_repositories = true;
     }
@@ -326,20 +332,32 @@ impl RepositoryUiState {
     pub(crate) fn set_store(&mut self, store: SqliteStore) {
         self.repository_store = Some(store);
         self.repository_error = None;
+        self.repository_notice = None;
     }
 
     pub(crate) fn clear_store_with_error(&mut self, error: impl Into<String>) {
         self.repository_store = None;
         self.is_loading_repositories = false;
         self.repository_error = Some(error.into());
+        self.repository_notice = None;
     }
 
     pub(crate) fn set_error(&mut self, error: impl Into<String>) {
         self.repository_error = Some(error.into());
+        self.repository_notice = None;
     }
 
     pub(crate) fn clear_error(&mut self) {
         self.repository_error = None;
+    }
+
+    pub(crate) fn set_notice(&mut self, notice: impl Into<String>) {
+        self.repository_error = None;
+        self.repository_notice = Some(notice.into());
+    }
+
+    pub(crate) fn clear_notice(&mut self) {
+        self.repository_notice = None;
     }
 
     pub(crate) fn select_repository(&mut self, repository: RepoId) {

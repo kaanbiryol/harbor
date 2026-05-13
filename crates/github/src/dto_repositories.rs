@@ -21,6 +21,17 @@ pub fn repositories_from_value(value: Value) -> Result<Vec<RepoId>> {
 
     Ok(repositories
         .into_iter()
-        .map(|repository| RepoId::new(repository.owner.login, repository.name))
+        .map(repo_id_from_api_repository)
         .collect())
+}
+
+pub fn repository_from_value(value: Value) -> Result<RepoId> {
+    let repository: ApiRepository =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+
+    Ok(repo_id_from_api_repository(repository))
+}
+
+fn repo_id_from_api_repository(repository: ApiRepository) -> RepoId {
+    RepoId::new(repository.owner.login, repository.name)
 }

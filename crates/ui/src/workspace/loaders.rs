@@ -10,6 +10,8 @@ use crate::workspace::{
     AppView, PullRequestInboxCacheKey, PullRequestInboxMode, async_updates::AppViewAsyncUpdateExt,
 };
 
+const RECENT_REPOSITORY_SWITCHER_LIMIT: usize = 200;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PullRequestInboxRefreshIntent {
     PreferCache,
@@ -104,10 +106,14 @@ impl AppView {
                         Ok(load) => {
                             let repository_count = load.repositories.len();
                             let repository_error = load.repository_error.clone();
+                            let repository_notice = load.repository_notice.clone();
                             if let Some(error) = load.repository_error {
                                 view.repository_state.set_error(error);
+                            } else if let Some(notice) = load.repository_notice {
+                                view.repository_state.set_notice(notice);
                             } else {
                                 view.repository_state.clear_error();
+                                view.repository_state.clear_notice();
                             }
                             view.apply_recent_repositories(load.repositories);
 
@@ -115,23 +121,29 @@ impl AppView {
                                 && !view.pull_request_inbox.is_loading()
                                 && view.pull_requests.is_empty()
                             {
-                                view.status = match (repository_count, repository_error) {
-                                    (0, Some(error)) => error,
-                                    (0, None) => {
-                                        "No repositories found. Type owner/repo to open a repository"
-                                            .to_string()
-                                    }
-                                    (count, Some(_)) => {
-                                        format!(
-                                            "Loaded {count} cached repositories; GitHub refresh failed. Choose one from the header or type owner/repo"
-                                        )
-                                    }
-                                    (count, None) => {
-                                        format!(
-                                            "Loaded {count} repositories. Choose one from the header or type owner/repo"
-                                        )
-                                    }
-                                };
+                                view.status =
+                                    match (repository_count, repository_error, repository_notice) {
+                                        (0, Some(error), _) => error,
+                                        (0, None, _) => {
+                                            "No repositories found. Type owner/repo to open a repository"
+                                                .to_string()
+                                        }
+                                        (count, Some(_), _) => {
+                                            format!(
+                                                "Loaded {count} cached repositories; GitHub refresh failed. Choose one from the header or type owner/repo"
+                                            )
+                                        }
+                                        (count, None, Some(_)) => {
+                                            format!(
+                                                "Loaded {count} repositories. Type owner/repo to open another repository"
+                                            )
+                                        }
+                                        (count, None, None) => {
+                                            format!(
+                                                "Loaded {count} repositories. Choose one from the header or type owner/repo"
+                                            )
+                                        }
+                                    };
                             }
                         }
                         Err(error) => {
@@ -190,6 +202,47 @@ impl AppView {
             );
         })
         .detach();
+    }
+
+    pub(crate) fn open_typed_repository_from_switcher(
+        &mut self,
+        repository: RepoId,
+        cx: &mut Context<Self>,
+    ) {
+        let github_api = self.github_api.clone();
+        let requested_repository = repository.clone();
+        self.repository_state.start_loading();
+        self.status = format!("Opening repository {}", repository.full_name());
+        let task = cx.background_spawn(async move { github_api.get_repository(&repository).await });
+
+        self.tasks
+            .set_repository_task(cx.spawn(async move |this, cx| {
+                let result = task.await;
+
+                this.update_or_log(
+                    cx,
+                    "failed to update repository lookup state",
+                    move |view, cx| {
+                        view.repository_state.finish_loading();
+                        match result {
+                            Ok(repository) => {
+                                view.repository_state.clear_error();
+                                view.repository_state.clear_notice();
+                                view.load_pull_requests(repository, cx);
+                            }
+                            Err(error) => {
+                                let repository = requested_repository.full_name();
+                                let error =
+                                    format!("failed to open repository {repository}: {error}");
+                                view.repository_state.set_error(error.clone());
+                                view.status = error;
+                            }
+                        }
+
+                        cx.notify();
+                    },
+                );
+            }));
     }
 
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
@@ -537,6 +590,7 @@ struct RepositoryLoad {
 struct RepositoryRefresh {
     repositories: Vec<RecentRepository>,
     repository_error: Option<String>,
+    repository_notice: Option<String>,
 }
 
 fn pull_request_inbox_loading_status(repository: &RepoId, mode: PullRequestInboxMode) -> String {
@@ -581,7 +635,9 @@ async fn load_repository_store(
     } else {
         configured_repo
     };
-    let repositories = store.recent_repositories().await?;
+    let repositories = store
+        .recent_repositories_limited(RECENT_REPOSITORY_SWITCHER_LIMIT)
+        .await?;
 
     Ok(RepositoryLoad {
         store,
@@ -594,9 +650,18 @@ async fn refresh_repository_store(
     store: SqliteStore,
     github_api: std::sync::Arc<dyn crate::workspace::github_service::GitHubApi>,
 ) -> std::result::Result<RepositoryRefresh, StorageError> {
+    let mut repository_notice = None;
     let repository_error = match github_api.list_repositories().await {
-        Ok(repositories) => {
-            store.sync_repositories(&repositories).await?;
+        Ok(repository_list) => {
+            if repository_list.possibly_limited {
+                repository_notice = Some(
+                    "Showing latest 100 GitHub repositories. Type owner/repo to open another repository."
+                        .to_string(),
+                );
+            }
+            store
+                .sync_repositories(&repository_list.repositories)
+                .await?;
             None
         }
         Err(error) => Some(format!(
@@ -604,10 +669,13 @@ async fn refresh_repository_store(
         )),
     };
 
-    let repositories = store.recent_repositories().await?;
+    let repositories = store
+        .recent_repositories_limited(RECENT_REPOSITORY_SWITCHER_LIMIT)
+        .await?;
 
     Ok(RepositoryRefresh {
         repositories,
         repository_error,
+        repository_notice,
     })
 }
