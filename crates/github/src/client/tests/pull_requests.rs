@@ -113,6 +113,44 @@ fn paginates_repository_pull_requests() {
 }
 
 #[test]
+fn counts_repository_pull_requests() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "search": {
+                "issueCount": 12
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    let count = smol::block_on(client.count_repository_pull_requests(
+        &RepoId::new("acme", "app"),
+        PullRequestListFilter::NeedsReview,
+    ))
+    .unwrap();
+
+    assert_eq!(count, 12);
+    let calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].0.contains("HarborRepositoryPullRequestCount"));
+    assert!(calls[0].0.contains("issueCount"));
+    assert!(!calls[0].0.contains("nodes"));
+    assert_eq!(
+        calls[0].1,
+        json!({
+            "searchQuery": "repo:acme/app is:pr is:open archived:false review-requested:@me sort:updated-desc",
+        })
+    );
+}
+
+#[test]
 fn lists_light_pull_requests_with_conditional_validator() {
     let transport = RecordingTransport::default();
     let validator = HttpCacheValidator {

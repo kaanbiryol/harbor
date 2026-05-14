@@ -1,8 +1,16 @@
 use harbor_sync::PullRequestChangeEvent;
 
 use gpui::{AppContext, Context};
+use std::sync::{Mutex, OnceLock};
 
 use crate::workspace::{AppView, PullRequestInboxMode, async_updates::AppViewAsyncUpdateExt};
+
+#[cfg(target_os = "macos")]
+const MACOS_NOTIFICATION_BUNDLE_IDENTIFIER: &str = "com.apple.finder";
+
+// mac-notification-sys stores process-global application state and documents
+// notification delivery as sensitive to concurrent calls.
+static NATIVE_NOTIFICATION_SEND_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct HarborNotification {
@@ -26,8 +34,19 @@ pub(crate) trait NotificationSink: Send + Sync {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NativeNotificationSink;
 
+impl NativeNotificationSink {
+    pub(crate) fn new() -> Self {
+        Self
+    }
+}
+
 impl NotificationSink for NativeNotificationSink {
     fn notify(&self, notification: HarborNotification) -> std::result::Result<(), String> {
+        let _send_guard = NATIVE_NOTIFICATION_SEND_LOCK
+            .lock()
+            .map_err(|_| "Native notification sender is unavailable".to_string())?;
+        configure_native_notifications()?;
+
         notify_rust::Notification::new()
             .appname("Harbor")
             .summary(&notification.summary)
@@ -36,6 +55,25 @@ impl NotificationSink for NativeNotificationSink {
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
+}
+
+fn configure_native_notifications() -> std::result::Result<(), String> {
+    static CONFIGURATION: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+
+    CONFIGURATION
+        .get_or_init(configure_native_notifications_once)
+        .clone()
+}
+
+#[cfg(target_os = "macos")]
+fn configure_native_notifications_once() -> std::result::Result<(), String> {
+    notify_rust::set_application(MACOS_NOTIFICATION_BUNDLE_IDENTIFIER)
+        .map_err(|error| format!("Failed to configure macOS notification application: {error}"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn configure_native_notifications_once() -> std::result::Result<(), String> {
+    Ok(())
 }
 
 impl AppView {

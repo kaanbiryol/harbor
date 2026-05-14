@@ -48,6 +48,20 @@ query HarborRepositoryPullRequests($searchQuery: String!, $after: String) {
 }
 "#;
 
+pub(super) const REPOSITORY_PULL_REQUEST_COUNT_QUERY: &str = r#"
+query HarborRepositoryPullRequestCount($searchQuery: String!) {
+  search(query: $searchQuery, type: ISSUE, first: 1) {
+    issueCount
+  }
+  rateLimit {
+    cost
+    remaining
+    limit
+    used
+  }
+}
+"#;
+
 pub(super) const REVIEW_THREADS_QUERY: &str = r#"
 query HarborPullRequestReviewThreads(
   $owner: String!,

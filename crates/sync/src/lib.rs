@@ -152,6 +152,12 @@ pub trait PullRequestInboxSource: Send + Sync {
         filter: PullRequestListFilter,
     ) -> harbor_github::Result<Vec<PullRequest>>;
 
+    async fn count_repository_pull_requests(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+    ) -> harbor_github::Result<usize>;
+
     async fn list_repository_pull_requests_light(
         &self,
         repository: &RepoId,

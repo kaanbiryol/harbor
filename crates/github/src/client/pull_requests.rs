@@ -9,8 +9,8 @@ use crate::{
 use super::{
     GitHubClient, PullRequestListFilter,
     requests::{
-        PULL_REQUEST_ENRICHMENT_QUERY, REPOSITORY_PULL_REQUESTS_QUERY,
-        repository_pull_requests_query,
+        PULL_REQUEST_ENRICHMENT_QUERY, REPOSITORY_PULL_REQUEST_COUNT_QUERY,
+        REPOSITORY_PULL_REQUESTS_QUERY, repository_pull_requests_query,
     },
 };
 
@@ -81,6 +81,25 @@ where
         }
 
         Ok(pull_requests)
+    }
+
+    pub async fn count_repository_pull_requests(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+    ) -> Result<usize> {
+        let search_query = repository_pull_requests_query(repository, filter);
+        let response = self
+            .transport
+            .graphql(
+                REPOSITORY_PULL_REQUEST_COUNT_QUERY,
+                json!({
+                    "searchQuery": search_query,
+                }),
+            )
+            .await?;
+
+        dto::pull_request_search_count_from_graphql_value(response)
     }
 
     pub async fn list_repository_pull_requests_light(

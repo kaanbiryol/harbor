@@ -264,6 +264,16 @@ impl PullRequestInboxSource for RealGitHubApi {
             .await
     }
 
+    async fn count_repository_pull_requests(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+    ) -> Result<usize> {
+        self.client
+            .count_repository_pull_requests(repository, filter)
+            .await
+    }
+
     async fn list_repository_pull_requests_light(
         &self,
         repository: &RepoId,
@@ -578,6 +588,7 @@ pub(crate) mod test_support {
         repositories: FakeQueue<RepositoryList>,
         repository_lookups: FakeQueue<RepoId>,
         pull_requests: FakeQueue<Vec<PullRequest>>,
+        pull_request_counts: FakeQueue<usize>,
         light_pull_requests: FakeQueue<ConditionalFetch<Vec<PullRequest>>>,
         pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
         pull_request_details: FakeQueue<PullRequest>,
@@ -618,6 +629,10 @@ pub(crate) mod test_support {
             result: Result<ConditionalFetch<Vec<PullRequest>>>,
         ) {
             push_result(&self.light_pull_requests, result);
+        }
+
+        pub(crate) fn push_pull_request_count(&self, result: Result<usize>) {
+            push_result(&self.pull_request_counts, result);
         }
 
         pub(crate) fn push_pull_request_enrichments(
@@ -716,6 +731,15 @@ pub(crate) mod test_support {
         ) -> Result<Vec<PullRequest>> {
             self.record_call("list_repository_pull_requests");
             pop_result(&self.pull_requests, "list_repository_pull_requests")
+        }
+
+        async fn count_repository_pull_requests(
+            &self,
+            _repository: &RepoId,
+            _filter: PullRequestListFilter,
+        ) -> Result<usize> {
+            self.record_call("count_repository_pull_requests");
+            pop_result(&self.pull_request_counts, "count_repository_pull_requests")
         }
 
         async fn list_repository_pull_requests_light(
@@ -1044,7 +1068,10 @@ mod tests {
     use crate::{
         actions::{PanelTab, PullRequestAction, WorkflowAction},
         test_fixtures::{diff_file, pull_request, review_thread, test_time},
-        workspace::{AppView, PullRequestInboxMode, github_service::test_support::FakeGitHubApi},
+        workspace::{
+            AppView, PullRequestInboxCacheKey, PullRequestInboxMode,
+            github_service::test_support::FakeGitHubApi,
+        },
     };
 
     #[gpui::test]
@@ -1080,6 +1107,63 @@ mod tests {
                 "list_pull_request_reviews",
                 "list_review_threads"
             ]
+        );
+    }
+
+    #[gpui::test]
+    async fn prefetches_inactive_inbox_counts_without_loading_items(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let pull_request = pull_request();
+        api.push_pull_request_count(Ok(4));
+        api.push_pull_request_count(Ok(2));
+        api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
+            value: vec![pull_request.clone()],
+            validator: None,
+        }));
+        enqueue_successful_detail_load(&api, &pull_request);
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.prefetch_inbox_counts = true;
+            view.load_pull_requests(pull_request.repo.clone(), cx);
+        });
+        cx.run_until_parked();
+
+        view_entity.read_with(cx, |view, _| {
+            let closed_key = PullRequestInboxCacheKey::new(
+                pull_request.repo.clone(),
+                PullRequestInboxMode::Closed,
+            );
+            let needs_review_key = PullRequestInboxCacheKey::new(
+                pull_request.repo.clone(),
+                PullRequestInboxMode::NeedsReview,
+            );
+
+            assert_eq!(view.pull_request_inbox.snapshot_count(&closed_key), Some(4));
+            assert_eq!(
+                view.pull_request_inbox.snapshot_count(&needs_review_key),
+                Some(2)
+            );
+            assert!(view.pull_request_inbox.snapshot(&closed_key).is_none());
+            assert!(
+                view.pull_request_inbox
+                    .snapshot(&needs_review_key)
+                    .is_none()
+            );
+        });
+
+        let calls = api.calls();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| call.as_str() == "count_repository_pull_requests")
+                .count(),
+            2
+        );
+        assert!(
+            !calls
+                .iter()
+                .any(|call| call.as_str() == "list_repository_pull_requests")
         );
     }
 

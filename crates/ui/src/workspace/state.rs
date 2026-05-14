@@ -515,6 +515,7 @@ pub(crate) struct PullRequestInboxState {
     visible: bool,
     mode: PullRequestInboxMode,
     cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
+    counts: HashMap<PullRequestInboxCacheKey, usize>,
     load: LoadStatus,
 }
 
@@ -579,7 +580,13 @@ impl PullRequestInboxState {
         key: PullRequestInboxCacheKey,
         snapshot: PullRequestInboxSnapshot,
     ) {
+        self.counts
+            .insert(key.clone(), snapshot.pull_request_count());
         self.cache.insert(key, snapshot);
+    }
+
+    pub(crate) fn insert_count(&mut self, key: PullRequestInboxCacheKey, count: usize) {
+        self.counts.insert(key, count);
     }
 
     pub(crate) fn snapshot(
@@ -590,9 +597,11 @@ impl PullRequestInboxState {
     }
 
     pub(crate) fn snapshot_count(&self, key: &PullRequestInboxCacheKey) -> Option<usize> {
-        self.cache
-            .get(key)
-            .map(PullRequestInboxSnapshot::pull_request_count)
+        self.counts.get(key).copied().or_else(|| {
+            self.cache
+                .get(key)
+                .map(PullRequestInboxSnapshot::pull_request_count)
+        })
     }
 }
 

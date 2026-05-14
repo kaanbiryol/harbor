@@ -194,6 +194,21 @@ mod tests {
     }
 
     #[test]
+    fn maps_pull_request_search_count() {
+        let value = json!({
+            "data": {
+                "search": {
+                    "issueCount": 17
+                }
+            }
+        });
+
+        let count = pull_request_search_count_from_graphql_value(value).unwrap();
+
+        assert_eq!(count, 17);
+    }
+
+    #[test]
     fn maps_repository_list() {
         let value = json!([
             {

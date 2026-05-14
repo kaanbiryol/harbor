@@ -63,6 +63,16 @@ struct GraphQlPullRequestSearchData {
 }
 
 #[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchCountResponse {
+    data: Option<GraphQlPullRequestSearchCountData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchCountData {
+    search: GraphQlPullRequestSearchCount,
+}
+
+#[derive(Debug, Deserialize)]
 struct GraphQlPullRequestEnrichmentResponse {
     data: Option<GraphQlPullRequestEnrichmentData>,
 }
@@ -79,6 +89,12 @@ struct GraphQlPullRequestSearchConnection {
     nodes: Vec<Option<GraphQlPullRequestSearchNode>>,
     #[serde(default, rename = "pageInfo")]
     page_info: GraphQlPageInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestSearchCount {
+    #[serde(rename = "issueCount")]
+    issue_count: usize,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -248,6 +264,16 @@ pub(crate) fn pull_request_search_page_from_graphql_value(
         has_next_page: data.search.page_info.has_next_page,
         end_cursor: data.search.page_info.end_cursor,
     })
+}
+
+pub(crate) fn pull_request_search_count_from_graphql_value(value: Value) -> Result<usize> {
+    let response: GraphQlPullRequestSearchCountResponse =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let data = response
+        .data
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL response data".to_string()))?;
+
+    Ok(data.search.issue_count)
 }
 
 pub(crate) fn pull_request_enrichments_from_graphql_value(
