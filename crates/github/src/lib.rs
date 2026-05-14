@@ -3,8 +3,8 @@ mod dto;
 mod transport;
 
 pub use client::{
-    GitHubClient, PullRequestEnrichment, PullRequestListFilter, RepositoryList,
-    SubmitPullRequestReviewEvent,
+    GitHubClient, PullRequestEnrichment, PullRequestListFilter, PullRequestPage,
+    PullRequestPageCursor, RepositoryList, SubmitPullRequestReviewEvent,
 };
 pub use transport::{
     GhCliTransport, GitHubDeviceFlow, GitHubTransport, OctocrabTransport, start_oauth_device_flow,

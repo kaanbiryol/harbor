@@ -185,7 +185,7 @@ impl AppView {
         });
         let pull_request_search_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Search pull requests...")
+                .placeholder("Search loaded pull requests...")
                 .clean_on_escape()
         });
         let mut subscriptions = vec![

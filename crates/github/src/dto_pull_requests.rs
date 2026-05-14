@@ -85,6 +85,8 @@ struct GraphQlPullRequestEnrichmentData {
 
 #[derive(Debug, Deserialize)]
 struct GraphQlPullRequestSearchConnection {
+    #[serde(default, rename = "issueCount")]
+    issue_count: Option<usize>,
     #[serde(default)]
     nodes: Vec<Option<GraphQlPullRequestSearchNode>>,
     #[serde(default, rename = "pageInfo")]
@@ -209,6 +211,7 @@ struct GraphQlLabel {
 
 pub(crate) struct PullRequestSearchPage {
     pub(crate) pull_requests: Vec<PullRequest>,
+    pub(crate) total_count: Option<usize>,
     pub(crate) has_next_page: bool,
     pub(crate) end_cursor: Option<String>,
 }
@@ -261,6 +264,7 @@ pub(crate) fn pull_request_search_page_from_graphql_value(
 
     Ok(PullRequestSearchPage {
         pull_requests,
+        total_count: data.search.issue_count,
         has_next_page: data.search.page_info.has_next_page,
         end_cursor: data.search.page_info.end_cursor,
     })

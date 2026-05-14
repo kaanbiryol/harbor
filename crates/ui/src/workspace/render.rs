@@ -867,8 +867,7 @@ fn status_bar_status_label(status: &str) -> &str {
 
 fn status_bar_message_mentions_cached_data(status: &str) -> bool {
     let status = status.to_ascii_lowercase();
-    (status.starts_with("showing ") && status.contains("cached"))
-        || status.contains("; showing cached data")
+    status.starts_with("showing ") && status.contains("cached")
 }
 
 fn github_rate_limit_label(rate_limit: &GitHubRateLimitStatus) -> Option<String> {

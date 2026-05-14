@@ -31,7 +31,7 @@ impl GitHubAuthStatus {
             Self::Loading => "GitHub",
             Self::SignedOut | Self::MissingClientId | Self::Failed(_) => "Sign in",
             Self::SigningIn { .. } => "Waiting",
-            Self::SignedIn { .. } => "Sign out",
+            Self::SignedIn { .. } => "GitHub",
         }
     }
 }
@@ -58,6 +58,7 @@ impl AppView {
                 GitHubAuthStatus::SigningIn { .. }
                     | GitHubAuthStatus::MissingClientId
                     | GitHubAuthStatus::Failed(_)
+                    | GitHubAuthStatus::SignedIn { .. }
             )
     }
 
@@ -108,6 +109,7 @@ impl AppView {
                                 view.github_auth_popover_open = false;
                                 view.status = "Signed in to GitHub".to_string();
                                 view.load_recent_repositories(cx);
+                                view.refresh_authenticated_github_user(cx);
                             }
                             Err(error) => {
                                 view.auth_status = GitHubAuthStatus::Failed(error);
@@ -331,6 +333,7 @@ impl AppView {
                 self.github_auth_popover_open = false;
                 self.status = "Signed in to GitHub".to_string();
                 self.load_recent_repositories(cx);
+                self.refresh_authenticated_github_user(cx);
 
                 self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
                     let result = write_task.await;
@@ -379,5 +382,37 @@ impl AppView {
         self.github_api
             .configure_token(token)
             .map_err(|error| error.to_string())
+    }
+
+    fn refresh_authenticated_github_user(&self, cx: &mut Context<Self>) {
+        let github_api = self.github_api.clone();
+
+        cx.spawn(async move |this, cx| {
+            let result = github_api.current_user().await;
+
+            this.update_or_log(
+                cx,
+                "failed to update github account state",
+                move |view, cx| match result {
+                    Ok(login) => {
+                        if matches!(view.auth_status, GitHubAuthStatus::SignedIn { .. })
+                            && view.github_api.has_token()
+                        {
+                            view.auth_status = GitHubAuthStatus::SignedIn {
+                                login: Some(login.clone()),
+                            };
+                            view.review_state.current_user_login = Some(login);
+                            cx.notify();
+                        }
+                    }
+                    Err(error) => {
+                        if matches!(view.auth_status, GitHubAuthStatus::SignedIn { .. }) {
+                            tracing::warn!(%error, "failed to load signed-in github account");
+                        }
+                    }
+                },
+            );
+        })
+        .detach();
     }
 }

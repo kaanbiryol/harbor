@@ -133,8 +133,20 @@ impl AppView {
         }
 
         self.reset_selected_pull_request_detail_state(load.number);
+        let defer_review_load_until_cache = should_defer_review_load_until_cache(
+            fetch_policy,
+            self.repository_state.store().is_some(),
+            self.active_tab,
+        );
+        if defer_review_load_until_cache {
+            self.review_state.start_reviews_load();
+        }
         if fetch_policy == PullRequestDetailFetchPolicy::PreferCache {
-            self.spawn_cached_selected_pull_request_detail_loader(load.clone(), cx);
+            self.spawn_cached_selected_pull_request_detail_loader(
+                load.clone(),
+                defer_review_load_until_cache,
+                cx,
+            );
         }
 
         self.spawn_pull_request_metadata_loader(load.clone(), cx);
@@ -231,6 +243,7 @@ impl AppView {
     fn spawn_cached_selected_pull_request_detail_loader(
         &mut self,
         load: SelectedPullRequestLoad,
+        defer_review_load_until_cache: bool,
         cx: &mut Context<Self>,
     ) {
         let Some(store) = self.repository_state.store() else {
@@ -284,9 +297,15 @@ impl AppView {
                         }
 
                         let Ok(cached) = result else {
+                            if defer_review_load_until_cache {
+                                view.review_state.reset_reviews_load();
+                                view.load_active_panel_data_if_needed(cx);
+                                cx.notify();
+                            }
                             return;
                         };
                         let mut applied_any = false;
+                        let mut applied_review_data = false;
 
                         if let Some(metadata) = cached.metadata
                             && !view.detail_state.details_loaded()
@@ -330,8 +349,16 @@ impl AppView {
                             && view.review_state.review_threads.is_empty()
                         {
                             view.replace_reviews_and_loaded_threads(reviews, threads);
+                            view.review_state.apply_reviews_success();
+                            view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
                             view.refresh_owned_file_filters(cx);
                             applied_any = true;
+                            applied_review_data = true;
+                        }
+
+                        if defer_review_load_until_cache && !applied_review_data {
+                            view.review_state.reset_reviews_load();
+                            view.load_active_panel_data_if_needed(cx);
                         }
 
                         if applied_any {
@@ -746,5 +773,56 @@ impl AppView {
                 );
             }
         }));
+    }
+}
+
+fn should_defer_review_load_until_cache(
+    fetch_policy: PullRequestDetailFetchPolicy,
+    has_store: bool,
+    active_tab: PanelTab,
+) -> bool {
+    fetch_policy == PullRequestDetailFetchPolicy::PreferCache
+        && has_store
+        && matches!(active_tab, PanelTab::Diff | PanelTab::Review)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defers_review_loading_until_cache_for_cache_backed_review_tabs() {
+        assert!(should_defer_review_load_until_cache(
+            PullRequestDetailFetchPolicy::PreferCache,
+            true,
+            PanelTab::Diff
+        ));
+        assert!(should_defer_review_load_until_cache(
+            PullRequestDetailFetchPolicy::PreferCache,
+            true,
+            PanelTab::Review
+        ));
+    }
+
+    #[test]
+    fn does_not_defer_review_loading_without_cache_or_for_non_review_tabs() {
+        assert!(!should_defer_review_load_until_cache(
+            PullRequestDetailFetchPolicy::Refresh,
+            true,
+            PanelTab::Diff
+        ));
+        assert!(!should_defer_review_load_until_cache(
+            PullRequestDetailFetchPolicy::PreferCache,
+            false,
+            PanelTab::Diff
+        ));
+
+        for tab in [PanelTab::Checks, PanelTab::Actions, PanelTab::Logs] {
+            assert!(!should_defer_review_load_until_cache(
+                PullRequestDetailFetchPolicy::PreferCache,
+                true,
+                tab
+            ));
+        }
     }
 }

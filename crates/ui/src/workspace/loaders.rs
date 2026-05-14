@@ -2,8 +2,8 @@ use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_domain::{PullRequest, RepoId};
 use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
 use harbor_sync::{
-    PullRequestInboxRefresh, PullRequestInboxRefreshRequest, cache_pull_request_inbox_refresh,
-    detect_pull_request_changes, refresh_pull_request_inbox,
+    PullRequestInboxPageInfo, PullRequestInboxRefresh, PullRequestInboxRefreshRequest,
+    cache_pull_request_inbox_refresh, detect_pull_request_changes, refresh_pull_request_inbox,
 };
 
 use crate::workspace::{
@@ -317,6 +317,113 @@ impl AppView {
         }
     }
 
+    pub(super) fn load_more_pull_requests(&mut self, cx: &mut Context<Self>) {
+        if self.pull_request_inbox.is_loading() || self.pull_request_inbox.is_loading_more() {
+            return;
+        }
+
+        let Some(repo) = self.repository_state.configured_repo_cloned() else {
+            self.status =
+                "Select a repository from the header before loading pull requests".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(page_cursor) = self.pull_request_inbox.next_page_cursor() else {
+            self.status = format!(
+                "All {} are loaded",
+                self.pull_request_inbox.mode().status_label()
+            );
+            cx.notify();
+            return;
+        };
+
+        let mode = self.pull_request_inbox.mode();
+        let key = PullRequestInboxCacheKey::new(repo.clone(), mode);
+        let github_api = self.github_api.clone();
+        let store = self.repository_state.store();
+        let previous_pull_requests = self.pull_requests.clone();
+
+        self.pull_request_inbox.start_loading_more();
+        self.status = format!(
+            "Loading more {} from {}",
+            mode.status_label(),
+            repo.full_name()
+        );
+
+        self.tasks
+            .set_pull_request_list_task(cx.spawn(async move |this, cx| {
+                let refresh = refresh_pull_request_inbox(
+                    github_api.as_ref(),
+                    PullRequestInboxRefreshRequest {
+                        store: store.as_ref(),
+                        repository: &repo,
+                        mode,
+                        page_cursor: Some(page_cursor),
+                        previous_pull_requests: &previous_pull_requests,
+                        force_enrichment: false,
+                    },
+                )
+                .await;
+
+                this.update_or_log(
+                    cx,
+                    "failed to update additional pull request inbox rows",
+                    move |view, cx| {
+                        if view.current_pull_request_inbox_key().as_ref() != Some(&key) {
+                            return;
+                        }
+
+                        match refresh {
+                            Ok(PullRequestInboxRefresh::Modified {
+                                pull_requests,
+                                page_info,
+                                enrichment_error,
+                            }) => {
+                                view.pull_request_inbox.apply_load_more_success();
+                                let appended_count = append_pull_request_page(
+                                    &mut view.pull_requests,
+                                    pull_requests,
+                                );
+                                view.pull_request_inbox.set_page_info(page_info.clone());
+                                view.update_pull_request_inbox_count(key, &page_info);
+                                view.status = pull_request_inbox_loaded_more_status(
+                                    &repo,
+                                    mode,
+                                    appended_count,
+                                    view.pull_requests.len(),
+                                    &page_info,
+                                );
+                                if let Some(error) = enrichment_error {
+                                    view.status =
+                                        format!("{}; rich refresh failed: {error}", view.status);
+                                }
+                                view.cache_current_pull_request_inbox_snapshot();
+                            }
+                            Ok(PullRequestInboxRefresh::NotModified) => {
+                                view.pull_request_inbox.apply_load_more_success();
+                                view.status = format!(
+                                    "{} from {} unchanged",
+                                    mode.status_label(),
+                                    repo.full_name()
+                                );
+                            }
+                            Err(error) => {
+                                view.pull_request_inbox
+                                    .apply_load_more_failure(error.to_string());
+                                view.status = format!(
+                                    "Failed to load more {} from {}",
+                                    mode.status_label(),
+                                    repo.full_name()
+                                );
+                            }
+                        }
+
+                        cx.notify();
+                    },
+                );
+            }));
+    }
+
     fn load_repository_pull_requests(
         &mut self,
         repo: RepoId,
@@ -331,6 +438,10 @@ impl AppView {
         }
 
         let key = PullRequestInboxCacheKey::new(repo.clone(), mode);
+        let same_inbox = self
+            .current_pull_request_inbox_key()
+            .as_ref()
+            .is_some_and(|current_key| current_key == &key);
 
         self.cache_current_pull_request_inbox_snapshot();
 
@@ -352,6 +463,9 @@ impl AppView {
 
         self.repository_state.select_repository(repo.clone());
         self.pull_request_inbox.set_mode(mode);
+        if !same_inbox {
+            self.pull_request_inbox.clear_page_info();
+        }
         self.ensure_sync_loop(cx);
         if refresh_intent != PullRequestInboxRefreshIntent::LightRefresh {
             self.record_recent_repository(repo.clone(), cx);
@@ -375,69 +489,6 @@ impl AppView {
         }
 
         self.status = pull_request_inbox_loading_status(&repo, mode);
-
-        if refresh_intent.uses_cache()
-            && let Some(store) = self.repository_state.store()
-        {
-            let load_repo = repo.clone();
-            let load_key = key.clone();
-            let task = cx.background_spawn(async move {
-                store
-                    .load_pull_request_inbox(&load_repo, mode.key())
-                    .await
-                    .map(|pull_requests| (pull_requests, store))
-            });
-
-            self.tasks
-                .set_pull_request_list_task(cx.spawn(async move |this, cx| {
-                    let result = task.await;
-
-                    this.update_or_log(
-                        cx,
-                        "failed to update cached pull request inbox state",
-                        move |view, cx| {
-                            if view.current_pull_request_inbox_key().as_ref() != Some(&load_key) {
-                                return;
-                            }
-
-                            match result {
-                                Ok((pull_requests, _store)) if !pull_requests.is_empty() => {
-                                    let count = pull_requests.len();
-                                    view.apply_loaded_pull_request_inbox(
-                                        repo.clone(),
-                                        mode,
-                                        pull_requests,
-                                        true,
-                                        cx,
-                                    );
-                                    view.status = format!(
-                                        "Showing {count} cached {} from {}",
-                                        mode.status_label(),
-                                        repo.full_name()
-                                    );
-                                    view.spawn_pull_request_inbox_refresh(
-                                        repo, mode, load_key, false, cx,
-                                    );
-                                }
-                                Ok((_pull_requests, _store)) => {
-                                    view.spawn_pull_request_inbox_refresh(
-                                        repo, mode, load_key, false, cx,
-                                    );
-                                }
-                                Err(error) => {
-                                    view.repository_state.set_error(error.to_string());
-                                    view.spawn_pull_request_inbox_refresh(
-                                        repo, mode, load_key, false, cx,
-                                    );
-                                }
-                            }
-
-                            cx.notify();
-                        },
-                    );
-                }));
-            return;
-        }
 
         self.spawn_pull_request_inbox_refresh(
             repo,
@@ -470,6 +521,7 @@ impl AppView {
                         store: store.as_ref(),
                         repository: &repo,
                         mode,
+                        page_cursor: None,
                         previous_pull_requests: &previous_pull_requests,
                         force_enrichment,
                     },
@@ -502,11 +554,15 @@ impl AppView {
                             }
                             Ok(PullRequestInboxRefresh::Modified {
                                 pull_requests,
+                                page_info,
                                 enrichment_error,
                             }) => {
                                 view.mark_sync_success(mode.active_sync_target());
+                                view.pull_request_inbox.set_page_info(page_info.clone());
                                 let count = pull_requests.len();
-                                let status = pull_request_inbox_loaded_status(&repo, mode, count);
+                                let status = pull_request_inbox_loaded_status(
+                                    &repo, mode, count, &page_info,
+                                );
                                 let change_events = detect_pull_request_changes(
                                     &previous_pull_requests,
                                     &pull_requests,
@@ -515,6 +571,7 @@ impl AppView {
                                     repo.clone(),
                                     mode,
                                     pull_requests,
+                                    page_info,
                                     true,
                                     cx,
                                 );
@@ -530,7 +587,7 @@ impl AppView {
                                 view.set_log_loading(false);
                                 view.pull_request_inbox.apply_failure(error.to_string());
                                 if !view.pull_requests.is_empty() {
-                                    status = format!("{status}; showing cached data");
+                                    status = format!("{status}; showing existing data");
                                 } else {
                                     view.clear_changed_file_state();
                                     view.clear_workflow_state();
@@ -631,6 +688,7 @@ impl AppView {
         repo: RepoId,
         mode: PullRequestInboxMode,
         pull_requests: Vec<PullRequest>,
+        page_info: PullRequestInboxPageInfo,
         load_selected_detail: bool,
         cx: &mut Context<Self>,
     ) {
@@ -646,8 +704,8 @@ impl AppView {
         self.repository_state.select_repository(repo);
         self.pull_request_inbox.set_mode(mode);
         self.pull_requests = pull_requests;
-        self.pull_request_inbox
-            .insert_count(key, self.pull_requests.len());
+        self.pull_request_inbox.set_page_info(page_info.clone());
+        self.update_pull_request_inbox_count(key, &page_info);
 
         let selected_pr = previous_selected
             .as_ref()
@@ -690,6 +748,19 @@ impl AppView {
             self.cache_current_pull_request_inbox_snapshot();
         }
     }
+
+    fn update_pull_request_inbox_count(
+        &mut self,
+        key: PullRequestInboxCacheKey,
+        page_info: &PullRequestInboxPageInfo,
+    ) {
+        if let Some(total_count) = page_info.total_count {
+            self.pull_request_inbox.insert_count(key, total_count);
+        } else if !page_info.has_next_page() {
+            self.pull_request_inbox
+                .insert_count(key, self.pull_requests.len());
+        }
+    }
 }
 
 struct RepositoryLoad {
@@ -716,12 +787,46 @@ fn pull_request_inbox_loaded_status(
     repository: &RepoId,
     mode: PullRequestInboxMode,
     count: usize,
+    page_info: &PullRequestInboxPageInfo,
 ) -> String {
-    format!(
-        "Loaded {count} {} from {}",
-        mode.status_label(),
-        repository.full_name()
-    )
+    match page_info.total_count {
+        Some(total_count) if count < total_count => format!(
+            "Loaded {count} of {total_count} {} from {}",
+            mode.status_label(),
+            repository.full_name()
+        ),
+        _ if page_info.has_next_page() => format!(
+            "Loaded first {count} {} from {}",
+            mode.status_label(),
+            repository.full_name()
+        ),
+        _ => format!(
+            "Loaded {count} {} from {}",
+            mode.status_label(),
+            repository.full_name()
+        ),
+    }
+}
+
+fn pull_request_inbox_loaded_more_status(
+    repository: &RepoId,
+    mode: PullRequestInboxMode,
+    appended_count: usize,
+    loaded_count: usize,
+    page_info: &PullRequestInboxPageInfo,
+) -> String {
+    match page_info.total_count {
+        Some(total_count) => format!(
+            "Loaded {appended_count} more {}; showing {loaded_count} of {total_count} from {}",
+            mode.status_label(),
+            repository.full_name()
+        ),
+        None => format!(
+            "Loaded {appended_count} more {}; showing {loaded_count} from {}",
+            mode.status_label(),
+            repository.full_name()
+        ),
+    }
 }
 
 fn pull_request_inbox_failed_status(repository: &RepoId, mode: PullRequestInboxMode) -> String {
@@ -730,6 +835,26 @@ fn pull_request_inbox_failed_status(repository: &RepoId, mode: PullRequestInboxM
         mode.status_label(),
         repository.full_name()
     )
+}
+
+fn append_pull_request_page(
+    pull_requests: &mut Vec<PullRequest>,
+    page_pull_requests: Vec<PullRequest>,
+) -> usize {
+    let mut appended_count = 0;
+
+    for pull_request in page_pull_requests {
+        if let Some(existing) = pull_requests.iter_mut().find(|existing| {
+            existing.repo == pull_request.repo && existing.number == pull_request.number
+        }) {
+            *existing = pull_request;
+        } else {
+            pull_requests.push(pull_request);
+            appended_count += 1;
+        }
+    }
+
+    appended_count
 }
 
 async fn load_repository_store(

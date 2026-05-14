@@ -6,6 +6,7 @@ use harbor_domain::{
     WorkflowRun,
 };
 use harbor_logs::LogChunk;
+use harbor_sync::PullRequestInboxPageInfo;
 
 use super::state::PullRequestDetailLoadedState;
 use crate::{
@@ -70,6 +71,7 @@ pub(crate) struct PullRequestDetailSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PullRequestInboxSnapshot {
     pull_requests: Vec<PullRequest>,
+    page_info: PullRequestInboxPageInfo,
     files: Vec<DiffFile>,
     diffs: Vec<Option<ParsedDiff>>,
     check_runs: Vec<CheckRun>,
@@ -93,8 +95,10 @@ pub(crate) struct PullRequestInboxSnapshot {
 }
 
 impl PullRequestInboxSnapshot {
-    pub(crate) fn pull_request_count(&self) -> usize {
-        self.pull_requests.len()
+    pub(crate) fn count(&self) -> Option<usize> {
+        self.page_info
+            .total_count
+            .or_else(|| (!self.page_info.has_next_page()).then_some(self.pull_requests.len()))
     }
 }
 
@@ -240,6 +244,7 @@ impl AppView {
     fn current_pull_request_inbox_snapshot(&self) -> PullRequestInboxSnapshot {
         PullRequestInboxSnapshot {
             pull_requests: self.pull_requests.clone(),
+            page_info: self.pull_request_inbox.page_info().clone(),
             files: self.detail_state.files.clone(),
             diffs: self.detail_state.diffs.clone(),
             check_runs: self.detail_state.check_runs.clone(),
@@ -277,6 +282,7 @@ impl AppView {
         self.repository_state
             .select_repository(key.repository.clone());
         self.pull_request_inbox.set_mode(key.mode);
+        self.pull_request_inbox.set_page_info(snapshot.page_info);
         self.tasks.clear_pull_request_list_task();
         self.tasks.clear_pull_request_detail_tasks();
         self.pull_request_inbox.reset_load();

@@ -3,9 +3,10 @@ mod open_with;
 #[path = "header/switchers.rs"]
 mod switchers;
 
-use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
+use gpui::{Anchor, AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     IconName, Sizable, StyledExt, TitleBar,
+    avatar::Avatar,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
@@ -66,8 +67,7 @@ impl AppView {
     fn render_github_auth_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
         let status = self.auth_status().clone();
-        let label = status.label();
-        let is_signed_in = matches!(status, GitHubAuthStatus::SignedIn { .. });
+        let trigger = render_github_auth_trigger(&status);
 
         Popover::new("github-auth-popover")
             .appearance(false)
@@ -85,130 +85,239 @@ impl AppView {
                     });
                 }
             })
-            .trigger(
-                Button::new("github-auth")
-                    .ghost()
-                    .small()
-                    .compact()
-                    .icon(IconName::Github)
-                    .child(label)
-                    .on_click({
-                        let view = view.clone();
-                        let status = status.clone();
-                        move |_, window, cx| {
-                            view.update(cx, |view, cx| {
-                                if is_signed_in {
-                                    view.sign_out_of_github(&SignOutOfGitHub, window, cx);
-                                } else if matches!(
-                                    status,
-                                    GitHubAuthStatus::SigningIn { .. }
-                                        | GitHubAuthStatus::MissingClientId
-                                        | GitHubAuthStatus::Failed(_)
-                                ) {
-                                    view.open_github_auth_popover(cx);
-                                } else {
-                                    view.sign_in_to_github(&SignInToGitHub, window, cx);
-                                }
-                            });
+            .trigger(trigger.on_click({
+                let view = view.clone();
+                move |_, window, cx| {
+                    view.update(cx, |view, cx| {
+                        if matches!(
+                            view.auth_status(),
+                            GitHubAuthStatus::SignedIn { .. }
+                                | GitHubAuthStatus::SigningIn { .. }
+                                | GitHubAuthStatus::MissingClientId
+                                | GitHubAuthStatus::Failed(_)
+                        ) {
+                            if view.github_auth_popover_open() {
+                                view.dismiss_github_auth_popover(cx);
+                            } else {
+                                view.open_github_auth_popover(cx);
+                            }
+                        } else {
+                            view.sign_in_to_github(&SignInToGitHub, window, cx);
                         }
-                    }),
-            )
+                    });
+                }
+            }))
             .content(move |_, _window, _cx| {
                 render_github_auth_popover(status.clone(), view.clone())
             })
     }
 }
 
-fn render_github_auth_popover(
-    status: GitHubAuthStatus,
-    view: gpui::Entity<AppView>,
-) -> impl IntoElement {
-    let mut content = div()
-        .w(px(300.))
-        .border_1()
-        .border_color(color::border_strong())
-        .bg(color::elevated_background())
-        .p_3()
-        .shadow_lg()
-        .flex()
-        .flex_col()
-        .gap_2();
+fn render_github_auth_trigger(status: &GitHubAuthStatus) -> Button {
+    match status {
+        GitHubAuthStatus::SignedIn { login } => Button::new("github-account")
+            .ghost()
+            .small()
+            .compact()
+            .rounded(px(999.0))
+            .tooltip("GitHub account")
+            .child(render_github_account_avatar(login.as_deref(), 20.0)),
+        _ => Button::new("github-auth")
+            .ghost()
+            .small()
+            .compact()
+            .icon(IconName::Github)
+            .child(status.label()),
+    }
+}
 
+fn render_github_auth_popover(status: GitHubAuthStatus, view: Entity<AppView>) -> AnyElement {
     match status {
         GitHubAuthStatus::SigningIn {
             user_code,
             verification_uri,
         } => {
-            content = content
+            render_github_device_code_popover(user_code, verification_uri, view).into_any_element()
+        }
+        GitHubAuthStatus::SignedIn { login } => {
+            render_github_account_popover(login, view).into_any_element()
+        }
+        GitHubAuthStatus::MissingClientId => render_github_message_popover(
+            "Set HARBOR_GITHUB_OAUTH_CLIENT_ID to sign in with GitHub.",
+            true,
+        )
+        .into_any_element(),
+        GitHubAuthStatus::Failed(error) => {
+            render_github_message_popover(error, true).into_any_element()
+        }
+        GitHubAuthStatus::Loading | GitHubAuthStatus::SignedOut => div().into_any_element(),
+    }
+}
+
+fn render_github_popover_frame(width: f32) -> gpui::Div {
+    div()
+        .w(px(width))
+        .border_1()
+        .border_color(color::border_strong())
+        .bg(color::elevated_background())
+        .shadow_lg()
+}
+
+fn render_github_device_code_popover(
+    user_code: String,
+    verification_uri: String,
+    view: Entity<AppView>,
+) -> impl IntoElement {
+    let mut content = div().p_3().flex().flex_col().gap_2();
+
+    content = content
+        .child(
+            div()
+                .text_sm()
+                .text_color(color::text_muted())
+                .child("Enter this GitHub device code in your browser."),
+        )
+        .child(
+            div()
+                .px_2()
+                .py_2()
+                .bg(color::app_background())
+                .text_lg()
+                .font_semibold()
+                .child(user_code),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(color::text_muted())
+                .truncate()
+                .child(verification_uri),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_2()
                 .child(
-                    div()
-                        .text_sm()
-                        .text_color(color::text_muted())
-                        .child("Enter this GitHub device code in your browser."),
+                    Button::new("copy-github-device-code")
+                        .small()
+                        .child("Copy")
+                        .on_click({
+                            let view = view.clone();
+                            move |_, _, cx| {
+                                view.update(cx, |view, cx| {
+                                    view.copy_github_device_code(cx);
+                                });
+                            }
+                        }),
                 )
                 .child(
-                    div()
-                        .px_2()
-                        .py_2()
-                        .bg(color::app_background())
-                        .text_lg()
-                        .font_semibold()
-                        .child(user_code),
-                )
+                    Button::new("open-github-device-code")
+                        .small()
+                        .child("Open")
+                        .on_click({
+                            let view = view.clone();
+                            move |_, _, cx| {
+                                view.update(cx, |view, cx| {
+                                    view.open_github_device_verification(cx);
+                                });
+                            }
+                        }),
+                ),
+        );
+
+    render_github_popover_frame(300.0).child(content)
+}
+
+fn render_github_message_popover(message: impl Into<String>, is_error: bool) -> impl IntoElement {
+    render_github_popover_frame(300.0).p_3().child(
+        div()
+            .text_sm()
+            .text_color(if is_error {
+                color::danger()
+            } else {
+                color::text_muted()
+            })
+            .child(message.into()),
+    )
+}
+
+fn render_github_account_popover(login: Option<String>, view: Entity<AppView>) -> impl IntoElement {
+    let account_label = login
+        .clone()
+        .unwrap_or_else(|| "GitHub account".to_string());
+
+    render_github_popover_frame(220.0)
+        .p_1()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .py_2()
+                .child(render_github_account_avatar(login.as_deref(), 28.0))
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(color::text_muted())
-                        .truncate()
-                        .child(verification_uri),
-                )
-                .child(
-                    div()
+                        .min_w_0()
                         .flex()
-                        .gap_2()
+                        .flex_col()
                         .child(
-                            Button::new("copy-github-device-code")
-                                .small()
-                                .child("Copy")
-                                .on_click({
-                                    let view = view.clone();
-                                    move |_, _, cx| {
-                                        view.update(cx, |view, cx| {
-                                            view.copy_github_device_code(cx);
-                                        });
-                                    }
-                                }),
+                            div()
+                                .truncate()
+                                .text_sm()
+                                .font_medium()
+                                .text_color(color::text_primary())
+                                .child(account_label),
                         )
                         .child(
-                            Button::new("open-github-device-code")
-                                .small()
-                                .child("Open")
-                                .on_click({
-                                    let view = view.clone();
-                                    move |_, _, cx| {
-                                        view.update(cx, |view, cx| {
-                                            view.open_github_device_verification(cx);
-                                        });
-                                    }
-                                }),
+                            div()
+                                .text_xs()
+                                .text_color(color::text_muted())
+                                .child("GitHub"),
                         ),
-                );
-        }
-        GitHubAuthStatus::MissingClientId => {
-            content = content.child(
-                div()
-                    .text_sm()
-                    .text_color(color::danger())
-                    .child("Set HARBOR_GITHUB_OAUTH_CLIENT_ID to sign in with GitHub."),
-            );
-        }
-        GitHubAuthStatus::Failed(error) => {
-            content = content.child(div().text_sm().text_color(color::danger()).child(error));
-        }
-        GitHubAuthStatus::Loading
-        | GitHubAuthStatus::SignedOut
-        | GitHubAuthStatus::SignedIn { .. } => {}
-    }
+                ),
+        )
+        .child(
+            Button::new("github-account-sign-out")
+                .small()
+                .ghost()
+                .child("Sign out")
+                .w_full()
+                .on_click(move |_, window, cx| {
+                    view.update(cx, |view, cx| {
+                        view.sign_out_of_github(&SignOutOfGitHub, window, cx);
+                    });
+                }),
+        )
+}
 
-    content
+fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {
+    match login.and_then(github_avatar_url_for_login) {
+        Some(avatar_url) => Avatar::new()
+            .src(avatar_url)
+            .name(login.unwrap_or("GitHub").to_string())
+            .with_size(px(size))
+            .into_any_element(),
+        None => Avatar::new()
+            .placeholder(IconName::Github)
+            .with_size(px(size))
+            .into_any_element(),
+    }
+}
+
+fn github_avatar_url_for_login(login: &str) -> Option<String> {
+    let login = login.trim();
+
+    if login.is_empty()
+        || login.eq_ignore_ascii_case("ghost")
+        || login.eq_ignore_ascii_case("you")
+        || login.chars().any(char::is_whitespace)
+    {
+        None
+    } else {
+        Some(format!("https://github.com/{login}.png?size=48"))
+    }
 }

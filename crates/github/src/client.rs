@@ -9,7 +9,7 @@ mod reviews;
 #[path = "client/workflows.rs"]
 mod workflows;
 
-use harbor_domain::{ChecksSummary, MergeState, RepoId, ReviewDecision};
+use harbor_domain::{ChecksSummary, MergeState, PullRequest, RepoId, ReviewDecision};
 
 use crate::{GitHubRateLimitStatus, GitHubRequestAttribution, GitHubTransport};
 
@@ -30,6 +30,19 @@ pub enum PullRequestListFilter {
     Open,
     Closed,
     NeedsReview,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PullRequestPageCursor {
+    GraphQl(String),
+    RestPage(usize),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullRequestPage {
+    pub pull_requests: Vec<PullRequest>,
+    pub total_count: Option<usize>,
+    pub next_cursor: Option<PullRequestPageCursor>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

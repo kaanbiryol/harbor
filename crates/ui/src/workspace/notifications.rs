@@ -120,7 +120,7 @@ impl AppView {
     }
 
     pub(crate) fn catch_up_active_inbox_after_focus(&mut self, cx: &mut Context<Self>) {
-        if self.pull_request_inbox.is_loading() {
+        if self.pull_request_inbox.is_loading() || self.pull_request_inbox.is_loading_more() {
             return;
         }
 

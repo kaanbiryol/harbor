@@ -17,15 +17,46 @@ use crate::{
 
 use super::render_switcher_section_label;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestInboxBodyState {
+    LoadingEmpty,
+    RefreshingRows,
+    ErrorEmpty,
+    ErrorRows,
+    Empty,
+    Rows,
+}
+
+fn pull_request_inbox_body_state(
+    is_loading: bool,
+    has_load_error: bool,
+    has_pull_requests: bool,
+) -> PullRequestInboxBodyState {
+    match (is_loading, has_load_error, has_pull_requests) {
+        (true, _, true) => PullRequestInboxBodyState::RefreshingRows,
+        (true, _, false) => PullRequestInboxBodyState::LoadingEmpty,
+        (false, true, true) => PullRequestInboxBodyState::ErrorRows,
+        (false, true, false) => PullRequestInboxBodyState::ErrorEmpty,
+        (false, false, true) => PullRequestInboxBodyState::Rows,
+        (false, false, false) => PullRequestInboxBodyState::Empty,
+    }
+}
+
 impl AppView {
     fn pull_request_inbox_mode_count(&self, mode: PullRequestInboxMode) -> Option<usize> {
         let repository = self.repository_state.configured_repo()?;
+        let key = PullRequestInboxCacheKey::new(repository.clone(), mode);
 
         if mode == self.pull_request_inbox.mode() {
-            return Some(self.pull_requests.len());
+            return self
+                .pull_request_inbox
+                .stored_count(&key)
+                .or_else(|| self.pull_request_inbox.total_count())
+                .or_else(|| {
+                    (!self.pull_request_inbox.has_next_page()).then_some(self.pull_requests.len())
+                });
         }
 
-        let key = PullRequestInboxCacheKey::new(repository.clone(), mode);
         self.pull_request_inbox.snapshot_count(&key)
     }
 
@@ -159,16 +190,29 @@ impl AppView {
     }
 
     pub(super) fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let show_list = !self.pull_request_inbox.is_loading()
-            && self.pull_request_inbox.load_error().is_none()
-            && !self.pull_requests.is_empty();
         let current_mode = self.pull_request_inbox.mode();
         let load_error = self.pull_request_inbox.load_error().map(str::to_string);
+        let body_state = pull_request_inbox_body_state(
+            self.pull_request_inbox.is_loading(),
+            load_error.is_some(),
+            !self.pull_requests.is_empty(),
+        );
+        let show_list = matches!(
+            body_state,
+            PullRequestInboxBodyState::RefreshingRows
+                | PullRequestInboxBodyState::ErrorRows
+                | PullRequestInboxBodyState::Rows
+        );
         let empty_message = if self.repository_state.has_configured_repo() {
             current_mode.empty_message()
         } else {
             "Choose a repository from the header"
         };
+        let show_page_footer = show_list
+            && (self.pull_request_inbox.has_next_page()
+                || self.pull_request_inbox.is_loading_more()
+                || self.pull_request_inbox.load_more_error().is_some());
+        let pull_request_list_item_count = self.pull_requests.len() + usize::from(show_page_footer);
 
         div()
             .w(px(320.))
@@ -232,19 +276,57 @@ impl AppView {
                         }),
                     )),
             )
-            .when(self.pull_request_inbox.is_loading(), |element| {
-                element.child(
-                    div()
-                        .flex_1()
-                        .px_3()
-                        .py_3()
-                        .text_sm()
-                        .text_color(color::text_muted())
-                        .child(format!("Loading {}...", current_mode.status_label())),
-                )
-            })
             .when(
-                !self.pull_request_inbox.is_loading() && load_error.is_some(),
+                body_state == PullRequestInboxBodyState::RefreshingRows,
+                |element| {
+                    element.child(
+                        div()
+                            .id("pull-request-inbox-refreshing")
+                            .px_3()
+                            .py_2()
+                            .border_b_1()
+                            .border_color(color::border())
+                            .text_xs()
+                            .text_color(color::text_muted())
+                            .child(format!("Refreshing {}...", current_mode.status_label())),
+                    )
+                },
+            )
+            .when(
+                body_state == PullRequestInboxBodyState::LoadingEmpty,
+                |element| {
+                    element.child(
+                        div()
+                            .flex_1()
+                            .px_3()
+                            .py_3()
+                            .text_sm()
+                            .text_color(color::text_muted())
+                            .child(format!("Loading {}...", current_mode.status_label())),
+                    )
+                },
+            )
+            .when(
+                body_state == PullRequestInboxBodyState::ErrorRows,
+                |element| {
+                    element.child(
+                        div()
+                            .id("pull-request-inbox-refresh-error")
+                            .px_3()
+                            .py_2()
+                            .border_b_1()
+                            .border_color(color::border())
+                            .text_xs()
+                            .text_color(color::danger())
+                            .child(format!(
+                                "Refresh failed: {}",
+                                load_error.clone().unwrap_or_default()
+                            )),
+                    )
+                },
+            )
+            .when(
+                body_state == PullRequestInboxBodyState::ErrorEmpty,
                 |element| {
                     element.child(
                         div()
@@ -257,51 +339,133 @@ impl AppView {
                     )
                 },
             )
-            .when(
-                !self.pull_request_inbox.is_loading()
-                    && self.pull_request_inbox.load_error().is_none()
-                    && self.pull_requests.is_empty(),
-                |element| {
-                    element.child(
-                        div()
-                            .flex_1()
-                            .px_3()
-                            .py_3()
-                            .text_sm()
-                            .text_color(color::text_muted())
-                            .child(empty_message),
-                    )
-                },
-            )
-            .when(show_list, |element| {
+            .when(body_state == PullRequestInboxBodyState::Empty, |element| {
                 element.child(
-                    uniform_list(
-                        "pull-request-inbox-list",
-                        self.pull_requests.len(),
-                        cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
-                            let mut rows = Vec::with_capacity(range.len());
-
-                            for index in range {
-                                let Some(pr) = view.pull_requests.get(index) else {
-                                    continue;
-                                };
-                                rows.push(render_pull_request_row(
-                                    index,
-                                    pr,
-                                    index == view.selected_pull_request_index(),
-                                    cx,
-                                ));
-                            }
-
-                            rows
-                        }),
-                    )
-                    .track_scroll(&self.pr_list_scroll)
-                    .flex_1()
-                    .min_h_0()
-                    .w_full(),
+                    div()
+                        .flex_1()
+                        .px_3()
+                        .py_3()
+                        .text_sm()
+                        .text_color(color::text_muted())
+                        .child(empty_message),
                 )
             })
+            .when(show_list, |element| {
+                element.child(
+                    div()
+                        .id("pull-request-inbox-list")
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .child(
+                            uniform_list(
+                                "pull-request-inbox-rows",
+                                pull_request_list_item_count,
+                                cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
+                                    let mut rows = Vec::with_capacity(range.len());
+
+                                    for index in range {
+                                        if index == view.pull_requests.len() {
+                                            rows.push(
+                                                view.render_pull_request_inbox_page_footer(cx),
+                                            );
+                                            continue;
+                                        }
+
+                                        let Some(pr) = view.pull_requests.get(index) else {
+                                            continue;
+                                        };
+                                        rows.push(render_pull_request_row(
+                                            index,
+                                            pr,
+                                            index == view.selected_pull_request_index(),
+                                            cx,
+                                        ));
+                                    }
+
+                                    rows
+                                }),
+                            )
+                            .track_scroll(&self.pr_list_scroll)
+                            .flex_1()
+                            .min_h_0()
+                            .w_full(),
+                        ),
+                )
+            })
+    }
+
+    fn render_pull_request_inbox_page_footer(&self, cx: &mut Context<Self>) -> AnyElement {
+        let loaded_count = self.pull_requests.len();
+        let total_count = self
+            .current_pull_request_inbox_key()
+            .as_ref()
+            .and_then(|key| self.pull_request_inbox.stored_count(key))
+            .or_else(|| self.pull_request_inbox.total_count());
+        let count_label = match total_count {
+            Some(total_count) => format!("Showing {loaded_count} of {total_count}"),
+            None => format!("Showing {loaded_count}"),
+        };
+        let load_more_error = self
+            .pull_request_inbox
+            .load_more_error()
+            .map(str::to_string);
+        let can_load_more = self.pull_request_inbox.has_next_page()
+            && !self.pull_request_inbox.is_loading()
+            && !self.pull_request_inbox.is_loading_more();
+
+        div()
+            .id("pull-request-inbox-page-footer")
+            .h(px(76.))
+            .w_full()
+            .border_t_1()
+            .border_color(color::border())
+            .px_3()
+            .py_1()
+            .flex()
+            .flex_col()
+            .justify_center()
+            .gap_1()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_xs()
+                            .text_color(color::text_muted())
+                            .child(count_label),
+                    )
+                    .child(
+                        Button::new("load-more-pull-requests")
+                            .ghost()
+                            .small()
+                            .compact()
+                            .icon(IconName::ChevronDown)
+                            .label("Load more")
+                            .tooltip("Load more pull requests")
+                            .loading(self.pull_request_inbox.is_loading_more())
+                            .disabled(!can_load_more)
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.load_more_pull_requests(cx);
+                            })),
+                    ),
+            )
+            .when_some(load_more_error, |element, error| {
+                element.child(
+                    div()
+                        .text_xs()
+                        .text_color(color::danger())
+                        .child(format!("Load more failed: {error}")),
+                )
+            })
+            .into_any_element()
     }
 }
 
@@ -454,5 +618,30 @@ fn handle_pull_request_inbox_search_key(
             });
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_existing_pull_request_rows_visible_while_refreshing() {
+        assert_eq!(
+            pull_request_inbox_body_state(true, false, true),
+            PullRequestInboxBodyState::RefreshingRows
+        );
+        assert_eq!(
+            pull_request_inbox_body_state(false, true, true),
+            PullRequestInboxBodyState::ErrorRows
+        );
+        assert_eq!(
+            pull_request_inbox_body_state(true, false, false),
+            PullRequestInboxBodyState::LoadingEmpty
+        );
+        assert_eq!(
+            pull_request_inbox_body_state(false, true, false),
+            PullRequestInboxBodyState::ErrorEmpty
+        );
     }
 }

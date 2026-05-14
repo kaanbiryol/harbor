@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{
     ConditionalFetch, GitHubError, GitHubTransport, HttpCacheValidator, PullRequestEnrichment,
-    Result, dto,
+    PullRequestPage, PullRequestPageCursor, Result, dto,
 };
 
 use super::{
@@ -44,8 +44,7 @@ where
         filter: PullRequestListFilter,
     ) -> Result<Vec<PullRequest>> {
         let mut pull_requests = Vec::new();
-        let mut after = None;
-        let search_query = repository_pull_requests_query(repository, filter);
+        let mut cursor = None;
         let mut pages_loaded = 0;
 
         loop {
@@ -56,31 +55,65 @@ where
             }
             pages_loaded += 1;
 
-            let response = self
-                .transport
-                .graphql(
-                    REPOSITORY_PULL_REQUESTS_QUERY,
-                    json!({
-                        "searchQuery": search_query,
-                        "after": after,
-                    }),
-                )
+            let page = self
+                .list_repository_pull_request_page(repository, filter, cursor, 100)
                 .await?;
-            let page = dto::pull_request_search_page_from_graphql_value(response)?;
             pull_requests.extend(page.pull_requests);
 
-            if !page.has_next_page {
-                break;
+            match page.next_cursor {
+                Some(next_cursor) => cursor = Some(next_cursor),
+                None => break,
             }
-
-            after = Some(page.end_cursor.ok_or_else(|| {
-                GitHubError::Mapping(
-                    "repository pull request page was missing an end cursor".to_string(),
-                )
-            })?);
         }
 
         Ok(pull_requests)
+    }
+
+    pub async fn list_repository_pull_request_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage> {
+        let after = match cursor {
+            Some(PullRequestPageCursor::GraphQl(cursor)) => Some(cursor),
+            Some(PullRequestPageCursor::RestPage(_)) => {
+                return Err(GitHubError::Mapping(
+                    "REST pull request page cursor cannot be used for GraphQL search".to_string(),
+                ));
+            }
+            None => None,
+        };
+        let response = self
+            .transport
+            .graphql(
+                REPOSITORY_PULL_REQUESTS_QUERY,
+                json!({
+                    "searchQuery": repository_pull_requests_query(repository, filter),
+                    "first": page_size.clamp(1, 100),
+                    "after": after,
+                }),
+            )
+            .await?;
+        let page = dto::pull_request_search_page_from_graphql_value(response)?;
+        let next_cursor = if page.has_next_page {
+            Some(PullRequestPageCursor::GraphQl(page.end_cursor.ok_or_else(
+                || {
+                    GitHubError::Mapping(
+                        "repository pull request page was missing an end cursor".to_string(),
+                    )
+                },
+            )?))
+        } else {
+            None
+        };
+
+        Ok(PullRequestPage {
+            pull_requests: page.pull_requests,
+            total_count: page.total_count,
+            next_cursor,
+        })
     }
 
     pub async fn count_repository_pull_requests(
@@ -165,6 +198,82 @@ where
             value: pull_requests,
             validator,
         })
+    }
+
+    pub async fn list_repository_pull_requests_light_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+        validator: Option<&HttpCacheValidator>,
+    ) -> Result<ConditionalFetch<PullRequestPage>> {
+        if filter == PullRequestListFilter::NeedsReview {
+            return self
+                .list_repository_pull_request_page(repository, filter, cursor, page_size)
+                .await
+                .map(|page| ConditionalFetch::Modified {
+                    value: page,
+                    validator: None,
+                });
+        }
+
+        let page = match cursor {
+            Some(PullRequestPageCursor::RestPage(page)) => page,
+            Some(PullRequestPageCursor::GraphQl(_)) => {
+                return Err(GitHubError::Mapping(
+                    "GraphQL pull request page cursor cannot be used for REST list".to_string(),
+                ));
+            }
+            None => 1,
+        };
+        let page_size = page_size.clamp(1, 100);
+        let page_size_string = page_size.to_string();
+        let page_string = page.to_string();
+        let path = format!("/repos/{}/{}/pulls", repository.owner, repository.name);
+        let state = pull_request_rest_state(filter);
+        let mut query = vec![
+            ("state", state),
+            ("per_page", page_size_string.as_str()),
+            ("sort", "updated"),
+            ("direction", "desc"),
+        ];
+        if page > 1 {
+            query.push(("page", page_string.as_str()));
+        }
+
+        let fetch = if page == 1 {
+            self.transport
+                .rest_get_conditional(&path, &query, validator)
+                .await?
+        } else {
+            ConditionalFetch::Modified {
+                value: self.transport.rest_get(&path, &query).await?,
+                validator: None,
+            }
+        };
+
+        match fetch {
+            ConditionalFetch::NotModified { validator } => {
+                Ok(ConditionalFetch::NotModified { validator })
+            }
+            ConditionalFetch::Modified { value, validator } => {
+                let pull_requests = dto::pull_requests_from_value(repository.clone(), value)?;
+                let next_cursor = if pull_requests.len() == page_size {
+                    Some(PullRequestPageCursor::RestPage(page + 1))
+                } else {
+                    None
+                };
+                Ok(ConditionalFetch::Modified {
+                    value: PullRequestPage {
+                        pull_requests,
+                        total_count: None,
+                        next_cursor,
+                    },
+                    validator,
+                })
+            }
+        }
     }
 
     pub async fn enrich_pull_requests_by_node_ids(

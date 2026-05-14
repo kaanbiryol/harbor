@@ -62,7 +62,7 @@ impl AppView {
         let Some(repository) = self.repository_state.configured_repo_cloned() else {
             return;
         };
-        if self.pull_request_inbox.is_loading() {
+        if self.pull_request_inbox.is_loading() || self.pull_request_inbox.is_loading_more() {
             return;
         }
 
@@ -137,8 +137,7 @@ impl AppView {
     }
 
     fn run_scheduled_selected_pull_request_sync(&mut self, cx: &mut Context<Self>) {
-        if self.sync_runtime.is_background()
-            || self.selected_pull_request().is_none()
+        if self.selected_pull_request().is_none()
             || self.detail_state.details_loading()
             || self.detail_state.files_loading()
             || self.detail_state.checks_loading()
@@ -191,7 +190,7 @@ impl AppView {
     }
 
     fn next_selected_pull_request_sync_delay(&self) -> Duration {
-        if self.sync_runtime.is_background() || self.selected_pull_request().is_none() {
+        if self.selected_pull_request().is_none() {
             return IDLE_SYNC_LOOP_DELAY;
         }
 

@@ -8,9 +8,11 @@ use harbor_domain::{
 };
 use harbor_github::{
     ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-    PullRequestEnrichment, PullRequestListFilter,
+    PullRequestEnrichment, PullRequestListFilter, PullRequestPage, PullRequestPageCursor,
 };
 use harbor_storage::{SqliteStore, StoredHttpCacheValidator};
+
+pub const PULL_REQUEST_INBOX_PAGE_SIZE: usize = 20;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivityState {
@@ -130,13 +132,41 @@ pub struct PullRequestInboxRefreshRequest<'a> {
     pub store: Option<&'a SqliteStore>,
     pub repository: &'a RepoId,
     pub mode: PullRequestInboxMode,
+    pub page_cursor: Option<PullRequestPageCursor>,
     pub previous_pull_requests: &'a [PullRequest],
     pub force_enrichment: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PullRequestInboxPageInfo {
+    pub total_count: Option<usize>,
+    pub next_cursor: Option<PullRequestPageCursor>,
+}
+
+impl PullRequestInboxPageInfo {
+    pub fn from_page(page: &PullRequestPage) -> Self {
+        Self {
+            total_count: page.total_count,
+            next_cursor: page.next_cursor.clone(),
+        }
+    }
+
+    pub fn complete(total_count: usize) -> Self {
+        Self {
+            total_count: Some(total_count),
+            next_cursor: None,
+        }
+    }
+
+    pub fn has_next_page(&self) -> bool {
+        self.next_cursor.is_some()
+    }
 }
 
 pub enum PullRequestInboxRefresh {
     Modified {
         pull_requests: Vec<PullRequest>,
+        page_info: PullRequestInboxPageInfo,
         enrichment_error: Option<String>,
     },
     NotModified,
@@ -146,11 +176,13 @@ pub enum PullRequestInboxRefresh {
 pub trait PullRequestInboxSource: Send + Sync {
     fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus>;
 
-    async fn list_repository_pull_requests(
+    async fn list_repository_pull_request_page(
         &self,
         repository: &RepoId,
         filter: PullRequestListFilter,
-    ) -> harbor_github::Result<Vec<PullRequest>>;
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> harbor_github::Result<PullRequestPage>;
 
     async fn count_repository_pull_requests(
         &self,
@@ -158,12 +190,14 @@ pub trait PullRequestInboxSource: Send + Sync {
         filter: PullRequestListFilter,
     ) -> harbor_github::Result<usize>;
 
-    async fn list_repository_pull_requests_light(
+    async fn list_repository_pull_requests_light_page(
         &self,
         repository: &RepoId,
         filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
         validator: Option<HttpCacheValidator>,
-    ) -> harbor_github::Result<ConditionalFetch<Vec<PullRequest>>>;
+    ) -> harbor_github::Result<ConditionalFetch<PullRequestPage>>;
 
     async fn enrich_pull_requests_by_node_ids(
         &self,
@@ -178,6 +212,8 @@ pub async fn refresh_pull_request_inbox<S>(
 where
     S: PullRequestInboxSource + ?Sized,
 {
+    let is_first_page = request.page_cursor.is_none();
+
     if !request.mode.uses_rest_light_refresh() {
         tracing::info!(
             repository = %request.repository.full_name(),
@@ -185,34 +221,47 @@ where
             forced = request.force_enrichment,
             "github graphql source: needs review inbox search"
         );
-        return source
-            .list_repository_pull_requests(request.repository, request.mode.list_filter())
-            .await
-            .map(|pull_requests| PullRequestInboxRefresh::Modified {
-                pull_requests,
-                enrichment_error: None,
-            });
+        let page = source
+            .list_repository_pull_request_page(
+                request.repository,
+                request.mode.list_filter(),
+                request.page_cursor.clone(),
+                PULL_REQUEST_INBOX_PAGE_SIZE,
+            )
+            .await?;
+
+        return Ok(PullRequestInboxRefresh::Modified {
+            page_info: PullRequestInboxPageInfo::from_page(&page),
+            pull_requests: page.pull_requests,
+            enrichment_error: None,
+        });
     }
 
     let validator_key = http_validator_key(request.repository, request.mode);
-    let validator = match request.store {
-        Some(store) => store
-            .load_http_cache_validator(&validator_key)
-            .await
-            .map_err(|error| GitHubError::Transport(error.to_string()))?
-            .map(github_validator_from_storage),
-        None => None,
+    let validator = if is_first_page && !request.previous_pull_requests.is_empty() {
+        match request.store {
+            Some(store) => store
+                .load_http_cache_validator(&validator_key)
+                .await
+                .map_err(|error| GitHubError::Transport(error.to_string()))?
+                .map(github_validator_from_storage),
+            None => None,
+        }
+    } else {
+        None
     };
 
     let fetch = source
-        .list_repository_pull_requests_light(
+        .list_repository_pull_requests_light_page(
             request.repository,
             request.mode.list_filter(),
+            request.page_cursor.clone(),
+            PULL_REQUEST_INBOX_PAGE_SIZE,
             validator,
         )
         .await?;
 
-    let (mut pull_requests, validator) = match fetch {
+    let (page, validator) = match fetch {
         ConditionalFetch::NotModified { validator } => {
             if let (Some(store), Some(validator)) = (request.store, validator) {
                 store
@@ -228,12 +277,15 @@ where
         ConditionalFetch::Modified { value, validator } => (value, validator),
     };
 
-    if let (Some(store), Some(validator)) = (request.store, validator) {
+    if is_first_page && let (Some(store), Some(validator)) = (request.store, validator) {
         store
             .save_http_cache_validator(&validator_key, &storage_validator_from_github(validator))
             .await
             .map_err(|error| GitHubError::Transport(error.to_string()))?;
     }
+
+    let page_info = PullRequestInboxPageInfo::from_page(&page);
+    let mut pull_requests = page.pull_requests;
 
     merge_light_pull_request_rows(request.previous_pull_requests, &mut pull_requests);
 
@@ -261,6 +313,7 @@ where
 
     Ok(PullRequestInboxRefresh::Modified {
         pull_requests,
+        page_info,
         enrichment_error,
     })
 }
@@ -276,8 +329,8 @@ pub async fn cache_pull_request_inbox_refresh(
     };
 
     match refresh {
-        Ok(PullRequestInboxRefresh::Modified { pull_requests, .. }) => store
-            .save_pull_request_inbox(repository, mode.key(), pull_requests)
+        Ok(PullRequestInboxRefresh::Modified { .. }) => store
+            .record_sync_success(&harbor_storage::inbox_target_key(repository, mode.key()))
             .await
             .map_err(|error| error.to_string()),
         Ok(PullRequestInboxRefresh::NotModified) => store
@@ -346,37 +399,15 @@ impl Default for SyncSignals {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyncPolicy {
-    pub focused_inbox_interval: Duration,
-    pub focused_inbox_running_checks_interval: Duration,
-    pub focused_inbox_graphql_search_interval: Duration,
-    pub background_inbox_interval: Duration,
-    pub background_inbox_graphql_search_interval: Duration,
-    pub focused_inbox_enrichment_interval: Duration,
-    pub background_inbox_enrichment_interval: Duration,
-    pub focus_catch_up_after: Duration,
-    pub selected_pr_metadata_interval: Duration,
-    pub selected_pr_reviews_interval: Duration,
-    pub selected_pr_checks_running_interval: Duration,
-    pub selected_pr_checks_terminal_interval: Duration,
-    pub selected_pr_workflows_running_interval: Duration,
+    pub focused_interval: Duration,
+    pub background_interval: Duration,
 }
 
 impl Default for SyncPolicy {
     fn default() -> Self {
         Self {
-            focused_inbox_interval: Duration::from_secs(120),
-            focused_inbox_running_checks_interval: Duration::from_secs(45),
-            focused_inbox_graphql_search_interval: Duration::from_secs(300),
-            background_inbox_interval: Duration::from_secs(300),
-            background_inbox_graphql_search_interval: Duration::from_secs(1_800),
-            focused_inbox_enrichment_interval: Duration::from_secs(1_800),
-            background_inbox_enrichment_interval: Duration::from_secs(3_600),
-            focus_catch_up_after: Duration::from_secs(30),
-            selected_pr_metadata_interval: Duration::from_secs(120),
-            selected_pr_reviews_interval: Duration::from_secs(120),
-            selected_pr_checks_running_interval: Duration::from_secs(15),
-            selected_pr_checks_terminal_interval: Duration::from_secs(60),
-            selected_pr_workflows_running_interval: Duration::from_secs(60),
+            focused_interval: Duration::from_secs(300),
+            background_interval: Duration::from_secs(1_800),
         }
     }
 }
@@ -384,11 +415,11 @@ impl Default for SyncPolicy {
 impl SyncPolicy {
     pub fn decision(
         &self,
-        target: SyncTarget,
+        _target: SyncTarget,
         reason: SyncReason,
         activity: ActivityState,
         state: &SyncState,
-        signals: SyncSignals,
+        _signals: SyncSignals,
         now: DateTime<Utc>,
     ) -> SyncDecision {
         if state.in_flight {
@@ -406,9 +437,7 @@ impl SyncPolicy {
             return SyncDecision::RunNow;
         }
 
-        if reason == SyncReason::FocusGained
-            && self.is_due(state, self.focus_catch_up_interval(target), now)
-        {
+        if reason == SyncReason::FocusGained && self.is_due(state, self.focused_interval, now) {
             return SyncDecision::RunNow;
         }
 
@@ -418,16 +447,7 @@ impl SyncPolicy {
             return SyncDecision::Backoff(backoff);
         }
 
-        let interval = self.interval(target, activity, signals);
-        if !matches!(
-            target,
-            SyncTarget::ActiveInbox
-                | SyncTarget::ActiveInboxLight
-                | SyncTarget::ActiveInboxEnrichment
-        ) && activity == ActivityState::Background
-        {
-            return SyncDecision::Wait(interval);
-        }
+        let interval = self.interval(activity);
 
         match state.last_successful_fetch_at {
             None => SyncDecision::RunNow,
@@ -445,38 +465,10 @@ impl SyncPolicy {
         }
     }
 
-    pub fn interval(
-        &self,
-        target: SyncTarget,
-        activity: ActivityState,
-        signals: SyncSignals,
-    ) -> Duration {
-        match (target, activity) {
-            (SyncTarget::ActiveInboxLight, ActivityState::Background) => {
-                self.background_inbox_interval
-            }
-            (SyncTarget::ActiveInboxLight, ActivityState::Focused) => self.focused_inbox_interval,
-            (SyncTarget::ActiveInboxEnrichment, ActivityState::Background) => {
-                self.background_inbox_enrichment_interval
-            }
-            (SyncTarget::ActiveInboxEnrichment, ActivityState::Focused) => {
-                self.focused_inbox_enrichment_interval
-            }
-            (SyncTarget::ActiveInbox, ActivityState::Background) => {
-                self.background_inbox_graphql_search_interval
-            }
-            (SyncTarget::ActiveInbox, ActivityState::Focused) => {
-                self.focused_inbox_graphql_search_interval
-            }
-            (SyncTarget::SelectedPullRequestMetadata, _) => self.selected_pr_metadata_interval,
-            (SyncTarget::SelectedPullRequestReviews, _) => self.selected_pr_reviews_interval,
-            (SyncTarget::SelectedPullRequestChecks, _) if signals.has_running_or_pending_checks => {
-                self.selected_pr_checks_running_interval
-            }
-            (SyncTarget::SelectedPullRequestChecks, _) => self.selected_pr_checks_terminal_interval,
-            (SyncTarget::SelectedPullRequestWorkflows, _) => {
-                self.selected_pr_workflows_running_interval
-            }
+    pub fn interval(&self, activity: ActivityState) -> Duration {
+        match activity {
+            ActivityState::Focused => self.focused_interval,
+            ActivityState::Background => self.background_interval,
         }
     }
 
@@ -484,13 +476,6 @@ impl SyncPolicy {
         state.last_successful_fetch_at.is_none_or(|last| {
             now.signed_duration_since(last).to_std().unwrap_or_default() >= interval
         })
-    }
-
-    fn focus_catch_up_interval(&self, target: SyncTarget) -> Duration {
-        match target {
-            SyncTarget::ActiveInbox => self.focused_inbox_graphql_search_interval,
-            _ => self.focus_catch_up_after,
-        }
     }
 }
 
@@ -878,188 +863,144 @@ mod tests {
     use harbor_domain::{ChecksSummary, PullRequestState};
 
     #[test]
-    fn focused_inbox_refreshes_every_two_minutes() {
+    fn focused_targets_refresh_every_five_minutes() {
         let policy = SyncPolicy::default();
         let now = time(10);
         let state = SyncState {
-            last_successful_fetch_at: Some(time(9)),
+            last_successful_fetch_at: Some(time(6)),
             ..SyncState::default()
         };
 
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInboxLight,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &state,
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::Wait(Duration::from_secs(60))
-        );
+        for target in [
+            SyncTarget::ActiveInbox,
+            SyncTarget::ActiveInboxLight,
+            SyncTarget::ActiveInboxEnrichment,
+            SyncTarget::SelectedPullRequestMetadata,
+            SyncTarget::SelectedPullRequestReviews,
+            SyncTarget::SelectedPullRequestChecks,
+            SyncTarget::SelectedPullRequestWorkflows,
+        ] {
+            assert_eq!(
+                policy.decision(
+                    target,
+                    SyncReason::Scheduled,
+                    ActivityState::Focused,
+                    &state,
+                    SyncSignals::default(),
+                    now,
+                ),
+                SyncDecision::Wait(Duration::from_secs(60))
+            );
 
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInboxLight,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(time(8)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::RunNow
-        );
+            assert_eq!(
+                policy.decision(
+                    target,
+                    SyncReason::Scheduled,
+                    ActivityState::Focused,
+                    &SyncState {
+                        last_successful_fetch_at: Some(time(5)),
+                        ..SyncState::default()
+                    },
+                    SyncSignals::default(),
+                    now,
+                ),
+                SyncDecision::RunNow
+            );
+        }
     }
 
     #[test]
-    fn needs_review_graphql_search_uses_slower_cadence() {
+    fn focus_catch_up_uses_focused_cadence_for_all_inbox_targets() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        for target in [SyncTarget::ActiveInbox, SyncTarget::ActiveInboxLight] {
+            assert_eq!(
+                policy.decision(
+                    target,
+                    SyncReason::FocusGained,
+                    ActivityState::Focused,
+                    &SyncState {
+                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
+                        ..SyncState::default()
+                    },
+                    SyncSignals::default(),
+                    now,
+                ),
+                SyncDecision::Wait(Duration::from_secs(269))
+            );
+
+            assert_eq!(
+                policy.decision(
+                    target,
+                    SyncReason::FocusGained,
+                    ActivityState::Focused,
+                    &SyncState {
+                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(300)),
+                        ..SyncState::default()
+                    },
+                    SyncSignals::default(),
+                    now,
+                ),
+                SyncDecision::RunNow
+            );
+        }
+    }
+
+    #[test]
+    fn background_targets_refresh_every_thirty_minutes() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        for target in [
+            SyncTarget::ActiveInbox,
+            SyncTarget::ActiveInboxLight,
+            SyncTarget::ActiveInboxEnrichment,
+            SyncTarget::SelectedPullRequestMetadata,
+            SyncTarget::SelectedPullRequestReviews,
+            SyncTarget::SelectedPullRequestChecks,
+            SyncTarget::SelectedPullRequestWorkflows,
+        ] {
+            assert_eq!(
+                policy.decision(
+                    target,
+                    SyncReason::Scheduled,
+                    ActivityState::Background,
+                    &SyncState {
+                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_740)),
+                        ..SyncState::default()
+                    },
+                    SyncSignals::default(),
+                    now,
+                ),
+                SyncDecision::Wait(Duration::from_secs(60))
+            );
+
+            assert_eq!(
+                policy.decision(
+                    target,
+                    SyncReason::Scheduled,
+                    ActivityState::Background,
+                    &SyncState {
+                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_800)),
+                        ..SyncState::default()
+                    },
+                    SyncSignals::default(),
+                    now,
+                ),
+                SyncDecision::RunNow
+            );
+        }
+    }
+
+    #[test]
+    fn running_checks_do_not_accelerate_refresh() {
         let policy = SyncPolicy::default();
         let now = time(10);
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(time(6)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::Wait(Duration::from_secs(60))
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(time(5)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::RunNow
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::Scheduled,
-                ActivityState::Background,
-                &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_740)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::Wait(Duration::from_secs(60))
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::Scheduled,
-                ActivityState::Background,
-                &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_800)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::RunNow
-        );
-    }
-
-    #[test]
-    fn focus_catch_up_uses_graphql_search_cadence_for_needs_review() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::FocusGained,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::Wait(Duration::from_secs(269))
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInboxLight,
-                SyncReason::FocusGained,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::RunNow
-        );
-    }
-
-    #[test]
-    fn background_inbox_refreshes_every_five_minutes() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInboxLight,
-                SyncReason::Scheduled,
-                ActivityState::Background,
-                &SyncState {
-                    last_successful_fetch_at: Some(time(6)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::Wait(Duration::from_secs(60))
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInboxLight,
-                SyncReason::Scheduled,
-                ActivityState::Background,
-                &SyncState {
-                    last_successful_fetch_at: Some(time(5)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::RunNow
-        );
-    }
-
-    #[test]
-    fn running_checks_do_not_accelerate_full_inbox_refresh() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInboxLight,
+                SyncTarget::SelectedPullRequestChecks,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
@@ -1072,16 +1013,16 @@ mod tests {
                 },
                 now,
             ),
-            SyncDecision::Wait(Duration::from_secs(76))
+            SyncDecision::Wait(Duration::from_secs(256))
         );
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInboxLight,
+                SyncTarget::SelectedPullRequestChecks,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(120)),
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(300)),
                     ..SyncState::default()
                 },
                 SyncSignals {
@@ -1095,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_metadata_refreshes_every_two_minutes() {
+    fn selected_metadata_refreshes_every_five_minutes() {
         let policy = SyncPolicy::default();
         let now = time(10);
 
@@ -1105,7 +1046,7 @@ mod tests {
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
-                    last_successful_fetch_at: Some(time(9)),
+                    last_successful_fetch_at: Some(time(6)),
                     ..SyncState::default()
                 },
                 SyncSignals::default(),
@@ -1120,7 +1061,7 @@ mod tests {
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
-                    last_successful_fetch_at: Some(time(8)),
+                    last_successful_fetch_at: Some(time(5)),
                     ..SyncState::default()
                 },
                 SyncSignals::default(),

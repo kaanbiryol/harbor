@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::{GitHubClient, PullRequestListFilter, test_support::RecordingTransport};
-use crate::{ConditionalFetch, HttpCacheValidator};
+use crate::{ConditionalFetch, HttpCacheValidator, PullRequestPageCursor};
 use harbor_domain::RepoId;
 
 #[test]
@@ -46,13 +46,14 @@ fn queries_repository_pull_request_filters() {
             .expect("graphql calls mutex should not be poisoned");
         assert_eq!(calls.len(), 1);
         assert!(calls[0].0.contains("HarborRepositoryPullRequests"));
-        assert!(calls[0].0.contains("first: 100"));
+        assert!(calls[0].0.contains("first: $first"));
         assert!(!calls[0].0.contains("statusCheckRollup"));
         assert!(!calls[0].0.contains("labels(first:"));
         assert_eq!(
             calls[0].1,
             json!({
                 "searchQuery": query,
+                "first": 100,
                 "after": null,
             })
         );
@@ -109,7 +110,9 @@ fn paginates_repository_pull_requests() {
         "repo:acme/app is:pr is:open archived:false sort:updated-desc"
     );
     assert_eq!(calls[0].1["after"], Value::Null);
+    assert_eq!(calls[0].1["first"], 100);
     assert_eq!(calls[1].1["after"], "cursor-1");
+    assert_eq!(calls[1].1["first"], 100);
 }
 
 #[test]
@@ -217,6 +220,49 @@ fn lists_light_pull_requests_with_conditional_validator() {
             .1
             .contains(&("per_page".to_string(), "100".to_string()))
     );
+}
+
+#[test]
+fn lists_light_pull_request_pages_with_twenty_rows() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_response
+        .lock()
+        .expect("get response mutex should not be poisoned") = Some(json!([]));
+    let client = GitHubClient::new(transport.clone());
+
+    let result = smol::block_on(client.list_repository_pull_requests_light_page(
+        &RepoId::new("acme", "app"),
+        PullRequestListFilter::Open,
+        Some(PullRequestPageCursor::RestPage(2)),
+        20,
+        None,
+    ))
+    .unwrap();
+
+    let ConditionalFetch::Modified { value, .. } = result else {
+        panic!("expected modified response");
+    };
+    assert!(value.pull_requests.is_empty());
+    assert_eq!(value.next_cursor, None);
+
+    let conditional_calls = transport
+        .conditional_gets
+        .lock()
+        .expect("conditional gets mutex should not be poisoned");
+    assert!(conditional_calls.is_empty());
+    let calls = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "/repos/acme/app/pulls");
+    assert!(
+        calls[0]
+            .1
+            .contains(&("per_page".to_string(), "20".to_string()))
+    );
+    assert!(calls[0].1.contains(&("page".to_string(), "2".to_string())));
 }
 
 #[test]

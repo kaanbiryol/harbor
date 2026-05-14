@@ -5,8 +5,8 @@ use harbor_domain::{
 };
 use harbor_github::{
     ConditionalFetch, GitHubClient, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-    OctocrabTransport, PullRequestEnrichment, PullRequestListFilter, RepositoryList, Result,
-    SubmitPullRequestReviewEvent,
+    OctocrabTransport, PullRequestEnrichment, PullRequestListFilter, PullRequestPage,
+    PullRequestPageCursor, RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 use harbor_sync::PullRequestInboxSource;
 use std::sync::{Arc, Mutex};
@@ -318,13 +318,15 @@ impl PullRequestInboxSource for RealGitHubApi {
             .unwrap_or_default()
     }
 
-    async fn list_repository_pull_requests(
+    async fn list_repository_pull_request_page(
         &self,
         repository: &RepoId,
         filter: PullRequestListFilter,
-    ) -> Result<Vec<PullRequest>> {
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage> {
         self.client()?
-            .list_repository_pull_requests(repository, filter)
+            .list_repository_pull_request_page(repository, filter, cursor, page_size)
             .await
     }
 
@@ -338,14 +340,22 @@ impl PullRequestInboxSource for RealGitHubApi {
             .await
     }
 
-    async fn list_repository_pull_requests_light(
+    async fn list_repository_pull_requests_light_page(
         &self,
         repository: &RepoId,
         filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
         validator: Option<HttpCacheValidator>,
-    ) -> Result<ConditionalFetch<Vec<PullRequest>>> {
+    ) -> Result<ConditionalFetch<PullRequestPage>> {
         self.client()?
-            .list_repository_pull_requests_light(repository, filter, validator.as_ref())
+            .list_repository_pull_requests_light_page(
+                repository,
+                filter,
+                cursor,
+                page_size,
+                validator.as_ref(),
+            )
             .await
     }
 
@@ -638,8 +648,8 @@ pub(crate) mod test_support {
     };
     use harbor_github::{
         ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-        PullRequestEnrichment, PullRequestListFilter, RepositoryList, Result,
-        SubmitPullRequestReviewEvent,
+        PullRequestEnrichment, PullRequestListFilter, PullRequestPage, PullRequestPageCursor,
+        RepositoryList, Result, SubmitPullRequestReviewEvent,
     };
 
     use harbor_sync::PullRequestInboxSource;
@@ -651,15 +661,18 @@ pub(crate) mod test_support {
     };
 
     type FakeQueue<T> = Arc<Mutex<VecDeque<Result<T>>>>;
+    type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
+    type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>;
 
     #[derive(Clone, Default)]
     pub(crate) struct FakeGitHubApi {
         calls: Arc<Mutex<Vec<String>>>,
+        light_pull_request_requests: FakeLightPullRequestRequests,
         repositories: FakeQueue<RepositoryList>,
         repository_lookups: FakeQueue<RepoId>,
-        pull_requests: FakeQueue<Vec<PullRequest>>,
+        pull_request_pages: FakeQueue<PullRequestPage>,
         pull_request_counts: FakeQueue<usize>,
-        light_pull_requests: FakeQueue<ConditionalFetch<Vec<PullRequest>>>,
+        light_pull_request_pages: FakeQueue<ConditionalFetch<PullRequestPage>>,
         pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
         pull_request_details: FakeQueue<PullRequest>,
         files: FakeQueue<Vec<DiffFile>>,
@@ -698,7 +711,23 @@ pub(crate) mod test_support {
             &self,
             result: Result<ConditionalFetch<Vec<PullRequest>>>,
         ) {
-            push_result(&self.light_pull_requests, result);
+            let result = result.map(|fetch| match fetch {
+                ConditionalFetch::Modified { value, validator } => ConditionalFetch::Modified {
+                    value: page_from_pull_requests(value),
+                    validator,
+                },
+                ConditionalFetch::NotModified { validator } => {
+                    ConditionalFetch::NotModified { validator }
+                }
+            });
+            push_result(&self.light_pull_request_pages, result);
+        }
+
+        pub(crate) fn push_light_pull_request_page(
+            &self,
+            result: Result<ConditionalFetch<PullRequestPage>>,
+        ) {
+            push_result(&self.light_pull_request_pages, result);
         }
 
         pub(crate) fn push_pull_request_count(&self, result: Result<usize>) {
@@ -755,6 +784,13 @@ pub(crate) mod test_support {
                 .clone()
         }
 
+        pub(crate) fn light_pull_request_requests(&self) -> Vec<FakeLightPullRequestRequest> {
+            self.light_pull_request_requests
+                .lock()
+                .expect("fake GitHub API request mutex should not be poisoned")
+                .clone()
+        }
+
         fn record_call(&self, name: &str) {
             self.calls
                 .lock()
@@ -780,6 +816,14 @@ pub(crate) mod test_support {
                     "missing fake {name} result"
                 )))
             })
+    }
+
+    fn page_from_pull_requests(pull_requests: Vec<PullRequest>) -> PullRequestPage {
+        PullRequestPage {
+            total_count: Some(pull_requests.len()),
+            next_cursor: None,
+            pull_requests,
+        }
     }
 
     impl GitHubRateLimitApi for FakeGitHubApi {
@@ -810,13 +854,15 @@ pub(crate) mod test_support {
             Vec::new()
         }
 
-        async fn list_repository_pull_requests(
+        async fn list_repository_pull_request_page(
             &self,
             _repository: &RepoId,
             _filter: PullRequestListFilter,
-        ) -> Result<Vec<PullRequest>> {
+            _cursor: Option<PullRequestPageCursor>,
+            _page_size: usize,
+        ) -> Result<PullRequestPage> {
             self.record_call("list_repository_pull_requests");
-            pop_result(&self.pull_requests, "list_repository_pull_requests")
+            pop_result(&self.pull_request_pages, "list_repository_pull_requests")
         }
 
         async fn count_repository_pull_requests(
@@ -828,15 +874,21 @@ pub(crate) mod test_support {
             pop_result(&self.pull_request_counts, "count_repository_pull_requests")
         }
 
-        async fn list_repository_pull_requests_light(
+        async fn list_repository_pull_requests_light_page(
             &self,
             _repository: &RepoId,
             _filter: PullRequestListFilter,
-            _validator: Option<HttpCacheValidator>,
-        ) -> Result<ConditionalFetch<Vec<PullRequest>>> {
+            cursor: Option<PullRequestPageCursor>,
+            page_size: usize,
+            validator: Option<HttpCacheValidator>,
+        ) -> Result<ConditionalFetch<PullRequestPage>> {
             self.record_call("list_repository_pull_requests_light");
+            self.light_pull_request_requests
+                .lock()
+                .expect("fake GitHub API request mutex should not be poisoned")
+                .push((cursor, page_size, validator.is_some()));
             pop_result(
-                &self.light_pull_requests,
+                &self.light_pull_request_pages,
                 "list_repository_pull_requests_light",
             )
         }
@@ -1148,7 +1200,10 @@ mod tests {
         PullRequestReviewState, RepoId, ReviewDecision, ReviewThreadState, WorkflowConclusion,
         WorkflowRun, WorkflowStatus,
     };
-    use harbor_github::{ConditionalFetch, GitHubError, PullRequestEnrichment};
+    use harbor_github::{
+        ConditionalFetch, GitHubError, PullRequestEnrichment, PullRequestPage,
+        PullRequestPageCursor,
+    };
     use harbor_sync::{SyncState, SyncTarget};
 
     use crate::{
@@ -1194,6 +1249,58 @@ mod tests {
                 "list_review_threads"
             ]
         );
+        assert_eq!(api.light_pull_request_requests(), vec![(None, 20, false)]);
+    }
+
+    #[gpui::test]
+    async fn load_more_pull_requests_appends_next_page(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let first_pull_request = pull_request();
+        let mut second_pull_request = pull_request();
+        second_pull_request.number = 8;
+        second_pull_request.title = "Follow-up feature".to_string();
+        api.push_light_pull_request_page(Ok(ConditionalFetch::Modified {
+            value: PullRequestPage {
+                pull_requests: vec![first_pull_request.clone()],
+                total_count: Some(2),
+                next_cursor: Some(PullRequestPageCursor::RestPage(2)),
+            },
+            validator: None,
+        }));
+        enqueue_successful_detail_load(&api, &first_pull_request);
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.load_pull_requests(first_pull_request.repo.clone(), cx);
+        });
+        cx.run_until_parked();
+
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(view.pull_requests.len(), 1);
+            assert!(view.pull_request_inbox.has_next_page());
+        });
+
+        api.push_light_pull_request_page(Ok(ConditionalFetch::Modified {
+            value: PullRequestPage {
+                pull_requests: vec![second_pull_request.clone()],
+                total_count: Some(2),
+                next_cursor: None,
+            },
+            validator: None,
+        }));
+        view_entity.update(cx, |view, cx| {
+            view.load_more_pull_requests(cx);
+        });
+        cx.run_until_parked();
+
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(view.pull_requests.len(), 2);
+            assert_eq!(view.pull_requests[0].number, first_pull_request.number);
+            assert_eq!(view.pull_requests[1].number, second_pull_request.number);
+            assert_eq!(view.pull_request_inbox.total_count(), Some(2));
+            assert!(!view.pull_request_inbox.has_next_page());
+            assert_eq!(view.pull_request_inbox.load_more_error(), None);
+        });
     }
 
     #[gpui::test]
@@ -1389,6 +1496,38 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn inbox_refresh_failure_keeps_existing_rows(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let pull_request = pull_request();
+        api.push_light_pull_requests(Err(github_error("refresh failed")));
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
+            view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+            view.pull_requests = vec![pull_request.clone()];
+            view.refresh_pull_requests(pull_request.repo.clone(), cx);
+        });
+        cx.run_until_parked();
+
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(view.pull_requests, vec![pull_request.clone()]);
+            assert!(
+                view.pull_request_inbox
+                    .load_error()
+                    .is_some_and(|error| error.contains("refresh failed"))
+            );
+            assert_eq!(
+                view.status,
+                "Failed to load open pull requests from acme/app; showing existing data"
+            );
+            assert!(!view.pull_request_inbox.is_loading());
+        });
+        assert_eq!(api.calls(), vec!["list_repository_pull_requests_light"]);
+    }
+
+    #[gpui::test]
     async fn focus_catch_up_uses_light_inbox_refresh_only(cx: &mut TestAppContext) {
         let api = Arc::new(FakeGitHubApi::default());
         let pull_request = pull_request();
@@ -1406,7 +1545,7 @@ mod tests {
             view.sync_runtime.set_sync_state(
                 SyncTarget::ActiveInboxLight,
                 SyncState {
-                    last_successful_fetch_at: Some(Utc::now() - Duration::seconds(31)),
+                    last_successful_fetch_at: Some(Utc::now() - Duration::seconds(301)),
                     ..Default::default()
                 },
             );
@@ -1441,7 +1580,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn focus_catch_up_does_not_run_needs_review_graphql_after_thirty_seconds(
+    async fn focus_catch_up_does_not_run_needs_review_before_shared_cadence(
         cx: &mut TestAppContext,
     ) {
         let api = Arc::new(FakeGitHubApi::default());
@@ -1585,6 +1724,55 @@ mod tests {
         cx.run_until_parked();
 
         assert!(api.calls().is_empty());
+    }
+
+    #[gpui::test]
+    async fn repository_load_restores_in_memory_snapshot_before_refresh(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let cached_pull_request = pull_request();
+        let mut refreshed_pull_request = cached_pull_request.clone();
+        refreshed_pull_request.title = "Updated pull request".to_string();
+        api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
+            value: vec![refreshed_pull_request.clone()],
+            validator: None,
+        }));
+        let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+        view_entity.update(cx, |view, cx| {
+            view.repository_state
+                .select_repository(cached_pull_request.repo.clone());
+            view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+            view.pull_requests = vec![cached_pull_request.clone()];
+            mark_detail_sections_loaded(view);
+            view.cache_current_pull_request_inbox_snapshot();
+
+            view.repository_state
+                .select_repository(RepoId::new("acme", "other"));
+            view.pull_request_inbox
+                .set_mode(PullRequestInboxMode::Closed);
+            view.pull_requests.clear();
+
+            view.load_repository_pull_requests_from_cache(
+                cached_pull_request.repo.clone(),
+                PullRequestInboxMode::Open,
+                cx,
+            );
+
+            assert_eq!(view.pull_requests, vec![cached_pull_request.clone()]);
+            assert!(view.pull_request_inbox.is_loading());
+            assert_eq!(
+                view.status,
+                "Showing cached open pull requests from acme/app"
+            );
+        });
+        cx.run_until_parked();
+
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(view.pull_requests, vec![refreshed_pull_request.clone()]);
+            assert_eq!(view.status, "Loaded 1 open pull requests from acme/app");
+            assert!(!view.pull_request_inbox.is_loading());
+        });
+        assert_eq!(api.calls(), vec!["list_repository_pull_requests_light"]);
     }
 
     #[gpui::test]
