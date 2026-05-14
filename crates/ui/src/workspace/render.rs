@@ -1,11 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::{
-    App, Context, FocusHandle, Focusable, IntoElement, Render, Window, div, prelude::*, px,
+    App, Context, FocusHandle, Focusable, IntoElement, Render, Rgba, Window, div, prelude::*, px,
 };
 use gpui_component::{
-    IconName, Sizable,
+    Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    spinner::Spinner,
 };
 use harbor_domain::PullRequest;
 use harbor_github::GitHubRateLimitStatus;
@@ -16,10 +17,16 @@ use crate::panels::{
     render_logs_panel, render_review_panel,
 };
 use crate::visual::{color, font};
-use crate::workspace::AppView;
+use crate::workspace::{AppView, GitHubAuthStatus};
 
 const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
 const SHOW_STATUS_BAR_CACHED_MESSAGES: bool = true;
+
+#[derive(Clone, Copy)]
+enum AuthGateButton {
+    SignIn,
+    ShowDeviceCode,
+}
 
 #[path = "render/changed_files.rs"]
 mod changed_files;
@@ -65,6 +72,25 @@ impl Render for AppView {
         }
 
         let selected_pr = self.selected_pull_request().cloned();
+        let show_auth_gate = self.github_auth_gate_visible();
+        let content = if show_auth_gate {
+            self.render_github_auth_gate(cx).into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_1()
+                .min_h_0()
+                .min_w_0()
+                .overflow_hidden()
+                .gap_2()
+                .p_2()
+                .when(self.pull_request_inbox.is_visible(), |element| {
+                    element.child(self.render_inbox(cx))
+                })
+                .child(self.render_details(selected_pr.as_ref(), cx))
+                .child(self.render_panel(selected_pr.as_ref(), cx))
+                .into_any_element()
+        };
 
         div()
             .key_context(KEY_CONTEXT)
@@ -101,6 +127,9 @@ impl Render for AppView {
             .on_action(cx.listener(Self::open_with_ghostty))
             .on_action(cx.listener(Self::open_with_warp))
             .on_action(cx.listener(Self::open_with_xcode))
+            .on_action(cx.listener(Self::sign_in_to_github))
+            .on_action(cx.listener(Self::sign_out_of_github))
+            .on_action(cx.listener(Self::use_github_token))
             .size_full()
             .flex()
             .flex_col()
@@ -108,26 +137,211 @@ impl Render for AppView {
             .text_color(color::text_primary())
             .font_family(font::UI)
             .child(self.render_title_bar(cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .gap_2()
-                    .p_2()
-                    .when(self.pull_request_inbox.is_visible(), |element| {
-                        element.child(self.render_inbox(cx))
-                    })
-                    .child(self.render_details(selected_pr.as_ref(), cx))
-                    .child(self.render_panel(selected_pr.as_ref(), cx)),
-            )
-            .child(self.render_status_bar(cx))
+            .child(content)
+            .when(!show_auth_gate, |element| {
+                element.child(self.render_status_bar(cx))
+            })
     }
 }
 
 impl AppView {
+    fn render_github_auth_gate(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        if matches!(self.auth_status(), GitHubAuthStatus::SignedOut) {
+            return div()
+                .flex_1()
+                .min_h_0()
+                .min_w_0()
+                .p_2()
+                .child(self.render_signed_out_github_gate(cx));
+        }
+
+        let (title, message, button, show_icon, show_spinner, is_error) = match self.auth_status() {
+            GitHubAuthStatus::Loading => (
+                Some("Checking GitHub".to_string()),
+                Some(
+                    "Harbor will load repositories after it finds a saved GitHub token."
+                        .to_string(),
+                ),
+                None,
+                true,
+                true,
+                false,
+            ),
+            GitHubAuthStatus::SigningIn { .. } => {
+                if self.github_auth_popover_open() {
+                    (
+                        Some("Finish in your browser".to_string()),
+                        Some(
+                            "Enter the GitHub device code to load repositories and pull requests."
+                                .to_string(),
+                        ),
+                        None,
+                        true,
+                        true,
+                        false,
+                    )
+                } else {
+                    (
+                        Some("Connecting to GitHub".to_string()),
+                        Some("Waiting for GitHub to return the token.".to_string()),
+                        Some(("Show code", AuthGateButton::ShowDeviceCode)),
+                        true,
+                        true,
+                        false,
+                    )
+                }
+            }
+            GitHubAuthStatus::MissingClientId => (
+                Some("GitHub sign in is not configured".to_string()),
+                Some(
+                    "Set HARBOR_GITHUB_OAUTH_CLIENT_ID to enable GitHub device login.".to_string(),
+                ),
+                None,
+                true,
+                false,
+                true,
+            ),
+            GitHubAuthStatus::Failed(error) => (
+                Some("Could not connect GitHub".to_string()),
+                Some(error.clone()),
+                Some(("Try again", AuthGateButton::SignIn)),
+                true,
+                false,
+                true,
+            ),
+            GitHubAuthStatus::SignedOut => unreachable!("signed-out auth gate is rendered above"),
+            GitHubAuthStatus::SignedIn { .. } => (
+                Some("Signed in to GitHub".to_string()),
+                Some("Loading repositories...".to_string()),
+                None,
+                true,
+                true,
+                false,
+            ),
+        };
+
+        div().flex_1().min_h_0().min_w_0().p_2().child(
+            div()
+                .size_full()
+                .border_1()
+                .border_color(color::border())
+                .bg(color::panel_background())
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_2()
+                        .max_w(px(460.))
+                        .text_center()
+                        .when(show_icon, |element| {
+                            element.child(
+                                div()
+                                    .mb_2()
+                                    .size(px(44.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_full()
+                                    .border_1()
+                                    .border_color(color::border_strong())
+                                    .bg(color::row_selected_subtle())
+                                    .text_color(if is_error {
+                                        color::danger()
+                                    } else {
+                                        color::text_primary()
+                                    })
+                                    .child(if show_spinner {
+                                        Spinner::new().large().into_any_element()
+                                    } else {
+                                        Icon::new(IconName::Github).large().into_any_element()
+                                    }),
+                            )
+                        })
+                        .when_some(title, |element, title| {
+                            element.child(
+                                div()
+                                    .text_lg()
+                                    .font_semibold()
+                                    .text_color(color::text_primary())
+                                    .child(title),
+                            )
+                        })
+                        .when_some(message, |element, message| {
+                            element.child(
+                                div()
+                                    .text_sm()
+                                    .text_color(if is_error {
+                                        color::danger()
+                                    } else {
+                                        color::text_muted()
+                                    })
+                                    .child(message),
+                            )
+                        })
+                        .when_some(button, |element, (label, action)| {
+                            let button = Button::new("github-auth-empty-state-action")
+                                .icon(IconName::Github)
+                                .child(label)
+                                .on_click(cx.listener(move |view, _, window, cx| match action {
+                                    AuthGateButton::SignIn => {
+                                        view.sign_in_to_github(&SignInToGitHub, window, cx);
+                                    }
+                                    AuthGateButton::ShowDeviceCode => {
+                                        view.open_github_auth_popover(cx);
+                                    }
+                                }));
+
+                            let button = match action {
+                                AuthGateButton::SignIn => button.primary(),
+                                AuthGateButton::ShowDeviceCode => button,
+                            };
+
+                            element.child(button)
+                        }),
+                ),
+        )
+    }
+
+    fn render_signed_out_github_gate(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .relative()
+            .overflow_hidden()
+            .border_1()
+            .border_color(color::border())
+            .bg(color::panel_background())
+            .child(render_signed_out_workspace_preview())
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .border_1()
+                            .border_color(color::border_strong())
+                            .bg(color::panel_background())
+                            .shadow_lg()
+                            .child(
+                                Button::new("github-auth-empty-state-sign-in")
+                                    .primary()
+                                    .large()
+                                    .icon(IconName::Github)
+                                    .child("Continue with GitHub")
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.sign_in_to_github(&SignInToGitHub, window, cx);
+                                    })),
+                            ),
+                    ),
+            )
+    }
+
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let inbox_toggle_icon = if self.pull_request_inbox.is_visible() {
             IconName::PanelLeft
@@ -325,6 +539,322 @@ impl AppView {
                     }),
             )
     }
+}
+
+fn render_signed_out_workspace_preview() -> impl IntoElement {
+    div()
+        .absolute()
+        .inset_0()
+        .p_3()
+        .flex()
+        .gap_2()
+        .opacity(0.58)
+        .child(render_auth_preview_inbox())
+        .child(render_auth_preview_details())
+        .child(render_auth_preview_diff())
+}
+
+fn render_auth_preview_inbox() -> impl IntoElement {
+    div()
+        .h_full()
+        .w(px(310.))
+        .min_w(px(240.))
+        .flex_none()
+        .overflow_hidden()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::content_background())
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .h(px(76.))
+                .flex_none()
+                .border_b_1()
+                .border_color(color::border())
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_semibold()
+                                .text_color(color::text_secondary())
+                                .child("Pull requests"),
+                        )
+                        .child(render_auth_preview_bar(34., color::row_selected())),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(render_auth_preview_pill("Open", true))
+                        .child(render_auth_preview_pill("Needs review", false)),
+                ),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .children((0..9).map(|index| render_auth_preview_skeleton_row(index, index == 1))),
+        )
+}
+
+fn render_auth_preview_details() -> impl IntoElement {
+    div()
+        .h_full()
+        .w(px(380.))
+        .min_w(px(280.))
+        .flex_none()
+        .overflow_hidden()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::panel_background())
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .border_b_1()
+                .border_color(color::border())
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(render_auth_preview_bar(260., color::row_selected()))
+                .child(render_auth_preview_bar(180., color::border_strong()))
+                .child(
+                    div()
+                        .mt_2()
+                        .flex()
+                        .gap_2()
+                        .child(render_auth_preview_pill("review", false))
+                        .child(render_auth_preview_pill("checks", false))
+                        .child(render_auth_preview_pill("merge", false)),
+                ),
+        )
+        .child(
+            div()
+                .p_3()
+                .border_b_1()
+                .border_color(color::border())
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_semibold()
+                        .text_color(color::text_secondary())
+                        .child("Changed files"),
+                )
+                .child(render_auth_preview_bar(44., color::border_strong())),
+        )
+        .child(
+            div()
+                .p_2()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(render_auth_preview_file_row("src", false))
+                .child(render_auth_preview_file_row("workspace.rs", true))
+                .child(render_auth_preview_file_row("github.rs", false))
+                .child(render_auth_preview_file_row("auth.rs", false)),
+        )
+}
+
+fn render_auth_preview_diff() -> impl IntoElement {
+    div()
+        .h_full()
+        .flex_1()
+        .min_w(px(360.))
+        .overflow_hidden()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::content_background())
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .h(px(58.))
+                .flex_none()
+                .border_b_1()
+                .border_color(color::border())
+                .p_2()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(render_auth_preview_tab("Diff", true))
+                .child(render_auth_preview_tab("Review", false))
+                .child(render_auth_preview_tab("Checks", false))
+                .child(render_auth_preview_tab("Actions", false))
+                .child(render_auth_preview_tab("Logs", false)),
+        )
+        .child(
+            div()
+                .p_3()
+                .border_b_1()
+                .border_color(color::border())
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_semibold()
+                        .text_color(color::text_secondary())
+                        .child("Unified diff preview"),
+                )
+                .child(render_auth_preview_bar(52., color::border_strong())),
+        )
+        .child(
+            div().flex_1().min_h_0().p_3().child(
+                div()
+                    .border_1()
+                    .border_color(color::border())
+                    .overflow_hidden()
+                    .children((0..18).map(render_auth_preview_diff_row)),
+            ),
+        )
+}
+
+fn render_auth_preview_skeleton_row(index: usize, selected: bool) -> impl IntoElement {
+    let title_widths = [186., 224., 154., 205., 168.];
+    let meta_widths = [96., 128., 112., 84., 140.];
+
+    div()
+        .h(px(52.))
+        .border_b_1()
+        .border_color(color::border_subtle())
+        .px_3()
+        .flex()
+        .flex_col()
+        .justify_center()
+        .gap_2()
+        .when(selected, |element| element.bg(color::row_selected()))
+        .child(render_auth_preview_bar(
+            title_widths[index % title_widths.len()],
+            color::border_strong(),
+        ))
+        .child(render_auth_preview_bar(
+            meta_widths[index % meta_widths.len()],
+            color::border(),
+        ))
+}
+
+fn render_auth_preview_file_row(label: &'static str, selected: bool) -> impl IntoElement {
+    div()
+        .h(px(34.))
+        .px_2()
+        .flex()
+        .items_center()
+        .justify_between()
+        .when(selected, |element| element.bg(color::row_selected()))
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_sm()
+                .text_color(color::text_secondary())
+                .child(label),
+        )
+        .child(render_auth_preview_bar(42., color::border_strong()))
+}
+
+fn render_auth_preview_diff_row(index: usize) -> impl IntoElement {
+    let removed = index % 4 == 1;
+    let added = index % 4 == 2;
+    let background = if removed {
+        color::danger_background()
+    } else if added {
+        color::success_background()
+    } else {
+        color::content_background()
+    };
+    let marker = if removed {
+        "-"
+    } else if added {
+        "+"
+    } else {
+        " "
+    };
+    let line_widths = [320., 460., 260., 520., 380., 300.];
+
+    div()
+        .h(px(27.))
+        .border_b_1()
+        .border_color(color::border_subtle())
+        .bg(background)
+        .flex()
+        .items_center()
+        .gap_3()
+        .px_3()
+        .font_family(font::MONO)
+        .text_xs()
+        .child(
+            div()
+                .w(px(26.))
+                .text_color(color::text_muted())
+                .child(format!("{}", index + 1)),
+        )
+        .child(
+            div()
+                .w(px(10.))
+                .text_color(color::text_secondary())
+                .child(marker),
+        )
+        .child(render_auth_preview_bar(
+            line_widths[index % line_widths.len()],
+            color::border_strong(),
+        ))
+}
+
+fn render_auth_preview_pill(label: &'static str, selected: bool) -> impl IntoElement {
+    div()
+        .border_1()
+        .border_color(if selected {
+            color::border_strong()
+        } else {
+            color::border()
+        })
+        .bg(if selected {
+            color::row_selected()
+        } else {
+            color::content_background()
+        })
+        .px_2()
+        .py_1()
+        .text_xs()
+        .text_color(color::text_secondary())
+        .child(label)
+}
+
+fn render_auth_preview_tab(label: &'static str, selected: bool) -> impl IntoElement {
+    div()
+        .px_3()
+        .py_2()
+        .text_sm()
+        .text_color(if selected {
+            color::text_primary()
+        } else {
+            color::text_muted()
+        })
+        .when(selected, |element| {
+            element
+                .border_1()
+                .border_color(color::border_strong())
+                .bg(color::row_selected())
+        })
+        .child(label)
+}
+
+fn render_auth_preview_bar(width: f32, background: Rgba) -> impl IntoElement {
+    div().h(px(7.)).w(px(width)).bg(background)
 }
 
 fn status_bar_status_label(status: &str) -> &str {

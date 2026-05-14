@@ -1,6 +1,6 @@
 use gpui::ScrollStrategy;
 
-use crate::workspace::AppView;
+use crate::{actions::PanelTab, workspace::AppView};
 
 impl AppView {
     pub(super) fn reset_diff_selection(&mut self) {
@@ -82,5 +82,32 @@ impl AppView {
             .log_state
             .list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
+    }
+
+    pub(super) fn clear_authenticated_github_content(&mut self) {
+        self.tasks.clear_pull_request_list_task();
+        self.tasks.clear_pull_request_detail_tasks();
+        self.repository_state.clear_visible_repositories();
+        self.repository_state.finish_loading();
+        self.pull_request_inbox.reset_load();
+        self.pull_requests.clear();
+        self.selection_state.reset_pull_request_index();
+        self.reset_diff_selection();
+        self.clear_changed_file_state();
+        self.clear_workflow_state();
+        self.clear_detail_loaded_state();
+        self.clear_detail_errors();
+        self.clear_action_errors();
+        self.clear_review_data_state();
+        self.clear_review_submission_errors();
+        self.clear_log_content();
+        self.clear_log_error();
+        self.set_log_loading(false);
+        self.review_state.current_user_login = None;
+        self.diff_list_items.clear();
+        self.active_tab = PanelTab::Diff;
+        self.pull_request_switcher_selection = 0;
+        self.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.reset_detail_scrolls();
     }
 }

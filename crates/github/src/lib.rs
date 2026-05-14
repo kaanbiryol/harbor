@@ -6,7 +6,9 @@ pub use client::{
     GitHubClient, PullRequestEnrichment, PullRequestListFilter, RepositoryList,
     SubmitPullRequestReviewEvent,
 };
-pub use transport::{GhCliTransport, GitHubTransport};
+pub use transport::{
+    GhCliTransport, GitHubDeviceFlow, GitHubTransport, OctocrabTransport, start_oauth_device_flow,
+};
 
 pub type Result<T> = std::result::Result<T, GitHubError>;
 
@@ -84,6 +86,8 @@ pub struct GitHubRequestAttribution {
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum GitHubError {
+    #[error("github authentication is required")]
+    Unauthenticated,
     #[error("github cli is not installed or not available on PATH")]
     MissingCli,
     #[error("github cli is not authenticated")]

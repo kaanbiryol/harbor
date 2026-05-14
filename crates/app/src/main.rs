@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() {
+    install_rustls_provider();
     init_logging();
 
     gpui_platform::application()
@@ -39,6 +40,13 @@ fn main() {
             })
             .detach();
         });
+}
+
+fn install_rustls_provider() {
+    // Octocrab and GPUI's HTTP client can enable different Rustls providers
+    // through feature unification, so choose the provider before either client
+    // performs TLS setup.
+    drop(rustls::crypto::aws_lc_rs::default_provider().install_default());
 }
 
 fn init_logging() {

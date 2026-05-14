@@ -58,6 +58,12 @@ impl AppView {
                         let store = load.store.clone();
                         view.repository_state.set_store(load.store);
 
+                        if !view.github_api.has_token() {
+                            view.show_github_sign_in_required();
+                            cx.notify();
+                            return;
+                        }
+
                         view.apply_recent_repositories(load.repositories);
                         if let Some(repository) = view.repository_state.configured_repo_cloned() {
                             view.record_recent_repository(repository, cx);
@@ -217,6 +223,12 @@ impl AppView {
         repository: RepoId,
         cx: &mut Context<Self>,
     ) {
+        if !self.github_api.has_token() {
+            self.show_github_sign_in_required();
+            cx.notify();
+            return;
+        }
+
         let github_api = self.github_api.clone();
         let requested_repository = repository.clone();
         self.repository_state.start_loading();
@@ -312,6 +324,12 @@ impl AppView {
         refresh_intent: PullRequestInboxRefreshIntent,
         cx: &mut Context<Self>,
     ) {
+        if !self.github_api.has_token() {
+            self.show_github_sign_in_required();
+            cx.notify();
+            return;
+        }
+
         let key = PullRequestInboxCacheKey::new(repo.clone(), mode);
 
         self.cache_current_pull_request_inbox_snapshot();
@@ -757,9 +775,7 @@ async fn refresh_repository_store(
                 .await?;
             None
         }
-        Err(error) => Some(format!(
-            "failed to load repositories from GitHub CLI: {error}"
-        )),
+        Err(error) => Some(format!("failed to load repositories from GitHub: {error}")),
     };
 
     let repositories = store

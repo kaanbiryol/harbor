@@ -1,13 +1,21 @@
 use std::{
     collections::{HashMap, VecDeque},
-    io::{ErrorKind, Write},
+    future::Future,
+    io::{Cursor, ErrorKind, Read, Write},
+    pin::Pin,
     process::{Command, Output, Stdio},
     sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
+use http::{HeaderMap, HeaderValue, StatusCode, header};
+use http_body_util::BodyExt;
+use octocrab::{Octocrab, auth::DeviceCodes};
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::Value;
+use url::form_urlencoded;
+use zip::ZipArchive;
 
 use crate::{
     ConditionalFetch, GitHubApiFamily, GitHubError, GitHubRateLimit, GitHubRateLimitStatus,
@@ -79,6 +87,124 @@ impl GhCliTransport {
         run_status(vec!["--version".to_string()]).await?;
         run_status(vec!["auth".to_string(), "status".to_string()]).await
     }
+}
+
+#[derive(Clone)]
+pub struct OctocrabTransport {
+    client: Octocrab,
+    coordinator: Arc<GhCliRequestCoordinator>,
+    runtime: Arc<tokio::runtime::Runtime>,
+}
+
+impl std::fmt::Debug for OctocrabTransport {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("OctocrabTransport")
+    }
+}
+
+impl OctocrabTransport {
+    pub fn with_token(token: impl Into<String>) -> Result<Self> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_name("harbor-github")
+            .worker_threads(2)
+            .build()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        let client = runtime.block_on(async {
+            Octocrab::builder()
+                .personal_token(token.into())
+                .build()
+                .map_err(map_octocrab_error)
+        })?;
+
+        Ok(Self {
+            client,
+            coordinator: Arc::new(GhCliRequestCoordinator::default()),
+            runtime: Arc::new(runtime),
+        })
+    }
+
+    pub async fn preflight(&self) -> Result<()> {
+        self.rest_get("/user", &[]).await.map(drop)
+    }
+}
+
+#[derive(Clone)]
+pub struct GitHubDeviceFlow {
+    client_id: String,
+    codes: DeviceCodes,
+}
+
+impl GitHubDeviceFlow {
+    pub fn user_code(&self) -> &str {
+        &self.codes.user_code
+    }
+
+    pub fn verification_uri(&self) -> &str {
+        &self.codes.verification_uri
+    }
+
+    pub fn expires_in(&self) -> u64 {
+        self.codes.expires_in
+    }
+
+    pub fn interval(&self) -> u64 {
+        self.codes.interval
+    }
+
+    pub async fn poll_for_token(self) -> Result<String> {
+        smol::unblock(move || {
+            let runtime = oauth_runtime()?;
+            runtime.block_on(async move {
+                let client_id = SecretString::from(self.client_id);
+                let crab = oauth_device_crab()?;
+                let auth = self
+                    .codes
+                    .poll_until_available(&crab, &client_id)
+                    .await
+                    .map_err(map_octocrab_error)?;
+
+                Ok(auth.access_token.expose_secret().to_string())
+            })
+        })
+        .await
+    }
+}
+
+pub async fn start_oauth_device_flow(client_id: impl Into<String>) -> Result<GitHubDeviceFlow> {
+    let client_id = client_id.into();
+    smol::unblock(move || {
+        let runtime = oauth_runtime()?;
+        runtime.block_on(async move {
+            let secret_client_id = SecretString::from(client_id.clone());
+            let crab = oauth_device_crab()?;
+            let codes = crab
+                .authenticate_as_device(&secret_client_id, ["repo", "read:org"])
+                .await
+                .map_err(map_octocrab_error)?;
+
+            Ok(GitHubDeviceFlow { client_id, codes })
+        })
+    })
+    .await
+}
+
+fn oauth_runtime() -> Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("harbor-github-oauth")
+        .worker_threads(1)
+        .build()
+        .map_err(|error| GitHubError::Transport(error.to_string()))
+}
+
+fn oauth_device_crab() -> Result<Octocrab> {
+    Octocrab::builder()
+        .base_uri("https://github.com")
+        .map_err(map_octocrab_error)?
+        .add_header(header::ACCEPT, "application/json".to_string())
+        .build()
+        .map_err(map_octocrab_error)
 }
 
 #[async_trait]
@@ -297,6 +423,191 @@ impl GitHubTransport for GhCliTransport {
     }
 }
 
+type OctocrabRequestFuture = Pin<Box<dyn Future<Output = Result<OctocrabResponse>> + Send>>;
+
+struct OctocrabResponse {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Vec<u8>,
+}
+
+#[async_trait]
+impl GitHubTransport for OctocrabTransport {
+    async fn rest_get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value> {
+        let uri = path_with_query(path, query);
+        let read_key = rest_get_read_key(path, query);
+        let client = self.client.clone();
+        let runtime = self.runtime.clone();
+        self.coordinator
+            .run_octocrab_json(
+                runtime,
+                GitHubRequestKind::Read,
+                GitHubApiFamily::Rest,
+                rest_operation_name("GET", path),
+                Some(read_key),
+                move || {
+                    Box::pin(async move {
+                        let response = client._get(uri).await.map_err(map_octocrab_error)?;
+                        octocrab_response(response).await
+                    })
+                },
+            )
+            .await
+    }
+
+    async fn rest_get_conditional(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        validator: Option<&HttpCacheValidator>,
+    ) -> Result<ConditionalFetch<Value>> {
+        let uri = path_with_query(path, query);
+        let headers = conditional_headers(validator)?;
+        let client = self.client.clone();
+        let runtime = self.runtime.clone();
+        self.coordinator
+            .run_octocrab_conditional_json(
+                runtime,
+                GitHubRequestKind::Read,
+                GitHubApiFamily::Rest,
+                rest_operation_name("GET", path),
+                move || {
+                    Box::pin(async move {
+                        let response = client
+                            ._get_with_headers(uri, Some(headers))
+                            .await
+                            .map_err(map_octocrab_error)?;
+                        octocrab_response(response).await
+                    })
+                },
+            )
+            .await
+    }
+
+    async fn rest_post(&self, path: &str, body: Value) -> Result<Value> {
+        let path = path.to_string();
+        let client = self.client.clone();
+        let runtime = self.runtime.clone();
+        self.coordinator
+            .run_octocrab_json(
+                runtime,
+                GitHubRequestKind::Mutation,
+                GitHubApiFamily::Rest,
+                rest_operation_name("POST", &path),
+                None,
+                move || {
+                    Box::pin(async move {
+                        let response = client
+                            ._post(path, Some(&body))
+                            .await
+                            .map_err(map_octocrab_error)?;
+                        octocrab_response(response).await
+                    })
+                },
+            )
+            .await
+    }
+
+    async fn rest_put(&self, path: &str, body: Value) -> Result<Value> {
+        let path = path.to_string();
+        let client = self.client.clone();
+        let runtime = self.runtime.clone();
+        self.coordinator
+            .run_octocrab_json(
+                runtime,
+                GitHubRequestKind::Mutation,
+                GitHubApiFamily::Rest,
+                rest_operation_name("PUT", &path),
+                None,
+                move || {
+                    Box::pin(async move {
+                        let response = client
+                            ._put(path, Some(&body))
+                            .await
+                            .map_err(map_octocrab_error)?;
+                        octocrab_response(response).await
+                    })
+                },
+            )
+            .await
+    }
+
+    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+        let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/logs");
+        let client = self.client.clone();
+        let runtime = self.runtime.clone();
+        self.coordinator
+            .run_octocrab_text(
+                runtime,
+                GitHubRequestKind::Read,
+                GitHubApiFamily::Rest,
+                rest_operation_name("GET", &path),
+                move || {
+                    Box::pin(async move {
+                        let response = client._get(path).await.map_err(map_octocrab_error)?;
+                        let response = client
+                            .follow_location_to_data(response)
+                            .await
+                            .map_err(map_octocrab_error)?;
+                        octocrab_response(response).await
+                    })
+                },
+                workflow_log_text_from_zip,
+            )
+            .await
+    }
+
+    async fn graphql(&self, query: &str, variables: Value) -> Result<Value> {
+        let kind = if is_graphql_mutation(query) {
+            GitHubRequestKind::Mutation
+        } else {
+            GitHubRequestKind::Read
+        };
+        let read_key =
+            (kind == GitHubRequestKind::Read).then(|| graphql_read_key(query, &variables));
+        let body = serde_json::json!({
+            "query": query,
+            "variables": variables,
+        });
+        let client = self.client.clone();
+        let runtime = self.runtime.clone();
+        self.coordinator
+            .run_octocrab_json(
+                runtime,
+                kind,
+                GitHubApiFamily::GraphQl,
+                graphql_operation_name(query),
+                read_key,
+                move || {
+                    Box::pin(async move {
+                        let response = client
+                            ._post("/graphql", Some(&body))
+                            .await
+                            .map_err(map_octocrab_error)?;
+                        octocrab_response(response).await
+                    })
+                },
+            )
+            .await
+    }
+
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        self.coordinator.latest_rate_limit()
+    }
+
+    fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
+        self.coordinator.latest_rate_limits()
+    }
+
+    fn latest_request_attribution(&self) -> Option<GitHubRequestAttribution> {
+        self.coordinator.latest_request_attribution()
+    }
+
+    fn recent_request_attributions(&self) -> Vec<GitHubRequestAttribution> {
+        self.coordinator.recent_request_attributions()
+    }
+}
+
 async fn run_status(args: Vec<String>) -> Result<()> {
     smol::unblock(move || {
         let output = Command::new("gh")
@@ -411,6 +722,86 @@ impl GhCliRequestCoordinator {
         .await
     }
 
+    async fn run_octocrab_json<F>(
+        self: &Arc<Self>,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        read_key: Option<String>,
+        request: F,
+    ) -> Result<Value>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+    {
+        let coordinator = self.clone();
+
+        smol::unblock(move || {
+            coordinator.run_octocrab_json_blocking(
+                runtime,
+                kind,
+                family,
+                operation_name,
+                read_key,
+                request,
+            )
+        })
+        .await
+    }
+
+    async fn run_octocrab_conditional_json<F>(
+        self: &Arc<Self>,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        request: F,
+    ) -> Result<ConditionalFetch<Value>>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+    {
+        let coordinator = self.clone();
+
+        smol::unblock(move || {
+            coordinator.run_octocrab_conditional_json_blocking(
+                runtime,
+                kind,
+                family,
+                operation_name,
+                request,
+            )
+        })
+        .await
+    }
+
+    async fn run_octocrab_text<F, M>(
+        self: &Arc<Self>,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        request: F,
+        map_body: M,
+    ) -> Result<String>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+        M: FnOnce(&[u8]) -> Result<String> + Send + 'static,
+    {
+        let coordinator = self.clone();
+
+        smol::unblock(move || {
+            coordinator.run_octocrab_text_blocking(
+                runtime,
+                kind,
+                family,
+                operation_name,
+                request,
+                map_body,
+            )
+        })
+        .await
+    }
+
     fn run_json_blocking(
         &self,
         kind: GitHubRequestKind,
@@ -435,6 +826,170 @@ impl GhCliRequestCoordinator {
                 self.run_json_without_dedupe(kind, family, operation_name, args, input)
             }
         }
+    }
+
+    fn run_octocrab_json_blocking<F>(
+        &self,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        read_key: Option<String>,
+        request: F,
+    ) -> Result<Value>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+    {
+        match self.json_dedupe_role(kind, read_key.as_deref()) {
+            JsonDedupeRole::Follower(in_flight) => in_flight.wait(),
+            JsonDedupeRole::Leader(in_flight) => {
+                let result = self.run_octocrab_json_without_dedupe(
+                    runtime,
+                    kind,
+                    family,
+                    operation_name,
+                    request,
+                );
+                in_flight.complete(result.clone());
+                if let Some(read_key) = read_key {
+                    self.remove_in_flight_json_read(&read_key, &in_flight);
+                }
+                result
+            }
+            JsonDedupeRole::Disabled => self.run_octocrab_json_without_dedupe(
+                runtime,
+                kind,
+                family,
+                operation_name,
+                request,
+            ),
+        }
+    }
+
+    fn run_octocrab_conditional_json_blocking<F>(
+        &self,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        request: F,
+    ) -> Result<ConditionalFetch<Value>>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+    {
+        let response =
+            self.run_octocrab_response(runtime, kind, family, operation_name, request)?;
+        let metadata = response_metadata_from_headers(response.status, &response.headers);
+
+        if response.status == StatusCode::NOT_MODIFIED {
+            return Ok(ConditionalFetch::NotModified {
+                validator: metadata.validator,
+            });
+        }
+
+        if !response.status.is_success() {
+            return Err(map_http_failure(
+                response.status,
+                &response.headers,
+                &response.body,
+            ));
+        }
+
+        Ok(ConditionalFetch::Modified {
+            value: json_value_from_body(&response.body)?,
+            validator: metadata.validator,
+        })
+    }
+
+    fn run_octocrab_text_blocking<F, M>(
+        &self,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        request: F,
+        map_body: M,
+    ) -> Result<String>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+        M: FnOnce(&[u8]) -> Result<String> + Send + 'static,
+    {
+        let response =
+            self.run_octocrab_response(runtime, kind, family, operation_name, request)?;
+        if !response.status.is_success() {
+            return Err(map_http_failure(
+                response.status,
+                &response.headers,
+                &response.body,
+            ));
+        }
+
+        map_body(&response.body)
+    }
+
+    fn run_octocrab_json_without_dedupe<F>(
+        &self,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        request: F,
+    ) -> Result<Value>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+    {
+        let response =
+            self.run_octocrab_response(runtime, kind, family, operation_name, request)?;
+        let metadata = response_metadata_from_headers(response.status, &response.headers);
+
+        if !response.status.is_success() {
+            return Err(map_http_failure(
+                response.status,
+                &response.headers,
+                &response.body,
+            ));
+        }
+
+        let value = json_value_from_body(&response.body)?;
+        if let Some(error) = graphql_rate_limit_error(&value, &metadata.rate_limit) {
+            return Err(error);
+        }
+
+        Ok(value)
+    }
+
+    fn run_octocrab_response<F>(
+        &self,
+        runtime: Arc<tokio::runtime::Runtime>,
+        kind: GitHubRequestKind,
+        family: GitHubApiFamily,
+        operation_name: String,
+        request: F,
+    ) -> Result<OctocrabResponse>
+    where
+        F: FnOnce() -> OctocrabRequestFuture + Send + 'static,
+    {
+        let _request_guard = self.acquire(kind);
+        let started_at = Instant::now();
+        let response = runtime.block_on(request())?;
+        let metadata = response_metadata_from_headers(response.status, &response.headers);
+        let graphql_cost = (family == GitHubApiFamily::GraphQl)
+            .then(|| {
+                json_value_from_body(&response.body)
+                    .ok()
+                    .and_then(|value| graphql_response_cost(&value))
+            })
+            .flatten();
+
+        self.record_rate_limit_and_attribution(
+            family,
+            operation_name,
+            &metadata.rate_limit,
+            started_at.elapsed(),
+            graphql_cost,
+        );
+
+        Ok(response)
     }
 
     fn run_conditional_json_blocking(
@@ -942,6 +1497,152 @@ fn parse_response_metadata(stdout: &[u8]) -> GitHubResponseMetadata {
     }
 }
 
+fn response_metadata_from_headers(
+    status: StatusCode,
+    headers: &HeaderMap,
+) -> GitHubResponseMetadata {
+    let etag = header_string(headers, header::ETAG);
+    let last_modified = header_string(headers, header::LAST_MODIFIED);
+    let validator = Some(HttpCacheValidator {
+        etag,
+        last_modified,
+    })
+    .filter(|validator| !validator.is_empty());
+
+    GitHubResponseMetadata {
+        status_code: Some(status.as_u16()),
+        validator,
+        rate_limit: GitHubRateLimitMetadata {
+            retry_after_seconds: header_u64(headers, header::RETRY_AFTER),
+            reset_epoch_seconds: header_u64(headers, "x-ratelimit-reset"),
+            resource: header_string(headers, "x-ratelimit-resource"),
+            remaining: header_u64(headers, "x-ratelimit-remaining"),
+            limit: header_u64(headers, "x-ratelimit-limit"),
+            used: header_u64(headers, "x-ratelimit-used"),
+        },
+    }
+}
+
+fn header_string<K>(headers: &HeaderMap, key: K) -> Option<String>
+where
+    K: header::AsHeaderName,
+{
+    headers
+        .get(key)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
+fn header_u64<K>(headers: &HeaderMap, key: K) -> Option<u64>
+where
+    K: header::AsHeaderName,
+{
+    headers.get(key)?.to_str().ok()?.parse().ok()
+}
+
+fn json_value_from_body(body: &[u8]) -> Result<Value> {
+    let body = body.trim_ascii();
+    if body.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    serde_json::from_slice(body).map_err(|error| GitHubError::Mapping(error.to_string()))
+}
+
+async fn octocrab_response(
+    response: http::Response<http_body_util::combinators::BoxBody<bytes::Bytes, octocrab::Error>>,
+) -> Result<OctocrabResponse> {
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .map_err(map_octocrab_error)?
+        .to_bytes()
+        .to_vec();
+
+    Ok(OctocrabResponse {
+        status,
+        headers,
+        body,
+    })
+}
+
+fn conditional_headers(validator: Option<&HttpCacheValidator>) -> Result<HeaderMap> {
+    let mut headers = HeaderMap::new();
+
+    if let Some(etag) = validator.and_then(|validator| validator.etag.as_deref()) {
+        headers.insert(
+            header::IF_NONE_MATCH,
+            HeaderValue::from_str(etag)
+                .map_err(|error| GitHubError::Transport(error.to_string()))?,
+        );
+    }
+    if let Some(last_modified) = validator.and_then(|validator| validator.last_modified.as_deref())
+    {
+        headers.insert(
+            header::IF_MODIFIED_SINCE,
+            HeaderValue::from_str(last_modified)
+                .map_err(|error| GitHubError::Transport(error.to_string()))?,
+        );
+    }
+
+    Ok(headers)
+}
+
+fn path_with_query(path: &str, query: &[(&str, &str)]) -> String {
+    if query.is_empty() {
+        return path.to_string();
+    }
+
+    let mut encoded = form_urlencoded::Serializer::new(String::new());
+    for (key, value) in query {
+        encoded.append_pair(key, value);
+    }
+
+    let separator = if path.contains('?') { '&' } else { '?' };
+    format!("{path}{separator}{}", encoded.finish())
+}
+
+fn workflow_log_text_from_zip(body: &[u8]) -> Result<String> {
+    let reader = Cursor::new(body);
+    let mut archive =
+        ZipArchive::new(reader).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let mut entries = Vec::new();
+
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .map_err(|error| GitHubError::Mapping(error.to_string()))?;
+        if file.is_dir() {
+            continue;
+        }
+
+        let name = file.name().to_string();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|error| GitHubError::Mapping(error.to_string()))?;
+        let text = String::from_utf8_lossy(&bytes).to_string();
+        entries.push((name, text));
+    }
+
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let mut output = String::new();
+    for (_, text) in entries {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str(&text);
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+    }
+
+    Ok(output)
+}
+
 fn http_status_code(line: &str) -> Option<u16> {
     let mut parts = line.split_whitespace();
     let protocol = parts.next()?;
@@ -1102,6 +1803,62 @@ fn map_spawn_error(error: std::io::Error) -> GitHubError {
     }
 }
 
+fn map_octocrab_error(error: octocrab::Error) -> GitHubError {
+    match &error {
+        octocrab::Error::GitHub { source, .. }
+            if source.status_code == StatusCode::UNAUTHORIZED =>
+        {
+            GitHubError::Unauthenticated
+        }
+        octocrab::Error::GitHub { source, .. } => {
+            let metadata = GitHubRateLimitMetadata::default();
+            let message = source.message.clone();
+            if message.to_ascii_lowercase().contains("rate limit") {
+                rate_limit_error(message, metadata)
+            } else {
+                GitHubError::Transport(source.message.clone())
+            }
+        }
+        _ => GitHubError::Transport(error.to_string()),
+    }
+}
+
+fn map_http_failure(status: StatusCode, headers: &HeaderMap, body: &[u8]) -> GitHubError {
+    let metadata = response_metadata_from_headers(status, headers).rate_limit;
+    let mut message = failure_message_from_body(body);
+    if message.is_empty() && metadata.remaining == Some(0) {
+        message = "GitHub rate limit exceeded".to_string();
+    }
+    let lower_message = message.to_ascii_lowercase();
+
+    if status == StatusCode::UNAUTHORIZED
+        || status == StatusCode::FORBIDDEN && lower_message.contains("bad credentials")
+    {
+        GitHubError::Unauthenticated
+    } else if lower_message.contains("rate limit")
+        || lower_message.contains("too many requests")
+        || metadata.remaining == Some(0)
+    {
+        rate_limit_error(message, metadata)
+    } else if message.is_empty() {
+        GitHubError::Transport(format!("github request failed with HTTP {status}"))
+    } else {
+        GitHubError::Transport(message)
+    }
+}
+
+fn failure_message_from_body(body: &[u8]) -> String {
+    serde_json::from_slice::<Value>(body.trim_ascii())
+        .ok()
+        .and_then(|value| {
+            value
+                .get("message")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
 fn map_failed_status(stdout: &[u8], stderr: &[u8]) -> GitHubError {
     let metadata = parse_rate_limit_metadata(stdout);
     let mut message = failure_message(stdout, stderr);
@@ -1114,7 +1871,7 @@ fn map_failed_status(stdout: &[u8], stderr: &[u8]) -> GitHubError {
         || lower_message.contains("authentication")
         || lower_message.contains("gh auth login")
     {
-        GitHubError::UnauthenticatedCli
+        GitHubError::Unauthenticated
     } else if lower_message.contains("rate limit")
         || lower_message.contains("too many requests")
         || metadata.remaining == Some(0)
@@ -1147,6 +1904,7 @@ fn failure_message(stdout: &[u8], stderr: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use zip::{ZipWriter, write::SimpleFileOptions};
 
     use super::*;
 
@@ -1319,5 +2077,23 @@ mod tests {
             }
             other => panic!("expected secondary rate limit error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn extracts_workflow_log_archive_in_name_order() {
+        let mut archive = ZipWriter::new(Cursor::new(Vec::new()));
+        archive
+            .start_file("2_test.txt", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"test\n").unwrap();
+        archive
+            .start_file("1_build.txt", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"build").unwrap();
+        let bytes = archive.finish().unwrap().into_inner();
+
+        let text = workflow_log_text_from_zip(&bytes).unwrap();
+
+        assert_eq!(text, "build\ntest\n");
     }
 }

@@ -127,6 +127,12 @@ impl AppView {
     }
 
     pub(crate) fn accept_repository_switcher_selection(&mut self, cx: &mut Context<Self>) {
+        if self.github_auth_gate_visible() {
+            self.repository_state.repository_switcher_open = false;
+            cx.notify();
+            return;
+        }
+
         let choices = self.repository_switcher_choices(cx);
         let Some(choice) = repository_switcher_accepted_choice(
             &choices,

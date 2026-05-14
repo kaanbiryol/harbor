@@ -204,6 +204,7 @@ pub(crate) struct WorkspaceTasks {
     local_task: Option<Task<()>>,
     external_app_availability_task: Option<Task<()>>,
     sync_task: Option<Task<()>>,
+    auth_task: Option<Task<()>>,
 }
 
 impl WorkspaceTasks {
@@ -247,6 +248,15 @@ impl WorkspaceTasks {
         self.sync_task = Some(task);
     }
 
+    pub(crate) fn set_auth_task(&mut self, task: Task<()>) {
+        self.auth_task = Some(task);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_auth_task(&self) -> bool {
+        self.auth_task.is_some()
+    }
+
     pub(crate) fn sync_task_running(&self) -> bool {
         self.sync_task.is_some()
     }
@@ -273,7 +283,7 @@ impl RepositoryUiState {
     pub(crate) fn new(repository_search_input: Entity<InputState>, is_loading: bool) -> Self {
         Self {
             repositories: Vec::new(),
-            repository_switcher_open: true,
+            repository_switcher_open: false,
             repository_switcher_selection: 0,
             repository_search_input,
             configured_repo: None,
@@ -357,6 +367,15 @@ impl RepositoryUiState {
     }
 
     pub(crate) fn clear_notice(&mut self) {
+        self.repository_notice = None;
+    }
+
+    pub(crate) fn clear_visible_repositories(&mut self) {
+        self.repositories.clear();
+        self.configured_repo = None;
+        self.repository_local_paths.clear();
+        self.repository_switcher_selection = 0;
+        self.repository_error = None;
         self.repository_notice = None;
     }
 

@@ -69,7 +69,13 @@ actions!(
         /// Opens the current target in Warp.
         OpenWithWarp,
         /// Opens the current target in Xcode.
-        OpenWithXcode
+        OpenWithXcode,
+        /// Starts GitHub sign in.
+        SignInToGitHub,
+        /// Signs out of GitHub.
+        SignOutOfGitHub,
+        /// Imports a GitHub token from the clipboard.
+        UseGitHubToken
     ]
 );
 

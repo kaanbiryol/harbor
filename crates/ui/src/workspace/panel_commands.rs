@@ -49,6 +49,12 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.github_auth_gate_visible() {
+            self.repository_state.repository_switcher_open = false;
+            cx.notify();
+            return;
+        }
+
         self.repository_state.repository_switcher_open =
             !self.repository_state.repository_switcher_open;
         if self.repository_state.repository_switcher_open {

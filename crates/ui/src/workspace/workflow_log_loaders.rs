@@ -13,7 +13,7 @@ impl AppView {
             .selected_pull_request()
             .map(|pull_request| pull_request.repo.clone())
         else {
-            let message = "Workflow logs require a selected pull request and GitHub CLI auth";
+            let message = "Workflow logs require a selected pull request and GitHub auth";
             self.detail_state.log_state.apply_log_failure(message);
             self.status = message.to_string();
             cx.notify();

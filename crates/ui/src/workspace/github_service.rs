@@ -4,15 +4,16 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    ConditionalFetch, GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus,
-    HttpCacheValidator, PullRequestEnrichment, PullRequestListFilter, RepositoryList, Result,
+    ConditionalFetch, GitHubClient, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
+    OctocrabTransport, PullRequestEnrichment, PullRequestListFilter, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
 use harbor_sync::PullRequestInboxSource;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub(crate) trait GitHubApi:
-    GitHubRateLimitApi
+    GitHubAuthApi
+    + GitHubRateLimitApi
     + GitHubRepositoryApi
     + GitHubPullRequestDetailApi
     + GitHubWorkflowApi
@@ -25,7 +26,8 @@ pub(crate) trait GitHubApi:
 }
 
 impl<T> GitHubApi for T where
-    T: GitHubRateLimitApi
+    T: GitHubAuthApi
+        + GitHubRateLimitApi
         + GitHubRepositoryApi
         + GitHubPullRequestDetailApi
         + GitHubWorkflowApi
@@ -35,6 +37,12 @@ impl<T> GitHubApi for T where
         + GitHubPullRequestActionApi
         + PullRequestInboxSource
 {
+}
+
+pub(crate) trait GitHubAuthApi: Send + Sync {
+    fn configure_token(&self, token: String) -> Result<()>;
+    fn clear_token(&self) -> Result<()>;
+    fn has_token(&self) -> bool;
 }
 
 pub(crate) trait GitHubRateLimitApi: Send + Sync {
@@ -211,20 +219,28 @@ pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
 
 #[derive(Clone, Debug)]
 pub(crate) struct RealGitHubApi {
-    client: GitHubClient<GhCliTransport>,
-    current_user_login: std::sync::Arc<Mutex<Option<String>>>,
+    client: Arc<Mutex<Option<GitHubClient<OctocrabTransport>>>>,
+    current_user_login: Arc<Mutex<Option<String>>>,
 }
 
 impl Default for RealGitHubApi {
     fn default() -> Self {
         Self {
-            client: GitHubClient::new(GhCliTransport::default()),
-            current_user_login: std::sync::Arc::new(Mutex::new(None)),
+            client: Arc::new(Mutex::new(None)),
+            current_user_login: Arc::new(Mutex::new(None)),
         }
     }
 }
 
 impl RealGitHubApi {
+    fn client(&self) -> Result<GitHubClient<OctocrabTransport>> {
+        self.client
+            .lock()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?
+            .clone()
+            .ok_or(GitHubError::Unauthenticated)
+    }
+
     fn cached_current_user_login(&self) -> Result<Option<String>> {
         self.current_user_login
             .lock()
@@ -242,16 +258,64 @@ impl RealGitHubApi {
     }
 }
 
+impl GitHubAuthApi for RealGitHubApi {
+    fn configure_token(&self, token: String) -> Result<()> {
+        let transport = OctocrabTransport::with_token(token)?;
+        let mut client = self
+            .client
+            .lock()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        *client = Some(GitHubClient::new(transport));
+        self.current_user_login
+            .lock()
+            .map(|mut login| {
+                *login = None;
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        Ok(())
+    }
+
+    fn clear_token(&self) -> Result<()> {
+        self.client
+            .lock()
+            .map(|mut client| {
+                *client = None;
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        self.current_user_login
+            .lock()
+            .map(|mut login| {
+                *login = None;
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        Ok(())
+    }
+
+    fn has_token(&self) -> bool {
+        self.client
+            .lock()
+            .map(|client| client.is_some())
+            .unwrap_or(false)
+    }
+}
+
 impl GitHubRateLimitApi for RealGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
-        self.client.latest_rate_limit()
+        self.client
+            .lock()
+            .ok()
+            .and_then(|client| client.as_ref().and_then(GitHubClient::latest_rate_limit))
     }
 }
 
 #[async_trait]
 impl PullRequestInboxSource for RealGitHubApi {
     fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
-        self.client.latest_rate_limits()
+        self.client
+            .lock()
+            .ok()
+            .and_then(|client| client.as_ref().map(GitHubClient::latest_rate_limits))
+            .unwrap_or_default()
     }
 
     async fn list_repository_pull_requests(
@@ -259,7 +323,7 @@ impl PullRequestInboxSource for RealGitHubApi {
         repository: &RepoId,
         filter: PullRequestListFilter,
     ) -> Result<Vec<PullRequest>> {
-        self.client
+        self.client()?
             .list_repository_pull_requests(repository, filter)
             .await
     }
@@ -269,7 +333,7 @@ impl PullRequestInboxSource for RealGitHubApi {
         repository: &RepoId,
         filter: PullRequestListFilter,
     ) -> Result<usize> {
-        self.client
+        self.client()?
             .count_repository_pull_requests(repository, filter)
             .await
     }
@@ -280,7 +344,7 @@ impl PullRequestInboxSource for RealGitHubApi {
         filter: PullRequestListFilter,
         validator: Option<HttpCacheValidator>,
     ) -> Result<ConditionalFetch<Vec<PullRequest>>> {
-        self.client
+        self.client()?
             .list_repository_pull_requests_light(repository, filter, validator.as_ref())
             .await
     }
@@ -289,25 +353,27 @@ impl PullRequestInboxSource for RealGitHubApi {
         &self,
         node_ids: &[String],
     ) -> Result<Vec<PullRequestEnrichment>> {
-        self.client.enrich_pull_requests_by_node_ids(node_ids).await
+        self.client()?
+            .enrich_pull_requests_by_node_ids(node_ids)
+            .await
     }
 }
 
 #[async_trait]
 impl GitHubRepositoryApi for RealGitHubApi {
     async fn list_repositories(&self) -> Result<RepositoryList> {
-        self.client.list_repositories().await
+        self.client()?.list_repositories().await
     }
 
     async fn get_repository(&self, repository: &RepoId) -> Result<RepoId> {
-        self.client.get_repository(repository).await
+        self.client()?.get_repository(repository).await
     }
 }
 
 #[async_trait]
 impl GitHubPullRequestDetailApi for RealGitHubApi {
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest> {
-        self.client.get_pull_request(owner, repo, number).await
+        self.client()?.get_pull_request(owner, repo, number).await
     }
 
     async fn list_pull_request_files(
@@ -316,7 +382,7 @@ impl GitHubPullRequestDetailApi for RealGitHubApi {
         repo: &str,
         number: u64,
     ) -> Result<Vec<DiffFile>> {
-        self.client
+        self.client()?
             .list_pull_request_files(owner, repo, number)
             .await
     }
@@ -327,7 +393,7 @@ impl GitHubPullRequestDetailApi for RealGitHubApi {
         repo: &str,
         head_sha: &str,
     ) -> Result<Vec<CheckRun>> {
-        self.client.list_check_runs(owner, repo, head_sha).await
+        self.client()?.list_check_runs(owner, repo, head_sha).await
     }
 
     async fn list_workflow_runs_for_head(
@@ -336,7 +402,7 @@ impl GitHubPullRequestDetailApi for RealGitHubApi {
         repo: &str,
         head_sha: &str,
     ) -> Result<Vec<WorkflowRun>> {
-        self.client
+        self.client()?
             .list_workflow_runs_for_head(owner, repo, head_sha)
             .await
     }
@@ -350,13 +416,13 @@ impl GitHubWorkflowApi for RealGitHubApi {
         repo: &str,
         run_id: u64,
     ) -> Result<Vec<WorkflowJob>> {
-        self.client
+        self.client()?
             .list_workflow_jobs_for_run(owner, repo, run_id)
             .await
     }
 
     async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
-        self.client.workflow_run_log(owner, repo, run_id).await
+        self.client()?.workflow_run_log(owner, repo, run_id).await
     }
 }
 
@@ -369,13 +435,13 @@ impl GitHubWorkflowActionApi for RealGitHubApi {
         workflow_id: u64,
         git_ref: &str,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .dispatch_workflow(owner, repo, workflow_id, git_ref)
             .await
     }
 
     async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
-        self.client.rerun_failed_jobs(owner, repo, run_id).await
+        self.client()?.rerun_failed_jobs(owner, repo, run_id).await
     }
 }
 
@@ -386,7 +452,7 @@ impl GitHubReviewApi for RealGitHubApi {
             return Ok(login);
         }
 
-        let login = self.client.current_user().await?;
+        let login = self.client()?.current_user().await?;
         self.cache_current_user_login(login.clone())?;
 
         Ok(login)
@@ -398,7 +464,7 @@ impl GitHubReviewApi for RealGitHubApi {
         repo: &str,
         number: u64,
     ) -> Result<Vec<PullRequestReview>> {
-        self.client
+        self.client()?
             .list_pull_request_reviews(owner, repo, number)
             .await
     }
@@ -410,7 +476,7 @@ impl GitHubReviewApi for RealGitHubApi {
         number: u64,
         review_id: &str,
     ) -> Result<usize> {
-        self.client
+        self.client()?
             .pull_request_review_comment_count(owner, repo, number, review_id)
             .await
     }
@@ -421,7 +487,9 @@ impl GitHubReviewApi for RealGitHubApi {
         repo: &str,
         number: u64,
     ) -> Result<Vec<ReviewThread>> {
-        self.client.list_review_threads(owner, repo, number).await
+        self.client()?
+            .list_review_threads(owner, repo, number)
+            .await
     }
 }
 
@@ -433,7 +501,7 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         event: SubmitPullRequestReviewEvent,
         body: Option<&str>,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .submit_pull_request_review(pull_request_review_node_id, event, body)
             .await
     }
@@ -447,7 +515,7 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         range: &ReviewCommentRange,
         body: &str,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .create_pull_request_review_comment(owner, repo, number, commit_id, range, body)
             .await
     }
@@ -459,7 +527,7 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         range: &ReviewCommentRange,
         body: &str,
     ) -> Result<String> {
-        self.client
+        self.client()?
             .start_pull_request_review(pull_request_node_id, commit_id, range, body)
             .await
     }
@@ -470,7 +538,7 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         range: &ReviewCommentRange,
         body: &str,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .add_pending_review_thread(pull_request_review_node_id, range, body)
             .await
     }
@@ -481,25 +549,25 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         pull_request_review_node_id: Option<&str>,
         body: &str,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .add_review_thread_reply(thread_id, pull_request_review_node_id, body)
             .await
     }
 
     async fn resolve_review_thread(&self, thread_id: &str) -> Result<()> {
-        self.client.resolve_review_thread(thread_id).await
+        self.client()?.resolve_review_thread(thread_id).await
     }
 
     async fn unresolve_review_thread(&self, thread_id: &str) -> Result<()> {
-        self.client.unresolve_review_thread(thread_id).await
+        self.client()?.unresolve_review_thread(thread_id).await
     }
 
     async fn update_review_comment(&self, comment_id: &str, body: &str) -> Result<()> {
-        self.client.update_review_comment(comment_id, body).await
+        self.client()?.update_review_comment(comment_id, body).await
     }
 
     async fn delete_review_comment(&self, comment_id: &str) -> Result<()> {
-        self.client.delete_review_comment(comment_id).await
+        self.client()?.delete_review_comment(comment_id).await
     }
 
     async fn add_review_comment_reaction(
@@ -507,7 +575,7 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         comment_id: &str,
         content: ReactionContent,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .add_review_comment_reaction(comment_id, content)
             .await
     }
@@ -517,7 +585,7 @@ impl GitHubReviewMutationApi for RealGitHubApi {
         comment_id: &str,
         content: ReactionContent,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .remove_review_comment_reaction(comment_id, content)
             .await
     }
@@ -526,7 +594,9 @@ impl GitHubReviewMutationApi for RealGitHubApi {
 #[async_trait]
 impl GitHubPullRequestActionApi for RealGitHubApi {
     async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
-        self.client.approve_pull_request(owner, repo, number).await
+        self.client()?
+            .approve_pull_request(owner, repo, number)
+            .await
     }
 
     async fn request_pull_request_changes(
@@ -536,7 +606,7 @@ impl GitHubPullRequestActionApi for RealGitHubApi {
         number: u64,
         body: &str,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .request_pull_request_changes(owner, repo, number, body)
             .await
     }
@@ -548,7 +618,7 @@ impl GitHubPullRequestActionApi for RealGitHubApi {
         number: u64,
         head_sha: &str,
     ) -> Result<()> {
-        self.client
+        self.client()?
             .merge_pull_request(owner, repo, number, head_sha)
             .await
     }
@@ -575,7 +645,7 @@ pub(crate) mod test_support {
     use harbor_sync::PullRequestInboxSource;
 
     use super::{
-        GitHubPullRequestActionApi, GitHubPullRequestDetailApi, GitHubRateLimitApi,
+        GitHubAuthApi, GitHubPullRequestActionApi, GitHubPullRequestDetailApi, GitHubRateLimitApi,
         GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowActionApi,
         GitHubWorkflowApi,
     };
@@ -715,6 +785,22 @@ pub(crate) mod test_support {
     impl GitHubRateLimitApi for FakeGitHubApi {
         fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
             None
+        }
+    }
+
+    impl GitHubAuthApi for FakeGitHubApi {
+        fn configure_token(&self, _token: String) -> Result<()> {
+            self.record_call("configure_token");
+            Ok(())
+        }
+
+        fn clear_token(&self) -> Result<()> {
+            self.record_call("clear_token");
+            Ok(())
+        }
+
+        fn has_token(&self) -> bool {
+            true
         }
     }
 
@@ -1069,7 +1155,7 @@ mod tests {
         actions::{PanelTab, PullRequestAction, WorkflowAction},
         test_fixtures::{diff_file, pull_request, review_thread, test_time},
         workspace::{
-            AppView, PullRequestInboxCacheKey, PullRequestInboxMode,
+            AppView, GitHubAuthStatus, PullRequestInboxCacheKey, PullRequestInboxMode,
             github_service::test_support::FakeGitHubApi,
         },
     };
@@ -1499,6 +1585,34 @@ mod tests {
         cx.run_until_parked();
 
         assert!(api.calls().is_empty());
+    }
+
+    #[gpui::test]
+    async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext) {
+        let api = Arc::new(FakeGitHubApi::default());
+        let pull_request = pull_request();
+        let (view_entity, cx) = init_workspace_service_test(cx, api);
+
+        view_entity.update(cx, |view, _| {
+            view.auth_status = GitHubAuthStatus::SignedOut;
+            view.repository_state
+                .select_repository(pull_request.repo.clone());
+            view.pull_requests = vec![pull_request];
+            view.detail_state.files = vec![test_diff_file()];
+            view.detail_state.workflow_runs = vec![workflow_run()];
+            view.review_state.current_user_login = Some("octocat".to_string());
+            view.pull_request_inbox.start_loading();
+
+            view.show_github_sign_in_required();
+
+            assert!(view.pull_requests.is_empty());
+            assert!(view.current_repository().is_none());
+            assert!(view.detail_state.files.is_empty());
+            assert!(view.detail_state.workflow_runs.is_empty());
+            assert_eq!(view.review_state.current_user_login, None);
+            assert!(!view.pull_request_inbox.is_loading());
+            assert_eq!(view.status, "Sign in to GitHub to load repositories");
+        });
     }
 
     #[gpui::test]

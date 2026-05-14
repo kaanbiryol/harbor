@@ -3,7 +3,7 @@ use gpui::{
     uniform_list,
 };
 use gpui_component::{
-    Sizable, StyledExt,
+    Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::Input,
     popover::Popover,
@@ -190,15 +190,22 @@ impl AppView {
             .min(choices.len().saturating_sub(1));
         let repository_search_input = self.repository_state.repository_search_input.clone();
         let has_repository_query = !repository_query.is_empty();
+        let repository_switcher_disabled = self.github_auth_gate_visible();
 
         Popover::new("repository-switcher-popover")
             .appearance(false)
             .anchor(Anchor::TopLeft)
-            .open(self.repository_state.repository_switcher_open)
+            .open(!repository_switcher_disabled && self.repository_state.repository_switcher_open)
             .on_open_change({
                 let view = view.clone();
                 move |open, window, cx| {
                     view.update(cx, |view, cx| {
+                        if view.github_auth_gate_visible() {
+                            view.repository_state.repository_switcher_open = false;
+                            cx.notify();
+                            return;
+                        }
+
                         view.repository_state.repository_switcher_open = *open;
                         if *open {
                             view.pull_request_inbox_search_open = false;
@@ -222,7 +229,8 @@ impl AppView {
                     .ghost()
                     .small()
                     .compact()
-                    .dropdown_caret(true)
+                    .dropdown_caret(!repository_switcher_disabled)
+                    .disabled(repository_switcher_disabled)
                     .max_w(px(260.))
                     .child(
                         div()
