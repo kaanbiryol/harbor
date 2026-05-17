@@ -58,7 +58,7 @@ impl AppView {
                         let store = load.store.clone();
                         view.repository_state.set_store(load.store);
 
-                        if !view.github_api.has_token() {
+                        if !view.github_api.has_auth() {
                             view.show_github_sign_in_required();
                             cx.notify();
                             return;
@@ -223,7 +223,7 @@ impl AppView {
         repository: RepoId,
         cx: &mut Context<Self>,
     ) {
-        if !self.github_api.has_token() {
+        if !self.github_api.has_auth() {
             self.show_github_sign_in_required();
             cx.notify();
             return;
@@ -431,7 +431,7 @@ impl AppView {
         refresh_intent: PullRequestInboxRefreshIntent,
         cx: &mut Context<Self>,
     ) {
-        if !self.github_api.has_token() {
+        if !self.github_api.has_auth() {
             self.show_github_sign_in_required();
             cx.notify();
             return;

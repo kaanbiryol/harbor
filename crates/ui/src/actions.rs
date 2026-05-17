@@ -72,10 +72,18 @@ actions!(
         OpenWithXcode,
         /// Starts GitHub sign in.
         SignInToGitHub,
+        /// Uses the authenticated GitHub CLI session.
+        UseGitHubCli,
         /// Signs out of GitHub.
         SignOutOfGitHub,
-        /// Imports a GitHub token from the clipboard.
-        UseGitHubToken
+        /// Opens application settings.
+        OpenSettings,
+        /// Closes application settings.
+        CloseSettings,
+        /// Switches GitHub auth to OAuth device login.
+        SwitchGitHubAuthToOAuth,
+        /// Switches GitHub auth to the authenticated GitHub CLI session.
+        SwitchGitHubAuthToGhCli
     ]
 );
 

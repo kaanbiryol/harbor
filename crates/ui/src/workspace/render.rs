@@ -4,7 +4,7 @@ use gpui::{
     App, Context, FocusHandle, Focusable, IntoElement, Render, Rgba, Window, div, prelude::*, px,
 };
 use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
+    Disableable, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     spinner::Spinner,
 };
@@ -17,7 +17,7 @@ use crate::panels::{
     render_logs_panel, render_review_panel,
 };
 use crate::visual::{color, font};
-use crate::workspace::{AppView, GitHubAuthStatus};
+use crate::workspace::{AppView, GitHubAuthStatus, GitHubCliAvailability};
 
 const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
 const SHOW_STATUS_BAR_CACHED_MESSAGES: bool = true;
@@ -38,6 +38,8 @@ pub(crate) mod header;
 mod inbox;
 #[path = "render/pending_review.rs"]
 mod pending_review;
+#[path = "render/settings.rs"]
+mod settings;
 
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -128,9 +130,14 @@ impl Render for AppView {
             .on_action(cx.listener(Self::open_with_warp))
             .on_action(cx.listener(Self::open_with_xcode))
             .on_action(cx.listener(Self::sign_in_to_github))
+            .on_action(cx.listener(Self::use_github_cli))
             .on_action(cx.listener(Self::sign_out_of_github))
-            .on_action(cx.listener(Self::use_github_token))
+            .on_action(cx.listener(Self::open_settings))
+            .on_action(cx.listener(Self::close_settings))
+            .on_action(cx.listener(Self::switch_github_auth_to_oauth))
+            .on_action(cx.listener(Self::switch_github_auth_to_gh_cli))
             .size_full()
+            .relative()
             .flex()
             .flex_col()
             .bg(color::app_background())
@@ -140,6 +147,9 @@ impl Render for AppView {
             .child(content)
             .when(!show_auth_gate, |element| {
                 element.child(self.render_status_bar(cx))
+            })
+            .when(self.settings_open(), |element| {
+                element.child(self.render_settings_overlay(cx))
             })
     }
 }
@@ -158,10 +168,7 @@ impl AppView {
         let (title, message, button, show_icon, show_spinner, is_error) = match self.auth_status() {
             GitHubAuthStatus::Loading => (
                 Some("Checking GitHub".to_string()),
-                Some(
-                    "Harbor will load repositories after it finds a saved GitHub token."
-                        .to_string(),
-                ),
+                Some("Harbor will load repositories after it finds saved GitHub auth.".to_string()),
                 None,
                 true,
                 true,
@@ -307,6 +314,17 @@ impl AppView {
     }
 
     fn render_signed_out_github_gate(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let oauth_reason = self.github_oauth_unavailable_reason().map(str::to_string);
+        let cli_reason = self
+            .github_cli_availability()
+            .unavailable_reason()
+            .map(str::to_string);
+        let oauth_disabled = oauth_reason.is_some();
+        let cli_disabled = !matches!(
+            self.github_cli_availability(),
+            GitHubCliAvailability::Available
+        );
+
         div()
             .size_full()
             .relative()
@@ -324,20 +342,69 @@ impl AppView {
                     .justify_center()
                     .child(
                         div()
+                            .w(px(360.))
+                            .p_4()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
                             .border_1()
                             .border_color(color::border_strong())
                             .bg(color::panel_background())
                             .shadow_lg()
+                            .child(
+                                div()
+                                    .size(px(44.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_full()
+                                    .border_1()
+                                    .border_color(color::border_strong())
+                                    .bg(color::row_selected_subtle())
+                                    .child(Icon::new(IconName::Github).large()),
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_semibold()
+                                    .text_color(color::text_primary())
+                                    .child("Connect GitHub"),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(color::text_muted())
+                                    .child("Choose how Harbor should authenticate with GitHub."),
+                            )
                             .child(
                                 Button::new("github-auth-empty-state-sign-in")
                                     .primary()
                                     .large()
                                     .icon(IconName::Github)
                                     .child("Continue with GitHub")
+                                    .w_full()
+                                    .disabled(oauth_disabled)
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.sign_in_to_github(&SignInToGitHub, window, cx);
                                     })),
-                            ),
+                            )
+                            .when_some(oauth_reason, |element, reason| {
+                                element.child(render_auth_option_reason(reason))
+                            })
+                            .child(
+                                Button::new("github-auth-empty-state-gh-cli")
+                                    .large()
+                                    .icon(IconName::SquareTerminal)
+                                    .child("Use GitHub CLI")
+                                    .w_full()
+                                    .disabled(cli_disabled)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.use_github_cli(&UseGitHubCli, window, cx);
+                                    })),
+                            )
+                            .when_some(cli_reason, |element, reason| {
+                                element.child(render_auth_option_reason(reason))
+                            }),
                     ),
             )
     }
@@ -539,6 +606,13 @@ impl AppView {
                     }),
             )
     }
+}
+
+fn render_auth_option_reason(reason: String) -> impl IntoElement {
+    div()
+        .text_xs()
+        .text_color(color::text_muted())
+        .child(reason)
 }
 
 fn render_signed_out_workspace_preview() -> impl IntoElement {

@@ -18,6 +18,7 @@ mod review_interactions;
 mod review_state;
 mod review_submissions;
 mod reviews;
+mod settings;
 mod state;
 mod state_reset;
 mod switchers;
@@ -68,7 +69,8 @@ use state::{
 };
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
 
-pub(crate) use auth::GitHubAuthStatus;
+pub(crate) use auth::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
+pub(crate) use settings::{AuthSwitchStatus, SettingsSection};
 
 pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {
     tracing::warn!(%error, "{}", context);
@@ -81,7 +83,11 @@ pub struct AppView {
     pull_requests: Vec<PullRequest>,
     github_api: Arc<dyn GitHubApi>,
     auth_status: GitHubAuthStatus,
+    github_cli_availability: GitHubCliAvailability,
     github_auth_popover_open: bool,
+    settings_open: bool,
+    settings_section: SettingsSection,
+    auth_switch_status: Option<AuthSwitchStatus>,
     tasks: WorkspaceTasks,
     repository_state: RepositoryUiState,
     pub(crate) detail_state: PullRequestDetailUiState,
@@ -241,7 +247,11 @@ impl AppView {
             pull_requests,
             github_api,
             auth_status: GitHubAuthStatus::Loading,
+            github_cli_availability: GitHubCliAvailability::Checking,
             github_auth_popover_open: false,
+            settings_open: false,
+            settings_section: SettingsSection::GitHub,
+            auth_switch_status: None,
             tasks: WorkspaceTasks::default(),
             repository_state: RepositoryUiState::new(repository_search_input, start_startup_tasks),
             detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
@@ -772,7 +782,7 @@ impl AppView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::ToggleRepositorySwitcher;
+    use crate::actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher};
     use gpui::TestAppContext;
     use gpui_component::{Root, Theme, ThemeMode};
 
@@ -878,6 +888,78 @@ mod tests {
                     view.auth_status,
                     GitHubAuthStatus::SigningIn { .. }
                 ));
+            });
+    }
+
+    #[gpui::test]
+    async fn github_account_settings_open_and_close(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+        });
+
+        let mut view_entity = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            view.update(cx, |view, cx| {
+                view.github_auth_popover_open = true;
+                view.open_settings(&OpenSettings, window, cx);
+
+                assert!(view.settings_open());
+                assert_eq!(view.settings_section(), SettingsSection::GitHub);
+                assert!(!view.github_auth_popover_open);
+
+                view.close_settings(&CloseSettings, window, cx);
+                assert!(!view.settings_open());
+            });
+            view_entity = Some(view.clone());
+            Root::new(view, window, cx)
+        });
+
+        view_entity
+            .expect("test AppView should be created")
+            .read_with(cx, |view, _| {
+                assert!(!view.settings_open());
+            });
+    }
+
+    #[gpui::test]
+    async fn pending_auth_switch_preserves_current_source(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+        });
+
+        let mut view_entity = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            view.update(cx, |view, _| {
+                view.auth_status = GitHubAuthStatus::SignedIn {
+                    login: Some("octocat".to_string()),
+                    source: GitHubAuthSource::GhCli,
+                };
+                view.auth_switch_status = Some(AuthSwitchStatus::StartingOAuth);
+
+                assert_eq!(
+                    view.current_github_auth_source(),
+                    Some(GitHubAuthSource::GhCli)
+                );
+                assert_eq!(
+                    view.auth_switch_status(),
+                    Some(&AuthSwitchStatus::StartingOAuth)
+                );
+            });
+            view_entity = Some(view.clone());
+            Root::new(view, window, cx)
+        });
+
+        view_entity
+            .expect("test AppView should be created")
+            .read_with(cx, |view, _| {
+                assert_eq!(
+                    view.current_github_auth_source(),
+                    Some(GitHubAuthSource::GhCli)
+                );
             });
     }
 }

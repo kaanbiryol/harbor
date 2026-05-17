@@ -77,6 +77,7 @@ impl AppView {
     }
 
     pub(super) fn close_panel(&mut self, _: &ClosePanel, _: &mut Window, cx: &mut Context<Self>) {
+        self.settings_open = false;
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
         self.file_filter_popover_open = false;

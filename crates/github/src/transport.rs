@@ -63,6 +63,90 @@ pub trait GitHubTransport: Send + Sync {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum GitHubTransportSource {
+    Token(OctocrabTransport),
+    GhCli(GhCliTransport),
+}
+
+#[async_trait]
+impl GitHubTransport for GitHubTransportSource {
+    async fn rest_get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value> {
+        match self {
+            Self::Token(transport) => transport.rest_get(path, query).await,
+            Self::GhCli(transport) => transport.rest_get(path, query).await,
+        }
+    }
+
+    async fn rest_get_conditional(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        validator: Option<&HttpCacheValidator>,
+    ) -> Result<ConditionalFetch<Value>> {
+        match self {
+            Self::Token(transport) => transport.rest_get_conditional(path, query, validator).await,
+            Self::GhCli(transport) => transport.rest_get_conditional(path, query, validator).await,
+        }
+    }
+
+    async fn rest_post(&self, path: &str, body: Value) -> Result<Value> {
+        match self {
+            Self::Token(transport) => transport.rest_post(path, body).await,
+            Self::GhCli(transport) => transport.rest_post(path, body).await,
+        }
+    }
+
+    async fn rest_put(&self, path: &str, body: Value) -> Result<Value> {
+        match self {
+            Self::Token(transport) => transport.rest_put(path, body).await,
+            Self::GhCli(transport) => transport.rest_put(path, body).await,
+        }
+    }
+
+    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+        match self {
+            Self::Token(transport) => transport.workflow_run_log(owner, repo, run_id).await,
+            Self::GhCli(transport) => transport.workflow_run_log(owner, repo, run_id).await,
+        }
+    }
+
+    async fn graphql(&self, query: &str, variables: Value) -> Result<Value> {
+        match self {
+            Self::Token(transport) => transport.graphql(query, variables).await,
+            Self::GhCli(transport) => transport.graphql(query, variables).await,
+        }
+    }
+
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        match self {
+            Self::Token(transport) => transport.latest_rate_limit(),
+            Self::GhCli(transport) => transport.latest_rate_limit(),
+        }
+    }
+
+    fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
+        match self {
+            Self::Token(transport) => transport.latest_rate_limits(),
+            Self::GhCli(transport) => transport.latest_rate_limits(),
+        }
+    }
+
+    fn latest_request_attribution(&self) -> Option<GitHubRequestAttribution> {
+        match self {
+            Self::Token(transport) => transport.latest_request_attribution(),
+            Self::GhCli(transport) => transport.latest_request_attribution(),
+        }
+    }
+
+    fn recent_request_attributions(&self) -> Vec<GitHubRequestAttribution> {
+        match self {
+            Self::Token(transport) => transport.recent_request_attributions(),
+            Self::GhCli(transport) => transport.recent_request_attributions(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct GhCliTransport {
     coordinator: Arc<GhCliRequestCoordinator>,
@@ -1871,7 +1955,7 @@ fn map_failed_status(stdout: &[u8], stderr: &[u8]) -> GitHubError {
         || lower_message.contains("authentication")
         || lower_message.contains("gh auth login")
     {
-        GitHubError::Unauthenticated
+        GitHubError::UnauthenticatedCli
     } else if lower_message.contains("rate limit")
         || lower_message.contains("too many requests")
         || metadata.remaining == Some(0)

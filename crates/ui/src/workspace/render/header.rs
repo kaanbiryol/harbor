@@ -5,16 +5,16 @@ mod switchers;
 
 use gpui::{Anchor, AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    IconName, Sizable, StyledExt, TitleBar,
+    Icon, IconName, Sizable, StyledExt, TitleBar,
     avatar::Avatar,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
 
 use crate::{
-    actions::{SignInToGitHub, SignOutOfGitHub},
+    actions::SignOutOfGitHub,
     visual::color,
-    workspace::{AppView, GitHubAuthStatus},
+    workspace::{AppView, GitHubAuthSource, GitHubAuthStatus},
 };
 
 impl AppView {
@@ -85,28 +85,7 @@ impl AppView {
                     });
                 }
             })
-            .trigger(trigger.on_click({
-                let view = view.clone();
-                move |_, window, cx| {
-                    view.update(cx, |view, cx| {
-                        if matches!(
-                            view.auth_status(),
-                            GitHubAuthStatus::SignedIn { .. }
-                                | GitHubAuthStatus::SigningIn { .. }
-                                | GitHubAuthStatus::MissingClientId
-                                | GitHubAuthStatus::Failed(_)
-                        ) {
-                            if view.github_auth_popover_open() {
-                                view.dismiss_github_auth_popover(cx);
-                            } else {
-                                view.open_github_auth_popover(cx);
-                            }
-                        } else {
-                            view.sign_in_to_github(&SignInToGitHub, window, cx);
-                        }
-                    });
-                }
-            }))
+            .trigger(trigger)
             .content(move |_, _window, _cx| {
                 render_github_auth_popover(status.clone(), view.clone())
             })
@@ -115,7 +94,7 @@ impl AppView {
 
 fn render_github_auth_trigger(status: &GitHubAuthStatus) -> Button {
     match status {
-        GitHubAuthStatus::SignedIn { login } => Button::new("github-account")
+        GitHubAuthStatus::SignedIn { login, .. } => Button::new("github-account")
             .ghost()
             .small()
             .compact()
@@ -139,8 +118,12 @@ fn render_github_auth_popover(status: GitHubAuthStatus, view: Entity<AppView>) -
         } => {
             render_github_device_code_popover(user_code, verification_uri, view).into_any_element()
         }
-        GitHubAuthStatus::SignedIn { login } => {
-            render_github_account_popover(login, view).into_any_element()
+        GitHubAuthStatus::SignedIn { login, source } => {
+            render_github_account_popover(login, source, view).into_any_element()
+        }
+        GitHubAuthStatus::SignedOut => {
+            render_github_message_popover("Choose a GitHub sign-in method to continue.", false)
+                .into_any_element()
         }
         GitHubAuthStatus::MissingClientId => render_github_message_popover(
             "Set HARBOR_GITHUB_OAUTH_CLIENT_ID to sign in with GitHub.",
@@ -150,7 +133,7 @@ fn render_github_auth_popover(status: GitHubAuthStatus, view: Entity<AppView>) -
         GitHubAuthStatus::Failed(error) => {
             render_github_message_popover(error, true).into_any_element()
         }
-        GitHubAuthStatus::Loading | GitHubAuthStatus::SignedOut => div().into_any_element(),
+        GitHubAuthStatus::Loading => div().into_any_element(),
     }
 }
 
@@ -158,8 +141,9 @@ fn render_github_popover_frame(width: f32) -> gpui::Div {
     div()
         .w(px(width))
         .border_1()
-        .border_color(color::border_strong())
+        .border_color(color::border())
         .bg(color::elevated_background())
+        .rounded_xs()
         .shadow_lg()
 }
 
@@ -241,24 +225,27 @@ fn render_github_message_popover(message: impl Into<String>, is_error: bool) -> 
     )
 }
 
-fn render_github_account_popover(login: Option<String>, view: Entity<AppView>) -> impl IntoElement {
+fn render_github_account_popover(
+    login: Option<String>,
+    source: GitHubAuthSource,
+    view: Entity<AppView>,
+) -> impl IntoElement {
     let account_label = login
         .clone()
         .unwrap_or_else(|| "GitHub account".to_string());
 
-    render_github_popover_frame(220.0)
+    render_github_popover_frame(200.0)
         .p_1()
         .flex()
         .flex_col()
-        .gap_1()
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap_2()
                 .px_2()
-                .py_2()
-                .child(render_github_account_avatar(login.as_deref(), 28.0))
+                .py_1p5()
+                .child(render_github_account_avatar(login.as_deref(), 24.0))
                 .child(
                     div()
                         .min_w_0()
@@ -276,22 +263,77 @@ fn render_github_account_popover(login: Option<String>, view: Entity<AppView>) -
                             div()
                                 .text_xs()
                                 .text_color(color::text_muted())
-                                .child("GitHub"),
+                                .child(source.label()),
                         ),
                 ),
         )
         .child(
-            Button::new("github-account-sign-out")
-                .small()
-                .ghost()
-                .child("Sign out")
-                .w_full()
-                .on_click(move |_, window, cx| {
-                    view.update(cx, |view, cx| {
-                        view.sign_out_of_github(&SignOutOfGitHub, window, cx);
-                    });
-                }),
+            div()
+                .mt_1()
+                .border_t_1()
+                .border_color(color::border())
+                .pt_1()
+                .child(
+                    render_github_account_menu_row(
+                        "github-account-settings",
+                        IconName::Settings2,
+                        "Settings",
+                        false,
+                    )
+                    .on_click({
+                        let view = view.clone();
+                        move |_, _, cx| {
+                            view.update(cx, |view, cx| {
+                                view.open_github_settings(cx);
+                            });
+                        }
+                    }),
+                ),
         )
+        .child(
+            render_github_account_menu_row(
+                "github-account-sign-out",
+                IconName::ArrowRight,
+                "Sign out",
+                true,
+            )
+            .on_click(move |_, window, cx| {
+                view.update(cx, |view, cx| {
+                    view.sign_out_of_github(&SignOutOfGitHub, window, cx);
+                });
+            }),
+        )
+}
+
+fn render_github_account_menu_row(
+    id: &'static str,
+    icon: IconName,
+    label: &'static str,
+    danger: bool,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .h_7()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap_2()
+        .rounded_xs()
+        .px_2()
+        .text_sm()
+        .cursor_pointer()
+        .text_color(if danger {
+            color::danger()
+        } else {
+            color::text_primary()
+        })
+        .hover(|element| element.bg(color::row_hover()))
+        .child(Icon::new(icon).xsmall().text_color(if danger {
+            color::danger()
+        } else {
+            color::text_muted()
+        }))
+        .child(div().flex_1().child(label))
 }
 
 fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {

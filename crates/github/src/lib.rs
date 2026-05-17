@@ -7,7 +7,8 @@ pub use client::{
     PullRequestPageCursor, RepositoryList, SubmitPullRequestReviewEvent,
 };
 pub use transport::{
-    GhCliTransport, GitHubDeviceFlow, GitHubTransport, OctocrabTransport, start_oauth_device_flow,
+    GhCliTransport, GitHubDeviceFlow, GitHubTransport, GitHubTransportSource, OctocrabTransport,
+    start_oauth_device_flow,
 };
 
 pub type Result<T> = std::result::Result<T, GitHubError>;

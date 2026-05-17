@@ -4,12 +4,15 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    ConditionalFetch, GitHubClient, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-    OctocrabTransport, PullRequestEnrichment, PullRequestListFilter, PullRequestPage,
-    PullRequestPageCursor, RepositoryList, Result, SubmitPullRequestReviewEvent,
+    ConditionalFetch, GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus,
+    GitHubTransportSource, HttpCacheValidator, OctocrabTransport, PullRequestEnrichment,
+    PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
+    SubmitPullRequestReviewEvent,
 };
 use harbor_sync::PullRequestInboxSource;
 use std::sync::{Arc, Mutex};
+
+use super::GitHubAuthSource;
 
 pub(crate) trait GitHubApi:
     GitHubAuthApi
@@ -40,9 +43,10 @@ impl<T> GitHubApi for T where
 }
 
 pub(crate) trait GitHubAuthApi: Send + Sync {
-    fn configure_token(&self, token: String) -> Result<()>;
-    fn clear_token(&self) -> Result<()>;
-    fn has_token(&self) -> bool;
+    fn configure_token(&self, token: String, source: GitHubAuthSource) -> Result<()>;
+    fn configure_gh_cli(&self) -> Result<()>;
+    fn clear_auth(&self) -> Result<()>;
+    fn has_auth(&self) -> bool;
 }
 
 pub(crate) trait GitHubRateLimitApi: Send + Sync {
@@ -219,7 +223,7 @@ pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
 
 #[derive(Clone, Debug)]
 pub(crate) struct RealGitHubApi {
-    client: Arc<Mutex<Option<GitHubClient<OctocrabTransport>>>>,
+    client: Arc<Mutex<Option<GitHubClient<GitHubTransportSource>>>>,
     current_user_login: Arc<Mutex<Option<String>>>,
 }
 
@@ -233,7 +237,7 @@ impl Default for RealGitHubApi {
 }
 
 impl RealGitHubApi {
-    fn client(&self) -> Result<GitHubClient<OctocrabTransport>> {
+    fn client(&self) -> Result<GitHubClient<GitHubTransportSource>> {
         self.client
             .lock()
             .map_err(|error| GitHubError::Transport(error.to_string()))?
@@ -259,13 +263,13 @@ impl RealGitHubApi {
 }
 
 impl GitHubAuthApi for RealGitHubApi {
-    fn configure_token(&self, token: String) -> Result<()> {
+    fn configure_token(&self, token: String, _source: GitHubAuthSource) -> Result<()> {
         let transport = OctocrabTransport::with_token(token)?;
         let mut client = self
             .client
             .lock()
             .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        *client = Some(GitHubClient::new(transport));
+        *client = Some(GitHubClient::new(GitHubTransportSource::Token(transport)));
         self.current_user_login
             .lock()
             .map(|mut login| {
@@ -275,7 +279,24 @@ impl GitHubAuthApi for RealGitHubApi {
         Ok(())
     }
 
-    fn clear_token(&self) -> Result<()> {
+    fn configure_gh_cli(&self) -> Result<()> {
+        let mut client = self
+            .client
+            .lock()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        *client = Some(GitHubClient::new(GitHubTransportSource::GhCli(
+            GhCliTransport::default(),
+        )));
+        self.current_user_login
+            .lock()
+            .map(|mut login| {
+                *login = None;
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        Ok(())
+    }
+
+    fn clear_auth(&self) -> Result<()> {
         self.client
             .lock()
             .map(|mut client| {
@@ -291,7 +312,7 @@ impl GitHubAuthApi for RealGitHubApi {
         Ok(())
     }
 
-    fn has_token(&self) -> bool {
+    fn has_auth(&self) -> bool {
         self.client
             .lock()
             .map(|client| client.is_some())
@@ -659,6 +680,7 @@ pub(crate) mod test_support {
         GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowActionApi,
         GitHubWorkflowApi,
     };
+    use crate::workspace::GitHubAuthSource;
 
     type FakeQueue<T> = Arc<Mutex<VecDeque<Result<T>>>>;
     type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
@@ -833,17 +855,25 @@ pub(crate) mod test_support {
     }
 
     impl GitHubAuthApi for FakeGitHubApi {
-        fn configure_token(&self, _token: String) -> Result<()> {
-            self.record_call("configure_token");
+        fn configure_token(&self, _token: String, source: GitHubAuthSource) -> Result<()> {
+            self.record_call(match source {
+                GitHubAuthSource::OAuth => "configure_oauth_token",
+                GitHubAuthSource::GhCli => "configure_gh_cli_token",
+            });
             Ok(())
         }
 
-        fn clear_token(&self) -> Result<()> {
-            self.record_call("clear_token");
+        fn configure_gh_cli(&self) -> Result<()> {
+            self.record_call("configure_gh_cli");
             Ok(())
         }
 
-        fn has_token(&self) -> bool {
+        fn clear_auth(&self) -> Result<()> {
+            self.record_call("clear_auth");
+            Ok(())
+        }
+
+        fn has_auth(&self) -> bool {
             true
         }
     }
@@ -1210,10 +1240,27 @@ mod tests {
         actions::{PanelTab, PullRequestAction, WorkflowAction},
         test_fixtures::{diff_file, pull_request, review_thread, test_time},
         workspace::{
-            AppView, GitHubAuthStatus, PullRequestInboxCacheKey, PullRequestInboxMode,
-            github_service::test_support::FakeGitHubApi,
+            AppView, GitHubAuthSource, GitHubAuthStatus, PullRequestInboxCacheKey,
+            PullRequestInboxMode,
+            github_service::{GitHubAuthApi, test_support::FakeGitHubApi},
         },
     };
+
+    #[test]
+    fn fake_github_api_records_auth_source_calls() {
+        let api = FakeGitHubApi::default();
+
+        api.configure_token("oauth-token".to_string(), GitHubAuthSource::OAuth)
+            .expect("fake oauth token auth should succeed");
+        api.configure_gh_cli()
+            .expect("fake github cli auth should succeed");
+        api.clear_auth().expect("fake auth clear should succeed");
+
+        assert_eq!(
+            api.calls(),
+            vec!["configure_oauth_token", "configure_gh_cli", "clear_auth",]
+        );
+    }
 
     #[gpui::test]
     async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) {
@@ -1249,7 +1296,7 @@ mod tests {
                 "list_review_threads"
             ]
         );
-        assert_eq!(api.light_pull_request_requests(), vec![(None, 20, false)]);
+        assert_eq!(api.light_pull_request_requests(), vec![(None, 10, false)]);
     }
 
     #[gpui::test]
@@ -1799,7 +1846,10 @@ mod tests {
             assert!(view.detail_state.workflow_runs.is_empty());
             assert_eq!(view.review_state.current_user_login, None);
             assert!(!view.pull_request_inbox.is_loading());
-            assert_eq!(view.status, "Sign in to GitHub to load repositories");
+            assert_eq!(
+                view.status,
+                "Choose a GitHub sign-in method to load repositories"
+            );
         });
     }
 
