@@ -8,8 +8,10 @@ use sqlx::{
 };
 use thiserror::Error;
 
+mod repositories;
 mod rows;
 mod schema;
+mod sync_state;
 mod types;
 
 pub use types::{
@@ -18,8 +20,6 @@ pub use types::{
 };
 
 pub type Result<T> = std::result::Result<T, StorageError>;
-
-use rows::{recent_repositories_from_rows, sync_target_state_from_row};
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -64,130 +64,6 @@ impl SqliteStore {
         let store = Self { pool };
         store.migrate().await?;
         Ok(store)
-    }
-
-    pub async fn recent_repositories(&self) -> Result<Vec<RecentRepository>> {
-        let rows = sqlx::query(
-            "SELECT owner, name, pinned, local_path
-             FROM recent_repositories
-             ORDER BY
-                pinned DESC,
-                last_opened_at DESC,
-                last_seen_at DESC,
-                last_seen_position ASC,
-                owner ASC,
-                name ASC",
-        )
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(recent_repositories_from_rows(rows))
-    }
-
-    pub async fn recent_repositories_limited(&self, limit: usize) -> Result<Vec<RecentRepository>> {
-        let rows = sqlx::query(
-            "SELECT owner, name, pinned, local_path
-             FROM recent_repositories
-             ORDER BY
-                pinned DESC,
-                last_opened_at DESC,
-                last_seen_at DESC,
-                last_seen_position ASC,
-                owner ASC,
-                name ASC
-             LIMIT ?1",
-        )
-        .bind(limit as i64)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(recent_repositories_from_rows(rows))
-    }
-
-    pub async fn record_repository(&self, repository: &RepoId) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at)
-             VALUES (?1, ?2, 0, unixepoch())
-             ON CONFLICT(owner, name) DO UPDATE SET last_opened_at = unixepoch()",
-        )
-        .bind(&repository.owner)
-        .bind(&repository.name)
-        .execute(&self.pool)
-        .await?;
-
-        self.record_last_selected_repository(repository).await?;
-
-        Ok(())
-    }
-
-    pub async fn last_selected_repository(&self) -> Result<Option<RepoId>> {
-        let row = sqlx::query(
-            "SELECT owner, name
-             FROM last_selected_repository
-             WHERE id = 1",
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|row| RepoId::new(row.get::<String, _>("owner"), row.get::<String, _>("name"))))
-    }
-
-    pub async fn sync_repositories(&self, repositories: &[RepoId]) -> Result<()> {
-        for (position, repository) in repositories.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO recent_repositories
-                    (owner, name, pinned, last_opened_at, last_seen_at, last_seen_position)
-                 VALUES (?1, ?2, 0, 0, unixepoch(), ?3)
-                 ON CONFLICT(owner, name) DO UPDATE SET
-                    last_seen_at = unixepoch(),
-                    last_seen_position = excluded.last_seen_position",
-            )
-            .bind(&repository.owner)
-            .bind(&repository.name)
-            .bind(position as i64)
-            .execute(&self.pool)
-            .await?;
-        }
-
-        Ok(())
-    }
-
-    async fn record_last_selected_repository(&self, repository: &RepoId) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO last_selected_repository (id, owner, name, updated_at)
-             VALUES (1, ?1, ?2, unixepoch())
-             ON CONFLICT(id) DO UPDATE SET
-                owner = excluded.owner,
-                name = excluded.name,
-                updated_at = excluded.updated_at",
-        )
-        .bind(&repository.owner)
-        .bind(&repository.name)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn set_repository_local_path(
-        &self,
-        repository: &RepoId,
-        local_path: &std::path::Path,
-    ) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at, local_path)
-             VALUES (?1, ?2, 0, unixepoch(), ?3)
-             ON CONFLICT(owner, name) DO UPDATE SET
-                local_path = excluded.local_path,
-                last_opened_at = unixepoch()",
-        )
-        .bind(&repository.owner)
-        .bind(&repository.name)
-        .bind(local_path.to_string_lossy().as_ref())
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
     }
 
     pub async fn load_pull_request_inbox(
@@ -454,81 +330,6 @@ impl SqliteStore {
         .await
     }
 
-    pub async fn mark_sync_attempt(&self, target_key: &str) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO sync_target_state (target_key, last_attempt_at, stale)
-             VALUES (?1, unixepoch(), 0)
-             ON CONFLICT(target_key) DO UPDATE SET
-                last_attempt_at = unixepoch()",
-        )
-        .bind(target_key)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn record_sync_success(&self, target_key: &str) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO sync_target_state
-                (target_key, last_successful_fetch_at, last_attempt_at, last_error, stale)
-             VALUES (?1, unixepoch(), unixepoch(), NULL, 0)
-             ON CONFLICT(target_key) DO UPDATE SET
-                last_successful_fetch_at = unixepoch(),
-                last_attempt_at = unixepoch(),
-                last_error = NULL,
-                stale = 0",
-        )
-        .bind(target_key)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn record_sync_failure(&self, target_key: &str, error: &str) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO sync_target_state (target_key, last_attempt_at, last_error, stale)
-             VALUES (?1, unixepoch(), ?2, 1)
-             ON CONFLICT(target_key) DO UPDATE SET
-                last_attempt_at = unixepoch(),
-                last_error = excluded.last_error,
-                stale = 1",
-        )
-        .bind(target_key)
-        .bind(error)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn mark_sync_target_stale(&self, target_key: &str) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO sync_target_state (target_key, stale)
-             VALUES (?1, 1)
-             ON CONFLICT(target_key) DO UPDATE SET stale = 1",
-        )
-        .bind(target_key)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn sync_target_state(&self, target_key: &str) -> Result<Option<SyncTargetState>> {
-        let row = sqlx::query(
-            "SELECT target_key, last_successful_fetch_at, last_attempt_at, last_error, stale
-             FROM sync_target_state
-             WHERE target_key = ?1",
-        )
-        .bind(target_key)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        row.map(sync_target_state_from_row).transpose()
-    }
-
     pub async fn load_http_cache_validator(
         &self,
         request_key: &str,
@@ -632,27 +433,6 @@ impl SqliteStore {
         .bind(head_sha)
         .bind(section.key())
         .bind(serde_json::to_string(value)?)
-        .execute(&mut **transaction)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn record_sync_success_in_transaction(
-        transaction: &mut Transaction<'_, Sqlite>,
-        target_key: &str,
-    ) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO sync_target_state
-                (target_key, last_successful_fetch_at, last_attempt_at, last_error, stale)
-             VALUES (?1, unixepoch(), unixepoch(), NULL, 0)
-             ON CONFLICT(target_key) DO UPDATE SET
-                last_successful_fetch_at = unixepoch(),
-                last_attempt_at = unixepoch(),
-                last_error = NULL,
-                stale = 0",
-        )
-        .bind(target_key)
         .execute(&mut **transaction)
         .await?;
 

@@ -1,7 +1,7 @@
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-};
+#[path = "github_service_test_support/queues.rs"]
+mod queues;
+
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use harbor_domain::{
@@ -9,9 +9,9 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-    PullRequestEnrichment, PullRequestListFilter, PullRequestPage, PullRequestPageCursor,
-    RepositoryList, Result, SubmitPullRequestReviewEvent,
+    ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
+    PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
+    SubmitPullRequestReviewEvent,
 };
 
 use harbor_sync::PullRequestInboxSource;
@@ -22,8 +22,8 @@ use super::{
     GitHubWorkflowApi,
 };
 use crate::workspace::GitHubAuthSource;
+use queues::{FakeQueue, pop_result, push_result};
 
-type FakeQueue<T> = Arc<Mutex<VecDeque<Result<T>>>>;
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
 type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>;
 
@@ -157,25 +157,6 @@ impl FakeGitHubApi {
             .expect("fake GitHub API calls mutex should not be poisoned")
             .push(name.to_string());
     }
-}
-
-fn push_result<T>(queue: &FakeQueue<T>, result: Result<T>) {
-    queue
-        .lock()
-        .expect("fake GitHub API queue mutex should not be poisoned")
-        .push_back(result);
-}
-
-fn pop_result<T>(queue: &FakeQueue<T>, name: &str) -> Result<T> {
-    queue
-        .lock()
-        .expect("fake GitHub API queue mutex should not be poisoned")
-        .pop_front()
-        .unwrap_or_else(|| {
-            Err(GitHubError::Transport(format!(
-                "missing fake {name} result"
-            )))
-        })
 }
 
 fn page_from_pull_requests(pull_requests: Vec<PullRequest>) -> PullRequestPage {

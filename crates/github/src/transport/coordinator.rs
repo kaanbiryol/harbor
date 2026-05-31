@@ -17,11 +17,15 @@ use crate::{
 use super::errors::{
     graphql_rate_limit_error, map_failed_status, map_http_failure, map_spawn_error,
 };
+use super::octocrab::{OctocrabRequestFuture, OctocrabResponse};
 use super::response::{
     GitHubRateLimitMetadata, graphql_response_cost, json_value_from_body, parse_json_output,
     parse_response_metadata, response_metadata_from_headers,
 };
-use super::{OctocrabRequestFuture, OctocrabResponse};
+
+mod dedupe;
+
+use dedupe::{InFlightJsonRequest, JsonDedupeRole};
 
 const MAX_CONCURRENT_GITHUB_REQUESTS: usize = 4;
 const MAX_REQUEST_ATTRIBUTION_HISTORY: usize = 100;
@@ -59,18 +63,6 @@ impl GhCliRequestCoordinatorState {
             ..Default::default()
         }
     }
-}
-
-#[derive(Default)]
-struct InFlightJsonRequest {
-    result: Mutex<Option<Result<Value>>>,
-    completed: Condvar,
-}
-
-enum JsonDedupeRole {
-    Leader(Arc<InFlightJsonRequest>),
-    Follower(Arc<InFlightJsonRequest>),
-    Disabled,
 }
 
 impl GhCliRequestCoordinator {
@@ -495,31 +487,6 @@ impl GhCliRequestCoordinator {
         })
     }
 
-    fn json_dedupe_role(&self, kind: GitHubRequestKind, read_key: Option<&str>) -> JsonDedupeRole {
-        if kind != GitHubRequestKind::Read {
-            return JsonDedupeRole::Disabled;
-        }
-
-        let Some(read_key) = read_key else {
-            return JsonDedupeRole::Disabled;
-        };
-
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(in_flight) = state.in_flight_json_reads.get(read_key) {
-            return JsonDedupeRole::Follower(in_flight.clone());
-        }
-
-        let in_flight = Arc::new(InFlightJsonRequest::default());
-        state
-            .in_flight_json_reads
-            .insert(read_key.to_string(), in_flight.clone());
-
-        JsonDedupeRole::Leader(in_flight)
-    }
-
     pub(super) fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         self.state
             .lock()
@@ -639,21 +606,6 @@ impl GhCliRequestCoordinator {
         );
     }
 
-    fn remove_in_flight_json_read(&self, read_key: &str, in_flight: &Arc<InFlightJsonRequest>) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        if state
-            .in_flight_json_reads
-            .get(read_key)
-            .is_some_and(|current| Arc::ptr_eq(current, in_flight))
-        {
-            state.in_flight_json_reads.remove(read_key);
-        }
-    }
-
     fn acquire(&self, kind: GitHubRequestKind) -> GhCliRequestGuard<'_> {
         let mut state = self
             .state
@@ -717,36 +669,6 @@ impl Drop for GhCliRequestGuard<'_> {
         }
 
         self.coordinator.state_changed.notify_all();
-    }
-}
-
-impl InFlightJsonRequest {
-    fn wait(&self) -> Result<Value> {
-        let mut result = self
-            .result
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        while result.is_none() {
-            result = self
-                .completed
-                .wait(result)
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-        }
-
-        result.as_ref().cloned().unwrap_or_else(|| {
-            Err(GitHubError::Transport(
-                "in-flight request lost its result".into(),
-            ))
-        })
-    }
-
-    fn complete(&self, result: Result<Value>) {
-        *self
-            .result
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(result);
-        self.completed.notify_all();
     }
 }
 

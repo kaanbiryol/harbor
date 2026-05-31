@@ -4,7 +4,7 @@ use secrecy::{ExposeSecret, SecretString};
 
 use crate::{GitHubError, Result};
 
-use super::map_octocrab_error;
+use super::errors::map_octocrab_error;
 
 #[derive(Clone)]
 pub struct GitHubDeviceFlow {
