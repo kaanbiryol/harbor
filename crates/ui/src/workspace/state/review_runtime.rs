@@ -1,25 +1,26 @@
 use std::collections::HashMap;
 
-use chrono::Utc;
 use harbor_domain::{
-    PullRequestReview, ReactionContent, ReviewComment, ReviewCommentPosition, ReviewCommentRange,
-    ReviewThread, ReviewThreadState,
+    PullRequestReview, ReactionContent, ReviewComment, ReviewThread, ReviewThreadState,
 };
 
 use crate::workspace::{
     PendingReviewSession, ReviewCommentUiError, ReviewComposerState, ReviewReactionAction,
     ReviewReactionKey, ReviewThreadUiError,
     reviews::{
-        LOCAL_REVIEW_COMMENT_ID_PREFIX, LOCAL_REVIEW_THREAD_ID_PREFIX,
-        OptimisticReviewCommentHandle, apply_review_reaction_overrides,
-        apply_review_thread_state_overrides, increment_pending_review_comment_count,
-        merge_optimistic_review_threads, pending_review_from_reviews,
-        remove_review_comment_from_threads, review_position_from_range,
+        apply_review_reaction_overrides, apply_review_thread_state_overrides,
+        increment_pending_review_comment_count, merge_optimistic_review_threads,
+        pending_review_from_reviews, remove_review_comment_from_threads,
         rollback_pending_review_comment_count, set_review_comment_reaction_state,
         unresolved_review_thread_count,
     },
     status::LoadStatus,
 };
+
+#[path = "review_runtime/actions.rs"]
+mod actions;
+#[path = "review_runtime/optimistic_comments.rs"]
+mod optimistic_comments;
 
 pub(crate) struct ReviewRuntimeState {
     pub(crate) pull_request_reviews: Vec<PullRequestReview>,
@@ -142,164 +143,6 @@ impl ReviewRuntimeState {
         increment_pending_review_comment_count(&mut self.pending_review);
     }
 
-    pub(crate) fn is_submitting_review_comment(&self) -> bool {
-        self.is_submitting_review_comment
-    }
-
-    pub(crate) fn start_review_comment_submission(&mut self, show_submitting: bool) {
-        self.is_submitting_review_comment = show_submitting;
-        self.review_composer_state.clear();
-        self.review_comment_error = None;
-    }
-
-    pub(crate) fn finish_review_comment_submission(&mut self) {
-        self.is_submitting_review_comment = false;
-    }
-
-    pub(crate) fn review_comment_error(&self) -> Option<&str> {
-        self.review_comment_error.as_deref()
-    }
-
-    pub(crate) fn set_review_comment_error(&mut self, error: impl Into<String>) {
-        self.review_comment_error = Some(error.into());
-    }
-
-    pub(crate) fn clear_review_comment_error(&mut self) {
-        self.review_comment_error = None;
-    }
-
-    pub(crate) fn is_submitting_review_thread_reply(&self) -> bool {
-        self.is_submitting_review_thread_reply
-    }
-
-    pub(crate) fn finish_review_thread_reply_submission(&mut self) {
-        self.is_submitting_review_thread_reply = false;
-    }
-
-    pub(crate) fn review_thread_reply_error(&self) -> Option<&ReviewThreadUiError> {
-        self.review_thread_reply_error.as_ref()
-    }
-
-    pub(crate) fn set_review_thread_reply_error(
-        &mut self,
-        thread_id: impl Into<String>,
-        message: impl Into<String>,
-    ) {
-        self.review_thread_reply_error = Some(ReviewThreadUiError {
-            thread_id: thread_id.into(),
-            message: message.into(),
-        });
-    }
-
-    pub(crate) fn clear_review_thread_reply_error(&mut self) {
-        self.review_thread_reply_error = None;
-    }
-
-    pub(crate) fn is_submitting_review_comment_edit(&self) -> bool {
-        self.is_submitting_review_comment_edit
-    }
-
-    pub(crate) fn start_review_comment_edit_submission(&mut self, comment_id: String) {
-        self.is_submitting_review_comment_edit = true;
-        self.review_composer_state.open_comment_edit(comment_id);
-        self.review_comment_edit_error = None;
-    }
-
-    pub(crate) fn finish_review_comment_edit_submission(&mut self) {
-        self.is_submitting_review_comment_edit = false;
-    }
-
-    pub(crate) fn review_comment_edit_error(&self) -> Option<&ReviewCommentUiError> {
-        self.review_comment_edit_error.as_ref()
-    }
-
-    pub(crate) fn set_review_comment_edit_error(
-        &mut self,
-        comment_id: impl Into<String>,
-        message: impl Into<String>,
-    ) {
-        self.review_comment_edit_error = Some(ReviewCommentUiError {
-            comment_id: comment_id.into(),
-            message: message.into(),
-        });
-    }
-
-    pub(crate) fn clear_review_comment_edit_error(&mut self) {
-        self.review_comment_edit_error = None;
-    }
-
-    pub(crate) fn comment_action_running(&self) -> bool {
-        self.review_comment_action_comment_id.is_some()
-    }
-
-    pub(crate) fn review_comment_action_comment_id(&self) -> Option<&str> {
-        self.review_comment_action_comment_id.as_deref()
-    }
-
-    pub(crate) fn start_review_comment_action(&mut self, comment_id: String) {
-        self.review_comment_action_comment_id = Some(comment_id);
-        self.review_comment_action_error = None;
-    }
-
-    pub(crate) fn finish_review_comment_action(&mut self) {
-        self.review_comment_action_comment_id = None;
-    }
-
-    pub(crate) fn review_comment_action_error(&self) -> Option<&ReviewCommentUiError> {
-        self.review_comment_action_error.as_ref()
-    }
-
-    pub(crate) fn set_review_comment_action_error(
-        &mut self,
-        comment_id: impl Into<String>,
-        message: impl Into<String>,
-    ) {
-        self.review_comment_action_error = Some(ReviewCommentUiError {
-            comment_id: comment_id.into(),
-            message: message.into(),
-        });
-    }
-
-    pub(crate) fn clear_review_comment_action_error(&mut self) {
-        self.review_comment_action_error = None;
-    }
-
-    pub(crate) fn thread_action_running(&self) -> bool {
-        self.review_thread_action_thread_id.is_some()
-    }
-
-    pub(crate) fn review_thread_action_thread_id(&self) -> Option<&str> {
-        self.review_thread_action_thread_id.as_deref()
-    }
-
-    pub(crate) fn start_review_thread_action(&mut self, thread_id: String) {
-        self.review_thread_action_thread_id = Some(thread_id);
-        self.review_thread_action_error = None;
-    }
-
-    pub(crate) fn finish_review_thread_action(&mut self) {
-        self.review_thread_action_thread_id = None;
-    }
-
-    pub(crate) fn review_thread_action_error(&self) -> Option<&ReviewThreadUiError> {
-        self.review_thread_action_error.as_ref()
-    }
-
-    pub(crate) fn set_review_thread_action_error(
-        &mut self,
-        thread_id: impl Into<String>,
-        message: impl Into<String>,
-    ) {
-        self.review_thread_action_error = Some(ReviewThreadUiError {
-            thread_id: thread_id.into(),
-            message: message.into(),
-        });
-    }
-
-    pub(crate) fn clear_review_thread_action_error(&mut self) {
-        self.review_thread_action_error = None;
-    }
-
     pub(crate) fn set_review_thread_state_override(
         &mut self,
         thread_id: String,
@@ -310,42 +153,6 @@ impl ReviewRuntimeState {
 
     pub(crate) fn remove_review_thread_state_override(&mut self, thread_id: &str) {
         self.review_thread_state_overrides.remove(thread_id);
-    }
-
-    pub(crate) fn reaction_action_running(&self) -> bool {
-        self.review_reaction_action.is_some()
-    }
-
-    pub(crate) fn review_reaction_action(&self) -> Option<&ReviewReactionAction> {
-        self.review_reaction_action.as_ref()
-    }
-
-    pub(crate) fn start_review_reaction_action(&mut self, action: ReviewReactionAction) {
-        self.review_reaction_action = Some(action);
-        self.review_reaction_error = None;
-    }
-
-    pub(crate) fn finish_review_reaction_action(&mut self) {
-        self.review_reaction_action = None;
-    }
-
-    pub(crate) fn review_reaction_error(&self) -> Option<&ReviewCommentUiError> {
-        self.review_reaction_error.as_ref()
-    }
-
-    pub(crate) fn set_review_reaction_error(
-        &mut self,
-        comment_id: impl Into<String>,
-        message: impl Into<String>,
-    ) {
-        self.review_reaction_error = Some(ReviewCommentUiError {
-            comment_id: comment_id.into(),
-            message: message.into(),
-        });
-    }
-
-    pub(crate) fn clear_review_reaction_error(&mut self) {
-        self.review_reaction_error = None;
     }
 
     pub(crate) fn set_review_reaction_override(
@@ -361,31 +168,6 @@ impl ReviewRuntimeState {
         self.review_reaction_overrides.remove(key);
     }
 
-    pub(crate) fn is_submitting_pending_review(&self) -> bool {
-        self.is_submitting_pending_review
-    }
-
-    pub(crate) fn start_pending_review_submission(&mut self) {
-        self.is_submitting_pending_review = true;
-        self.pending_review_error = None;
-    }
-
-    pub(crate) fn finish_pending_review_submission(&mut self) {
-        self.is_submitting_pending_review = false;
-    }
-
-    pub(crate) fn pending_review_error(&self) -> Option<&str> {
-        self.pending_review_error.as_deref()
-    }
-
-    pub(crate) fn set_pending_review_error(&mut self, error: impl Into<String>) {
-        self.pending_review_error = Some(error.into());
-    }
-
-    pub(crate) fn clear_pending_review_error(&mut self) {
-        self.pending_review_error = None;
-    }
-
     pub(crate) fn next_review_data_generation(&mut self) -> u64 {
         self.review_data_generation = self.review_data_generation.saturating_add(1);
         self.review_data_generation
@@ -393,22 +175,6 @@ impl ReviewRuntimeState {
 
     pub(crate) fn review_data_generation(&self) -> u64 {
         self.review_data_generation
-    }
-
-    pub(crate) fn clear_composer_and_action_state(&mut self) {
-        self.review_composer_state.clear();
-        self.review_comment_error = None;
-        self.review_thread_reply_error = None;
-        self.review_comment_edit_error = None;
-        self.review_comment_action_comment_id = None;
-        self.review_comment_action_error = None;
-        self.review_reaction_action = None;
-        self.review_reaction_error = None;
-    }
-
-    pub(crate) fn clear_submission_errors(&mut self) {
-        self.review_comment_error = None;
-        self.pending_review_error = None;
     }
 
     pub(crate) fn clear_review_data(&mut self) {
@@ -541,89 +307,6 @@ impl ReviewRuntimeState {
         if let Some(comment) = self.review_comment_mut(comment_id) {
             set_review_comment_reaction_state(comment, content, viewer_has_reacted);
         }
-    }
-
-    pub(crate) fn insert_optimistic_review_thread(
-        &mut self,
-        range: ReviewCommentRange,
-        body: String,
-    ) -> OptimisticReviewCommentHandle {
-        let sequence = self.next_local_review_comment_sequence();
-        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
-        let comment = self.optimistic_review_comment(
-            comment_id.clone(),
-            Some(review_position_from_range(&range)),
-            body,
-        );
-
-        self.review_threads.push(ReviewThread {
-            id: format!("{LOCAL_REVIEW_THREAD_ID_PREFIX}{sequence}"),
-            path: range.path.clone(),
-            range: Some(range),
-            state: ReviewThreadState::Unresolved,
-            comments: vec![comment],
-        });
-
-        OptimisticReviewCommentHandle { comment_id }
-    }
-
-    pub(crate) fn append_optimistic_review_reply(
-        &mut self,
-        thread_id: &str,
-        body: String,
-    ) -> Option<OptimisticReviewCommentHandle> {
-        let thread_index = self
-            .review_threads
-            .iter()
-            .position(|thread| thread.id == thread_id)?;
-
-        let position = self.review_threads[thread_index]
-            .range
-            .as_ref()
-            .map(review_position_from_range)
-            .or_else(|| {
-                self.review_threads[thread_index]
-                    .comments
-                    .iter()
-                    .find_map(|comment| comment.position.clone())
-            });
-        let sequence = self.next_local_review_comment_sequence();
-        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
-        let comment = self.optimistic_review_comment(comment_id.clone(), position, body);
-
-        self.review_threads[thread_index].comments.push(comment);
-
-        Some(OptimisticReviewCommentHandle { comment_id })
-    }
-
-    fn optimistic_review_comment(
-        &self,
-        id: String,
-        position: Option<ReviewCommentPosition>,
-        body: String,
-    ) -> ReviewComment {
-        ReviewComment {
-            id,
-            author: self
-                .current_user_login
-                .clone()
-                .unwrap_or_else(|| "you".to_string()),
-            author_avatar_url: None,
-            body,
-            created_at: Utc::now(),
-            updated_at: None,
-            position,
-            viewer_did_author: true,
-            viewer_can_update: false,
-            viewer_can_delete: false,
-            viewer_can_react: false,
-            reactions: Vec::new(),
-        }
-    }
-
-    fn next_local_review_comment_sequence(&mut self) -> u64 {
-        self.local_review_comment_sequence = self.local_review_comment_sequence.saturating_add(1);
-        self.local_review_comment_sequence
     }
 
     fn remove_review_reaction_overrides(&mut self, keys: Vec<ReviewReactionKey>) {

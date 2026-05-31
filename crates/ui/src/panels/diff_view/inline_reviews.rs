@@ -77,157 +77,138 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
     let target_label = review_comment_range_label(&composer.range);
     let submit_disabled = body_empty || is_submitting;
 
-    div()
-        .min_h(px(DIFF_ROW_HEIGHT))
-        .w_full()
-        .flex()
-        .items_start()
-        .bg(color::content_background())
-        .text_color(color::text_secondary())
-        .font_family(font::UI)
-        .child(render_line_number(None, line_number_width))
-        .child(render_line_number(None, line_number_width))
-        .child(render_review_menu_marker(review_marker_width))
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .py_1()
-                .pr_3()
-                .child(
+    render_inline_review_row(
+        line_number_width,
+        render_review_menu_marker(review_marker_width),
+        div()
+            .w_full()
+            .max_w(px(REVIEW_COMPOSER_MAX_WIDTH))
+            .border_1()
+            .border_color(color::border_strong())
+            .bg(color::panel_background())
+            .px_3()
+            .py_2()
+            .child(
+                div()
+                    .pb_2()
+                    .text_xs()
+                    .font_medium()
+                    .text_color(color::accent())
+                    .child(format!("Comment on {target_label}")),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .border_1()
+                    .border_color(color::border_strong())
+                    .bg(color::input_background())
+                    .px_2()
+                    .py_1()
+                    .child(
+                        Input::new(&input)
+                            .w_full()
+                            .small()
+                            .h(px(DIFF_ROW_HEIGHT * 3.0))
+                            .appearance(false)
+                            .bordered(false)
+                            .focus_bordered(false),
+                    ),
+            )
+            .when_some(error, |element, error| {
+                element.child(
                     div()
-                        .w_full()
-                        .max_w(px(REVIEW_COMPOSER_MAX_WIDTH))
-                        .border_1()
-                        .border_color(color::border_strong())
-                        .bg(color::panel_background())
-                        .px_3()
-                        .py_2()
-                        .child(
-                            div()
-                                .pb_2()
-                                .text_xs()
-                                .font_medium()
-                                .text_color(color::accent())
-                                .child(format!("Comment on {target_label}")),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .border_1()
-                                .border_color(color::border_strong())
-                                .bg(color::input_background())
-                                .px_2()
-                                .py_1()
-                                .child(
-                                    Input::new(&input)
-                                        .w_full()
-                                        .small()
-                                        .h(px(DIFF_ROW_HEIGHT * 3.0))
-                                        .appearance(false)
-                                        .bordered(false)
-                                        .focus_bordered(false),
-                                ),
-                        )
-                        .when_some(error, |element, error| {
+                        .pt_2()
+                        .text_xs()
+                        .text_color(color::danger())
+                        .child(error),
+                )
+            })
+            .child(
+                div()
+                    .pt_2()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .gap_2()
+                    .child(
+                        Button::new("cancel-review-comment")
+                            .label("Cancel")
+                            .xsmall()
+                            .ghost()
+                            .disabled(is_submitting)
+                            .on_click({
+                                let view_entity = view_entity.clone();
+                                move |_, window, cx| {
+                                    view_entity.update(cx, |view, cx| {
+                                        view.cancel_review_composer(window, cx);
+                                    });
+                                }
+                            }),
+                    )
+                    .when(has_pending_review, {
+                        let view_entity = view_entity.clone();
+                        move |element| {
                             element.child(
-                                div()
-                                    .pt_2()
-                                    .text_xs()
-                                    .text_color(color::danger())
-                                    .child(error),
+                                Button::new("add-review-comment")
+                                    .label("Add review comment")
+                                    .xsmall()
+                                    .primary()
+                                    .loading(is_submitting)
+                                    .disabled(submit_disabled)
+                                    .on_click(move |_, _, cx| {
+                                        view_entity.update(cx, |view, cx| {
+                                            view.submit_review_comment(
+                                                ReviewCommentSubmission::AddToReview,
+                                                cx,
+                                            );
+                                        });
+                                    }),
                             )
-                        })
-                        .child(
-                            div()
-                                .pt_2()
-                                .flex()
-                                .items_center()
-                                .justify_end()
-                                .gap_2()
+                        }
+                    })
+                    .when(!has_pending_review, {
+                        let view_entity = view_entity.clone();
+                        move |element| {
+                            element
                                 .child(
-                                    Button::new("cancel-review-comment")
-                                        .label("Cancel")
+                                    Button::new("add-single-comment")
+                                        .label("Add single comment")
                                         .xsmall()
-                                        .ghost()
-                                        .disabled(is_submitting)
+                                        .outline()
+                                        .loading(is_submitting)
+                                        .disabled(submit_disabled)
                                         .on_click({
                                             let view_entity = view_entity.clone();
-                                            move |_, window, cx| {
+                                            move |_, _, cx| {
                                                 view_entity.update(cx, |view, cx| {
-                                                    view.cancel_review_composer(window, cx);
+                                                    view.submit_review_comment(
+                                                        ReviewCommentSubmission::SingleComment,
+                                                        cx,
+                                                    );
                                                 });
                                             }
                                         }),
                                 )
-                                .when(has_pending_review, {
-                                    let view_entity = view_entity.clone();
-                                    move |element| {
-                                        element.child(
-                                            Button::new("add-review-comment")
-                                                .label("Add review comment")
-                                                .xsmall()
-                                                .primary()
-                                                .loading(is_submitting)
-                                                .disabled(submit_disabled)
-                                                .on_click(move |_, _, cx| {
-                                                    view_entity.update(cx, |view, cx| {
-                                                        view.submit_review_comment(
-                                                            ReviewCommentSubmission::AddToReview,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }),
-                                        )
-                                    }
-                                })
-                                .when(!has_pending_review, {
-                                    let view_entity = view_entity.clone();
-                                    move |element| {
-                                        element
-                                            .child(
-                                                Button::new("add-single-comment")
-                                                    .label("Add single comment")
-                                                    .xsmall()
-                                                    .outline()
-                                                    .loading(is_submitting)
-                                                    .disabled(submit_disabled)
-                                                    .on_click({
-                                                        let view_entity = view_entity.clone();
-                                                        move |_, _, cx| {
-                                                            view_entity.update(cx, |view, cx| {
-                                                                view.submit_review_comment(
-                                                                    ReviewCommentSubmission::SingleComment,
-                                                                    cx,
-                                                                );
-                                                            });
-                                                        }
-                                                    }),
-                                            )
-                                            .child(
-                                                Button::new("start-review-comment")
-                                                    .label("Start review")
-                                                    .xsmall()
-                                                    .primary()
-                                                    .loading(is_submitting)
-                                                    .disabled(submit_disabled)
-                                                    .on_click(move |_, _, cx| {
-                                                        view_entity.update(cx, |view, cx| {
-                                                            view.submit_review_comment(
-                                                                ReviewCommentSubmission::StartReview,
-                                                                cx,
-                                                            );
-                                                        });
-                                                    }),
-                                            )
-                                    }
-                                }),
-                        ),
-                ),
-        )
+                                .child(
+                                    Button::new("start-review-comment")
+                                        .label("Start review")
+                                        .xsmall()
+                                        .primary()
+                                        .loading(is_submitting)
+                                        .disabled(submit_disabled)
+                                        .on_click(move |_, _, cx| {
+                                            view_entity.update(cx, |view, cx| {
+                                                view.submit_review_comment(
+                                                    ReviewCommentSubmission::StartReview,
+                                                    cx,
+                                                );
+                                            });
+                                        }),
+                                )
+                        }
+                    }),
+            ),
+    )
 }
 
 pub(super) fn render_review_thread_inline(
@@ -275,6 +256,120 @@ pub(super) fn render_review_thread_inline(
     let hidden_comment_count = hidden_inline_review_comment_count(thread.comments.len());
     let visible_reply_start_index = visible_inline_review_reply_start_index(thread.comments.len());
 
+    render_inline_review_row(
+        line_number_width,
+        render_review_marker(
+            1,
+            thread.state == ReviewThreadState::Unresolved,
+            REVIEW_MARKER_WIDTH,
+        ),
+        div()
+            .w_full()
+            .border_1()
+            .border_color(card_border_color)
+            .bg(card_bg_color)
+            .rounded_xs()
+            .overflow_hidden()
+            .child(render_review_thread_header(ReviewThreadHeaderState {
+                thread_id: thread_id.clone(),
+                thread_state: thread.state,
+                anchor_label,
+                comment_count: thread.comments.len(),
+                active_reply: ui_state.active_reply,
+                reply_button_disabled: ui_state.reply_button_disabled,
+                action_running: ui_state.action_running,
+                can_toggle_resolution: ui_state.can_toggle_resolution,
+                view_entity: view_entity.clone(),
+            }))
+            .child(
+                div()
+                    .px_2()
+                    .pb_2()
+                    .children(
+                        thread
+                            .comments
+                            .iter()
+                            .take(1)
+                            .enumerate()
+                            .map(|(index, comment)| {
+                                render_review_comment_inline(ReviewCommentRenderState::new(
+                                    comment,
+                                    index > 0,
+                                    is_resolved,
+                                    &comments,
+                                ))
+                            }),
+                    )
+                    .when(hidden_comment_count > 0, |element| {
+                        element.child(render_hidden_review_comments_notice(
+                            hidden_comment_count,
+                            is_resolved,
+                        ))
+                    })
+                    .children(
+                        thread
+                            .comments
+                            .iter()
+                            .enumerate()
+                            .skip(visible_reply_start_index)
+                            .map(|(index, comment)| {
+                                render_review_comment_inline(ReviewCommentRenderState::new(
+                                    comment,
+                                    index > 0,
+                                    is_resolved,
+                                    &comments,
+                                ))
+                            }),
+                    ),
+            )
+            .when(thread.comments.is_empty(), |element| {
+                element.child(
+                    div()
+                        .px_2()
+                        .pb_2()
+                        .text_xs()
+                        .text_color(if is_resolved {
+                            color::text_disabled()
+                        } else {
+                            color::text_muted()
+                        })
+                        .child("No comments in this thread"),
+                )
+            })
+            .when(ui_state.active_reply, {
+                let view_entity = view_entity.clone();
+                let thread_id = thread_id.clone();
+                move |element| {
+                    element.child(render_review_thread_reply_composer(
+                        ReviewThreadReplyComposerState {
+                            thread_id: thread_id.clone(),
+                            input: review_thread_reply_input.clone(),
+                            disabled: ui_state.reply_disabled,
+                            submitting: ui_state.reply_submitting,
+                            error: reply_error.clone(),
+                            view_entity: view_entity.clone(),
+                        },
+                    ))
+                }
+            })
+            .when_some(action_error, |element, error| {
+                element.child(
+                    div()
+                        .px_2()
+                        .pb_2()
+                        .text_xs()
+                        .text_color(color::danger())
+                        .child(error),
+                )
+            }),
+    )
+}
+
+fn render_inline_review_row(
+    line_number_width: f32,
+    marker: impl IntoElement,
+    content: impl IntoElement,
+) -> impl IntoElement {
     div()
         .min_h(px(DIFF_ROW_HEIGHT))
         .w_full()
@@ -285,11 +380,7 @@ pub(super) fn render_review_thread_inline(
         .font_family(font::UI)
         .child(render_line_number(None, line_number_width))
         .child(render_line_number(None, line_number_width))
-        .child(render_review_marker(
-            1,
-            thread.state == ReviewThreadState::Unresolved,
-            REVIEW_MARKER_WIDTH,
-        ))
+        .child(marker)
         .child(
             div()
                 .min_w_0()
@@ -299,104 +390,7 @@ pub(super) fn render_review_thread_inline(
                 .gap_2()
                 .py_1()
                 .pr_3()
-                .child(
-                    div()
-                        .w_full()
-                        .border_1()
-                        .border_color(card_border_color)
-                        .bg(card_bg_color)
-                        .rounded_xs()
-                        .overflow_hidden()
-                        .child(render_review_thread_header(ReviewThreadHeaderState {
-                            thread_id: thread_id.clone(),
-                            thread_state: thread.state,
-                            anchor_label,
-                            comment_count: thread.comments.len(),
-                            active_reply: ui_state.active_reply,
-                            reply_button_disabled: ui_state.reply_button_disabled,
-                            action_running: ui_state.action_running,
-                            can_toggle_resolution: ui_state.can_toggle_resolution,
-                            view_entity: view_entity.clone(),
-                        }))
-                        .child(
-                            div()
-                                .px_2()
-                                .pb_2()
-                                .children(thread.comments.iter().take(1).enumerate().map(
-                                    |(index, comment)| {
-                                        render_review_comment_inline(ReviewCommentRenderState::new(
-                                            comment,
-                                            index > 0,
-                                            is_resolved,
-                                            &comments,
-                                        ))
-                                    },
-                                ))
-                                .when(hidden_comment_count > 0, |element| {
-                                    element.child(render_hidden_review_comments_notice(
-                                        hidden_comment_count,
-                                        is_resolved,
-                                    ))
-                                })
-                                .children(
-                                    thread
-                                        .comments
-                                        .iter()
-                                        .enumerate()
-                                        .skip(visible_reply_start_index)
-                                        .map(|(index, comment)| {
-                                            render_review_comment_inline(
-                                                ReviewCommentRenderState::new(
-                                                    comment,
-                                                    index > 0,
-                                                    is_resolved,
-                                                    &comments,
-                                                ),
-                                            )
-                                        }),
-                                ),
-                        )
-                        .when(thread.comments.is_empty(), |element| {
-                            element.child(
-                                div()
-                                    .px_2()
-                                    .pb_2()
-                                    .text_xs()
-                                    .text_color(if is_resolved {
-                                        color::text_disabled()
-                                    } else {
-                                        color::text_muted()
-                                    })
-                                    .child("No comments in this thread"),
-                            )
-                        })
-                        .when(ui_state.active_reply, {
-                            let view_entity = view_entity.clone();
-                            let thread_id = thread_id.clone();
-                            move |element| {
-                                element.child(render_review_thread_reply_composer(
-                                    ReviewThreadReplyComposerState {
-                                        thread_id: thread_id.clone(),
-                                        input: review_thread_reply_input.clone(),
-                                        disabled: ui_state.reply_disabled,
-                                        submitting: ui_state.reply_submitting,
-                                        error: reply_error.clone(),
-                                        view_entity: view_entity.clone(),
-                                    },
-                                ))
-                            }
-                        })
-                        .when_some(action_error, |element, error| {
-                            element.child(
-                                div()
-                                    .px_2()
-                                    .pb_2()
-                                    .text_xs()
-                                    .text_color(color::danger())
-                                    .child(error),
-                            )
-                        }),
-                ),
+                .child(content),
         )
 }
 

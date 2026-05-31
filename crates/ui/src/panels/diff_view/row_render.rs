@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-use gpui::{AnyElement, Entity, IntoElement, MouseButton, StyledText, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Entity, IntoElement, MouseButton, StyledText, div, prelude::*, px};
 use harbor_domain::{DiffFile, ReviewThreadState};
 
 use crate::{
-    diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff},
+    diff::{DiffHunk, DiffLine, ParsedDiff},
     diff_reviews::{anchored_review_threads, review_threads_for_line},
     visual::{Tone, color, font},
     workspace::{AppView, ReviewLineTarget},
@@ -23,6 +23,7 @@ use super::{
         render_review_composer_inline, render_review_marker, render_review_thread_inline,
     },
     layout::{DiffListItem, file_is_reviewed, line_number_width_for_diff, parsed_diff_for_file},
+    line_style::{DiffLineStyleInput, diff_line_style},
     row_state::DiffRowRenderState,
 };
 
@@ -351,75 +352,15 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         review_marker_width,
         view_entity,
     } = input;
-    let (prefix, bg, text_color) = match line.kind {
-        DiffLineKind::Context => (" ", color::content_background(), color::text_secondary()),
-        DiffLineKind::Added => ("+", rgb(0x0d2118), rgb(0xa7f3d0)),
-        DiffLineKind::Removed => ("-", rgb(0x241316), rgb(0xfca5a5)),
-        DiffLineKind::Metadata => ("\\", rgb(0x11161d), color::text_muted()),
-    };
-    let selected_bg = match line.kind {
-        DiffLineKind::Context => rgb(0x1d2b3d),
-        DiffLineKind::Added => rgb(0x143d2a),
-        DiffLineKind::Removed => rgb(0x3e252b),
-        DiffLineKind::Metadata => rgb(0x1d2b3d),
-    };
-    let dragging_bg = match line.kind {
-        DiffLineKind::Context => rgb(0x26384e),
-        DiffLineKind::Added => rgb(0x185037),
-        DiffLineKind::Removed => rgb(0x56313a),
-        DiffLineKind::Metadata => rgb(0x26384e),
-    };
-    let thread_range_bg = match line.kind {
-        DiffLineKind::Context => rgb(0x121922),
-        DiffLineKind::Added => rgb(0x12281d),
-        DiffLineKind::Removed => rgb(0x2b1b1f),
-        DiffLineKind::Metadata => rgb(0x121922),
-    };
-    let thread_anchor_bg = match line.kind {
-        DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x221e12),
-        DiffLineKind::Added => rgb(0x202d18),
-        DiffLineKind::Removed => rgb(0x31201b),
-    };
-    let bg = if dragging_for_comment {
-        dragging_bg
-    } else if selected_for_comment {
-        selected_bg
-    } else if has_thread_anchor {
-        thread_anchor_bg
-    } else if has_thread_range {
-        thread_range_bg
-    } else {
-        bg
-    };
-    let hover_bg = if dragging_for_comment {
-        match line.kind {
-            DiffLineKind::Added => rgb(0x20694a),
-            DiffLineKind::Removed => rgb(0x704049),
-            DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x2a415d),
-        }
-    } else if selected_for_comment {
-        match line.kind {
-            DiffLineKind::Added => rgb(0x194b35),
-            DiffLineKind::Removed => rgb(0x4c2e35),
-            DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x22344b),
-        }
-    } else if has_thread_anchor {
-        rgb(0x2f2716)
-    } else if has_thread_range {
-        match line.kind {
-            DiffLineKind::Added => rgb(0x193326),
-            DiffLineKind::Removed => rgb(0x3a2327),
-            DiffLineKind::Context | DiffLineKind::Metadata => rgb(0x17212b),
-        }
-    } else {
-        color::row_hover()
-    };
     let line_id = format!("diff-line-{item_index}");
-    let code_text_color = if line.syntax_highlights.is_empty() {
-        text_color
-    } else {
-        color::text_primary()
-    };
+    let style = diff_line_style(DiffLineStyleInput {
+        kind: line.kind,
+        dragging_for_comment,
+        selected_for_comment,
+        has_thread_anchor,
+        has_thread_range,
+        has_syntax_highlights: !line.syntax_highlights.is_empty(),
+    });
 
     div()
         .id(line_id)
@@ -428,8 +369,8 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         .min_w_0()
         .flex()
         .items_start()
-        .bg(bg)
-        .text_color(text_color)
+        .bg(style.background)
+        .text_color(style.text_color)
         .font_family(font::MONO)
         .line_height(px(DIFF_ROW_HEIGHT))
         .child(render_line_number(line.old_line, line_number_width))
@@ -443,14 +384,14 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
             div()
                 .w(px(PREFIX_WIDTH))
                 .flex_none()
-                .text_color(text_color)
-                .child(prefix),
+                .text_color(style.text_color)
+                .child(style.prefix),
         )
         .child(
             div()
                 .min_w_0()
                 .flex_1()
-                .text_color(code_text_color)
+                .text_color(style.code_text_color)
                 .whitespace_normal()
                 .child(
                     StyledText::new(line.text.clone())
@@ -466,7 +407,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
 
             element
                 .cursor_pointer()
-                .hover(move |element| element.bg(hover_bg))
+                .hover(move |element| element.bg(style.hover_background))
                 .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                     let target = down_target.clone();
                     view_entity.update(cx, move |view, cx| {

@@ -1,8 +1,14 @@
 use gpui::Context;
-use harbor_domain::{PullRequestReview, PullRequestReviewState, RepoId};
+use harbor_domain::RepoId;
 use harbor_sync::SyncTarget;
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
+
+mod load_mode;
+mod pending_review;
+
+pub(super) use load_mode::ReviewDataLoadMode;
+use pending_review::pending_review_rest_id;
 
 #[derive(Clone, Debug)]
 pub(super) struct ReviewDataLoadTarget {
@@ -28,78 +34,6 @@ impl ReviewDataLoadTarget {
             number,
             head_sha: head_sha.into(),
             generation,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReviewDataLoadMode {
-    Initial,
-    Refresh,
-}
-
-impl ReviewDataLoadMode {
-    fn loaded_review_data_status(
-        self,
-        number: u64,
-        thread_count: usize,
-        has_warnings: bool,
-    ) -> String {
-        match (self, has_warnings) {
-            (Self::Initial, false) => {
-                format!("Loaded review history and {thread_count} threads for PR #{number}")
-            }
-            (Self::Initial, true) => {
-                format!(
-                    "Loaded {thread_count} review threads for PR #{number}, with review warnings"
-                )
-            }
-            (Self::Refresh, false) => {
-                format!("Refreshed review data and {thread_count} threads for PR #{number}")
-            }
-            (Self::Refresh, true) => {
-                format!(
-                    "Refreshed review data and {thread_count} threads for PR #{number}, with warnings"
-                )
-            }
-        }
-    }
-
-    fn loaded_threads_only_status(self, number: u64, thread_count: usize) -> String {
-        match self {
-            Self::Initial => {
-                format!(
-                    "Loaded {thread_count} review threads for PR #{number}, with review warnings"
-                )
-            }
-            Self::Refresh => {
-                format!(
-                    "Refreshed {thread_count} review threads for PR #{number}, but review history failed"
-                )
-            }
-        }
-    }
-
-    fn loaded_reviews_only_status(self, number: u64) -> String {
-        match self {
-            Self::Initial => format!("Failed to load review data for PR #{number}"),
-            Self::Refresh => {
-                format!("Refreshed review history for PR #{number}, but threads failed")
-            }
-        }
-    }
-
-    fn failed_status(self, number: u64) -> String {
-        match self {
-            Self::Initial => format!("Failed to load review data for PR #{number}"),
-            Self::Refresh => format!("Failed to refresh review data for PR #{number}"),
-        }
-    }
-
-    fn update_error_log_message(self) -> &'static str {
-        match self {
-            Self::Initial => "failed to update pull request review state",
-            Self::Refresh => "failed to update refreshed review state",
         }
     }
 }
@@ -311,71 +245,4 @@ fn append_review_error(error: &mut Option<String>, message: String) {
         Some(existing) => format!("{existing}; {message}"),
         None => message,
     });
-}
-
-pub(super) fn pending_review_rest_id(
-    reviews: &[PullRequestReview],
-    current_user_login: Option<&str>,
-    existing_pending_review: Option<&crate::workspace::PendingReviewSession>,
-) -> Option<String> {
-    reviews
-        .iter()
-        .find(|review| {
-            review.state == PullRequestReviewState::Pending
-                && current_user_login.is_none_or(|login| review.author == login)
-                && existing_pending_review.is_none_or(|pending_review| {
-                    review.node_id.as_deref() != Some(pending_review.node_id.as_str())
-                })
-        })
-        .map(|review| review.id.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pending_review_rest_id_matches_current_user() {
-        let reviews = vec![
-            review("review-1", "maria", PullRequestReviewState::Pending),
-            review("review-2", "alex", PullRequestReviewState::Pending),
-        ];
-
-        assert_eq!(
-            pending_review_rest_id(&reviews, Some("alex"), None),
-            Some("review-2".to_string())
-        );
-    }
-
-    #[test]
-    fn pending_review_rest_id_ignores_non_pending_reviews() {
-        let reviews = vec![review("review-1", "alex", PullRequestReviewState::Approved)];
-
-        assert_eq!(pending_review_rest_id(&reviews, Some("alex"), None), None);
-    }
-
-    #[test]
-    fn pending_review_rest_id_skips_existing_pending_review() {
-        let reviews = vec![review("review-1", "alex", PullRequestReviewState::Pending)];
-        let existing_pending_review = crate::workspace::PendingReviewSession {
-            node_id: "review-1-node".to_string(),
-            comment_count: 2,
-        };
-
-        assert_eq!(
-            pending_review_rest_id(&reviews, Some("alex"), Some(&existing_pending_review)),
-            None
-        );
-    }
-
-    fn review(id: &str, author: &str, state: PullRequestReviewState) -> PullRequestReview {
-        PullRequestReview {
-            id: id.to_string(),
-            node_id: Some(format!("{id}-node")),
-            author: author.to_string(),
-            state,
-            body: None,
-            submitted_at: None,
-        }
-    }
 }

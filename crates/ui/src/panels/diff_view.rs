@@ -6,6 +6,8 @@ mod inline_review_layout;
 mod inline_reviews;
 #[path = "diff_view/layout.rs"]
 mod layout;
+#[path = "diff_view/line_style.rs"]
+mod line_style;
 #[path = "diff_view/row_render.rs"]
 mod row_render;
 #[path = "diff_view/row_state.rs"]
