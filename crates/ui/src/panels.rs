@@ -8,6 +8,8 @@ mod diff_view;
 mod logs;
 #[path = "panels/pull_request.rs"]
 mod pull_request;
+#[path = "panels/pull_request_signals.rs"]
+mod pull_request_signals;
 #[path = "panels/review.rs"]
 mod review;
 #[path = "panels/review_thread_chrome.rs"]
@@ -20,5 +22,8 @@ pub(crate) use chrome::*;
 pub(crate) use diff_view::*;
 pub(crate) use logs::*;
 pub(crate) use pull_request::*;
+pub(crate) use pull_request_signals::{
+    checks_summary_from_runs, merge_blocker, review_action_blocker,
+};
 pub(crate) use review::*;
 pub(crate) use workflows::*;

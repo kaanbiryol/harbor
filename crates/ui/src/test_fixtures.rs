@@ -2,7 +2,8 @@ use chrono::{DateTime, Utc};
 use harbor_domain::{
     CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, MergeState,
     PullRequest, PullRequestState, ReactionContent, RepoId, ReviewComment, ReviewCommentPosition,
-    ReviewReaction, ReviewSide, ReviewThread, ReviewThreadState,
+    ReviewReaction, ReviewSide, ReviewThread, ReviewThreadState, WorkflowConclusion, WorkflowRun,
+    WorkflowStatus,
 };
 
 pub(crate) fn pull_request() -> PullRequest {
@@ -46,6 +47,12 @@ pub(crate) fn diff_file(path: &str, status: FileStatus) -> DiffFile {
     }
 }
 
+pub(crate) fn patched_diff_file() -> DiffFile {
+    let mut file = diff_file("src/lib.rs", FileStatus::Modified);
+    file.patch = Some("@@ -1 +1 @@\n-old\n+new\n".to_string());
+    file
+}
+
 pub(crate) fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>) -> CheckRun {
     CheckRun {
         id: None,
@@ -56,6 +63,24 @@ pub(crate) fn check_run(status: CheckStatus, conclusion: Option<CheckConclusion>
         html_url: None,
         started_at: None,
         completed_at: None,
+    }
+}
+
+pub(crate) fn workflow_run() -> WorkflowRun {
+    WorkflowRun {
+        id: 42,
+        workflow_id: Some(9),
+        name: "build".to_string(),
+        workflow_name: Some("CI".to_string()),
+        status: WorkflowStatus::Completed,
+        conclusion: Some(WorkflowConclusion::Failure),
+        head_branch: "feature".to_string(),
+        head_sha: "abc123".to_string(),
+        event: "pull_request".to_string(),
+        url: "https://api.github.com/repos/acme/app/actions/runs/42".to_string(),
+        html_url: "https://github.com/acme/app/actions/runs/42".to_string(),
+        created_at: test_time(),
+        updated_at: test_time(),
     }
 }
 

@@ -1,9 +1,12 @@
 mod action_commands;
 pub(crate) mod async_updates;
 mod auth;
+mod auth_cli;
+mod auth_oauth;
 mod auth_state;
 mod cache;
 mod changed_files;
+mod codeowners;
 mod commands;
 mod external_apps;
 pub(crate) mod github_service;
@@ -12,8 +15,13 @@ mod local_commands;
 mod navigation_commands;
 mod notifications;
 mod panel_commands;
+mod pull_request_ci_loaders;
+mod pull_request_detail_cache_loader;
+mod pull_request_detail_content_loaders;
 mod pull_request_detail_loaders;
+mod pull_request_inbox_refresh;
 mod render;
+mod repository_loaders;
 mod review_data_loaders;
 mod review_interactions;
 mod review_state;
@@ -49,12 +57,12 @@ pub(crate) use cache::{
     PullRequestDetailCacheKey, PullRequestDetailSnapshot, PullRequestInboxCacheKey,
     PullRequestInboxSnapshot,
 };
-use changed_files::codeowners_owned_file_paths;
 pub(crate) use changed_files::{
     ChangedFileFilters, ChangedFileFolderRow, ChangedFileRow, ChangedFileTreeRow,
     ChangedFileTypeFilter, changed_file_status_label, changed_file_tree_rows,
     changed_file_type_filters,
 };
+use codeowners::codeowners_owned_file_paths;
 use external_apps::ExternalAppAvailability;
 use github_service::{GitHubApi, RealGitHubApi};
 use notifications::NativeNotificationSink;
@@ -783,186 +791,4 @@ impl AppView {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher};
-    use gpui::TestAppContext;
-    use gpui_component::{Root, Theme, ThemeMode};
-
-    #[test]
-    fn defaults_pull_request_inbox_to_open_mode() {
-        assert_eq!(PullRequestInboxMode::default(), PullRequestInboxMode::Open);
-        assert_eq!(PullRequestInboxMode::Open.label(), "Open");
-        assert_eq!(PullRequestInboxMode::Closed.label(), "Closed");
-        assert_eq!(PullRequestInboxMode::NeedsReview.label(), "Needs review");
-        assert_eq!(
-            PullRequestInboxMode::Closed.empty_message(),
-            "No closed pull requests"
-        );
-    }
-
-    #[gpui::test]
-    async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-        });
-
-        let mut view_entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-            view_entity = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-
-        view_entity
-            .expect("test AppView should be created")
-            .read_with(cx, |view, _| {
-                assert!(!view.repository_state.repository_switcher_open);
-            });
-    }
-
-    #[gpui::test]
-    async fn repository_switcher_does_not_open_while_auth_gate_is_visible(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-        });
-
-        let mut view_entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-            view.update(cx, |view, cx| {
-                view.auth_status = GitHubAuthStatus::SignedOut;
-                view.toggle_repository_switcher(&ToggleRepositorySwitcher, window, cx);
-                assert!(!view.repository_state.repository_switcher_open);
-            });
-            view_entity = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-
-        view_entity
-            .expect("test AppView should be created")
-            .read_with(cx, |view, _| {
-                assert!(!view.repository_state.repository_switcher_open);
-            });
-    }
-
-    #[gpui::test]
-    async fn dismissing_github_auth_popover_keeps_pending_sign_in(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-        });
-
-        let mut view_entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-            view.update(cx, |view, cx| {
-                view.auth_status = GitHubAuthStatus::SigningIn {
-                    user_code: "8F0B-1F01".to_string(),
-                    verification_uri: "https://github.com/login/device".to_string(),
-                };
-                view.github_auth_popover_open = true;
-                view.tasks
-                    .set_auth_task(cx.spawn(async move |_view, _cx| {}));
-
-                view.dismiss_github_auth_popover(cx);
-
-                assert_eq!(
-                    view.auth_status,
-                    GitHubAuthStatus::SigningIn {
-                        user_code: "8F0B-1F01".to_string(),
-                        verification_uri: "https://github.com/login/device".to_string(),
-                    }
-                );
-                assert!(!view.github_auth_popover_open());
-                assert!(view.tasks.has_auth_task());
-                assert_eq!(view.status, "Waiting for GitHub authorization");
-            });
-            view_entity = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-
-        view_entity
-            .expect("test AppView should be created")
-            .read_with(cx, |view, _| {
-                assert!(matches!(
-                    view.auth_status,
-                    GitHubAuthStatus::SigningIn { .. }
-                ));
-            });
-    }
-
-    #[gpui::test]
-    async fn github_account_settings_open_and_close(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-        });
-
-        let mut view_entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-            view.update(cx, |view, cx| {
-                view.github_auth_popover_open = true;
-                view.open_settings(&OpenSettings, window, cx);
-
-                assert!(view.settings_open());
-                assert_eq!(view.settings_section(), SettingsSection::GitHub);
-                assert!(!view.github_auth_popover_open);
-
-                view.close_settings(&CloseSettings, window, cx);
-                assert!(!view.settings_open());
-            });
-            view_entity = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-
-        view_entity
-            .expect("test AppView should be created")
-            .read_with(cx, |view, _| {
-                assert!(!view.settings_open());
-            });
-    }
-
-    #[gpui::test]
-    async fn pending_auth_switch_preserves_current_source(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-        });
-
-        let mut view_entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-            view.update(cx, |view, _| {
-                view.auth_status = GitHubAuthStatus::SignedIn {
-                    login: Some("octocat".to_string()),
-                    source: GitHubAuthSource::GhCli,
-                };
-                view.auth_switch_status = Some(AuthSwitchStatus::StartingOAuth);
-
-                assert_eq!(
-                    view.current_github_auth_source(),
-                    Some(GitHubAuthSource::GhCli)
-                );
-                assert_eq!(
-                    view.auth_switch_status(),
-                    Some(&AuthSwitchStatus::StartingOAuth)
-                );
-            });
-            view_entity = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-
-        view_entity
-            .expect("test AppView should be created")
-            .read_with(cx, |view, _| {
-                assert_eq!(
-                    view.current_github_auth_source(),
-                    Some(GitHubAuthSource::GhCli)
-                );
-            });
-    }
-}
+mod tests;
