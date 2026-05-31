@@ -20,7 +20,6 @@ use crate::visual::{color, font};
 use crate::workspace::{AppView, GitHubAuthStatus, GitHubCliAvailability};
 
 const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
-const SHOW_STATUS_BAR_CACHED_MESSAGES: bool = true;
 
 #[derive(Clone, Copy)]
 enum AuthGateButton {
@@ -420,7 +419,7 @@ impl AppView {
         } else {
             "Show pull request inbox"
         };
-        let status_label = status_bar_status_label(&self.status).to_string();
+        let status_label = self.status.clone();
         let (rate_limit_label, rate_limit_color) = if SHOW_STATUS_BAR_RATE_LIMITS {
             let rate_limits = self.github_api.latest_rate_limits();
             let rate_limit = self.github_api.latest_rate_limit();
@@ -931,19 +930,6 @@ fn render_auth_preview_bar(width: f32, background: Rgba) -> impl IntoElement {
     div().h(px(7.)).w(px(width)).bg(background)
 }
 
-fn status_bar_status_label(status: &str) -> &str {
-    if !SHOW_STATUS_BAR_CACHED_MESSAGES && status_bar_message_mentions_cached_data(status) {
-        ""
-    } else {
-        status
-    }
-}
-
-fn status_bar_message_mentions_cached_data(status: &str) -> bool {
-    let status = status.to_ascii_lowercase();
-    status.starts_with("showing ") && status.contains("cached")
-}
-
 fn github_rate_limit_label(rate_limit: &GitHubRateLimitStatus) -> Option<String> {
     let resource = rate_limit.resource.as_deref().unwrap_or("api");
     let budget = match (rate_limit.remaining, rate_limit.limit) {
@@ -953,7 +939,7 @@ fn github_rate_limit_label(rate_limit: &GitHubRateLimitStatus) -> Option<String>
         (None, None) => return None,
     };
 
-    if github_rate_limit_is_low(rate_limit) {
+    if github_rate_limit_should_warn(rate_limit) {
         if let Some(retry_after_seconds) = rate_limit.retry_after_seconds {
             return Some(format!(
                 "github {resource}: {budget} retry {}",
@@ -992,14 +978,14 @@ fn github_rate_limits_label(rate_limits: &[GitHubRateLimitStatus]) -> Option<Str
 fn github_rate_limit_color(rate_limit: &GitHubRateLimitStatus) -> gpui::Rgba {
     if rate_limit.remaining == Some(0) {
         color::danger()
-    } else if github_rate_limit_is_low(rate_limit) {
+    } else if github_rate_limit_should_warn(rate_limit) {
         color::warning()
     } else {
         color::text_muted()
     }
 }
 
-fn github_rate_limit_is_low(rate_limit: &GitHubRateLimitStatus) -> bool {
+fn github_rate_limit_should_warn(rate_limit: &GitHubRateLimitStatus) -> bool {
     match (rate_limit.remaining, rate_limit.limit) {
         (Some(remaining), Some(limit)) if limit > 0 => remaining.saturating_mul(5) <= limit,
         (Some(remaining), _) => remaining <= 100,

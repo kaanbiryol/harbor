@@ -1,6 +1,7 @@
 mod action_commands;
 pub(crate) mod async_updates;
 mod auth;
+mod auth_state;
 mod cache;
 mod changed_files;
 mod commands;
@@ -21,6 +22,7 @@ mod reviews;
 mod settings;
 mod state;
 mod state_reset;
+mod status;
 mod switchers;
 mod sync_loop;
 mod workflow_log_loaders;
@@ -63,13 +65,14 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    ActionRuntimeState, NotificationState, PullRequestDetailUiState, PullRequestInboxState,
-    PullRequestSelectionState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
-    SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    NotificationState, PullRequestDetailUiState, PullRequestInboxState, PullRequestSelectionState,
+    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
+    WorkspaceTasks,
 };
+use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
 
-pub(crate) use auth::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
+pub(crate) use auth_state::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
 pub(crate) use settings::{AuthSwitchStatus, SettingsSection};
 
 pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {

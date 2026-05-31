@@ -12,7 +12,7 @@ use harbor_github::{
 };
 use harbor_storage::{SqliteStore, StoredHttpCacheValidator};
 
-pub const PULL_REQUEST_INBOX_PAGE_SIZE: usize = 20;
+pub const PULL_REQUEST_INBOX_PAGE_SIZE: usize = 10;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivityState {
@@ -291,7 +291,8 @@ where
 
     let node_ids = pull_request_enrichment_node_ids(&pull_requests, request.force_enrichment);
     let enrichment_error = if node_ids.is_empty()
-        || (!request.force_enrichment && graphql_rate_limit_is_low(&source.latest_rate_limits()))
+        || (!request.force_enrichment
+            && graphql_rate_limit_too_low_for_enrichment(&source.latest_rate_limits()))
     {
         None
     } else {
@@ -688,7 +689,7 @@ fn apply_pull_request_enrichments(
     }
 }
 
-fn graphql_rate_limit_is_low(rate_limits: &[GitHubRateLimitStatus]) -> bool {
+fn graphql_rate_limit_too_low_for_enrichment(rate_limits: &[GitHubRateLimitStatus]) -> bool {
     rate_limits.iter().any(|rate_limit| {
         rate_limit.resource.as_deref() == Some("graphql")
             && match (rate_limit.remaining, rate_limit.limit) {
