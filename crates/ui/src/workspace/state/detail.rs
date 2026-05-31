@@ -1,0 +1,273 @@
+use std::collections::HashMap;
+
+use harbor_domain::{CheckRun, DiffFile, WorkflowJob, WorkflowRun};
+
+use crate::{
+    diff::ParsedDiff,
+    workspace::{
+        PendingReviewSession, PullRequestDetailCacheKey, PullRequestDetailSnapshot,
+        WorkflowLogState,
+        reviews::{
+            remove_review_comment_from_threads, rollback_pending_review_comment_count,
+            unresolved_review_thread_count,
+        },
+        status::LoadStatus,
+    },
+};
+
+pub(crate) struct PullRequestDetailUiState {
+    pub(crate) files: Vec<DiffFile>,
+    pub(crate) diffs: Vec<Option<ParsedDiff>>,
+    pub(crate) check_runs: Vec<CheckRun>,
+    pub(crate) workflow_runs: Vec<WorkflowRun>,
+    pub(crate) workflow_jobs: Vec<WorkflowJob>,
+    pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
+    details_load: LoadStatus,
+    files_load: LoadStatus,
+    checks_load: LoadStatus,
+    workflows_load: LoadStatus,
+    pub(crate) log_state: WorkflowLogState,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct PullRequestDetailLoadedState {
+    pub(crate) details: bool,
+    pub(crate) files: bool,
+    pub(crate) checks: bool,
+    pub(crate) workflows: bool,
+    pub(crate) reviews: bool,
+}
+
+impl PullRequestDetailUiState {
+    pub(crate) fn new(
+        files: Vec<DiffFile>,
+        diffs: Vec<Option<ParsedDiff>>,
+        log_state: WorkflowLogState,
+    ) -> Self {
+        Self {
+            files,
+            diffs,
+            check_runs: Vec::new(),
+            workflow_runs: Vec::new(),
+            workflow_jobs: Vec::new(),
+            pull_request_detail_cache: HashMap::new(),
+            details_load: LoadStatus::Idle,
+            files_load: LoadStatus::Idle,
+            checks_load: LoadStatus::Idle,
+            workflows_load: LoadStatus::Idle,
+            log_state,
+        }
+    }
+
+    pub(crate) fn reset_for_selection(&mut self) {
+        self.details_load.reset();
+        self.files_load.reset();
+        self.checks_load.reset();
+        self.workflows_load.reset();
+    }
+
+    pub(crate) fn cache_snapshot(
+        &mut self,
+        key: PullRequestDetailCacheKey,
+        snapshot: PullRequestDetailSnapshot,
+    ) {
+        self.pull_request_detail_cache.insert(key, snapshot);
+    }
+
+    pub(crate) fn snapshot(
+        &self,
+        key: &PullRequestDetailCacheKey,
+    ) -> Option<&PullRequestDetailSnapshot> {
+        self.pull_request_detail_cache.get(key)
+    }
+
+    pub(crate) fn remove_optimistic_comment_from_snapshot(
+        &mut self,
+        key: &PullRequestDetailCacheKey,
+        comment_id: &str,
+    ) {
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            remove_review_comment_from_threads(&mut snapshot.review_threads, comment_id);
+            snapshot.pull_request.unresolved_threads =
+                unresolved_review_thread_count(&snapshot.review_threads);
+        }
+    }
+
+    pub(crate) fn rollback_pending_review_comment_count_in_snapshot(
+        &mut self,
+        key: &PullRequestDetailCacheKey,
+        previous_pending_review: Option<&PendingReviewSession>,
+    ) {
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            rollback_pending_review_comment_count(
+                &mut snapshot.pending_review,
+                previous_pending_review,
+            );
+        }
+    }
+
+    pub(crate) fn set_pending_review_in_snapshot(
+        &mut self,
+        key: &PullRequestDetailCacheKey,
+        pending_review: PendingReviewSession,
+    ) {
+        if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            snapshot.pending_review = Some(pending_review);
+        }
+    }
+
+    pub(crate) fn restore_loaded_sections(&mut self, sections: PullRequestDetailLoadedState) {
+        self.details_load = load_status_from_loaded(sections.details);
+        self.files_load = load_status_from_loaded(sections.files);
+        self.checks_load = load_status_from_loaded(sections.checks);
+        self.workflows_load = load_status_from_loaded(sections.workflows);
+    }
+
+    pub(crate) fn loaded_sections(&self, reviews_loaded: bool) -> PullRequestDetailLoadedState {
+        PullRequestDetailLoadedState {
+            details: self.details_load.is_finished(),
+            files: self.files_load.is_finished(),
+            checks: self.checks_load.is_finished(),
+            workflows: self.workflows_load.is_finished(),
+            reviews: reviews_loaded,
+        }
+    }
+
+    pub(crate) fn is_any_loading(&self) -> bool {
+        self.details_load.is_loading()
+            || self.files_load.is_loading()
+            || self.checks_load.is_loading()
+            || self.workflows_load.is_loading()
+    }
+
+    pub(crate) fn has_cache_blocking_error(&self) -> bool {
+        self.details_error().is_some() || self.files_error().is_some()
+    }
+
+    pub(crate) fn clear_errors(&mut self) {
+        self.details_load.clear_error();
+        self.files_load.clear_error();
+        self.checks_load.clear_error();
+        self.workflows_load.clear_error();
+    }
+
+    pub(crate) fn should_load_details(&self) -> bool {
+        !self.details_load.is_loading() && !self.details_load.is_finished()
+    }
+
+    pub(crate) fn should_load_files(&self) -> bool {
+        !self.files_load.is_loading() && !self.files_load.is_finished()
+    }
+
+    pub(crate) fn should_load_checks(&self) -> bool {
+        !self.checks_load.is_loading() && !self.checks_load.is_finished()
+    }
+
+    pub(crate) fn should_load_workflows(&self) -> bool {
+        !self.workflows_load.is_loading() && !self.workflows_load.is_finished()
+    }
+
+    pub(crate) fn mark_details_stale(&mut self) {
+        self.details_load.reset();
+    }
+
+    pub(crate) fn mark_checks_stale(&mut self) {
+        self.checks_load.reset();
+    }
+
+    pub(crate) fn mark_workflows_stale(&mut self) {
+        self.workflows_load.reset();
+    }
+
+    pub(crate) fn start_details_load(&mut self) {
+        self.details_load.start();
+    }
+
+    pub(crate) fn start_files_load(&mut self) {
+        self.files_load.start();
+    }
+
+    pub(crate) fn start_checks_load(&mut self) {
+        self.checks_load.start();
+    }
+
+    pub(crate) fn start_workflows_load(&mut self) {
+        self.workflows_load.start();
+    }
+
+    pub(crate) fn apply_details_success(&mut self) {
+        self.details_load.succeed();
+    }
+
+    pub(crate) fn apply_files_success(&mut self) {
+        self.files_load.succeed();
+    }
+
+    pub(crate) fn apply_checks_success(&mut self) {
+        self.checks_load.succeed();
+    }
+
+    pub(crate) fn apply_workflows_success(&mut self) {
+        self.workflows_load.succeed();
+    }
+
+    pub(crate) fn apply_details_failure(&mut self, error: impl Into<String>) {
+        self.details_load.fail(error);
+    }
+
+    pub(crate) fn apply_files_failure(&mut self, error: impl Into<String>) {
+        self.files_load.fail(error);
+    }
+
+    pub(crate) fn apply_checks_failure(&mut self, error: impl Into<String>) {
+        self.checks_load.fail(error);
+    }
+
+    pub(crate) fn apply_workflows_failure(&mut self, error: impl Into<String>) {
+        self.workflows_load.fail(error);
+    }
+
+    pub(crate) fn details_loading(&self) -> bool {
+        self.details_load.is_loading()
+    }
+
+    pub(crate) fn details_loaded(&self) -> bool {
+        self.details_load.is_loaded()
+    }
+
+    pub(crate) fn files_loading(&self) -> bool {
+        self.files_load.is_loading()
+    }
+
+    pub(crate) fn checks_loading(&self) -> bool {
+        self.checks_load.is_loading()
+    }
+
+    pub(crate) fn workflows_loading(&self) -> bool {
+        self.workflows_load.is_loading()
+    }
+
+    pub(crate) fn details_error(&self) -> Option<&str> {
+        self.details_load.error()
+    }
+
+    pub(crate) fn files_error(&self) -> Option<&str> {
+        self.files_load.error()
+    }
+
+    pub(crate) fn checks_error(&self) -> Option<&str> {
+        self.checks_load.error()
+    }
+
+    pub(crate) fn workflows_error(&self) -> Option<&str> {
+        self.workflows_load.error()
+    }
+}
+
+fn load_status_from_loaded(loaded: bool) -> LoadStatus {
+    if loaded {
+        LoadStatus::Loaded
+    } else {
+        LoadStatus::Idle
+    }
+}
