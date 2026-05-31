@@ -187,18 +187,11 @@ impl AppView {
 
     fn reset_selected_pull_request_detail_state(&mut self, number: u64) {
         self.set_detail_loading(false);
-        self.clear_detail_loaded_state();
         self.clear_detail_errors();
         self.clear_log_error();
         self.clear_action_errors();
         self.tasks.clear_pull_request_detail_tasks();
-        self.clear_changed_file_state();
-        self.clear_workflow_state();
-        self.clear_review_data_state();
-        self.clear_review_submission_errors();
-        self.clear_log_content();
-        self.reset_diff_selection();
-        self.reset_detail_scrolls();
+        self.clear_selected_pull_request_detail_state();
         self.status = format!("Loading PR #{number} details and changed files");
     }
 

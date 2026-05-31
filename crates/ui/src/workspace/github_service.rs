@@ -4,16 +4,17 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    ConditionalFetch, GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus,
-    GitHubTransportSource, HttpCacheValidator, OctocrabTransport, PullRequestEnrichment,
-    PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
-    SubmitPullRequestReviewEvent,
+    ConditionalFetch, GitHubClient, GitHubRateLimitStatus, GitHubTransportSource,
+    HttpCacheValidator, PullRequestEnrichment, PullRequestListFilter, PullRequestPage,
+    PullRequestPageCursor, RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 use harbor_sync::PullRequestInboxSource;
 use std::sync::{Arc, Mutex};
 
 use super::GitHubAuthSource;
 
+#[path = "github_service_auth.rs"]
+mod auth;
 #[path = "github_service_traits.rs"]
 mod traits;
 pub(crate) use traits::{
@@ -38,82 +39,7 @@ impl Default for RealGitHubApi {
 }
 
 impl RealGitHubApi {
-    fn client(&self) -> Result<GitHubClient<GitHubTransportSource>> {
-        self.client
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?
-            .clone()
-            .ok_or(GitHubError::Unauthenticated)
-    }
-
-    fn cached_current_user_login(&self) -> Result<Option<String>> {
-        self.current_user_login
-            .lock()
-            .map(|login| login.clone())
-            .map_err(|error| GitHubError::Transport(error.to_string()))
-    }
-
-    fn cache_current_user_login(&self, login: String) -> Result<()> {
-        self.current_user_login
-            .lock()
-            .map(|mut cached_login| {
-                *cached_login = Some(login);
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))
-    }
-}
-
-impl GitHubAuthApi for RealGitHubApi {
-    fn configure_token(&self, token: String, _source: GitHubAuthSource) -> Result<()> {
-        let transport = OctocrabTransport::with_token(token)?;
-        let mut client = self
-            .client
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        *client = Some(GitHubClient::new(GitHubTransportSource::Token(transport)));
-        self.current_user_login
-            .lock()
-            .map(|mut login| {
-                *login = None;
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        Ok(())
-    }
-
-    fn configure_gh_cli(&self) -> Result<()> {
-        let mut client = self
-            .client
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        *client = Some(GitHubClient::new(GitHubTransportSource::GhCli(
-            GhCliTransport::default(),
-        )));
-        self.current_user_login
-            .lock()
-            .map(|mut login| {
-                *login = None;
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        Ok(())
-    }
-
-    fn clear_auth(&self) -> Result<()> {
-        self.client
-            .lock()
-            .map(|mut client| {
-                *client = None;
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        self.current_user_login
-            .lock()
-            .map(|mut login| {
-                *login = None;
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        Ok(())
-    }
-
-    fn has_auth(&self) -> bool {
+    fn has_configured_client(&self) -> bool {
         self.client
             .lock()
             .map(|client| client.is_some())

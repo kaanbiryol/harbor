@@ -1,0 +1,215 @@
+use std::{collections::HashSet, sync::Arc};
+
+use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
+use gpui_component::{ActiveTheme, input::InputState};
+use harbor_sync::{ActivityState, SyncPolicy};
+
+use crate::{actions::PanelTab, diff::parse_files_with_syntax};
+
+use super::{
+    ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
+    SettingsSection,
+    external_apps::ExternalAppAvailability,
+    github_service::{GitHubApi, RealGitHubApi},
+    notifications::NativeNotificationSink,
+    state::{
+        NotificationState, PullRequestDetailUiState, PullRequestInboxState,
+        PullRequestSelectionState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
+        SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    },
+};
+
+impl AppView {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_startup_tasks(window, cx, true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_without_startup_tasks(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_startup_tasks(window, cx, false)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_github_api(
+        github_api: Arc<dyn GitHubApi>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_with_startup_tasks_and_github_api(window, cx, false, github_api)
+    }
+
+    fn new_with_startup_tasks(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        start_startup_tasks: bool,
+    ) -> Self {
+        Self::new_with_startup_tasks_and_github_api(
+            window,
+            cx,
+            start_startup_tasks,
+            Arc::new(RealGitHubApi::default()),
+        )
+    }
+
+    fn new_with_startup_tasks_and_github_api(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        start_startup_tasks: bool,
+        github_api: Arc<dyn GitHubApi>,
+    ) -> Self {
+        let pull_requests = Vec::new();
+        let files = Vec::new();
+        let pull_request_reviews = Vec::new();
+        let review_threads = Vec::new();
+        let review_comment_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(3, 8)
+                .placeholder("Leave a comment")
+                .clean_on_escape()
+        });
+        let review_thread_reply_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(2, 5)
+                .placeholder("Reply to thread")
+                .clean_on_escape()
+        });
+        let review_comment_edit_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(2, 6)
+                .placeholder("Edit comment")
+                .clean_on_escape()
+        });
+        let pending_review_body_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(2, 6)
+                .placeholder("Review summary")
+                .clean_on_escape()
+        });
+        let repository_search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search repositories...")
+                .clean_on_escape()
+        });
+        let pull_request_search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search loaded pull requests...")
+                .clean_on_escape()
+        });
+        let mut subscriptions = vec![
+            cx.subscribe_in(
+                &repository_search_input,
+                window,
+                Self::on_switcher_search_event,
+            ),
+            cx.subscribe_in(
+                &pull_request_search_input,
+                window,
+                Self::on_switcher_search_event,
+            ),
+            cx.subscribe_in(&review_comment_input, window, Self::on_review_input_event),
+            cx.subscribe_in(
+                &review_thread_reply_input,
+                window,
+                Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
+                &review_comment_edit_input,
+                window,
+                Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
+                &pending_review_body_input,
+                window,
+                Self::on_review_input_event,
+            ),
+        ];
+        subscriptions.push(cx.observe_window_activation(window, |view, window, cx| {
+            view.sync_runtime
+                .set_activity(if window.is_window_active() {
+                    ActivityState::Focused
+                } else {
+                    ActivityState::Background
+                });
+            if view.sync_runtime.activity_state() == ActivityState::Focused {
+                view.catch_up_active_inbox_after_focus(cx);
+            }
+            view.ensure_sync_loop(cx);
+            cx.notify();
+        }));
+        let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
+        let status = if start_startup_tasks {
+            "Fetching repositories from GitHub...".to_string()
+        } else {
+            "Ready".to_string()
+        };
+
+        let mut view = Self {
+            focus_handle: cx.focus_handle(),
+            pull_requests,
+            github_api,
+            auth_status: GitHubAuthStatus::Loading,
+            github_cli_availability: GitHubCliAvailability::Checking,
+            github_auth_popover_open: false,
+            settings_open: false,
+            settings_section: SettingsSection::GitHub,
+            auth_switch_status: None,
+            tasks: WorkspaceTasks::default(),
+            repository_state: RepositoryUiState::new(repository_search_input, start_startup_tasks),
+            detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
+            review_state: ReviewRuntimeState::new(
+                pull_request_reviews,
+                review_threads,
+                ReviewComposerState::new(
+                    review_comment_input,
+                    review_thread_reply_input,
+                    review_comment_edit_input,
+                    pending_review_body_input,
+                ),
+            ),
+            notification_state: NotificationState {
+                notification_sink: Arc::new(NativeNotificationSink::new()),
+                notification_dedupe: HashSet::new(),
+                notifications_enabled: true,
+            },
+            sync_runtime: SyncRuntimeState::new(
+                if window.is_window_active() {
+                    ActivityState::Focused
+                } else {
+                    ActivityState::Background
+                },
+                SyncPolicy::default(),
+            ),
+            pr_list_scroll: UniformListScrollHandle::new(),
+            file_list_scroll: UniformListScrollHandle::new(),
+            diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
+            diff_list_items: Vec::new(),
+            review_list_scroll: UniformListScrollHandle::new(),
+            selection_state: PullRequestSelectionState::default(),
+            active_tab: PanelTab::Diff,
+            pull_request_inbox: PullRequestInboxState::visible_by_default(),
+            prefetch_inbox_counts: start_startup_tasks,
+            pull_request_inbox_search_open: false,
+            file_filter_popover_open: false,
+            pull_request_switcher_selection: 0,
+            pull_request_search_input,
+            external_app_availability: ExternalAppAvailability::default(),
+            collapsed_file_tree_folders: HashSet::new(),
+            reviewed_file_paths: HashSet::new(),
+            excluded_file_type_filters: HashSet::new(),
+            show_files_owned_by_current_user: false,
+            owned_file_paths: HashSet::new(),
+            action_runtime: ActionRuntimeState::default(),
+            status,
+            _subscriptions: subscriptions,
+        };
+
+        if start_startup_tasks {
+            view.load_github_credentials(cx);
+            view.load_recent_repositories(cx);
+            view.refresh_external_app_availability(cx);
+            view.ensure_sync_loop(cx);
+        }
+
+        view
+    }
+}

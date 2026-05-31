@@ -1,6 +1,6 @@
 use super::*;
 use crate::actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher};
-use gpui::TestAppContext;
+use gpui::{AppContext, TestAppContext};
 use gpui_component::{Root, Theme, ThemeMode};
 
 #[test]

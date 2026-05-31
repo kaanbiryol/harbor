@@ -65,6 +65,17 @@ impl AppView {
         self.detail_state.log_state.clear_content();
     }
 
+    pub(super) fn clear_selected_pull_request_detail_state(&mut self) {
+        self.clear_changed_file_state();
+        self.clear_workflow_state();
+        self.clear_review_data_state();
+        self.clear_detail_loaded_state();
+        self.clear_review_submission_errors();
+        self.clear_log_content();
+        self.reset_diff_selection();
+        self.reset_detail_scrolls();
+    }
+
     pub(super) fn clear_log_error(&mut self) {
         self.detail_state.log_state.clear_error();
     }

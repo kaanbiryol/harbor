@@ -1,3 +1,5 @@
+#[path = "panels/changed_file_rows.rs"]
+mod changed_file_rows;
 #[path = "panels/checks.rs"]
 mod checks;
 #[path = "panels/chrome.rs"]
@@ -14,9 +16,12 @@ mod pull_request_signals;
 mod review;
 #[path = "panels/review_thread_chrome.rs"]
 pub(crate) mod review_thread_chrome;
+#[path = "panels/review_thread_rows.rs"]
+mod review_thread_rows;
 #[path = "panels/workflows.rs"]
 mod workflows;
 
+pub(crate) use changed_file_rows::*;
 pub(crate) use checks::*;
 pub(crate) use chrome::*;
 pub(crate) use diff_view::*;
