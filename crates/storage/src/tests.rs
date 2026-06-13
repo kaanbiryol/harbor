@@ -4,7 +4,10 @@ use std::{
 };
 
 use chrono::DateTime;
-use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState, ReviewDecision};
+use harbor_domain::{
+    ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId, ReviewDecision,
+};
+use sqlx::Row;
 
 use super::*;
 

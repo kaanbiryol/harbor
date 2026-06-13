@@ -78,7 +78,7 @@ impl SqliteStore {
         row.map(sync_target_state_from_row).transpose()
     }
 
-    pub(super) async fn record_sync_success_in_transaction(
+    pub(crate) async fn record_sync_success_in_transaction(
         transaction: &mut Transaction<'_, Sqlite>,
         target_key: &str,
     ) -> Result<()> {
