@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  rust:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+
+      - name: check formatting
+        run: script/fmt -- --check
+
+      - name: run tests
+        run: script/test
+
+      - name: run clippy
+        run: script/clippy -- -D warnings

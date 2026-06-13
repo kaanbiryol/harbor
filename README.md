@@ -83,15 +83,15 @@ HARBOR_GITHUB_OAUTH_CLIENT_ID=your_client_id cargo run -p harbor-app
 Run the standard checks before handing off changes:
 
 ```bash
-cargo fmt --all
-cargo test --workspace
-cargo clippy --workspace --all-targets
+script/fmt
+script/test
+script/clippy
 ```
 
-There is also a local clippy helper:
+The same checks run in CI. To run formatting in check mode:
 
 ```bash
-script/clippy
+script/fmt -- --check
 ```
 
 ## Workspace Layout
