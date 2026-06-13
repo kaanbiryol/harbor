@@ -1,5 +1,7 @@
 # Harbor
 
+![Harbor showing a pull request diff with an inline review thread](media/harbor-screenshot.png)
+
 Harbor is a native Rust app for GitHub.com pull request workflows. It helps you review changes, track checks, inspect workflow logs and manage review threads.
 
 It is designed for fast review workflows: repository switching, pull request
@@ -10,6 +12,9 @@ submission, workflow runs, logs, checks, local PR worktrees, and editor handoff.
 
 Harbor is early software. The core app builds and has a growing test suite, but
 it is not packaged for end-user installation yet.
+
+The current release is `v0.1.0`, a developer preview intended for running from
+source.
 
 ## Requirements
 
