@@ -50,8 +50,8 @@ async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext)
 
         assert!(view.pull_requests.is_empty());
         assert!(view.current_repository().is_none());
-        assert!(view.detail_state.files.is_empty());
-        assert!(view.detail_state.workflow_runs.is_empty());
+        assert!(view.detail_state.files().is_empty());
+        assert!(view.detail_state.workflow_runs().is_empty());
         assert_eq!(view.review_state.current_user_login, None);
         assert!(!view.pull_request_inbox.is_loading());
         assert_eq!(

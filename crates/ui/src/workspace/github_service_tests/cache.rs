@@ -44,7 +44,7 @@ async fn cached_detail_restore_preserves_diff_position_without_refetch(cx: &mut 
         assert!(view.restore_selected_pull_request_detail_snapshot(cx));
         assert_eq!(
             view.detail_state
-                .files
+                .files()
                 .iter()
                 .map(|file| file.path.as_str())
                 .collect::<Vec<_>>(),

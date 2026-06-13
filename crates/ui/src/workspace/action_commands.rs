@@ -25,7 +25,7 @@ impl AppView {
             WorkflowAction::DispatchBuild => {
                 let Some(run) = self
                     .detail_state
-                    .workflow_runs
+                    .workflow_runs()
                     .iter()
                     .find(|run| run.workflow_id.is_some())
                 else {
@@ -50,10 +50,10 @@ impl AppView {
             WorkflowAction::RerunFailedJobs => {
                 let Some(run) = self
                     .detail_state
-                    .workflow_runs
+                    .workflow_runs()
                     .iter()
                     .find(|run| workflow_run_failed(run))
-                    .or_else(|| self.detail_state.workflow_runs.first())
+                    .or_else(|| self.detail_state.workflow_runs().first())
                 else {
                     return Err(
                         "No workflow run is available for the selected pull request head".into(),

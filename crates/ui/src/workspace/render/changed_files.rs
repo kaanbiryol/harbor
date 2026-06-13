@@ -28,7 +28,7 @@ impl AppView {
             return render_changed_files_message(error.to_string(), color::danger());
         }
 
-        if self.detail_state.files.is_empty() {
+        if self.detail_state.files().is_empty() {
             return render_changed_files_message("No changed files", color::text_muted());
         }
 
@@ -58,7 +58,7 @@ impl AppView {
                             rows.push(render_changed_folder_row(folder_row, cx));
                         }
                         ChangedFileTreeRow::File(file_row) => {
-                            let Some(file) = view.detail_state.files.get(file_row.file_index)
+                            let Some(file) = view.detail_state.files().get(file_row.file_index)
                             else {
                                 continue;
                             };
@@ -84,7 +84,7 @@ impl AppView {
 
     pub(super) fn render_changed_files_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let reviewed_count = self.reviewed_file_count();
-        let total_count = self.detail_state.files.len();
+        let total_count = self.detail_state.files().len();
 
         div()
             .px_3()

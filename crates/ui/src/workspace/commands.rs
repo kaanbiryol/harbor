@@ -46,7 +46,7 @@ impl AppView {
     ) {
         let behavior = open_selected_pull_request_behavior(
             self.selected_pull_request_number(),
-            !self.detail_state.files.is_empty(),
+            !self.detail_state.files().is_empty(),
             self.detail_state.details_loading(),
             self.detail_state.files_loading(),
             self.review_state.reviews_loading(),

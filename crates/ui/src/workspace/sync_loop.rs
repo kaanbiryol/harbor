@@ -123,7 +123,7 @@ impl AppView {
                 checks_have_running_or_pending_work(pull_request.checks_summary)
             }),
             has_running_workflows: harbor_sync::workflow_runs_have_running_work(
-                &self.detail_state.workflow_runs,
+                self.detail_state.workflow_runs(),
             ),
             selected_pr_visible: self.selected_pull_request().is_some(),
         }

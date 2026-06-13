@@ -94,8 +94,8 @@ impl AppView {
                             let visible_file_indices = self.visible_file_indices(cx);
                             render_diff_panel(
                                 DiffPanelRenderInput {
-                                    files: &self.detail_state.files,
-                                    diffs: &self.detail_state.diffs,
+                                    files: self.detail_state.files(),
+                                    diffs: self.detail_state.diffs(),
                                     visible_file_indices: &visible_file_indices,
                                     reviewed_file_paths: &self.reviewed_file_paths,
                                     review_threads: &self.review_state.review_threads,
@@ -124,14 +124,14 @@ impl AppView {
                         .into_any_element(),
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
-                            &self.detail_state.check_runs,
+                            self.detail_state.check_runs(),
                             self.detail_state.checks_loading(),
                             self.detail_state.checks_error(),
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
                             pr,
-                            &self.detail_state.workflow_runs,
+                            self.detail_state.workflow_runs(),
                             self.detail_state.workflows_loading(),
                             self.detail_state.workflows_error(),
                             self.action_runtime.workflow_action_error(),
@@ -141,7 +141,7 @@ impl AppView {
                         .into_any_element(),
                         PanelTab::Logs => render_logs_panel(
                             self.selected_workflow_run_for_logs(),
-                            &self.detail_state.workflow_jobs,
+                            self.detail_state.workflow_jobs(),
                             self.detail_state.log_state.chunk(),
                             self.detail_state.log_state.is_loading(),
                             self.detail_state.log_state.error(),

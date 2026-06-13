@@ -15,7 +15,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let view = cx.entity().clone();
-        let total_count = self.detail_state.files.len();
+        let total_count = self.detail_state.files().len();
         let visible_count = self.visible_file_indices(cx).len();
         let type_filters = self.changed_file_type_filters();
         let included_type_count = self.included_file_type_filter_count();

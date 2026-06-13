@@ -162,7 +162,7 @@ impl AppView {
         let mut targets = Vec::new();
 
         for (file_position, file_index) in visible_file_indices.into_iter().enumerate() {
-            let Some(file) = self.detail_state.files.get(file_index) else {
+            let Some(file) = self.detail_state.files().get(file_index) else {
                 continue;
             };
             if self.reviewed_file_paths.contains(&file.path) {
@@ -171,7 +171,7 @@ impl AppView {
 
             let Some(diff) = self
                 .detail_state
-                .diffs
+                .diffs()
                 .get(file_index)
                 .and_then(Option::as_ref)
                 .filter(|diff| !diff.is_empty())
@@ -206,8 +206,8 @@ impl AppView {
         let visible_file_indices = self.visible_file_indices(cx);
         if let Some(item_index) = continuous_diff_hunk_item_index(
             ContinuousDiffLayoutInput {
-                files: &self.detail_state.files,
-                diffs: &self.detail_state.diffs,
+                files: self.detail_state.files(),
+                diffs: self.detail_state.diffs(),
                 visible_file_indices: &visible_file_indices,
                 reviewed_file_paths: &self.reviewed_file_paths,
                 review_threads: &self.review_state.review_threads,
@@ -221,7 +221,7 @@ impl AppView {
 
         let path = self
             .detail_state
-            .files
+            .files()
             .get(file_index)
             .map(|file| file.path.as_str())
             .unwrap_or("selected file");

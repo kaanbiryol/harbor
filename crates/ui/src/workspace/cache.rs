@@ -163,11 +163,11 @@ impl AppView {
 
         Some(PullRequestDetailSnapshot {
             pull_request,
-            files: self.detail_state.files.clone(),
-            diffs: self.detail_state.diffs.clone(),
-            check_runs: self.detail_state.check_runs.clone(),
-            workflow_runs: self.detail_state.workflow_runs.clone(),
-            workflow_jobs: self.detail_state.workflow_jobs.clone(),
+            files: self.detail_state.files().to_vec(),
+            diffs: self.detail_state.diffs().to_vec(),
+            check_runs: self.detail_state.check_runs().to_vec(),
+            workflow_runs: self.detail_state.workflow_runs().to_vec(),
+            workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
             review_threads: self.review_state.review_threads.clone(),
             detail_loaded: self
@@ -233,7 +233,7 @@ impl AppView {
         self.selection_state.restore_diff_position(
             snapshot.active_file,
             snapshot.active_hunk,
-            self.detail_state.files.len(),
+            self.detail_state.files().len(),
         );
         self.active_tab = snapshot.active_tab;
         self.sync_diff_list_items(cx);
@@ -251,11 +251,11 @@ impl AppView {
         PullRequestInboxSnapshot {
             pull_requests: self.pull_requests.clone(),
             page_info: self.pull_request_inbox.page_info().clone(),
-            files: self.detail_state.files.clone(),
-            diffs: self.detail_state.diffs.clone(),
-            check_runs: self.detail_state.check_runs.clone(),
-            workflow_runs: self.detail_state.workflow_runs.clone(),
-            workflow_jobs: self.detail_state.workflow_jobs.clone(),
+            files: self.detail_state.files().to_vec(),
+            diffs: self.detail_state.diffs().to_vec(),
+            check_runs: self.detail_state.check_runs().to_vec(),
+            workflow_runs: self.detail_state.workflow_runs().to_vec(),
+            workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
             review_threads: self.review_state.review_threads.clone(),
             detail_loaded: self
@@ -328,7 +328,7 @@ impl AppView {
         self.selection_state.restore_diff_position(
             snapshot.active_file,
             snapshot.active_hunk,
-            self.detail_state.files.len(),
+            self.detail_state.files().len(),
         );
         self.active_tab = snapshot.active_tab;
         self.sync_diff_list_items(cx);

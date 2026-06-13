@@ -19,7 +19,7 @@ use super::{
 
 impl AppView {
     pub(crate) fn active_file(&self) -> Option<&DiffFile> {
-        self.detail_state.files.get(self.active_file_index())
+        self.detail_state.files().get(self.active_file_index())
     }
 
     pub(crate) fn active_file_index(&self) -> usize {
@@ -31,11 +31,11 @@ impl AppView {
     }
 
     pub(crate) fn diff_files(&self) -> &[DiffFile] {
-        &self.detail_state.files
+        self.detail_state.files()
     }
 
     pub(crate) fn parsed_diffs(&self) -> &[Option<ParsedDiff>] {
-        &self.detail_state.diffs
+        self.detail_state.diffs()
     }
 
     pub(crate) fn reviewed_file_paths(&self) -> &HashSet<String> {
@@ -46,7 +46,7 @@ impl AppView {
         let filters = self.changed_file_filters();
 
         changed_file_tree_rows(
-            &self.detail_state.files,
+            self.detail_state.files(),
             &self.collapsed_file_tree_folders,
             &self.reviewed_file_paths,
             &filters,
@@ -65,7 +65,7 @@ impl AppView {
 
     pub(crate) fn reviewed_file_count(&self) -> usize {
         self.detail_state
-            .files
+            .files()
             .iter()
             .filter(|file| self.reviewed_file_paths.contains(&file.path))
             .count()
@@ -81,7 +81,7 @@ impl AppView {
     }
 
     pub(crate) fn changed_file_type_filters(&self) -> Vec<ChangedFileTypeFilter> {
-        changed_file_type_filters(&self.detail_state.files, &self.excluded_file_type_filters)
+        changed_file_type_filters(self.detail_state.files(), &self.excluded_file_type_filters)
     }
 
     pub(crate) fn included_file_type_filter_count(&self) -> usize {
@@ -110,8 +110,8 @@ impl AppView {
 
         continuous_diff_file_item_index(
             ContinuousDiffLayoutInput {
-                files: &self.detail_state.files,
-                diffs: &self.detail_state.diffs,
+                files: self.detail_state.files(),
+                diffs: self.detail_state.diffs(),
                 visible_file_indices: &visible_file_indices,
                 reviewed_file_paths: &self.reviewed_file_paths,
                 review_threads: &self.review_state.review_threads,
@@ -124,8 +124,8 @@ impl AppView {
     pub(super) fn sync_diff_list_items(&mut self, cx: &App) {
         let visible_file_indices = self.visible_file_indices(cx);
         let next_items = continuous_diff_items(ContinuousDiffLayoutInput {
-            files: &self.detail_state.files,
-            diffs: &self.detail_state.diffs,
+            files: self.detail_state.files(),
+            diffs: self.detail_state.diffs(),
             visible_file_indices: &visible_file_indices,
             reviewed_file_paths: &self.reviewed_file_paths,
             review_threads: &self.review_state.review_threads,
@@ -170,7 +170,7 @@ impl AppView {
     pub(super) fn prune_reviewed_file_paths(&mut self) {
         let file_paths = self
             .detail_state
-            .files
+            .files()
             .iter()
             .map(|file| file.path.clone())
             .collect::<HashSet<_>>();
@@ -188,7 +188,7 @@ impl AppView {
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(path) = self
             .detail_state
-            .files
+            .files()
             .get(index)
             .map(|file| file.path.clone())
         {
@@ -234,7 +234,7 @@ impl AppView {
     ) {
         let Some(path) = self
             .detail_state
-            .files
+            .files()
             .get(file_index)
             .map(|file| file.path.clone())
         else {
@@ -250,7 +250,7 @@ impl AppView {
             true
         };
         let reviewed_count = self.reviewed_file_count();
-        let total_count = self.detail_state.files.len();
+        let total_count = self.detail_state.files().len();
 
         self.sync_diff_list_items(cx);
         self.status = if reviewed {
@@ -337,7 +337,7 @@ impl AppView {
             cx.notify();
             return;
         };
-        if self.detail_state.files.is_empty() {
+        if self.detail_state.files().is_empty() {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
             self.sync_diff_list_items(cx);
@@ -345,7 +345,7 @@ impl AppView {
             return;
         }
 
-        let files = self.detail_state.files.clone();
+        let files = self.detail_state.files().to_vec();
         let selected_repository = self.current_repository().cloned();
         let selected_pr_number = self.selected_pull_request_number();
         let task = cx.background_spawn(async move {

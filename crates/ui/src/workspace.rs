@@ -145,10 +145,10 @@ impl AppView {
 
     fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
         self.detail_state
-            .workflow_runs
+            .workflow_runs()
             .iter()
             .find(|run| workflow_run_failed(run))
-            .or_else(|| self.detail_state.workflow_runs.first())
+            .or_else(|| self.detail_state.workflow_runs().first())
     }
 
     pub(crate) fn select_pull_request(&mut self, index: usize, cx: &mut Context<Self>) {

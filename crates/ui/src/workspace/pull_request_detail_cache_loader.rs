@@ -99,7 +99,7 @@ impl AppView {
                         }
 
                         if let Some((files, diffs)) = cached.files
-                            && view.detail_state.files.is_empty()
+                            && view.detail_state.files().is_empty()
                         {
                             view.detail_state.replace_diff_files(files, diffs);
                             view.ensure_active_file_visible(cx);
@@ -108,7 +108,7 @@ impl AppView {
                         }
 
                         if let Some(check_runs) = cached.check_runs
-                            && view.detail_state.check_runs.is_empty()
+                            && view.detail_state.check_runs().is_empty()
                         {
                             let summary = checks_summary_from_runs(&check_runs);
                             view.detail_state.replace_check_runs(check_runs);
@@ -122,7 +122,7 @@ impl AppView {
                         }
 
                         if let Some(workflow_runs) = cached.workflow_runs
-                            && view.detail_state.workflow_runs.is_empty()
+                            && view.detail_state.workflow_runs().is_empty()
                         {
                             view.detail_state.replace_workflow_runs(workflow_runs);
                             applied_any = true;

@@ -16,11 +16,11 @@ use crate::{
 };
 
 pub(crate) struct PullRequestDetailUiState {
-    pub(crate) files: Vec<DiffFile>,
-    pub(crate) diffs: Vec<Option<ParsedDiff>>,
-    pub(crate) check_runs: Vec<CheckRun>,
-    pub(crate) workflow_runs: Vec<WorkflowRun>,
-    pub(crate) workflow_jobs: Vec<WorkflowJob>,
+    files: Vec<DiffFile>,
+    diffs: Vec<Option<ParsedDiff>>,
+    check_runs: Vec<CheckRun>,
+    workflow_runs: Vec<WorkflowRun>,
+    workflow_jobs: Vec<WorkflowJob>,
     pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
     details_load: LoadStatus,
     files_load: LoadStatus,
@@ -132,6 +132,14 @@ impl PullRequestDetailUiState {
         self.diffs = diffs;
     }
 
+    pub(crate) fn files(&self) -> &[DiffFile] {
+        &self.files
+    }
+
+    pub(crate) fn diffs(&self) -> &[Option<ParsedDiff>] {
+        &self.diffs
+    }
+
     pub(crate) fn clear_diff_files(&mut self) {
         self.files.clear();
         self.diffs.clear();
@@ -150,6 +158,10 @@ impl PullRequestDetailUiState {
         self.check_runs = check_runs;
     }
 
+    pub(crate) fn check_runs(&self) -> &[CheckRun] {
+        &self.check_runs
+    }
+
     pub(crate) fn clear_check_runs(&mut self) {
         self.check_runs.clear();
     }
@@ -158,12 +170,20 @@ impl PullRequestDetailUiState {
         self.workflow_runs = workflow_runs;
     }
 
+    pub(crate) fn workflow_runs(&self) -> &[WorkflowRun] {
+        &self.workflow_runs
+    }
+
     pub(crate) fn clear_workflow_runs(&mut self) {
         self.workflow_runs.clear();
     }
 
     pub(crate) fn replace_workflow_jobs(&mut self, workflow_jobs: Vec<WorkflowJob>) {
         self.workflow_jobs = workflow_jobs;
+    }
+
+    pub(crate) fn workflow_jobs(&self) -> &[WorkflowJob] {
+        &self.workflow_jobs
     }
 
     pub(crate) fn clear_workflow_jobs(&mut self) {

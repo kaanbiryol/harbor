@@ -168,7 +168,7 @@ impl AppView {
 
                                 if view.active_tab == PanelTab::Logs
                                     && view.detail_state.log_state.error().is_none()
-                                    && !view.detail_state.workflow_runs.is_empty()
+                                    && !view.detail_state.workflow_runs().is_empty()
                                 {
                                     view.load_selected_workflow_logs(cx);
                                 }

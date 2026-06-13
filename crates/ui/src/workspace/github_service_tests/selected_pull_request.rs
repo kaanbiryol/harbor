@@ -25,7 +25,7 @@ async fn selected_metadata_refresh_does_not_refetch_files(cx: &mut TestAppContex
     assert_eq!(api.calls(), vec!["get_pull_request"]);
     view_entity.read_with(cx, |view, _| {
         assert_eq!(view.pull_requests[0].title, "Updated title");
-        assert!(view.detail_state.files.is_empty());
+        assert!(view.detail_state.files().is_empty());
     });
 }
 
@@ -57,7 +57,7 @@ async fn ignores_stale_pull_request_detail_results_after_selection_changes(
     view_entity.read_with(cx, |view, _| {
         assert_eq!(view.selected_pull_request_index(), 1);
         assert_eq!(view.pull_requests[1].title, "Selected detail");
-        assert!(view.detail_state.files.is_empty());
+        assert!(view.detail_state.files().is_empty());
         assert!(view.review_state.review_threads.is_empty());
     });
 }

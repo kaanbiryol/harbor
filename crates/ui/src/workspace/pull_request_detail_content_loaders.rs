@@ -219,7 +219,7 @@ impl AppView {
                             }
                             if view
                                 .detail_state
-                                .files
+                                .files()
                                 .get(file_index)
                                 .map(|file| file.path.as_str())
                                 != Some(file_path.as_str())
