@@ -147,3 +147,93 @@ fn map_workflow_conclusion(conclusion: &str) -> Option<WorkflowConclusion> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use harbor_domain::{WorkflowConclusion, WorkflowStatus};
+    use serde_json::json;
+
+    use super::{workflow_jobs_from_value, workflow_runs_from_value};
+
+    #[test]
+    fn maps_workflow_runs() {
+        let value = json!({
+            "total_count": 1,
+            "workflow_runs": [
+                {
+                    "id": 2001,
+                    "workflow_id": 901,
+                    "name": "CI",
+                    "display_title": "run tests",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "head_branch": "feature/test",
+                    "head_sha": "abc123",
+                    "event": "pull_request",
+                    "url": "https://api.github.com/repos/acme/app/actions/runs/2001",
+                    "html_url": "https://github.com/acme/app/actions/runs/2001",
+                    "created_at": "2026-05-01T10:00:00Z",
+                    "updated_at": "2026-05-01T10:05:00Z"
+                }
+            ]
+        });
+
+        let workflow_runs = workflow_runs_from_value(value).unwrap();
+
+        assert_eq!(workflow_runs.len(), 1);
+        assert_eq!(workflow_runs[0].workflow_id, Some(901));
+        assert_eq!(workflow_runs[0].name, "run tests");
+        assert_eq!(workflow_runs[0].workflow_name.as_deref(), Some("CI"));
+        assert_eq!(workflow_runs[0].status, WorkflowStatus::Completed);
+        assert_eq!(
+            workflow_runs[0].conclusion,
+            Some(WorkflowConclusion::Failure)
+        );
+    }
+
+    #[test]
+    fn maps_workflow_jobs() {
+        let value = json!({
+            "total_count": 1,
+            "jobs": [
+                {
+                    "id": 3001,
+                    "name": "test",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "steps": [
+                        {
+                            "name": "install",
+                            "number": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "started_at": "2026-05-01T10:00:00Z",
+                            "completed_at": "2026-05-01T10:01:00Z"
+                        },
+                        {
+                            "name": "unit tests",
+                            "number": 2,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "started_at": null,
+                            "completed_at": null
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let jobs = workflow_jobs_from_value(value).unwrap();
+
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id, 3001);
+        assert_eq!(jobs[0].status, WorkflowStatus::Completed);
+        assert_eq!(jobs[0].conclusion, Some(WorkflowConclusion::Failure));
+        assert_eq!(jobs[0].steps.len(), 2);
+        assert_eq!(jobs[0].steps[1].name, "unit tests");
+        assert_eq!(
+            jobs[0].steps[1].conclusion,
+            Some(WorkflowConclusion::Failure)
+        );
+    }
+}

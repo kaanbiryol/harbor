@@ -72,3 +72,48 @@ fn map_check_conclusion(conclusion: &str) -> Option<CheckConclusion> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use harbor_domain::{CheckConclusion, CheckStatus};
+    use serde_json::json;
+
+    use super::check_runs_from_value;
+
+    #[test]
+    fn maps_check_runs() {
+        let value = json!({
+            "total_count": 2,
+            "check_runs": [
+                {
+                    "id": 1001,
+                    "name": "build",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "details_url": "https://ci.example/build",
+                    "html_url": "https://github.com/acme/app/runs/1001",
+                    "started_at": "2026-05-01T10:00:00Z",
+                    "completed_at": "2026-05-01T10:05:00Z"
+                },
+                {
+                    "id": 1002,
+                    "name": "test",
+                    "status": "in_progress",
+                    "conclusion": null,
+                    "details_url": null,
+                    "html_url": "https://github.com/acme/app/runs/1002",
+                    "started_at": null,
+                    "completed_at": null
+                }
+            ]
+        });
+
+        let check_runs = check_runs_from_value(value).unwrap();
+
+        assert_eq!(check_runs.len(), 2);
+        assert_eq!(check_runs[0].status, CheckStatus::Completed);
+        assert_eq!(check_runs[0].conclusion, Some(CheckConclusion::Success));
+        assert_eq!(check_runs[1].status, CheckStatus::InProgress);
+        assert_eq!(check_runs[1].conclusion, None);
+    }
+}
