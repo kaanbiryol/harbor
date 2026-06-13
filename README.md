@@ -13,9 +13,6 @@ submission, workflow runs, logs, checks, local PR worktrees, and editor handoff.
 Harbor is early software. The core app builds and has a growing test suite, but
 it is not packaged for end-user installation yet.
 
-The current release is `v0.1.0`, a developer preview intended for running from
-source.
-
 Harbor is currently tested and supported on macOS only. Other platforms may
 build, but they are not tested or supported yet.
 
@@ -26,10 +23,39 @@ build, but they are not tested or supported yet.
 - A working system toolchain for GPUI
 - GitHub CLI, if you want to authenticate through `gh`
 
-## Run
+## Install
+
+Harbor does not have a packaged macOS app release yet. The intended release path
+is a zipped `Harbor.app` that can be copied into `/Applications`.
+
+Until then, install the command-line launcher from source with Cargo:
 
 ```bash
-cargo run -p harbor-app
+cargo install --git https://github.com/kaanbiryol/harbor --locked --bin harbor harbor-app
+```
+
+Then run:
+
+```bash
+harbor
+```
+
+To build a local macOS app bundle:
+
+```bash
+script/package-macos
+open target/macos/Harbor.app
+```
+
+The packaging script also creates `target/macos/Harbor-0.1.0-macos.zip`, which
+is the artifact that should be attached to a GitHub release once app signing and
+release validation are ready. Public macOS app releases should be signed and
+notarized before publishing.
+
+## Run From Source
+
+```bash
+cargo run -p harbor-app --bin harbor --locked
 ```
 
 On first launch, Harbor asks you to connect GitHub.

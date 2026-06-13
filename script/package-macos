@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "macOS packaging must run on macOS." >&2
+    exit 1
+fi
+
+if ! command -v ditto >/dev/null 2>&1; then
+    echo "macOS packaging requires ditto." >&2
+    exit 1
+fi
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+package_id="$(cargo pkgid -p harbor-app)"
+version="${package_id##*@}"
+target_dir="$repo_root/target/macos"
+app_dir="$target_dir/Harbor.app"
+contents_dir="$app_dir/Contents"
+macos_dir="$contents_dir/MacOS"
+executable_path="$macos_dir/Harbor"
+zip_path="$target_dir/Harbor-${version}-macos.zip"
+
+cargo build -p harbor-app --bin harbor --release --locked
+
+rm -rf "$app_dir" "$zip_path"
+mkdir -p "$macos_dir"
+cp "$repo_root/target/release/harbor" "$executable_path"
+chmod 755 "$executable_path"
+
+cat >"$contents_dir/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Harbor</string>
+    <key>CFBundleExecutable</key>
+    <string>Harbor</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.kaanbiryol.harbor</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Harbor</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${version}</string>
+    <key>CFBundleVersion</key>
+    <string>${version}</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+xattr -cr "$app_dir"
+
+(
+    cd "$target_dir"
+    COPYFILE_DISABLE=1 ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "Harbor.app" "$zip_path"
+)
+
+printf 'Created %s\n' "$app_dir"
+printf 'Created %s\n' "$zip_path"
