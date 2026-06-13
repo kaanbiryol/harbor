@@ -159,6 +159,7 @@ impl AppView {
                                 view.prune_reviewed_file_paths();
                                 view.ensure_active_file_visible(cx);
                                 view.clear_review_composer_state();
+                                view.sync_diff_list_items(cx);
                                 view.refresh_owned_file_filters(cx);
                                 let row_index = view
                                     .file_tree_row_index_for_file(view.active_file_index(), cx)
@@ -180,6 +181,7 @@ impl AppView {
                                 view.owned_file_paths.clear();
                                 view.reset_diff_selection();
                                 view.clear_review_composer_state();
+                                view.sync_diff_list_items(cx);
                                 view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                                 view.reset_diff_list_scroll();
                                 view.detail_state.apply_files_failure(error);

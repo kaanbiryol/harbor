@@ -21,6 +21,7 @@ impl AppView {
                 input.set_value(body, window, cx);
                 input.focus(window, cx);
             });
+        self.sync_diff_list_items(cx);
         self.status = "Opened review comment editor".to_string();
         cx.notify();
     }
@@ -38,6 +39,7 @@ impl AppView {
             .update(cx, |input, cx| {
                 input.set_value("", window, cx);
             });
+        self.sync_diff_list_items(cx);
         self.status = "Cancelled review comment edit".to_string();
         cx.notify();
     }

@@ -234,6 +234,7 @@ impl AppView {
             self.detail_state.files.len(),
         );
         self.active_tab = snapshot.active_tab;
+        self.sync_diff_list_items(cx);
 
         self.pr_list_scroll
             .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
@@ -326,6 +327,7 @@ impl AppView {
             self.detail_state.files.len(),
         );
         self.active_tab = snapshot.active_tab;
+        self.sync_diff_list_items(cx);
 
         self.pr_list_scroll
             .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);

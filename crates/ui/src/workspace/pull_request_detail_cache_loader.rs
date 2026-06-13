@@ -104,6 +104,7 @@ impl AppView {
                             view.detail_state.files = files;
                             view.detail_state.diffs = diffs;
                             view.ensure_active_file_visible(cx);
+                            view.sync_diff_list_items(cx);
                             applied_any = true;
                         }
 
@@ -133,6 +134,7 @@ impl AppView {
                             && view.review_state.review_threads.is_empty()
                         {
                             view.replace_reviews_and_loaded_threads(reviews, threads);
+                            view.sync_diff_list_items(cx);
                             view.review_state.apply_reviews_success();
                             view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
                             view.refresh_owned_file_filters(cx);

@@ -72,6 +72,7 @@ impl AppView {
             }
         }
 
+        self.sync_diff_list_items(cx);
         cx.notify();
     }
 
@@ -83,6 +84,7 @@ impl AppView {
             .update(cx, |input, cx| {
                 input.set_value("", window, cx);
             });
+        self.sync_diff_list_items(cx);
         self.status = "Cancelled review comment".to_string();
         cx.notify();
     }

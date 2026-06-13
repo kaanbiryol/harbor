@@ -132,6 +132,7 @@ impl AppView {
             self.clear_detail_loaded_state();
             self.set_detail_loading(false);
             self.set_log_loading(false);
+            self.sync_diff_list_items(cx);
         }
 
         self.status = pull_request_inbox_loading_status(&repo, mode);

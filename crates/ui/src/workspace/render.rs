@@ -79,10 +79,6 @@ impl Render for AppView {
             self.sync_runtime.mark_focused_once();
         }
 
-        if self.active_tab == PanelTab::Diff {
-            self.sync_diff_list_items(cx);
-        }
-
         let selected_pr = self.selected_pull_request().cloned();
         let show_auth_gate = self.github_auth_gate_visible();
         let content = if show_auth_gate {

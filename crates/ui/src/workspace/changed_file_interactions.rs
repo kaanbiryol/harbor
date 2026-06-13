@@ -222,6 +222,7 @@ impl AppView {
         };
 
         self.ensure_active_file_visible(cx);
+        self.sync_diff_list_items(cx);
         self.status = status;
         cx.notify();
     }
@@ -251,6 +252,7 @@ impl AppView {
         let reviewed_count = self.reviewed_file_count();
         let total_count = self.detail_state.files.len();
 
+        self.sync_diff_list_items(cx);
         self.status = if reviewed {
             format!("Marked {path} as reviewed ({reviewed_count}/{total_count})")
         } else {
@@ -273,6 +275,7 @@ impl AppView {
         let visible_count = self.visible_file_indices(cx).len();
 
         self.ensure_active_file_visible(cx);
+        self.sync_diff_list_items(cx);
         self.status = if included {
             format!("Included {file_type} files ({visible_count} visible)")
         } else {
@@ -284,6 +287,7 @@ impl AppView {
     pub(crate) fn include_all_changed_file_types(&mut self, cx: &mut Context<Self>) {
         self.excluded_file_type_filters.clear();
         self.ensure_active_file_visible(cx);
+        self.sync_diff_list_items(cx);
         let visible_count = self.visible_file_indices(cx).len();
         self.status = format!("Included all file types ({visible_count} visible)");
         cx.notify();
@@ -292,6 +296,7 @@ impl AppView {
     pub(crate) fn show_all_changed_files(&mut self, cx: &mut Context<Self>) {
         self.show_files_owned_by_current_user = false;
         self.ensure_active_file_visible(cx);
+        self.sync_diff_list_items(cx);
         let visible_count = self.visible_file_indices(cx).len();
         self.status = format!("Showing all changed files ({visible_count} visible)");
         cx.notify();
@@ -306,6 +311,7 @@ impl AppView {
 
         self.show_files_owned_by_current_user = !self.show_files_owned_by_current_user;
         self.ensure_active_file_visible(cx);
+        self.sync_diff_list_items(cx);
         let visible_count = self.visible_file_indices(cx).len();
 
         self.status = if self.show_files_owned_by_current_user {
@@ -320,18 +326,21 @@ impl AppView {
         let Some(current_user_login) = self.review_state.current_user_login.clone() else {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
+            self.sync_diff_list_items(cx);
             cx.notify();
             return;
         };
         let Some(repository_path) = self.current_repository_local_path().cloned() else {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
+            self.sync_diff_list_items(cx);
             cx.notify();
             return;
         };
         if self.detail_state.files.is_empty() {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
+            self.sync_diff_list_items(cx);
             cx.notify();
             return;
         }
@@ -366,6 +375,7 @@ impl AppView {
                     view.show_files_owned_by_current_user = false;
                 }
                 view.ensure_active_file_visible(cx);
+                view.sync_diff_list_items(cx);
                 cx.notify();
             }) {
                 log_entity_update_error("failed to update file ownership filters", error);

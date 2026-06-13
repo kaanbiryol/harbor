@@ -178,6 +178,7 @@ impl AppView {
         self.clear_log_error();
         self.action_runtime.clear_pull_request_action_error();
         self.review_state.clear_submission_errors();
+        self.sync_diff_list_items(cx);
         self.pr_list_scroll
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);

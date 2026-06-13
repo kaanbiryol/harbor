@@ -23,6 +23,7 @@ impl AppView {
                 input.set_value("", window, cx);
                 input.focus(window, cx);
             });
+        self.sync_diff_list_items(cx);
         self.status = "Opened review thread reply".to_string();
         cx.notify();
     }
@@ -40,6 +41,7 @@ impl AppView {
             .update(cx, |input, cx| {
                 input.set_value("", window, cx);
             });
+        self.sync_diff_list_items(cx);
         self.status = "Cancelled review thread reply".to_string();
         cx.notify();
     }

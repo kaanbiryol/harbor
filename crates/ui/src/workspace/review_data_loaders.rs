@@ -178,6 +178,7 @@ impl AppView {
                             current_user_login,
                             pending_review_comment_count,
                         );
+                        view.sync_diff_list_items(cx);
                         view.refresh_owned_file_filters(cx);
                         view.status = mode.loaded_review_data_status(
                             target.number,
@@ -190,6 +191,7 @@ impl AppView {
                         let thread_count = threads.len();
                         view.review_state.clear_pull_request_reviews();
                         view.replace_loaded_review_threads(threads);
+                        view.sync_diff_list_items(cx);
                         let message = format!("Failed to load review history: {reviews_error}");
                         append_review_error(&mut review_error, message);
                         view.status = mode.loaded_threads_only_status(target.number, thread_count);
@@ -202,6 +204,7 @@ impl AppView {
                             current_user_login,
                             pending_review_comment_count,
                         );
+                        view.sync_diff_list_items(cx);
                         view.refresh_owned_file_filters(cx);
                         let message = format!("Failed to load review threads: {threads_error}");
                         append_review_error(&mut review_error, message);

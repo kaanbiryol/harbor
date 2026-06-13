@@ -97,6 +97,7 @@ impl AppView {
 
         self.review_state
             .start_review_comment_submission(submission == ReviewCommentSubmission::StartReview);
+        self.sync_diff_list_items(cx);
         self.status = match submission {
             ReviewCommentSubmission::SingleComment => {
                 format!("Added comment locally on PR #{}; syncing", pr.number)
@@ -214,6 +215,7 @@ impl AppView {
                                         .review_composer_state
                                         .open_inline(composer, line_selection);
                                 }
+                                view.sync_diff_list_items(cx);
                                 view.review_state.set_review_comment_error(message.clone());
                                 view.status = message;
                             }
