@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     io::Write,
-    process::{Command, Output, Stdio},
+    process::{Output, Stdio},
     sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
@@ -17,6 +17,7 @@ use crate::{
 use super::errors::{
     graphql_rate_limit_error, map_failed_status, map_http_failure, map_spawn_error,
 };
+use super::gh_command::gh_command;
 use super::octocrab::{OctocrabRequestFuture, OctocrabResponse};
 use super::response::{
     GitHubRateLimitMetadata, graphql_response_cost, json_value_from_body, parse_json_output,
@@ -112,10 +113,7 @@ impl GhCliRequestCoordinator {
 
         smol::unblock(move || {
             let _request_guard = coordinator.acquire(GitHubRequestKind::Read);
-            let output = Command::new("gh")
-                .args(args)
-                .output()
-                .map_err(map_spawn_error)?;
+            let output = gh_command().args(args).output().map_err(map_spawn_error)?;
 
             if !output.status.success() {
                 return Err(map_failed_status(&output.stdout, &output.stderr));
@@ -704,7 +702,7 @@ pub(super) fn mutation_interval_remaining(
 }
 
 fn run_gh_command(args: Vec<String>, input: Option<String>) -> Result<Output> {
-    let mut command = Command::new("gh");
+    let mut command = gh_command();
     command
         .args(args)
         .stdout(Stdio::piped())

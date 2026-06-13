@@ -11,6 +11,7 @@ use thiserror::Error;
 mod repositories;
 mod rows;
 mod schema;
+mod settings;
 mod sync_state;
 mod types;
 

@@ -302,6 +302,64 @@ fn records_initial_schema_migration_for_new_database() {
 }
 
 #[test]
+fn saves_and_deletes_app_settings() {
+    smol::block_on(async {
+        let database_path = test_database_path("app-settings");
+        let store = SqliteStore::connect(StorageConfig {
+            database_path: database_path.clone(),
+        })
+        .await
+        .expect("connect sqlite store");
+
+        assert_eq!(
+            store
+                .load_app_setting("github.auth_source")
+                .await
+                .expect("load missing setting"),
+            None
+        );
+
+        store
+            .save_app_setting("github.auth_source", "gh_cli")
+            .await
+            .expect("save setting");
+        assert_eq!(
+            store
+                .load_app_setting("github.auth_source")
+                .await
+                .expect("load saved setting"),
+            Some("gh_cli".to_string())
+        );
+
+        store
+            .save_app_setting("github.auth_source", "oauth")
+            .await
+            .expect("update setting");
+        assert_eq!(
+            store
+                .load_app_setting("github.auth_source")
+                .await
+                .expect("load updated setting"),
+            Some("oauth".to_string())
+        );
+
+        store
+            .delete_app_setting("github.auth_source")
+            .await
+            .expect("delete setting");
+        assert_eq!(
+            store
+                .load_app_setting("github.auth_source")
+                .await
+                .expect("load deleted setting"),
+            None
+        );
+
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
 fn saves_and_loads_pull_request_inbox_cache() {
     smol::block_on(async {
         let database_path = test_database_path("pull-request-inbox-cache");

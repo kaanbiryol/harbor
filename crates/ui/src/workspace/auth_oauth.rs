@@ -7,8 +7,8 @@ use crate::{
         AppView, AuthSwitchStatus,
         async_updates::AppViewAsyncUpdateExt,
         auth::{
-            GITHUB_AUTH_SOURCE_CREDENTIAL_URL, GITHUB_AUTH_SOURCE_CREDENTIAL_USERNAME,
             GITHUB_CREDENTIAL_URL, GITHUB_OAUTH_CLIENT_ID_ENV, github_oauth_client_id,
+            save_github_auth_source,
         },
     },
 };
@@ -269,11 +269,8 @@ impl AppView {
                     GITHUB_CREDENTIAL_USERNAME,
                     token.as_bytes(),
                 );
-                let write_source_task = cx.write_credentials(
-                    GITHUB_AUTH_SOURCE_CREDENTIAL_URL,
-                    GITHUB_AUTH_SOURCE_CREDENTIAL_USERNAME,
-                    source.credential_value().as_bytes(),
-                );
+                let write_source_task =
+                    cx.background_spawn(async move { save_github_auth_source(source).await });
                 self.finish_authenticated_github_sign_in(source, cx);
 
                 self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
@@ -283,14 +280,15 @@ impl AppView {
                         cx,
                         "failed to update github credential save state",
                         move |view, cx| {
-                            for result in [write_token_result, write_source_result] {
-                                if let Err(error) = result {
-                                    view.auth_status = GitHubAuthStatus::Failed(error.to_string());
-                                    view.status = format!(
-                                        "Signed in, but failed to save GitHub auth: {error}"
-                                    );
-                                    break;
-                                }
+                            if let Err(error) = write_token_result {
+                                view.auth_status = GitHubAuthStatus::Failed(error.to_string());
+                                view.status =
+                                    format!("Signed in, but failed to save GitHub auth: {error}");
+                            } else if let Err(error) = write_source_result {
+                                view.auth_status = GitHubAuthStatus::Failed(error.clone());
+                                view.status = format!(
+                                    "Signed in, but failed to save GitHub auth preference: {error}"
+                                );
                             }
                             cx.notify();
                         },

@@ -14,6 +14,7 @@ use crate::{
 mod coordinator;
 mod errors;
 mod gh_cli;
+mod gh_command;
 mod oauth;
 mod octocrab;
 mod response;

@@ -127,6 +127,16 @@ impl SqliteStore {
         .execute(&self.pool)
         .await?;
 
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         self.record_schema_migration(1).await?;
 
         Ok(())

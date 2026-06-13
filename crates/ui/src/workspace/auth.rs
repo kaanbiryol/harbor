@@ -1,4 +1,5 @@
-use gpui::{Context, Window};
+use gpui::{AppContext, Context, Window};
+use harbor_storage::{SqliteStore, StorageConfig};
 
 use crate::{
     actions::SignOutOfGitHub,
@@ -8,8 +9,7 @@ use crate::{
 use super::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
 
 pub(super) const GITHUB_CREDENTIAL_URL: &str = "harbor://github/oauth";
-pub(super) const GITHUB_AUTH_SOURCE_CREDENTIAL_URL: &str = "harbor://github/auth-source";
-pub(super) const GITHUB_AUTH_SOURCE_CREDENTIAL_USERNAME: &str = "github-auth-source";
+pub(super) const GITHUB_AUTH_SOURCE_SETTING_KEY: &str = "github.auth_source";
 pub(super) const GITHUB_OAUTH_CLIENT_ID_ENV: &str = "HARBOR_GITHUB_OAUTH_CLIENT_ID";
 const DEFAULT_GITHUB_OAUTH_CLIENT_ID: &str = "Ov23liH046TDAFHhtJEU";
 
@@ -88,55 +88,20 @@ impl AppView {
         self.auth_status = GitHubAuthStatus::Loading;
         self.github_cli_availability = GitHubCliAvailability::Checking;
         self.github_auth_popover_open = false;
-        let token_task = cx.read_credentials(GITHUB_CREDENTIAL_URL);
-        let source_task = cx.read_credentials(GITHUB_AUTH_SOURCE_CREDENTIAL_URL);
+        let source_task = cx.background_spawn(async move { load_saved_github_auth_source().await });
 
         self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
-            let token_result = token_task
-                .await
-                .map(|credential| credential.map(|(_username, password)| password))
-                .map_err(|error| error.to_string());
-            let source_result = source_task
-                .await
-                .map(|credential| credential.map(|(_username, password)| password))
-                .map_err(|error| error.to_string());
+            let source_result = source_task.await;
 
             this.update_or_log(cx, "failed to update github auth state", move |view, cx| {
-                let source_result = saved_github_auth_source(source_result);
-                match (token_result, source_result) {
-                    (Ok(Some(password)), Ok(saved_source)) => {
-                        let token = String::from_utf8(password)
-                            .map_err(|error| error.to_string())
-                            .and_then(|token| {
-                                let source = saved_source
-                                    .filter(|source| *source != GitHubAuthSource::GhCli)
-                                    .unwrap_or(GitHubAuthSource::OAuth);
-                                view.configure_github_token(token, source)?;
-                                Ok(source)
-                            });
-                        match token {
-                            Ok(source) => view.finish_authenticated_github_sign_in(source, cx),
-                            Err(error) => {
-                                view.auth_status = GitHubAuthStatus::Failed(error);
-                                view.github_auth_popover_open = true;
-                                if !view.github_api.has_auth() {
-                                    view.show_github_sign_in_required();
-                                }
-                                view.status = "Failed to load GitHub credentials".to_string();
-                            }
-                        }
-                    }
-                    (Ok(None), Ok(Some(GitHubAuthSource::GhCli))) => {
+                match source_result {
+                    Ok(Some(GitHubAuthSource::GhCli)) => {
                         view.sign_in_with_github_cli(true, cx);
                     }
-                    (Ok(None), Ok(_)) => {
-                        view.auth_status = GitHubAuthStatus::SignedOut;
-                        if !view.github_api.has_auth() {
-                            view.show_github_sign_in_required();
-                        }
-                        view.probe_github_cli_availability(cx);
+                    Ok(source @ (Some(GitHubAuthSource::OAuth) | None)) => {
+                        view.load_github_oauth_credentials(source, cx);
                     }
-                    (Err(error), _) | (_, Err(error)) => {
+                    Err(error) => {
                         view.auth_status = GitHubAuthStatus::Failed(error);
                         if !view.github_api.has_auth() {
                             view.show_github_sign_in_required();
@@ -150,6 +115,66 @@ impl AppView {
         }));
     }
 
+    fn load_github_oauth_credentials(
+        &mut self,
+        saved_source: Option<GitHubAuthSource>,
+        cx: &mut Context<Self>,
+    ) {
+        let token_task = cx.read_credentials(GITHUB_CREDENTIAL_URL);
+
+        self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
+            let token_result = token_task
+                .await
+                .map(|credential| credential.map(|(_username, password)| password))
+                .map_err(|error| error.to_string());
+
+            this.update_or_log(
+                cx,
+                "failed to update github oauth state",
+                move |view, cx| {
+                    match token_result {
+                        Ok(Some(password)) => {
+                            let token = String::from_utf8(password)
+                                .map_err(|error| error.to_string())
+                                .and_then(|token| {
+                                    let source = saved_source.unwrap_or(GitHubAuthSource::OAuth);
+                                    view.configure_github_token(token, source)?;
+                                    Ok(source)
+                                });
+                            match token {
+                                Ok(source) => view.finish_authenticated_github_sign_in(source, cx),
+                                Err(error) => {
+                                    view.auth_status = GitHubAuthStatus::Failed(error);
+                                    view.github_auth_popover_open = true;
+                                    if !view.github_api.has_auth() {
+                                        view.show_github_sign_in_required();
+                                    }
+                                    view.status = "Failed to load GitHub credentials".to_string();
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            view.auth_status = GitHubAuthStatus::SignedOut;
+                            if !view.github_api.has_auth() {
+                                view.show_github_sign_in_required();
+                            }
+                            view.probe_github_cli_availability(cx);
+                        }
+                        Err(error) => {
+                            view.auth_status = GitHubAuthStatus::Failed(error);
+                            if !view.github_api.has_auth() {
+                                view.show_github_sign_in_required();
+                            }
+                            view.status = "Failed to load GitHub credentials".to_string();
+                        }
+                    }
+
+                    cx.notify();
+                },
+            );
+        }));
+    }
+
     pub(super) fn sign_out_of_github(
         &mut self,
         _: &SignOutOfGitHub,
@@ -157,7 +182,11 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let delete_token_task = cx.delete_credentials(GITHUB_CREDENTIAL_URL);
-        let delete_source_task = cx.delete_credentials(GITHUB_AUTH_SOURCE_CREDENTIAL_URL);
+        let delete_source_task = cx.background_spawn(async move {
+            delete_saved_github_auth_source()
+                .await
+                .map_err(|error| error.to_string())
+        });
         let clear_result = self.github_api.clear_auth();
         self.auth_status = GitHubAuthStatus::SignedOut;
         self.github_auth_popover_open = false;
@@ -175,16 +204,16 @@ impl AppView {
                 cx,
                 "failed to update github sign out state",
                 move |view, cx| {
-                    for result in [delete_token_result, delete_source_result] {
-                        if let Err(error) = result {
-                            let message = error.to_string();
-                            if !is_missing_credential_error(&message) {
-                                view.auth_status = GitHubAuthStatus::Failed(message.clone());
-                                view.status =
-                                    format!("Failed to remove GitHub credentials: {message}");
-                                break;
-                            }
+                    if let Err(error) = delete_token_result {
+                        let message = error.to_string();
+                        if !is_missing_credential_error(&message) {
+                            view.auth_status = GitHubAuthStatus::Failed(message.clone());
+                            view.status = format!("Failed to remove GitHub credentials: {message}");
                         }
+                    }
+                    if let Err(error) = delete_source_result {
+                        view.auth_status = GitHubAuthStatus::Failed(error.clone());
+                        view.status = format!("Failed to remove GitHub auth preference: {error}");
                     }
                     cx.notify();
                 },
@@ -276,13 +305,40 @@ impl AppView {
     }
 }
 
-fn saved_github_auth_source(
-    credential: std::result::Result<Option<Vec<u8>>, String>,
-) -> std::result::Result<Option<GitHubAuthSource>, String> {
-    credential.and_then(|credential| match credential {
-        Some(bytes) => GitHubAuthSource::from_credential_bytes(bytes),
-        None => Ok(None),
-    })
+pub(super) async fn load_saved_github_auth_source()
+-> std::result::Result<Option<GitHubAuthSource>, String> {
+    let store = connect_storage_for_auth().await?;
+    let value = store
+        .load_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(value.and_then(|value| GitHubAuthSource::from_storage_value(&value)))
+}
+
+pub(super) async fn save_github_auth_source(
+    source: GitHubAuthSource,
+) -> std::result::Result<(), String> {
+    let store = connect_storage_for_auth().await?;
+    store
+        .save_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY, source.storage_value())
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn delete_saved_github_auth_source() -> std::result::Result<(), String> {
+    let store = connect_storage_for_auth().await?;
+    store
+        .delete_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn connect_storage_for_auth() -> std::result::Result<SqliteStore, String> {
+    let config = StorageConfig::from_env().map_err(|error| error.to_string())?;
+    SqliteStore::connect(config)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 pub(super) fn github_oauth_client_id() -> Option<String> {
@@ -306,20 +362,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn saved_auth_source_parses_credentials() {
+    fn saved_auth_source_parses_settings() {
         assert_eq!(
-            saved_github_auth_source(Ok(Some(b"gh_cli".to_vec()))),
-            Ok(Some(GitHubAuthSource::GhCli))
+            GitHubAuthSource::from_storage_value("gh_cli"),
+            Some(GitHubAuthSource::GhCli)
         );
         assert_eq!(
-            saved_github_auth_source(Ok(Some(b"token".to_vec()))),
-            Ok(Some(GitHubAuthSource::OAuth))
+            GitHubAuthSource::from_storage_value("token"),
+            Some(GitHubAuthSource::OAuth)
         );
-        assert_eq!(saved_github_auth_source(Ok(None)), Ok(None));
-        assert_eq!(
-            saved_github_auth_source(Ok(Some(b"unknown".to_vec()))),
-            Ok(None)
-        );
+        assert_eq!(GitHubAuthSource::from_storage_value("unknown"), None);
     }
 
     #[test]

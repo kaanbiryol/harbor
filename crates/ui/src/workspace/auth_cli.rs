@@ -6,10 +6,7 @@ use crate::{
     workspace::{
         AppView, AuthSwitchStatus,
         async_updates::AppViewAsyncUpdateExt,
-        auth::{
-            GITHUB_AUTH_SOURCE_CREDENTIAL_URL, GITHUB_AUTH_SOURCE_CREDENTIAL_USERNAME,
-            GITHUB_CREDENTIAL_URL, is_missing_credential_error,
-        },
+        auth::{GITHUB_CREDENTIAL_URL, is_missing_credential_error, save_github_auth_source},
     },
 };
 
@@ -138,11 +135,10 @@ impl AppView {
 
     fn persist_github_cli_auth_source(&mut self, cx: &mut Context<Self>) {
         let delete_token_task = cx.delete_credentials(GITHUB_CREDENTIAL_URL);
-        let write_source_task = cx.write_credentials(
-            GITHUB_AUTH_SOURCE_CREDENTIAL_URL,
-            GITHUB_AUTH_SOURCE_CREDENTIAL_USERNAME,
-            GitHubAuthSource::GhCli.credential_value().as_bytes(),
-        );
+        let write_source_task =
+            cx.background_spawn(
+                async move { save_github_auth_source(GitHubAuthSource::GhCli).await },
+            );
 
         self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
             let delete_token_result = delete_token_task.await;
@@ -165,7 +161,7 @@ impl AppView {
                     }
 
                     if let Err(error) = write_source_result {
-                        view.auth_status = GitHubAuthStatus::Failed(error.to_string());
+                        view.auth_status = GitHubAuthStatus::Failed(error.clone());
                         view.status =
                             format!("Signed in with GitHub CLI, but failed to save auth source: {error}");
                     }

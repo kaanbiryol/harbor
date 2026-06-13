@@ -1,4 +1,4 @@
-use std::{process::Command, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -11,6 +11,7 @@ use crate::{
 use super::{
     coordinator::{GhCliRequestCoordinator, GitHubRequestKind},
     errors::{map_failed_status, map_spawn_error},
+    gh_command::gh_command,
     graphql_field_arg, graphql_operation_name, graphql_read_key, graphql_variables_need_input,
     is_graphql_mutation, rest_get_read_key, rest_operation_name,
 };
@@ -259,10 +260,7 @@ impl GitHubTransport for GhCliTransport {
 
 async fn run_status(args: Vec<String>) -> Result<()> {
     smol::unblock(move || {
-        let output = Command::new("gh")
-            .args(args)
-            .output()
-            .map_err(map_spawn_error)?;
+        let output = gh_command().args(args).output().map_err(map_spawn_error)?;
 
         if output.status.success() {
             Ok(())
