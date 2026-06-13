@@ -6,6 +6,8 @@ use harbor_github::ConditionalFetch;
 
 use crate::{
     actions::PanelTab,
+    diff::parse_files,
+    panels::DiffListItem,
     test_fixtures::{diff_file, patched_diff_file, pull_request},
     workspace::{AppView, PullRequestInboxMode, github_service::test_support::FakeGitHubApi},
 };
@@ -59,6 +61,48 @@ async fn cached_detail_restore_preserves_diff_position_without_refetch(cx: &mut 
 }
 
 #[gpui::test]
+async fn cached_detail_restore_rebuilds_diff_list_items(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        let files = vec![patched_file("src/a.rs"), patched_file("src/b.rs")];
+        view.detail_state
+            .replace_diff_files(files.clone(), parse_files(&files));
+        view.reviewed_file_paths.insert("src/a.rs".to_string());
+        mark_detail_sections_loaded(view);
+        view.active_tab = PanelTab::Diff;
+        view.cache_current_pull_request_detail_snapshot();
+
+        let stale_files = vec![patched_file("src/other.rs")];
+        view.detail_state
+            .replace_diff_files(stale_files.clone(), parse_files(&stale_files));
+        view.reviewed_file_paths.clear();
+        view.sync_diff_list_items(cx);
+        assert_eq!(file_headers(&view.diff_list_items), vec![0]);
+
+        assert!(view.restore_selected_pull_request_detail_snapshot(cx));
+        assert_eq!(file_headers(&view.diff_list_items), vec![0, 1]);
+        assert!(
+            !view
+                .diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 0, .. }))
+        );
+        assert!(
+            view.diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 1, .. }))
+        );
+    });
+    cx.run_until_parked();
+
+    assert!(api.calls().is_empty());
+}
+
+#[gpui::test]
 async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
     let pull_request = pull_request();
@@ -95,6 +139,53 @@ async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut Te
         assert_eq!(
             view.status,
             "Showing cached open pull requests from acme/app"
+        );
+    });
+    cx.run_until_parked();
+
+    assert!(api.calls().is_empty());
+}
+
+#[gpui::test]
+async fn cached_inbox_restore_rebuilds_diff_list_items(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let pull_request = pull_request();
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state
+            .select_repository(pull_request.repo.clone());
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = vec![pull_request.clone()];
+        let files = vec![patched_file("src/a.rs"), patched_file("src/b.rs")];
+        view.detail_state
+            .replace_diff_files(files.clone(), parse_files(&files));
+        view.reviewed_file_paths.insert("src/a.rs".to_string());
+        mark_detail_sections_loaded(view);
+
+        let key = view
+            .current_pull_request_inbox_key()
+            .expect("configured repository should produce inbox cache key");
+        view.cache_current_pull_request_inbox_snapshot();
+
+        view.pull_requests.clear();
+        view.detail_state.clear_diff_files();
+        view.reviewed_file_paths.clear();
+        view.sync_diff_list_items(cx);
+        assert!(view.diff_list_items.is_empty());
+
+        assert!(view.restore_pull_request_inbox_snapshot(key, cx));
+        assert_eq!(file_headers(&view.diff_list_items), vec![0, 1]);
+        assert!(
+            !view
+                .diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 0, .. }))
+        );
+        assert!(
+            view.diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 1, .. }))
         );
     });
     cx.run_until_parked();
@@ -157,4 +248,24 @@ fn mark_detail_sections_loaded(view: &mut AppView) {
     view.detail_state.apply_checks_success();
     view.detail_state.apply_workflows_success();
     view.review_state.apply_reviews_success();
+}
+
+fn patched_file(path: &str) -> harbor_domain::DiffFile {
+    let mut file = patched_diff_file();
+    file.path = path.to_string();
+    file
+}
+
+fn file_headers(items: &[DiffListItem]) -> Vec<usize> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            DiffListItem::FileHeader { file_index } => Some(*file_index),
+            DiffListItem::Hunk { .. }
+            | DiffListItem::Line { .. }
+            | DiffListItem::ReviewComposer { .. }
+            | DiffListItem::ReviewThread { .. }
+            | DiffListItem::DiffUnavailable { .. } => None,
+        })
+        .collect()
 }
