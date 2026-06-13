@@ -39,8 +39,10 @@ async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext)
         view.repository_state
             .select_repository(pull_request.repo.clone());
         view.pull_requests = vec![pull_request];
-        view.detail_state.files = vec![patched_diff_file()];
-        view.detail_state.workflow_runs = vec![workflow_run()];
+        view.detail_state
+            .replace_diff_files(vec![patched_diff_file()], Vec::new());
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
         view.review_state.current_user_login = Some("octocat".to_string());
         view.pull_request_inbox.start_loading();
 

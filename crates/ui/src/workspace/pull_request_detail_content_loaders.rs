@@ -152,8 +152,7 @@ impl AppView {
                         match result {
                             Ok((files, diffs)) => {
                                 let count = files.len();
-                                view.detail_state.files = files;
-                                view.detail_state.diffs = diffs;
+                                view.detail_state.replace_diff_files(files, diffs);
                                 view.reset_diff_selection();
                                 view.reset_changed_file_filters();
                                 view.prune_reviewed_file_paths();
@@ -173,8 +172,7 @@ impl AppView {
                             }
                             Err(error) => {
                                 let error = error.to_string();
-                                view.detail_state.files.clear();
-                                view.detail_state.diffs.clear();
+                                view.detail_state.clear_diff_files();
                                 view.collapsed_file_tree_folders.clear();
                                 view.reviewed_file_paths.clear();
                                 view.reset_changed_file_filters();
@@ -229,11 +227,13 @@ impl AppView {
                                 return;
                             }
 
-                            if let Some(diff) = view.detail_state.diffs.get_mut(file_index) {
-                                *diff = Some(highlighted_diff);
+                            if view
+                                .detail_state
+                                .replace_parsed_diff(file_index, highlighted_diff)
+                            {
+                                view.cache_current_pull_request_detail_snapshot();
+                                cx.notify();
                             }
-                            view.cache_current_pull_request_detail_snapshot();
-                            cx.notify();
                         },
                     );
                 }

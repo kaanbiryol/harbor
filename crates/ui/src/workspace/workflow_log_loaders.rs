@@ -35,7 +35,7 @@ impl AppView {
 
         self.active_tab = PanelTab::Logs;
         self.detail_state.log_state.start_loading();
-        self.detail_state.workflow_jobs.clear();
+        self.detail_state.clear_workflow_jobs();
         self.detail_state
             .log_state
             .list_scroll
@@ -70,10 +70,10 @@ impl AppView {
                         }
                         match jobs_result {
                             Ok(jobs) => {
-                                view.detail_state.workflow_jobs = jobs;
+                                view.detail_state.replace_workflow_jobs(jobs);
                             }
                             Err(error) => {
-                                view.detail_state.workflow_jobs.clear();
+                                view.detail_state.clear_workflow_jobs();
                                 view.detail_state.log_state.apply_jobs_failure(format!(
                                     "Failed to load workflow jobs: {error}"
                                 ));

@@ -19,7 +19,8 @@ async fn workflow_action_reports_success_and_failure_from_service(cx: &mut TestA
     success_view.update(cx, |view, cx| {
         view.pull_requests = vec![pull_request()];
         view.selection_state.reset_pull_request_index();
-        view.detail_state.workflow_runs = vec![workflow_run()];
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
         view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
         assert!(view.action_runtime.workflow_action_running());
         assert_eq!(view.status, "Dispatching CI on feature");
@@ -41,7 +42,8 @@ async fn workflow_action_reports_success_and_failure_from_service(cx: &mut TestA
     failure_view.update(cx, |view, cx| {
         view.pull_requests = vec![pull_request()];
         view.selection_state.reset_pull_request_index();
-        view.detail_state.workflow_runs = vec![workflow_run()];
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
         view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
         assert_eq!(view.status, "Dispatching CI on feature");
     });

@@ -72,7 +72,7 @@ impl AppView {
                                 view.mark_sync_success(SyncTarget::SelectedPullRequestChecks);
                                 let count = check_runs.len();
                                 let summary = checks_summary_from_runs(&check_runs);
-                                view.detail_state.check_runs = check_runs;
+                                view.detail_state.replace_check_runs(check_runs);
                                 view.detail_state.apply_checks_success();
 
                                 if let Some(selected) = view
@@ -86,7 +86,7 @@ impl AppView {
                             }
                             Err(error) => {
                                 view.mark_sync_failure(SyncTarget::SelectedPullRequestChecks);
-                                view.detail_state.check_runs.clear();
+                                view.detail_state.clear_check_runs();
                                 view.detail_state.apply_checks_failure(error.to_string());
                                 view.status = format!("Failed to load checks for PR #{number}");
                             }
@@ -161,7 +161,7 @@ impl AppView {
                             Ok(workflow_runs) => {
                                 view.mark_sync_success(SyncTarget::SelectedPullRequestWorkflows);
                                 let count = workflow_runs.len();
-                                view.detail_state.workflow_runs = workflow_runs;
+                                view.detail_state.replace_workflow_runs(workflow_runs);
                                 view.detail_state.apply_workflows_success();
                                 view.status =
                                     format!("Loaded {count} workflow runs for PR #{number}");
@@ -175,7 +175,7 @@ impl AppView {
                             }
                             Err(error) => {
                                 view.mark_sync_failure(SyncTarget::SelectedPullRequestWorkflows);
-                                view.detail_state.workflow_runs.clear();
+                                view.detail_state.clear_workflow_runs();
                                 view.detail_state.apply_workflows_failure(error.to_string());
                                 view.status =
                                     format!("Failed to load workflow runs for PR #{number}");

@@ -123,6 +123,53 @@ impl PullRequestDetailUiState {
         self.workflows_load = load_status_from_loaded(sections.workflows);
     }
 
+    pub(crate) fn replace_diff_files(
+        &mut self,
+        files: Vec<DiffFile>,
+        diffs: Vec<Option<ParsedDiff>>,
+    ) {
+        self.files = files;
+        self.diffs = diffs;
+    }
+
+    pub(crate) fn clear_diff_files(&mut self) {
+        self.files.clear();
+        self.diffs.clear();
+    }
+
+    pub(crate) fn replace_parsed_diff(&mut self, file_index: usize, diff: ParsedDiff) -> bool {
+        let Some(slot) = self.diffs.get_mut(file_index) else {
+            return false;
+        };
+
+        *slot = Some(diff);
+        true
+    }
+
+    pub(crate) fn replace_check_runs(&mut self, check_runs: Vec<CheckRun>) {
+        self.check_runs = check_runs;
+    }
+
+    pub(crate) fn clear_check_runs(&mut self) {
+        self.check_runs.clear();
+    }
+
+    pub(crate) fn replace_workflow_runs(&mut self, workflow_runs: Vec<WorkflowRun>) {
+        self.workflow_runs = workflow_runs;
+    }
+
+    pub(crate) fn clear_workflow_runs(&mut self) {
+        self.workflow_runs.clear();
+    }
+
+    pub(crate) fn replace_workflow_jobs(&mut self, workflow_jobs: Vec<WorkflowJob>) {
+        self.workflow_jobs = workflow_jobs;
+    }
+
+    pub(crate) fn clear_workflow_jobs(&mut self) {
+        self.workflow_jobs.clear();
+    }
+
     pub(crate) fn loaded_sections(&self, reviews_loaded: bool) -> PullRequestDetailLoadedState {
         PullRequestDetailLoadedState {
             details: self.details_load.is_finished(),

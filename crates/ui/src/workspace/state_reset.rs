@@ -47,8 +47,7 @@ impl AppView {
     }
 
     pub(super) fn clear_changed_file_state(&mut self) {
-        self.detail_state.files.clear();
-        self.detail_state.diffs.clear();
+        self.detail_state.clear_diff_files();
         self.collapsed_file_tree_folders.clear();
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
@@ -56,9 +55,9 @@ impl AppView {
     }
 
     pub(super) fn clear_workflow_state(&mut self) {
-        self.detail_state.check_runs.clear();
-        self.detail_state.workflow_runs.clear();
-        self.detail_state.workflow_jobs.clear();
+        self.detail_state.clear_check_runs();
+        self.detail_state.clear_workflow_runs();
+        self.detail_state.clear_workflow_jobs();
     }
 
     pub(super) fn clear_log_content(&mut self) {

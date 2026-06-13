@@ -171,7 +171,7 @@ impl AppView {
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();
         self.clear_detail_loaded_state();
-        self.detail_state.workflow_jobs.clear();
+        self.detail_state.clear_workflow_jobs();
         self.clear_log_content();
         self.clear_review_data_state();
         self.review_state.clear_reviews_error();

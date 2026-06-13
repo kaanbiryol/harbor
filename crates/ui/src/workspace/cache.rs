@@ -208,11 +208,13 @@ impl AppView {
         self.clear_review_composer_state();
 
         self.replace_selected_pull_request_preserving_row_fields(snapshot.pull_request);
-        self.detail_state.files = snapshot.files;
-        self.detail_state.diffs = snapshot.diffs;
-        self.detail_state.check_runs = snapshot.check_runs;
-        self.detail_state.workflow_runs = snapshot.workflow_runs;
-        self.detail_state.workflow_jobs = snapshot.workflow_jobs;
+        self.detail_state
+            .replace_diff_files(snapshot.files, snapshot.diffs);
+        self.detail_state.replace_check_runs(snapshot.check_runs);
+        self.detail_state
+            .replace_workflow_runs(snapshot.workflow_runs);
+        self.detail_state
+            .replace_workflow_jobs(snapshot.workflow_jobs);
         self.detail_state
             .restore_loaded_sections(snapshot.detail_loaded);
         self.review_state.restore_review_snapshot(
@@ -299,11 +301,13 @@ impl AppView {
         self.clear_review_composer_state();
 
         self.pull_requests = snapshot.pull_requests;
-        self.detail_state.files = snapshot.files;
-        self.detail_state.diffs = snapshot.diffs;
-        self.detail_state.check_runs = snapshot.check_runs;
-        self.detail_state.workflow_runs = snapshot.workflow_runs;
-        self.detail_state.workflow_jobs = snapshot.workflow_jobs;
+        self.detail_state
+            .replace_diff_files(snapshot.files, snapshot.diffs);
+        self.detail_state.replace_check_runs(snapshot.check_runs);
+        self.detail_state
+            .replace_workflow_runs(snapshot.workflow_runs);
+        self.detail_state
+            .replace_workflow_jobs(snapshot.workflow_jobs);
         self.detail_state
             .restore_loaded_sections(snapshot.detail_loaded);
         self.review_state.restore_review_snapshot(

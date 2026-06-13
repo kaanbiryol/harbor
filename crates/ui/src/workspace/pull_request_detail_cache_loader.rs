@@ -101,8 +101,7 @@ impl AppView {
                         if let Some((files, diffs)) = cached.files
                             && view.detail_state.files.is_empty()
                         {
-                            view.detail_state.files = files;
-                            view.detail_state.diffs = diffs;
+                            view.detail_state.replace_diff_files(files, diffs);
                             view.ensure_active_file_visible(cx);
                             view.sync_diff_list_items(cx);
                             applied_any = true;
@@ -112,7 +111,7 @@ impl AppView {
                             && view.detail_state.check_runs.is_empty()
                         {
                             let summary = checks_summary_from_runs(&check_runs);
-                            view.detail_state.check_runs = check_runs;
+                            view.detail_state.replace_check_runs(check_runs);
                             if let Some(selected) = view
                                 .pull_requests
                                 .get_mut(view.selection_state.pull_request_index())
@@ -125,7 +124,7 @@ impl AppView {
                         if let Some(workflow_runs) = cached.workflow_runs
                             && view.detail_state.workflow_runs.is_empty()
                         {
-                            view.detail_state.workflow_runs = workflow_runs;
+                            view.detail_state.replace_workflow_runs(workflow_runs);
                             applied_any = true;
                         }
 

@@ -20,18 +20,22 @@ async fn cached_detail_restore_preserves_diff_position_without_refetch(cx: &mut 
     view_entity.update(cx, |view, cx| {
         view.pull_requests = vec![pull_request()];
         view.selection_state.reset_pull_request_index();
-        view.detail_state.files = vec![
-            diff_file("src/a.rs", FileStatus::Modified),
-            diff_file("src/b.rs", FileStatus::Modified),
-        ];
-        view.detail_state.diffs = vec![None, None];
+        view.detail_state.replace_diff_files(
+            vec![
+                diff_file("src/a.rs", FileStatus::Modified),
+                diff_file("src/b.rs", FileStatus::Modified),
+            ],
+            vec![None, None],
+        );
         mark_detail_sections_loaded(view);
         view.selection_state.set_diff_position(1, 4);
         view.active_tab = PanelTab::Diff;
         view.cache_current_pull_request_detail_snapshot();
 
-        view.detail_state.files = vec![diff_file("src/other.rs", FileStatus::Modified)];
-        view.detail_state.diffs = vec![None];
+        view.detail_state.replace_diff_files(
+            vec![diff_file("src/other.rs", FileStatus::Modified)],
+            vec![None],
+        );
         view.selection_state.set_diff_position(0, 0);
         view.active_tab = PanelTab::Review;
 
@@ -65,8 +69,8 @@ async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut Te
             .select_repository(pull_request.repo.clone());
         view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
         view.pull_requests = vec![pull_request.clone()];
-        view.detail_state.files = vec![patched_diff_file()];
-        view.detail_state.diffs = vec![None];
+        view.detail_state
+            .replace_diff_files(vec![patched_diff_file()], vec![None]);
         mark_detail_sections_loaded(view);
         view.selection_state.set_pull_request_index(9);
         view.selection_state.set_diff_position(7, 2);
@@ -78,8 +82,7 @@ async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut Te
         assert_eq!(view.pull_request_inbox.snapshot_count(&key), Some(1));
 
         view.pull_requests.clear();
-        view.detail_state.files.clear();
-        view.detail_state.diffs.clear();
+        view.detail_state.clear_diff_files();
         view.selection_state.set_pull_request_index(3);
         view.selection_state.set_diff_position(3, 0);
 
