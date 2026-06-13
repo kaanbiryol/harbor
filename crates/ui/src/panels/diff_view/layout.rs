@@ -150,21 +150,42 @@ fn diff_list_splice(
     ))
 }
 
+#[cfg(test)]
 pub(crate) fn continuous_diff_file_item_index(
     input: ContinuousDiffLayoutInput<'_>,
     target_file_index: usize,
 ) -> Option<usize> {
-    continuous_diff_items(input).iter().position(|item| {
+    diff_file_item_index(&continuous_diff_items(input), target_file_index)
+}
+
+pub(crate) fn diff_file_item_index(
+    items: &[DiffListItem],
+    target_file_index: usize,
+) -> Option<usize> {
+    items.iter().position(|item| {
         matches!(item, DiffListItem::FileHeader { file_index } if *file_index == target_file_index)
     })
 }
 
+#[cfg(test)]
 pub(crate) fn continuous_diff_hunk_item_index(
     input: ContinuousDiffLayoutInput<'_>,
     target_file_index: usize,
     target_hunk_index: usize,
 ) -> Option<usize> {
-    continuous_diff_items(input).iter().position(|item| {
+    diff_hunk_item_index(
+        &continuous_diff_items(input),
+        target_file_index,
+        target_hunk_index,
+    )
+}
+
+pub(crate) fn diff_hunk_item_index(
+    items: &[DiffListItem],
+    target_file_index: usize,
+    target_hunk_index: usize,
+) -> Option<usize> {
+    items.iter().position(|item| {
         matches!(
             item,
             DiffListItem::Hunk {

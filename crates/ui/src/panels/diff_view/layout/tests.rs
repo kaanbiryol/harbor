@@ -189,13 +189,13 @@ fn calculates_large_diff_items_with_linear_cost() {
     let items_per_file = 1 + hunk_count * (lines_per_hunk + 1);
 
     let started_at = Instant::now();
-    let item_count = continuous_diff_items(test_layout_input(
+    let items = continuous_diff_items(test_layout_input(
         &files,
         &diffs,
         &visible_file_indices,
         &reviewed_file_paths,
-    ))
-    .len();
+    ));
+    let item_count = items.len();
     let elapsed = started_at.elapsed();
 
     assert_eq!(item_count, file_count * items_per_file);
@@ -204,18 +204,11 @@ fn calculates_large_diff_items_with_linear_cost() {
         "large diff item building took {elapsed:?}"
     );
     assert_eq!(
-        continuous_diff_file_item_index(
-            test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
-            file_count - 1,
-        ),
+        diff_file_item_index(&items, file_count - 1),
         Some((file_count - 1) * items_per_file)
     );
     assert_eq!(
-        continuous_diff_hunk_item_index(
-            test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
-            file_count - 1,
-            hunk_count - 1,
-        ),
+        diff_hunk_item_index(&items, file_count - 1, hunk_count - 1),
         Some((file_count - 1) * items_per_file + 1 + (hunk_count - 1) * (lines_per_hunk + 1))
     );
 }
@@ -234,30 +227,16 @@ fn finds_file_and_hunk_items_across_missing_patches() {
     ];
     let visible_file_indices = vec![0, 1, 2];
     let reviewed_file_paths = HashSet::new();
+    let items = continuous_diff_items(test_layout_input(
+        &files,
+        &diffs,
+        &visible_file_indices,
+        &reviewed_file_paths,
+    ));
 
-    assert_eq!(
-        continuous_diff_file_item_index(
-            test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
-            2,
-        ),
-        Some(6)
-    );
-    assert_eq!(
-        continuous_diff_hunk_item_index(
-            test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
-            2,
-            0,
-        ),
-        Some(7)
-    );
-    assert_eq!(
-        continuous_diff_hunk_item_index(
-            test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths),
-            1,
-            0,
-        ),
-        None
-    );
+    assert_eq!(diff_file_item_index(&items, 2), Some(6));
+    assert_eq!(diff_hunk_item_index(&items, 2, 0), Some(7));
+    assert_eq!(diff_hunk_item_index(&items, 1, 0), None);
 }
 
 #[test]

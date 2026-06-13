@@ -7,7 +7,7 @@ use crate::{
     actions::PanelTab,
     diff::ParsedDiff,
     panels::{
-        ContinuousDiffLayoutInput, continuous_diff_file_item_index, continuous_diff_items,
+        ContinuousDiffLayoutInput, continuous_diff_items, diff_file_item_index,
         sync_diff_list_state,
     },
 };
@@ -105,20 +105,8 @@ impl AppView {
             .position(|row| matches!(row, ChangedFileTreeRow::File(file_row) if file_row.file_index == file_index))
     }
 
-    fn diff_item_index_for_file(&self, file_index: usize, cx: &App) -> Option<usize> {
-        let visible_file_indices = self.visible_file_indices(cx);
-
-        continuous_diff_file_item_index(
-            ContinuousDiffLayoutInput {
-                files: self.detail_state.files(),
-                diffs: self.detail_state.diffs(),
-                visible_file_indices: &visible_file_indices,
-                reviewed_file_paths: &self.reviewed_file_paths,
-                review_threads: &self.review_state.review_threads,
-                review_composer: self.review_state.review_composer_state.inline_composer(),
-            },
-            file_index,
-        )
+    fn diff_item_index_for_file(&self, file_index: usize) -> Option<usize> {
+        diff_file_item_index(&self.diff_list_items, file_index)
     }
 
     pub(super) fn sync_diff_list_items(&mut self, cx: &App) {
@@ -159,7 +147,7 @@ impl AppView {
                 self.file_list_scroll
                     .scroll_to_item(row_index, ScrollStrategy::Center);
             }
-            if let Some(item_index) = self.diff_item_index_for_file(file_index, cx) {
+            if let Some(item_index) = self.diff_item_index_for_file(file_index) {
                 self.scroll_diff_list_to_item(item_index);
             } else {
                 self.reset_diff_list_scroll();
@@ -200,7 +188,7 @@ impl AppView {
                 self.file_list_scroll
                     .scroll_to_item(row_index, ScrollStrategy::Center);
             }
-            if let Some(item_index) = self.diff_item_index_for_file(index, cx) {
+            if let Some(item_index) = self.diff_item_index_for_file(index) {
                 self.scroll_diff_list_to_item(item_index);
             }
             self.status = format!("Selected {path}");

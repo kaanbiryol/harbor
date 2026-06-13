@@ -2,7 +2,7 @@ use gpui::{App, ClipboardItem, Context, ScrollStrategy, Window};
 use harbor_domain::{DiffFile, FileStatus, PullRequest};
 
 use crate::actions::*;
-use crate::panels::{ContinuousDiffLayoutInput, continuous_diff_hunk_item_index};
+use crate::panels::diff_hunk_item_index;
 use crate::workspace::AppView;
 
 impl AppView {
@@ -203,19 +203,9 @@ impl AppView {
                 .scroll_to_item(row_index, ScrollStrategy::Center);
         }
 
-        let visible_file_indices = self.visible_file_indices(cx);
-        if let Some(item_index) = continuous_diff_hunk_item_index(
-            ContinuousDiffLayoutInput {
-                files: self.detail_state.files(),
-                diffs: self.detail_state.diffs(),
-                visible_file_indices: &visible_file_indices,
-                reviewed_file_paths: &self.reviewed_file_paths,
-                review_threads: &self.review_state.review_threads,
-                review_composer: self.review_state.review_composer_state.inline_composer(),
-            },
-            file_index,
-            hunk_index,
-        ) {
+        if let Some(item_index) =
+            diff_hunk_item_index(&self.diff_list_items, file_index, hunk_index)
+        {
             self.scroll_diff_list_to_item(item_index);
         }
 

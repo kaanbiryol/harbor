@@ -25,8 +25,8 @@ use crate::workspace::{AppView, ReviewComposer};
 use file_section::render_diff_file_section_header;
 use layout::continuous_diff_section_for_item;
 pub(crate) use layout::{
-    ContinuousDiffLayoutInput, DiffListItem, continuous_diff_file_item_index,
-    continuous_diff_hunk_item_index, continuous_diff_items, sync_diff_list_state,
+    ContinuousDiffLayoutInput, DiffListItem, continuous_diff_items, diff_file_item_index,
+    diff_hunk_item_index, sync_diff_list_state,
 };
 use row_render::render_diff_list_item;
 pub(super) use row_render::render_line_number;
