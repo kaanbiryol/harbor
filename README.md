@@ -16,8 +16,12 @@ it is not packaged for end-user installation yet.
 The current release is `v0.1.0`, a developer preview intended for running from
 source.
 
+Harbor is currently tested and supported on macOS only. Other platforms may
+build, but they are not tested or supported yet.
+
 ## Requirements
 
+- macOS
 - Rust `1.90` or newer
 - A working system toolchain for GPUI
 - GitHub CLI, if you want to authenticate through `gh`
