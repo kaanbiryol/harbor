@@ -33,14 +33,15 @@ gh auth login
 
 Then choose **Use GitHub CLI** in Harbor.
 
-OAuth device login is also supported. To use it, create a GitHub OAuth app and
-start Harbor with a client id:
+OAuth device login is also supported. Choose **Continue with GitHub** and Harbor
+will open GitHub's device login flow in your browser.
+
+The OAuth flow requests `repo` and `read:org` scopes. Harbor uses its built-in
+public OAuth Client ID by default. To test a custom OAuth app, override it with:
 
 ```bash
 HARBOR_GITHUB_OAUTH_CLIENT_ID=your_client_id cargo run -p harbor-app
 ```
-
-The OAuth flow requests `repo` and `read:org` scopes.
 
 ## Development
 

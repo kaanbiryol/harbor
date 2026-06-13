@@ -11,6 +11,7 @@ pub(super) const GITHUB_CREDENTIAL_URL: &str = "harbor://github/oauth";
 pub(super) const GITHUB_AUTH_SOURCE_CREDENTIAL_URL: &str = "harbor://github/auth-source";
 pub(super) const GITHUB_AUTH_SOURCE_CREDENTIAL_USERNAME: &str = "github-auth-source";
 pub(super) const GITHUB_OAUTH_CLIENT_ID_ENV: &str = "HARBOR_GITHUB_OAUTH_CLIENT_ID";
+const DEFAULT_GITHUB_OAUTH_CLIENT_ID: &str = "Ov23liH046TDAFHhtJEU";
 
 impl AppView {
     pub(crate) fn auth_status(&self) -> &GitHubAuthStatus {
@@ -287,7 +288,13 @@ fn saved_github_auth_source(
 pub(super) fn github_oauth_client_id() -> Option<String> {
     std::env::var(GITHUB_OAUTH_CLIENT_ID_ENV)
         .ok()
-        .filter(|client_id| !client_id.trim().is_empty())
+        .and_then(normalize_github_oauth_client_id)
+        .or_else(|| normalize_github_oauth_client_id(DEFAULT_GITHUB_OAUTH_CLIENT_ID.to_string()))
+}
+
+fn normalize_github_oauth_client_id(client_id: String) -> Option<String> {
+    let client_id = client_id.trim();
+    (!client_id.is_empty()).then(|| client_id.to_string())
 }
 
 pub(super) fn is_missing_credential_error(message: &str) -> bool {
@@ -313,5 +320,14 @@ mod tests {
             saved_github_auth_source(Ok(Some(b"unknown".to_vec()))),
             Ok(None)
         );
+    }
+
+    #[test]
+    fn normalizes_github_oauth_client_ids() {
+        assert_eq!(
+            normalize_github_oauth_client_id("  client-id  ".to_string()),
+            Some("client-id".to_string())
+        );
+        assert_eq!(normalize_github_oauth_client_id("   ".to_string()), None);
     }
 }
