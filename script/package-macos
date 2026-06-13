@@ -20,14 +20,16 @@ target_dir="$repo_root/target/macos"
 app_dir="$target_dir/Harbor.app"
 contents_dir="$app_dir/Contents"
 macos_dir="$contents_dir/MacOS"
+resources_dir="$contents_dir/Resources"
 executable_path="$macos_dir/Harbor"
 zip_path="$target_dir/Harbor-${version}-macos.zip"
 
 cargo build -p harbor-app --bin harbor --release --locked
 
 rm -rf "$app_dir" "$zip_path"
-mkdir -p "$macos_dir"
+mkdir -p "$macos_dir" "$resources_dir"
 cp "$repo_root/target/release/harbor" "$executable_path"
+cp "$repo_root/crates/app/assets/harbor.icns" "$resources_dir/harbor.icns"
 chmod 755 "$executable_path"
 
 cat >"$contents_dir/Info.plist" <<PLIST
@@ -43,6 +45,8 @@ cat >"$contents_dir/Info.plist" <<PLIST
     <string>Harbor</string>
     <key>CFBundleIdentifier</key>
     <string>com.kaanbiryol.harbor</string>
+    <key>CFBundleIconFile</key>
+    <string>harbor</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
