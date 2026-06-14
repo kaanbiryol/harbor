@@ -116,6 +116,9 @@ impl AppView {
                         PanelTab::Review => render_review_panel(
                             &self.review_state.pull_request_reviews,
                             &self.review_state.review_threads,
+                            self.review_state
+                                .review_composer_state
+                                .active_thread_reply(),
                             self.review_state.reviews_loading(),
                             self.review_state.reviews_error(),
                             self.review_list_scroll.clone(),

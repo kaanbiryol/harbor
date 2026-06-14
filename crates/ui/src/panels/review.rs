@@ -16,6 +16,7 @@ use super::{
 pub(crate) fn render_review_panel(
     reviews: &[PullRequestReview],
     threads: &[ReviewThread],
+    active_review_thread_reply: Option<&str>,
     is_loading: bool,
     error: Option<&str>,
     scroll_handle: UniformListScrollHandle,
@@ -23,6 +24,8 @@ pub(crate) fn render_review_panel(
 ) -> impl IntoElement {
     let (unresolved, resolved, outdated) = review_thread_counts(threads);
     let view_entity = cx.entity().clone();
+    let active_review_thread_index = active_review_thread_reply
+        .and_then(|thread_id| threads.iter().position(|thread| thread.id == thread_id));
 
     div()
         .id("review-panel")
@@ -59,7 +62,7 @@ pub(crate) fn render_review_panel(
                         .text_color(color::text_secondary())
                         .child("latest reviews"),
                 )
-                .children(reviews.iter().rev().take(3).map(render_pull_request_review))
+                .child(render_pull_request_reviews(reviews))
         })
         .when(is_loading, |element| {
             element.child(render_empty_panel_card("Loading review threads..."))
@@ -77,7 +80,7 @@ pub(crate) fn render_review_panel(
         )
         .when(!threads.is_empty(), |element| {
             element.child(
-                render_panel_card()
+                div()
                     .flex()
                     .flex_col()
                     .flex_1()
@@ -91,6 +94,17 @@ pub(crate) fn render_review_panel(
                             cx.processor(
                                 move |view, range: std::ops::Range<usize>, _window, _cx| {
                                     let mut rows = Vec::with_capacity(range.len());
+                                    let active_review_thread_reply = view
+                                        .review_state
+                                        .review_composer_state
+                                        .active_thread_reply();
+                                    let use_expanded_rows =
+                                        active_review_thread_reply.is_some_and(|thread_id| {
+                                            view.review_state
+                                                .review_threads
+                                                .iter()
+                                                .any(|thread| thread.id == thread_id)
+                                        });
 
                                     for index in range {
                                         let Some(thread) =
@@ -102,10 +116,7 @@ pub(crate) fn render_review_panel(
                                             ReviewThreadRowRenderState {
                                                 index,
                                                 thread,
-                                                active_review_thread_reply: view
-                                                    .review_state
-                                                    .review_composer_state
-                                                    .active_thread_reply(),
+                                                active_review_thread_reply,
                                                 review_thread_reply_input: view
                                                     .review_state
                                                     .review_composer_state
@@ -131,6 +142,7 @@ pub(crate) fn render_review_panel(
                                                 action_error: view
                                                     .review_state
                                                     .review_thread_action_error(),
+                                                use_expanded_rows,
                                                 view_entity: view_entity.clone(),
                                             },
                                         ));
@@ -140,25 +152,48 @@ pub(crate) fn render_review_panel(
                                 },
                             ),
                         )
+                        .with_width_from_item(active_review_thread_index)
                         .track_scroll(&scroll_handle)
                         .flex_1()
                         .min_h_0()
+                        .w_full()
                         .min_w_0(),
                     ),
             )
         })
 }
 
-pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl IntoElement {
+fn render_pull_request_reviews(reviews: &[PullRequestReview]) -> impl IntoElement {
+    render_panel_card()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .children(
+            reviews
+                .iter()
+                .rev()
+                .take(3)
+                .enumerate()
+                .map(|(index, review)| render_pull_request_review(review, index > 0)),
+        )
+}
+
+pub(crate) fn render_pull_request_review(
+    review: &PullRequestReview,
+    show_separator: bool,
+) -> impl IntoElement {
     let (label, tone) = pull_request_review_state_tone(review.state);
 
-    render_panel_card()
+    div()
         .flex()
         .items_center()
         .justify_between()
         .gap_3()
         .px_3()
         .py_2()
+        .when(show_separator, |element| {
+            element.border_t_1().border_color(color::border_subtle())
+        })
         .child(
             div()
                 .min_w_0()
@@ -184,6 +219,7 @@ pub(crate) fn render_pull_request_review(review: &PullRequestReview) -> impl Int
             div()
                 .flex()
                 .items_center()
+                .flex_none()
                 .gap_2()
                 .text_xs()
                 .child(
@@ -415,6 +451,7 @@ mod tests {
                 reply_error: render_state.reply_error.as_ref(),
                 action_thread_id: render_state.action_thread_id.as_deref(),
                 action_error: render_state.action_error.as_ref(),
+                use_expanded_rows: render_state.active_reply_thread_id.is_some(),
                 view_entity: self.view_entity.clone(),
             })
         }

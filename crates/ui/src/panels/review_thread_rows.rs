@@ -17,7 +17,8 @@ use super::{
     },
 };
 
-const REVIEW_THREAD_ROW_HEIGHT: f32 = 224.0;
+const REVIEW_THREAD_ROW_HEIGHT: f32 = 144.0;
+const EXPANDED_REVIEW_THREAD_ROW_HEIGHT: f32 = 224.0;
 
 pub(crate) struct ReviewThreadRowRenderState<'a> {
     pub(crate) index: usize,
@@ -29,6 +30,7 @@ pub(crate) struct ReviewThreadRowRenderState<'a> {
     pub(crate) reply_error: Option<&'a ReviewThreadUiError>,
     pub(crate) action_thread_id: Option<&'a str>,
     pub(crate) action_error: Option<&'a ReviewThreadUiError>,
+    pub(crate) use_expanded_rows: bool,
     pub(crate) view_entity: Entity<AppView>,
 }
 
@@ -43,6 +45,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         reply_error,
         action_thread_id,
         action_error,
+        use_expanded_rows,
         view_entity,
     } = state;
     let (label, tone) = review_thread_state_tone(thread.state);
@@ -91,10 +94,17 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
     let thread_id = thread.id.clone();
+    let row_height = if use_expanded_rows {
+        EXPANDED_REVIEW_THREAD_ROW_HEIGHT
+    } else {
+        REVIEW_THREAD_ROW_HEIGHT
+    };
 
     div()
         .id(("review-thread-row", index))
-        .h(px(REVIEW_THREAD_ROW_HEIGHT))
+        .h(px(row_height))
+        .w_full()
+        .min_w_0()
         .flex()
         .flex_col()
         .gap_2()
