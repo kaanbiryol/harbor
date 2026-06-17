@@ -100,6 +100,9 @@ impl AppView {
             } else {
                 None
             };
+            let comments_result = github_api
+                .list_pull_request_comments(&target.owner, &target.name, target.number)
+                .await;
             tracing::info!(
                 repository = %target.repo.full_name(),
                 pull_request = target.number,
@@ -109,20 +112,28 @@ impl AppView {
             let threads_result = github_api
                 .list_review_threads(&target.owner, &target.name, target.number)
                 .await;
-            let cache_result = match (&store, reviews_result.as_ref(), threads_result.as_ref()) {
-                (Some(store), Ok(reviews), Ok(threads)) => {
+            let cache_result = match (
+                &store,
+                reviews_result.as_ref(),
+                comments_result.as_ref(),
+                threads_result.as_ref(),
+            ) {
+                (Some(store), Ok(reviews), Ok(comments), Ok(threads)) => {
                     store
                         .save_pull_request_reviews(
                             &target.repo,
                             target.number,
                             &target.head_sha,
                             reviews,
+                            comments,
                             threads,
                         )
                         .await
                         .map_err(|error| error.to_string())
                 }
-                (Some(store), Err(error), _) | (Some(store), _, Err(error)) => store
+                (Some(store), Err(error), _, _)
+                | (Some(store), _, Err(error), _)
+                | (Some(store), _, _, Err(error)) => store
                     .record_sync_failure(
                         &harbor_storage::detail_target_key(
                             &target.repo,
@@ -133,7 +144,7 @@ impl AppView {
                     )
                     .await
                     .map_err(|error| error.to_string()),
-                (None, _, _) => Ok(()),
+                (None, _, _, _) => Ok(()),
             };
 
             this.update_or_log(cx, mode.update_error_log_message(), move |view, cx| {
@@ -167,6 +178,16 @@ impl AppView {
                     }
                     None => None,
                 };
+                let pull_request_comments = match comments_result {
+                    Ok(comments) => comments,
+                    Err(error) => {
+                        append_review_error(
+                            &mut review_error,
+                            format!("Failed to load pull request comments: {error}"),
+                        );
+                        Vec::new()
+                    }
+                };
 
                 match (reviews_result, threads_result) {
                     (Ok(reviews), Ok(threads)) => {
@@ -174,6 +195,7 @@ impl AppView {
                         let thread_count = threads.len();
                         view.apply_loaded_review_data(
                             reviews,
+                            pull_request_comments,
                             threads,
                             current_user_login,
                             pending_review_comment_count,
@@ -190,6 +212,7 @@ impl AppView {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         let thread_count = threads.len();
                         view.review_state.clear_pull_request_reviews();
+                        view.replace_pull_request_comments(pull_request_comments);
                         view.replace_loaded_review_threads(threads);
                         view.sync_diff_list_items(cx);
                         let message = format!("Failed to load review history: {reviews_error}");
@@ -200,6 +223,7 @@ impl AppView {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         view.apply_loaded_review_data(
                             reviews,
+                            pull_request_comments,
                             Vec::new(),
                             current_user_login,
                             pending_review_comment_count,
@@ -213,6 +237,7 @@ impl AppView {
                     (Err(reviews_error), Err(threads_error)) => {
                         view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
                         view.review_state.clear_pull_request_reviews();
+                        view.replace_pull_request_comments(pull_request_comments);
                         let message = format!(
                             "Failed to load review history: {reviews_error}; Failed to load review threads: {threads_error}"
                         );

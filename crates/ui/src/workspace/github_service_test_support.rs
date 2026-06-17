@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, ReactionContent, RepoId,
-    ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReactionContent,
+    RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
@@ -45,6 +45,7 @@ pub(crate) struct FakeGitHubApi {
     workflow_logs: FakeQueue<String>,
     current_user: FakeQueue<String>,
     reviews: FakeQueue<Vec<PullRequestReview>>,
+    pull_request_comments: FakeQueue<Vec<PullRequestComment>>,
     review_comment_counts: FakeQueue<usize>,
     review_threads: FakeQueue<Vec<ReviewThread>>,
     dispatch_workflow_results: FakeQueue<()>,
@@ -123,6 +124,10 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_reviews(&self, result: Result<Vec<PullRequestReview>>) {
         push_result(&self.reviews, result);
+    }
+
+    pub(crate) fn push_pull_request_comments(&self, result: Result<Vec<PullRequestComment>>) {
+        push_result(&self.pull_request_comments, result);
     }
 
     pub(crate) fn push_review_threads(&self, result: Result<Vec<ReviewThread>>) {
@@ -343,6 +348,16 @@ impl GitHubReviewApi for FakeGitHubApi {
     ) -> Result<Vec<PullRequestReview>> {
         self.record_call("list_pull_request_reviews");
         pop_result(&self.reviews, "list_pull_request_reviews")
+    }
+
+    async fn list_pull_request_comments(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+    ) -> Result<Vec<PullRequestComment>> {
+        self.record_call("list_pull_request_comments");
+        pop_result(&self.pull_request_comments, "list_pull_request_comments")
     }
 
     async fn pull_request_review_comment_count(

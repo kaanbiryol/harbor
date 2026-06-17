@@ -1,6 +1,7 @@
 use gpui::{AnyElement, Entity, div, prelude::*, px};
+use gpui_component::StyledExt;
 use gpui_component::input::InputState;
-use harbor_domain::ReviewThread;
+use harbor_domain::{ReviewComment, ReviewThread};
 
 use crate::{
     visual::color,
@@ -9,7 +10,10 @@ use crate::{
 
 use super::{
     render_status_pill,
-    review::{review_thread_location, review_thread_state_tone, single_line},
+    review::{
+        ReviewDiffPreview, render_review_diff_preview, review_comment_time_label,
+        review_thread_location, review_thread_state_tone, single_line,
+    },
     review_thread_chrome::{
         ReviewThreadActionIds, ReviewThreadActionsState, ReviewThreadReplyComposerChrome,
         ReviewThreadReplyComposerIds, ReviewThreadReplyComposerState, render_review_thread_actions,
@@ -17,8 +21,17 @@ use super::{
     },
 };
 
-const REVIEW_THREAD_ROW_HEIGHT: f32 = 144.0;
-const EXPANDED_REVIEW_THREAD_ROW_HEIGHT: f32 = 224.0;
+const REVIEW_TIMELINE_ROW_HEIGHT: f32 = 320.0;
+const EXPANDED_REVIEW_TIMELINE_ROW_HEIGHT: f32 = 400.0;
+const MAX_VISIBLE_THREAD_COMMENTS: usize = 2;
+
+pub(super) fn review_timeline_row_height(use_expanded_rows: bool) -> f32 {
+    if use_expanded_rows {
+        EXPANDED_REVIEW_TIMELINE_ROW_HEIGHT
+    } else {
+        REVIEW_TIMELINE_ROW_HEIGHT
+    }
+}
 
 pub(crate) struct ReviewThreadRowRenderState<'a> {
     pub(crate) index: usize,
@@ -31,6 +44,7 @@ pub(crate) struct ReviewThreadRowRenderState<'a> {
     pub(crate) action_thread_id: Option<&'a str>,
     pub(crate) action_error: Option<&'a ReviewThreadUiError>,
     pub(crate) use_expanded_rows: bool,
+    pub(crate) diff_preview: Option<ReviewDiffPreview>,
     pub(crate) view_entity: Entity<AppView>,
 }
 
@@ -46,14 +60,12 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         action_thread_id,
         action_error,
         use_expanded_rows,
+        diff_preview,
         view_entity,
     } = state;
     let (label, tone) = review_thread_state_tone(thread.state);
     let latest_comment = thread.comments.last();
     let location = review_thread_location(thread);
-    let preview = latest_comment
-        .map(|comment| single_line(&comment.body))
-        .unwrap_or_else(|| "No comments in this thread".to_string());
     let ui_state = review_thread_ui_state(
         thread,
         active_review_thread_reply,
@@ -94,11 +106,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
     let thread_id = thread.id.clone();
-    let row_height = if use_expanded_rows {
-        EXPANDED_REVIEW_THREAD_ROW_HEIGHT
-    } else {
-        REVIEW_THREAD_ROW_HEIGHT
-    };
+    let row_height = review_timeline_row_height(use_expanded_rows);
 
     div()
         .id(("review-thread-row", index))
@@ -113,6 +121,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         .border_1()
         .border_color(row_border_color)
         .bg(row_bg_color)
+        .overflow_hidden()
         .hover(move |style| style.bg(row_hover_bg_color))
         .child(
             div()
@@ -126,24 +135,23 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                         .flex_1()
                         .truncate()
                         .text_color(path_color)
-                        .child(thread.path.clone()),
+                        .child(latest_comment.map_or_else(
+                            || thread.path.clone(),
+                            |comment| format!("{} commented", comment.author),
+                        )),
                 )
                 .child(render_status_pill(label, tone)),
         )
         .child(div().text_xs().text_color(metadata_color).child(format!(
-            "{}  {} comments",
+            "{}  {}  {} comments",
+            thread.path,
             location,
             thread.comments.len()
         )))
-        .when_some(latest_comment, |element, comment| {
-            element.child(
-                div()
-                    .text_xs()
-                    .text_color(metadata_color)
-                    .truncate()
-                    .child(format!("{}: {}", comment.author, preview)),
-            )
+        .when_some(diff_preview, |element, preview| {
+            element.child(render_review_diff_preview(preview))
         })
+        .child(render_review_thread_comments(thread, metadata_color))
         .child(
             div()
                 .flex()
@@ -184,4 +192,76 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
             element.child(div().text_xs().text_color(color::danger()).child(error))
         })
         .into_any_element()
+}
+
+fn render_review_thread_comments(
+    thread: &ReviewThread,
+    metadata_color: gpui::Rgba,
+) -> impl IntoElement {
+    let hidden_comments = thread
+        .comments
+        .len()
+        .saturating_sub(MAX_VISIBLE_THREAD_COMMENTS);
+
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .min_h_0()
+        .children(
+            thread
+                .comments
+                .iter()
+                .take(MAX_VISIBLE_THREAD_COMMENTS)
+                .map(|comment| render_review_thread_comment(comment, metadata_color)),
+        )
+        .when(hidden_comments > 0, |element| {
+            element.child(
+                div()
+                    .text_xs()
+                    .text_color(metadata_color)
+                    .child(format!("+{hidden_comments} more comments")),
+            )
+        })
+}
+
+fn render_review_thread_comment(
+    comment: &ReviewComment,
+    metadata_color: gpui::Rgba,
+) -> impl IntoElement {
+    div()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .border_1()
+        .border_color(color::border_subtle())
+        .bg(color::content_background())
+        .px_2()
+        .py_1()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_xs()
+                .child(
+                    div()
+                        .font_medium()
+                        .text_color(color::text_primary())
+                        .child(comment.author.clone()),
+                )
+                .child(
+                    div()
+                        .text_color(metadata_color)
+                        .child(review_comment_time_label(comment)),
+                ),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(metadata_color)
+                .truncate()
+                .child(single_line(&comment.body)),
+        )
 }

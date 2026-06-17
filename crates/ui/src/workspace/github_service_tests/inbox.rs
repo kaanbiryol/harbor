@@ -46,6 +46,7 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
             "list_pull_request_files",
             "current_user",
             "list_pull_request_reviews",
+            "list_pull_request_comments",
             "list_review_threads"
         ]
     );

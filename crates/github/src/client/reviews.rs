@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use harbor_domain::{PullRequestReview, ReactionContent, ReviewCommentRange, ReviewThread};
+use harbor_domain::{
+    PullRequestComment, PullRequestReview, ReactionContent, ReviewCommentRange, ReviewThread,
+};
 use serde_json::{Value, json};
 
 use crate::{GitHubError, GitHubTransport, Result, dto};
@@ -25,6 +27,7 @@ const REVIEW_THREAD_PAGE_LIMIT: usize = 20;
 const REVIEW_THREAD_PAGE_SIZE: usize = 5;
 const REVIEW_THREAD_INITIAL_COMMENT_PAGE_SIZE: usize = 1;
 const REVIEW_THREAD_COMMENT_PAGE_SIZE: usize = 50;
+const PULL_REQUEST_COMMENT_PAGE_SIZE: usize = 100;
 
 impl<T> GitHubClient<T>
 where
@@ -84,6 +87,39 @@ where
         }
 
         Ok(count)
+    }
+
+    pub async fn list_pull_request_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestComment>> {
+        let path = format!("/repos/{owner}/{repo}/issues/{number}/comments");
+        let mut comments = Vec::new();
+        let mut page = 1;
+
+        loop {
+            let page_string = page.to_string();
+            let response = self
+                .transport
+                .rest_get(
+                    &path,
+                    &[("per_page", "100"), ("page", page_string.as_str())],
+                )
+                .await?;
+            let page_comments = dto::pull_request_comments_from_value(response)?;
+            let page_count = page_comments.len();
+            comments.extend(page_comments);
+
+            if page_count < PULL_REQUEST_COMMENT_PAGE_SIZE {
+                break;
+            }
+
+            page += 1;
+        }
+
+        Ok(comments)
     }
 
     pub async fn list_review_threads(

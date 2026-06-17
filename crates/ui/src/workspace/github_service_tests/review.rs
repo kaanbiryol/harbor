@@ -17,6 +17,7 @@ async fn refresh_review_data_keeps_reviews_when_threads_fail(cx: &mut TestAppCon
     let review = pull_request_review("review-1", PullRequestReviewState::Approved);
     api.push_current_user(Ok("octocat".to_string()));
     api.push_reviews(Ok(vec![review.clone()]));
+    api.push_pull_request_comments(Ok(Vec::new()));
     api.push_review_threads(Err(github_error("threads failed")));
     let (view_entity, cx) = init_workspace_service_test(cx, api);
 
@@ -60,6 +61,7 @@ async fn refresh_review_data_keeps_threads_when_reviews_fail(cx: &mut TestAppCon
     let thread = review_thread(ReviewThreadState::Unresolved);
     api.push_current_user(Ok("octocat".to_string()));
     api.push_reviews(Err(github_error("reviews failed")));
+    api.push_pull_request_comments(Ok(Vec::new()));
     api.push_review_threads(Ok(vec![thread.clone()]));
     let (view_entity, cx) = init_workspace_service_test(cx, api);
 

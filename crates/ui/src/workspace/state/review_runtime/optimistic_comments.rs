@@ -73,6 +73,8 @@ impl ReviewRuntimeState {
     ) -> ReviewComment {
         ReviewComment {
             id,
+            pull_request_review_id: None,
+            pull_request_review_node_id: None,
             author: self
                 .current_user_login
                 .clone()

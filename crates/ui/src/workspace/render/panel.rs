@@ -4,8 +4,8 @@ use harbor_domain::PullRequest;
 use crate::{
     actions::PanelTab,
     panels::{
-        DiffPanelRenderInput, render_actions_panel, render_checks_panel, render_diff_panel,
-        render_logs_panel, render_review_panel,
+        DiffPanelRenderInput, ReviewPanelRenderInput, render_actions_panel, render_checks_panel,
+        render_diff_panel, render_logs_panel, render_review_panel,
     },
     visual::color,
     workspace::AppView,
@@ -114,14 +114,18 @@ impl AppView {
                             .into_any_element()
                         }
                         PanelTab::Review => render_review_panel(
-                            &self.review_state.pull_request_reviews,
-                            &self.review_state.review_threads,
-                            self.review_state
-                                .review_composer_state
-                                .active_thread_reply(),
-                            self.review_state.reviews_loading(),
-                            self.review_state.reviews_error(),
-                            self.review_list_scroll.clone(),
+                            ReviewPanelRenderInput {
+                                reviews: &self.review_state.pull_request_reviews,
+                                comments: &self.review_state.pull_request_comments,
+                                threads: &self.review_state.review_threads,
+                                active_review_thread_reply: self
+                                    .review_state
+                                    .review_composer_state
+                                    .active_thread_reply(),
+                                is_loading: self.review_state.reviews_loading(),
+                                error: self.review_state.reviews_error(),
+                                scroll_handle: self.review_list_scroll.clone(),
+                            },
                             cx,
                         )
                         .into_any_element(),

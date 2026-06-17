@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use gpui::{Context, ScrollStrategy};
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, WorkflowJob,
-    WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, RepoId, ReviewThread,
+    WorkflowJob, WorkflowRun,
 };
 use harbor_logs::LogChunk;
 use harbor_sync::PullRequestInboxPageInfo;
@@ -56,6 +56,7 @@ pub(crate) struct PullRequestDetailSnapshot {
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
+    pull_request_comments: Vec<PullRequestComment>,
     pub(super) review_threads: Vec<ReviewThread>,
     detail_loaded: PullRequestDetailLoadedState,
     pub(super) pending_review: Option<PendingReviewSession>,
@@ -81,6 +82,7 @@ pub(crate) struct PullRequestInboxSnapshot {
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
+    pull_request_comments: Vec<PullRequestComment>,
     review_threads: Vec<ReviewThread>,
     detail_loaded: PullRequestDetailLoadedState,
     pending_review: Option<PendingReviewSession>,
@@ -169,6 +171,7 @@ impl AppView {
             workflow_runs: self.detail_state.workflow_runs().to_vec(),
             workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
+            pull_request_comments: self.review_state.pull_request_comments.clone(),
             review_threads: self.review_state.review_threads.clone(),
             detail_loaded: self
                 .detail_state
@@ -219,6 +222,7 @@ impl AppView {
             .restore_loaded_sections(snapshot.detail_loaded);
         self.review_state.restore_review_snapshot(
             snapshot.pull_request_reviews,
+            snapshot.pull_request_comments,
             snapshot.review_threads,
             snapshot.pending_review,
             snapshot.current_user_login,
@@ -257,6 +261,7 @@ impl AppView {
             workflow_runs: self.detail_state.workflow_runs().to_vec(),
             workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
+            pull_request_comments: self.review_state.pull_request_comments.clone(),
             review_threads: self.review_state.review_threads.clone(),
             detail_loaded: self
                 .detail_state
@@ -312,6 +317,7 @@ impl AppView {
             .restore_loaded_sections(snapshot.detail_loaded);
         self.review_state.restore_review_snapshot(
             snapshot.pull_request_reviews,
+            snapshot.pull_request_comments,
             snapshot.review_threads,
             snapshot.pending_review,
             snapshot.current_user_login,

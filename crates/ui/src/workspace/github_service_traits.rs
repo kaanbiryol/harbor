@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, ReactionContent, RepoId,
-    ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReactionContent,
+    RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{GitHubRateLimitStatus, RepositoryList, Result, SubmitPullRequestReviewEvent};
 use harbor_sync::PullRequestInboxSource;
@@ -115,6 +115,13 @@ pub(crate) trait GitHubReviewApi: Send + Sync {
         repo: &str,
         number: u64,
     ) -> Result<Vec<PullRequestReview>>;
+
+    async fn list_pull_request_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestComment>>;
 
     async fn pull_request_review_comment_count(
         &self,

@@ -91,6 +91,16 @@ pub struct PullRequest {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestComment {
+    pub id: String,
+    pub author: String,
+    pub author_avatar_url: Option<String>,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum FileStatus {
     Added,
@@ -210,6 +220,10 @@ pub struct ReviewReaction {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReviewComment {
     pub id: String,
+    #[serde(default)]
+    pub pull_request_review_id: Option<String>,
+    #[serde(default)]
+    pub pull_request_review_node_id: Option<String>,
     pub author: String,
     pub author_avatar_url: Option<String>,
     pub body: String,

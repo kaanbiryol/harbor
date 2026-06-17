@@ -1,5 +1,6 @@
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, RepoId, ReviewThread, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, RepoId, ReviewThread,
+    WorkflowRun,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use sqlx::{Row, Sqlite, Transaction};
@@ -141,6 +142,7 @@ impl SqliteStore {
         number: u64,
         head_sha: &str,
         reviews: &[PullRequestReview],
+        comments: &[PullRequestComment],
         threads: &[ReviewThread],
     ) -> Result<()> {
         let mut transaction = self.pool.begin().await?;
@@ -157,6 +159,24 @@ impl SqliteStore {
         Self::record_sync_success_in_transaction(
             &mut transaction,
             &detail_target_key(repository, number, PullRequestDetailSection::Reviews),
+        )
+        .await?;
+        Self::save_pull_request_detail_section_in_transaction(
+            &mut transaction,
+            repository,
+            number,
+            head_sha,
+            PullRequestDetailSection::PullRequestComments,
+            comments,
+        )
+        .await?;
+        Self::record_sync_success_in_transaction(
+            &mut transaction,
+            &detail_target_key(
+                repository,
+                number,
+                PullRequestDetailSection::PullRequestComments,
+            ),
         )
         .await?;
         Self::save_pull_request_detail_section_in_transaction(
@@ -183,13 +203,27 @@ impl SqliteStore {
         repository: &RepoId,
         number: u64,
         head_sha: &str,
-    ) -> Result<Option<(Vec<PullRequestReview>, Vec<ReviewThread>)>> {
+    ) -> Result<
+        Option<(
+            Vec<PullRequestReview>,
+            Vec<PullRequestComment>,
+            Vec<ReviewThread>,
+        )>,
+    > {
         let reviews = self
             .load_pull_request_detail_section::<Vec<PullRequestReview>>(
                 repository,
                 number,
                 head_sha,
                 PullRequestDetailSection::Reviews,
+            )
+            .await?;
+        let comments = self
+            .load_pull_request_detail_section::<Vec<PullRequestComment>>(
+                repository,
+                number,
+                head_sha,
+                PullRequestDetailSection::PullRequestComments,
             )
             .await?;
         let threads = self
@@ -201,8 +235,8 @@ impl SqliteStore {
             )
             .await?;
 
-        Ok(match (reviews, threads) {
-            (Some(reviews), Some(threads)) => Some((reviews, threads)),
+        Ok(match (reviews, comments, threads) {
+            (Some(reviews), Some(comments), Some(threads)) => Some((reviews, comments, threads)),
             _ => None,
         })
     }

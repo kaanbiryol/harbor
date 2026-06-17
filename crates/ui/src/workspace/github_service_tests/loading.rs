@@ -21,6 +21,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
     api.push_files(Ok(vec![patched_diff_file()]));
     api.push_current_user(Ok("octocat".to_string()));
     api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::new()));
     api.push_review_threads(Ok(vec![thread.clone()]));
     api.push_check_runs(Ok(Vec::new()));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
@@ -39,6 +40,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_files",
             "current_user",
             "list_pull_request_reviews",
+            "list_pull_request_comments",
             "list_review_threads"
         ]
     );
@@ -58,6 +60,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_files",
             "current_user",
             "list_pull_request_reviews",
+            "list_pull_request_comments",
             "list_review_threads",
             "list_check_runs"
         ]
@@ -76,6 +79,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_files",
             "current_user",
             "list_pull_request_reviews",
+            "list_pull_request_comments",
             "list_review_threads",
             "list_check_runs"
         ]
@@ -114,6 +118,7 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
             "list_pull_request_files",
             "current_user",
             "list_pull_request_reviews",
+            "list_pull_request_comments",
             "list_review_threads"
         ]
     );

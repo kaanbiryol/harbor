@@ -20,6 +20,7 @@ fn detail_snapshot() -> PullRequestDetailSnapshot {
         workflow_runs: Vec::new(),
         workflow_jobs: Vec::new(),
         pull_request_reviews: Vec::new(),
+        pull_request_comments: Vec::new(),
         review_threads: vec![review_thread(ReviewThreadState::Unresolved)],
         detail_loaded: PullRequestDetailLoadedState::default(),
         pending_review: Some(PendingReviewSession {

@@ -1,5 +1,5 @@
 use harbor_domain::{
-    PullRequestReview, PullRequestReviewState, ReactionContent, ReviewComment,
+    PullRequestComment, PullRequestReview, PullRequestReviewState, ReactionContent, ReviewComment,
     ReviewCommentPosition, ReviewCommentRange, ReviewReaction, ReviewSide, ReviewThread,
     ReviewThreadState,
 };
@@ -16,6 +16,13 @@ struct ApiUser {
 }
 
 #[derive(Debug, Deserialize)]
+struct ApiRestUser {
+    login: String,
+    #[serde(default)]
+    avatar_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ApiPullRequestReview {
     id: u64,
     #[serde(default)]
@@ -26,6 +33,18 @@ struct ApiPullRequestReview {
     #[serde(default)]
     submitted_at: Option<chrono::DateTime<chrono::Utc>>,
     user: Option<ApiUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiPullRequestComment {
+    id: u64,
+    body: String,
+    #[serde(default)]
+    user: Option<ApiRestUser>,
+    #[serde(default)]
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,6 +171,8 @@ struct GraphQlReviewThreadCommentsNode {
 #[derive(Debug, Deserialize)]
 struct GraphQlReviewComment {
     id: String,
+    #[serde(default, rename = "pullRequestReview")]
+    pull_request_review: Option<GraphQlPullRequestReview>,
     body: String,
     author: Option<ApiUser>,
     #[serde(rename = "createdAt")]
@@ -174,6 +195,13 @@ struct GraphQlReviewComment {
     viewer_can_react: bool,
     #[serde(default, rename = "reactionGroups")]
     reaction_groups: Vec<GraphQlReactionGroup>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestReview {
+    id: String,
+    #[serde(default, rename = "databaseId")]
+    database_id: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -205,6 +233,16 @@ pub fn pull_request_reviews_from_value(value: Value) -> Result<Vec<PullRequestRe
     Ok(reviews
         .into_iter()
         .map(ApiPullRequestReview::into_domain)
+        .collect())
+}
+
+pub fn pull_request_comments_from_value(value: Value) -> Result<Vec<PullRequestComment>> {
+    let comments: Vec<ApiPullRequestComment> =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+
+    Ok(comments
+        .into_iter()
+        .map(ApiPullRequestComment::into_domain)
         .collect())
 }
 
@@ -295,6 +333,23 @@ impl ApiPullRequestReview {
             state: map_pull_request_review_state(&self.state),
             body: self.body.filter(|body| !body.is_empty()),
             submitted_at: self.submitted_at,
+        }
+    }
+}
+
+impl ApiPullRequestComment {
+    fn into_domain(self) -> PullRequestComment {
+        PullRequestComment {
+            id: self.id.to_string(),
+            author: self
+                .user
+                .as_ref()
+                .map(|user| user.login.clone())
+                .unwrap_or_else(|| "ghost".to_string()),
+            author_avatar_url: self.user.and_then(|user| user.avatar_url),
+            body: self.body,
+            created_at: self.created_at.unwrap_or_else(chrono::Utc::now),
+            updated_at: self.updated_at,
         }
     }
 }
@@ -395,6 +450,12 @@ impl GraphQlReviewComment {
 
         ReviewComment {
             id: self.id,
+            pull_request_review_id: self
+                .pull_request_review
+                .as_ref()
+                .and_then(|review| review.database_id)
+                .map(|database_id| database_id.to_string()),
+            pull_request_review_node_id: self.pull_request_review.map(|review| review.id),
             author: self
                 .author
                 .as_ref()
@@ -503,7 +564,10 @@ mod tests {
     use harbor_domain::{PullRequestReviewState, ReactionContent, ReviewSide, ReviewThreadState};
     use serde_json::json;
 
-    use super::{pull_request_reviews_from_value, review_threads_from_graphql_value};
+    use super::{
+        pull_request_comments_from_value, pull_request_reviews_from_value,
+        review_threads_from_graphql_value,
+    };
 
     #[test]
     fn maps_pull_request_reviews() {
@@ -539,6 +603,42 @@ mod tests {
     }
 
     #[test]
+    fn maps_pull_request_comments() {
+        let value = json!([
+            {
+                "id": 501,
+                "body": "Can we do this?",
+                "user": {
+                    "login": "octocat",
+                    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4"
+                },
+                "created_at": "2026-05-01T12:00:00Z",
+                "updated_at": "2026-05-01T12:05:00Z"
+            },
+            {
+                "id": 502,
+                "body": "",
+                "user": null,
+                "created_at": "2026-05-01T13:00:00Z",
+                "updated_at": null
+            }
+        ]);
+
+        let comments = pull_request_comments_from_value(value).unwrap();
+
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].id, "501");
+        assert_eq!(comments[0].author, "octocat");
+        assert_eq!(
+            comments[0].author_avatar_url.as_deref(),
+            Some("https://avatars.githubusercontent.com/u/1?v=4")
+        );
+        assert_eq!(comments[0].body, "Can we do this?");
+        assert_eq!(comments[1].id, "502");
+        assert_eq!(comments[1].author, "ghost");
+    }
+
+    #[test]
     fn maps_review_threads_from_graphql() {
         let value: serde_json::Value = serde_json::from_str(
             r#"
@@ -562,6 +662,10 @@ mod tests {
                             "nodes": [
                               {
                                 "id": "comment-1",
+                                "pullRequestReview": {
+                                  "id": "review-node-401",
+                                  "databaseId": 401
+                                },
                                 "body": "This can be cheaper.",
                                 "author": {
                                   "login": "reviewer",
@@ -644,6 +748,16 @@ mod tests {
         assert_eq!(threads[0].state, ReviewThreadState::Unresolved);
         assert_eq!(threads[0].comments.len(), 2);
         assert_eq!(threads[0].comments[0].author, "reviewer");
+        assert_eq!(
+            threads[0].comments[0].pull_request_review_id.as_deref(),
+            Some("401")
+        );
+        assert_eq!(
+            threads[0].comments[0]
+                .pull_request_review_node_id
+                .as_deref(),
+            Some("review-node-401")
+        );
         assert_eq!(
             threads[0].comments[0].author_avatar_url.as_deref(),
             Some("https://avatars.githubusercontent.com/u/1?v=4")

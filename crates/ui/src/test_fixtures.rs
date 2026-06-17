@@ -87,6 +87,8 @@ pub(crate) fn workflow_run() -> WorkflowRun {
 pub(crate) fn review_comment() -> ReviewComment {
     ReviewComment {
         id: "comment".to_string(),
+        pull_request_review_id: None,
+        pull_request_review_node_id: None,
         author: "octocat".to_string(),
         author_avatar_url: None,
         body: "Looks good".to_string(),
@@ -104,6 +106,8 @@ pub(crate) fn review_comment() -> ReviewComment {
 pub(crate) fn positioned_review_comment() -> ReviewComment {
     ReviewComment {
         id: "comment-1".to_string(),
+        pull_request_review_id: None,
+        pull_request_review_node_id: None,
         author: "maria".to_string(),
         author_avatar_url: None,
         body: "Please check this line.".to_string(),

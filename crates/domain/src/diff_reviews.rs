@@ -460,6 +460,8 @@ mod tests {
             state: ReviewThreadState::Unresolved,
             comments: vec![ReviewComment {
                 id: format!("{id}-comment"),
+                pull_request_review_id: None,
+                pull_request_review_node_id: None,
                 author: "maria".to_string(),
                 author_avatar_url: None,
                 body: "Please check this line.".to_string(),

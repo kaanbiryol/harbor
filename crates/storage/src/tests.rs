@@ -492,6 +492,17 @@ fn saves_and_loads_detail_sections_independently() {
             )
             .await
             .expect("save checks");
+        store
+            .save_pull_request_reviews(
+                &pull_request.repo,
+                pull_request.number,
+                &pull_request.head_sha,
+                &[],
+                &[],
+                &[],
+            )
+            .await
+            .expect("save reviews");
 
         let cached_metadata = store
             .load_pull_request_metadata(
@@ -509,9 +520,21 @@ fn saves_and_loads_detail_sections_independently() {
             )
             .await
             .expect("load checks");
+        let cached_reviews = store
+            .load_pull_request_reviews(
+                &pull_request.repo,
+                pull_request.number,
+                &pull_request.head_sha,
+            )
+            .await
+            .expect("load reviews")
+            .expect("cached review data");
 
         assert_eq!(cached_metadata, Some(pull_request));
         assert_eq!(cached_checks, Some(Vec::new()));
+        assert!(cached_reviews.0.is_empty());
+        assert!(cached_reviews.1.is_empty());
+        assert!(cached_reviews.2.is_empty());
 
         cleanup_database(database_path);
     });

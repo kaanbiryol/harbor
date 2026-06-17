@@ -27,6 +27,63 @@ fn gets_pull_request_reviews_endpoint() {
 }
 
 #[test]
+fn paginates_pull_request_comments_endpoint() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_responses
+        .lock()
+        .expect("get responses mutex should not be poisoned") = vec![
+        Value::Array(
+            (0..100)
+                .map(|index| {
+                    json!({
+                        "id": index,
+                        "body": "Can we do this?",
+                        "user": { "login": "octocat", "avatar_url": null },
+                        "created_at": "2026-05-01T10:00:00Z",
+                        "updated_at": null,
+                    })
+                })
+                .collect(),
+        ),
+        json!([
+            {
+                "id": 101,
+                "body": "Follow-up",
+                "user": null,
+                "created_at": "2026-05-01T10:05:00Z",
+                "updated_at": null,
+            }
+        ]),
+    ];
+    let client = GitHubClient::new(transport.clone());
+
+    let comments = smol::block_on(client.list_pull_request_comments("acme", "app", 7)).unwrap();
+
+    assert_eq!(comments.len(), 101);
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets.len(), 2);
+    assert_eq!(gets[0].0, "/repos/acme/app/issues/7/comments");
+    assert_eq!(
+        gets[0].1,
+        vec![
+            ("per_page".to_string(), "100".to_string()),
+            ("page".to_string(), "1".to_string()),
+        ]
+    );
+    assert_eq!(
+        gets[1].1,
+        vec![
+            ("per_page".to_string(), "100".to_string()),
+            ("page".to_string(), "2".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn counts_pull_request_review_comments_endpoint() {
     let transport = RecordingTransport::default();
     *transport

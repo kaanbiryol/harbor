@@ -92,6 +92,10 @@ query HarborPullRequestReviewThreads(
           comments(first: $commentPageSize) {
             nodes {
               id
+              pullRequestReview {
+                id
+                databaseId
+              }
               body
               author {
                 login
@@ -159,6 +163,10 @@ query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String, $com
         }
         nodes {
           id
+          pullRequestReview {
+            id
+            databaseId
+          }
           body
           author {
             login

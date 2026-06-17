@@ -59,6 +59,7 @@ fn enqueue_successful_detail_load(api: &FakeGitHubApi, pull_request: &PullReques
     api.push_workflow_runs(Ok(Vec::new()));
     api.push_current_user(Ok("octocat".to_string()));
     api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::new()));
     api.push_review_threads(Ok(Vec::new()));
 }
 

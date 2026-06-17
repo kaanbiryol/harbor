@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, ReactionContent, RepoId,
-    ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReactionContent,
+    RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubClient, GitHubRateLimitStatus, GitHubTransportSource,
@@ -224,6 +224,17 @@ impl GitHubReviewApi for RealGitHubApi {
     ) -> Result<Vec<PullRequestReview>> {
         self.client()?
             .list_pull_request_reviews(owner, repo, number)
+            .await
+    }
+
+    async fn list_pull_request_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestComment>> {
+        self.client()?
+            .list_pull_request_comments(owner, repo, number)
             .await
     }
 

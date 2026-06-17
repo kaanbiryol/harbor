@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use harbor_domain::{
-    PullRequestReview, ReactionContent, ReviewComment, ReviewThread, ReviewThreadState,
+    PullRequestComment, PullRequestReview, ReactionContent, ReviewComment, ReviewThread,
+    ReviewThreadState,
 };
 
 use crate::workspace::{
@@ -24,6 +25,7 @@ mod optimistic_comments;
 
 pub(crate) struct ReviewRuntimeState {
     pub(crate) pull_request_reviews: Vec<PullRequestReview>,
+    pub(crate) pull_request_comments: Vec<PullRequestComment>,
     pub(crate) review_threads: Vec<ReviewThread>,
     pub(crate) review_composer_state: ReviewComposerState,
     pending_review: Option<PendingReviewSession>,
@@ -57,6 +59,7 @@ impl ReviewRuntimeState {
     ) -> Self {
         Self {
             pull_request_reviews,
+            pull_request_comments: Vec::new(),
             review_threads,
             review_composer_state,
             pending_review: None,
@@ -179,6 +182,7 @@ impl ReviewRuntimeState {
 
     pub(crate) fn clear_review_data(&mut self) {
         self.pull_request_reviews.clear();
+        self.pull_request_comments.clear();
         self.review_threads.clear();
         self.clear_composer_and_action_state();
         self.pending_review = None;
@@ -187,12 +191,14 @@ impl ReviewRuntimeState {
     pub(crate) fn restore_review_snapshot(
         &mut self,
         pull_request_reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
         review_threads: Vec<ReviewThread>,
         pending_review: Option<PendingReviewSession>,
         current_user_login: Option<String>,
         reviews_loaded: bool,
     ) {
         self.pull_request_reviews = pull_request_reviews;
+        self.pull_request_comments = pull_request_comments;
         self.review_threads = review_threads;
         self.pending_review = pending_review;
         self.current_user_login = current_user_login;
@@ -206,6 +212,7 @@ impl ReviewRuntimeState {
     pub(crate) fn apply_loaded_review_data(
         &mut self,
         reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
         review_threads: Vec<ReviewThread>,
         current_user_login: Option<String>,
         pending_review_comment_count: Option<usize>,
@@ -219,7 +226,15 @@ impl ReviewRuntimeState {
             pending_review_comment_count,
         );
         self.pull_request_reviews = reviews;
+        self.pull_request_comments = pull_request_comments;
         self.apply_loaded_review_threads(review_threads)
+    }
+
+    pub(crate) fn replace_pull_request_comments(
+        &mut self,
+        pull_request_comments: Vec<PullRequestComment>,
+    ) {
+        self.pull_request_comments = pull_request_comments;
     }
 
     pub(crate) fn replace_loaded_review_threads(
@@ -232,9 +247,11 @@ impl ReviewRuntimeState {
     pub(crate) fn replace_reviews_and_loaded_threads(
         &mut self,
         reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
         review_threads: Vec<ReviewThread>,
     ) -> usize {
         self.pull_request_reviews = reviews;
+        self.pull_request_comments = pull_request_comments;
         self.apply_loaded_review_threads(review_threads)
     }
 

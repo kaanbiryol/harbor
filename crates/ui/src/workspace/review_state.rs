@@ -1,6 +1,6 @@
 use harbor_domain::{
-    PullRequestReview, ReactionContent, ReviewComment, ReviewCommentRange, ReviewThread,
-    ReviewThreadState,
+    PullRequestComment, PullRequestReview, ReactionContent, ReviewComment, ReviewCommentRange,
+    ReviewThread, ReviewThreadState,
 };
 
 use crate::workspace::{
@@ -16,12 +16,14 @@ impl AppView {
     pub(crate) fn apply_loaded_review_data(
         &mut self,
         reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
         review_threads: Vec<ReviewThread>,
         current_user_login: Option<String>,
         pending_review_comment_count: Option<usize>,
     ) -> usize {
         let unresolved_count = self.review_state.apply_loaded_review_data(
             reviews,
+            pull_request_comments,
             review_threads,
             current_user_login,
             pending_review_comment_count,
@@ -29,6 +31,14 @@ impl AppView {
 
         self.set_selected_unresolved_thread_count(unresolved_count);
         unresolved_count
+    }
+
+    pub(crate) fn replace_pull_request_comments(
+        &mut self,
+        pull_request_comments: Vec<PullRequestComment>,
+    ) {
+        self.review_state
+            .replace_pull_request_comments(pull_request_comments);
     }
 
     pub(crate) fn replace_loaded_review_threads(&mut self, review_threads: Vec<ReviewThread>) {
@@ -41,11 +51,14 @@ impl AppView {
     pub(crate) fn replace_reviews_and_loaded_threads(
         &mut self,
         reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
         review_threads: Vec<ReviewThread>,
     ) {
-        let unresolved_count = self
-            .review_state
-            .replace_reviews_and_loaded_threads(reviews, review_threads);
+        let unresolved_count = self.review_state.replace_reviews_and_loaded_threads(
+            reviews,
+            pull_request_comments,
+            review_threads,
+        );
         self.set_selected_unresolved_thread_count(unresolved_count);
     }
 

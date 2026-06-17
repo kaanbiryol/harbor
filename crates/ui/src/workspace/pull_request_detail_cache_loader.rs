@@ -1,6 +1,7 @@
 use gpui::{AppContext, Context};
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestReview, ReviewThread, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReviewThread,
+    WorkflowRun,
 };
 use harbor_sync::SyncTarget;
 
@@ -20,7 +21,11 @@ struct CachedSelectedPullRequestDetail {
     files: Option<(Vec<DiffFile>, Vec<Option<ParsedDiff>>)>,
     check_runs: Option<Vec<CheckRun>>,
     workflow_runs: Option<Vec<WorkflowRun>>,
-    review_data: Option<(Vec<PullRequestReview>, Vec<ReviewThread>)>,
+    review_data: Option<(
+        Vec<PullRequestReview>,
+        Vec<PullRequestComment>,
+        Vec<ReviewThread>,
+    )>,
 }
 
 impl AppView {
@@ -128,11 +133,12 @@ impl AppView {
                             applied_any = true;
                         }
 
-                        if let Some((reviews, threads)) = cached.review_data
+                        if let Some((reviews, comments, threads)) = cached.review_data
                             && view.review_state.pull_request_reviews.is_empty()
+                            && view.review_state.pull_request_comments.is_empty()
                             && view.review_state.review_threads.is_empty()
                         {
-                            view.replace_reviews_and_loaded_threads(reviews, threads);
+                            view.replace_reviews_and_loaded_threads(reviews, comments, threads);
                             view.sync_diff_list_items(cx);
                             view.review_state.apply_reviews_success();
                             view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
