@@ -44,10 +44,6 @@ pub(crate) enum DiffListItem {
     FileHeader {
         file_index: usize,
     },
-    Hunk {
-        file_index: usize,
-        hunk_index: usize,
-    },
     Line {
         file_index: usize,
         hunk_index: usize,
@@ -188,9 +184,10 @@ pub(crate) fn diff_hunk_item_index(
     items.iter().position(|item| {
         matches!(
             item,
-            DiffListItem::Hunk {
+            DiffListItem::Line {
                 file_index,
                 hunk_index,
+                line_index: 0,
             } if *file_index == target_file_index && *hunk_index == target_hunk_index
         )
     })
@@ -214,7 +211,6 @@ pub(super) fn file_is_reviewed(file: &DiffFile, reviewed_file_paths: &HashSet<St
 pub(super) struct DiffFileSection {
     pub(super) file_index: usize,
     pub(super) header_item_index: usize,
-    pub(super) hunk_count: Option<usize>,
     pub(super) reviewed: bool,
 }
 
@@ -231,8 +227,6 @@ pub(super) fn continuous_diff_section_for_item(
             return Some(DiffFileSection {
                 file_index,
                 header_item_index,
-                hunk_count: parsed_diff_for_file(input.diffs, file_index)
-                    .map(|diff| diff.hunks.len()),
                 reviewed: file_is_reviewed(file, input.reviewed_file_paths),
             });
         }
@@ -251,11 +245,6 @@ fn diff_body_items(
     let anchored_threads = anchored_review_threads(file, controls.review_threads);
 
     for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
-        items.push(DiffListItem::Hunk {
-            file_index,
-            hunk_index,
-        });
-
         for (line_index, line) in hunk.lines.iter().enumerate() {
             items.push(DiffListItem::Line {
                 file_index,

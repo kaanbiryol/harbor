@@ -1,4 +1,5 @@
 use gpui::{Context, IntoElement, div, prelude::*};
+use gpui_component::StyledExt;
 use harbor_domain::PullRequest;
 
 use crate::{
@@ -32,9 +33,11 @@ impl AppView {
             .child(
                 div()
                     .flex()
-                    .gap_2()
-                    .p_2()
-                    .border_1()
+                    .items_center()
+                    .gap_1()
+                    .px_2()
+                    .pt_2()
+                    .border_b_1()
                     .border_color(color::border())
                     .children(
                         PanelTab::ALL
@@ -48,20 +51,20 @@ impl AppView {
                                 div()
                                     .id(("panel-tab", index))
                                     .px_3()
-                                    .py_1()
-                                    .rounded_xs()
+                                    .pb_2()
+                                    .pt_1()
                                     .text_sm()
                                     .text_color(if active {
-                                        color::text_primary()
+                                        color::accent()
                                     } else {
                                         color::text_secondary()
                                     })
                                     .cursor_pointer()
                                     .when(active, |element| {
                                         element
-                                            .border_1()
-                                            .border_color(color::border_strong())
-                                            .bg(color::row_selected())
+                                            .border_b_1()
+                                            .border_color(color::accent())
+                                            .font_medium()
                                     })
                                     .hover(move |element| {
                                         if active {

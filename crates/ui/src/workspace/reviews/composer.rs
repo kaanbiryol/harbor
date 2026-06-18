@@ -38,7 +38,7 @@ pub(crate) fn review_range_from_targets(
     current: &ReviewLineTarget,
 ) -> std::result::Result<ReviewCommentRange, String> {
     if anchor.hunk_index != current.hunk_index {
-        return Err("Review comments can only span lines in one diff hunk".to_string());
+        return Err("Review comments can only span one contiguous diff section".to_string());
     }
 
     if anchor.range.path != current.range.path {

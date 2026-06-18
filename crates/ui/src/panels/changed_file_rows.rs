@@ -10,7 +10,7 @@ use crate::{
     workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label},
 };
 
-const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 44.;
+const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 38.;
 
 pub(crate) fn render_changed_folder_row(
     folder: &ChangedFileFolderRow,
@@ -37,7 +37,7 @@ pub(crate) fn render_changed_folder_row(
         .items_center()
         .overflow_hidden()
         .pl(file_tree_padding(folder.depth))
-        .pr_3()
+        .pr_2()
         .gap_2()
         .text_sm()
         .cursor_pointer()
@@ -46,14 +46,18 @@ pub(crate) fn render_changed_folder_row(
             view.toggle_changed_file_folder(folder_path.clone(), cx);
         }))
         .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
-        .child(Icon::new(folder_icon).xsmall().text_color(color::accent()))
+        .child(
+            Icon::new(folder_icon)
+                .xsmall()
+                .text_color(color::text_muted()),
+        )
         .child(
             div()
                 .min_w_0()
                 .flex_1()
                 .truncate()
                 .font_medium()
-                .text_color(color::text_primary())
+                .text_color(color::text_secondary())
                 .child(folder.name.clone()),
         )
         .child(
@@ -61,10 +65,7 @@ pub(crate) fn render_changed_folder_row(
                 .flex_none()
                 .text_xs()
                 .text_color(color::text_muted())
-                .child(folder_review_summary(
-                    folder.reviewed_file_count,
-                    folder.file_count,
-                )),
+                .child(folder_review_summary(folder.file_count)),
         )
         .into_any_element()
 }
@@ -77,6 +78,7 @@ pub(crate) fn render_changed_file_row(
     cx: &mut Context<AppView>,
 ) -> AnyElement {
     let index = row.file_index;
+    let show_status = !matches!(file.status, FileStatus::Modified | FileStatus::Changed);
     let review_button = Button::new(format!("file-reviewed-{index}"))
         .icon(Icon::new(if reviewed {
             IconName::Check
@@ -106,8 +108,13 @@ pub(crate) fn render_changed_file_row(
         .overflow_hidden()
         .pl(file_tree_padding(row.depth))
         .pr_2()
-        .gap_2()
-        .when(selected, |element| element.bg(color::row_selected()))
+        .gap_1()
+        .when(selected, |element| {
+            element
+                .border_l_1()
+                .border_color(color::accent())
+                .bg(color::row_selected_subtle())
+        })
         .hover(|style| style.bg(color::row_hover()))
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_file(index, cx);
@@ -130,7 +137,7 @@ pub(crate) fn render_changed_file_row(
                 .flex_1()
                 .flex()
                 .items_center()
-                .gap_2()
+                .gap_1()
                 .child(
                     div()
                         .min_w_0()
@@ -144,14 +151,16 @@ pub(crate) fn render_changed_file_row(
                         })
                         .child(row.name.clone()),
                 )
-                .child(
-                    div()
-                        .flex_none()
-                        .truncate()
-                        .text_xs()
-                        .text_color(file_status_color(file.status))
-                        .child(changed_file_status_label(file.status)),
-                ),
+                .when(show_status, |element| {
+                    element.child(
+                        div()
+                            .flex_none()
+                            .truncate()
+                            .text_xs()
+                            .text_color(file_status_color(file.status))
+                            .child(changed_file_status_label(file.status)),
+                    )
+                }),
         )
         .child(
             div()
@@ -171,17 +180,21 @@ pub(crate) fn render_changed_file_row(
                         .child(format!("-{}", file.deletions)),
                 ),
         )
-        .child(review_button.on_click(cx.listener(move |view, _, _, cx| {
-            view.toggle_changed_file_reviewed(index, cx);
-        })))
+        .child(
+            review_button
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    view.toggle_changed_file_reviewed(index, cx);
+                }))
+                .when(!reviewed, |element| element.opacity(0.32)),
+        )
         .into_any_element()
 }
 
-fn folder_review_summary(reviewed_file_count: usize, file_count: usize) -> String {
-    if reviewed_file_count == 0 {
-        format!("{file_count}")
+fn folder_review_summary(file_count: usize) -> String {
+    if file_count == 1 {
+        "1 file".to_string()
     } else {
-        format!("{reviewed_file_count}/{file_count}")
+        format!("{file_count} files")
     }
 }
 
@@ -194,7 +207,7 @@ fn file_status_color(status: FileStatus) -> gpui::Rgba {
         FileStatus::Added => color::success(),
         FileStatus::Removed => color::danger(),
         FileStatus::Renamed | FileStatus::Copied => color::accent(),
-        FileStatus::Modified | FileStatus::Changed => color::warning(),
+        FileStatus::Modified | FileStatus::Changed => color::text_muted(),
         FileStatus::Unchanged => color::text_muted(),
     }
 }

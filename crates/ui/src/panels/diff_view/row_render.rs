@@ -4,13 +4,12 @@ use gpui::{AnyElement, Entity, IntoElement, MouseButton, StyledText, div, prelud
 use harbor_domain::{DiffFile, ReviewThreadState};
 
 use crate::{
-    diff::{DiffHunk, DiffLine, ParsedDiff},
+    diff::{DiffLine, ParsedDiff},
     diff_reviews::{anchored_review_threads, review_threads_for_line},
-    visual::{Tone, color, font},
+    visual::{color, font},
     workspace::{AppView, ReviewLineTarget},
 };
 
-use super::super::render_status_pill;
 use super::{
     DIFF_ROW_HEIGHT, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
     file_section::{render_diff_file_section_header, render_diff_unavailable_row},
@@ -44,33 +43,15 @@ pub(super) fn render_diff_list_item(
             let Some(file) = files.get(*file_index).cloned() else {
                 return div().into_any_element();
             };
-            let hunk_count = parsed_diff_for_file(diffs, *file_index).map(|diff| diff.hunks.len());
             let reviewed = file_is_reviewed(&file, reviewed_file_paths);
 
             render_diff_file_section_header(
                 *file_index,
                 file,
-                hunk_count,
                 *file_index == row_state.active_file,
                 reviewed,
                 false,
                 row_state.view_entity.clone(),
-            )
-            .into_any_element()
-        }
-        DiffListItem::Hunk {
-            file_index,
-            hunk_index,
-        } => {
-            let Some(hunk) = parsed_diff_for_file(diffs, *file_index)
-                .and_then(|diff| diff.hunks.get(*hunk_index))
-            else {
-                return div().into_any_element();
-            };
-            render_diff_hunk_row(
-                hunk,
-                *hunk_index,
-                *file_index == row_state.active_file && *hunk_index == row_state.active_hunk,
             )
             .into_any_element()
         }
@@ -279,47 +260,6 @@ fn review_comment_list_state<'a>(
         reaction_error: row_state.review_reaction_error,
         view_entity: row_state.view_entity.clone(),
     }
-}
-
-fn render_diff_hunk_row(hunk: &DiffHunk, index: usize, active: bool) -> impl IntoElement {
-    div()
-        .h(px(DIFF_ROW_HEIGHT))
-        .w_full()
-        .min_w_0()
-        .flex()
-        .items_center()
-        .gap_2()
-        .overflow_hidden()
-        .px_2()
-        .border_1()
-        .border_color(if active {
-            color::border_strong()
-        } else {
-            color::border_subtle()
-        })
-        .bg(if active {
-            color::row_selected_subtle()
-        } else {
-            color::border_subtle()
-        })
-        .text_color(color::text_secondary())
-        .whitespace_nowrap()
-        .child(render_status_pill(
-            format!("hunk {}", index + 1),
-            Tone::Info,
-        ))
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .truncate()
-                .text_color(if active {
-                    color::accent()
-                } else {
-                    color::text_muted()
-                })
-                .child(hunk.header.clone()),
-        )
 }
 
 struct DiffLineRenderInput<'a> {

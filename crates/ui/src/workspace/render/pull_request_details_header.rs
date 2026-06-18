@@ -1,6 +1,6 @@
-use gpui::{Context, IntoElement, div, prelude::*};
+use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, Sizable,
+    Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::PullRequest;
@@ -8,7 +8,7 @@ use harbor_domain::PullRequest;
 use crate::{
     actions::PullRequestAction,
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
-    visual::color,
+    visual::{Tone, color},
     workspace::AppView,
 };
 
@@ -36,13 +36,16 @@ impl AppView {
         let pull_request_number = pr.number;
 
         div()
-            .p_3()
+            .px_3()
+            .py_4()
             .border_1()
             .border_color(color::border())
+            .bg(color::panel_background())
             .child(
                 div()
                     .id(("pull-request-title-link", pr.number))
-                    .text_sm()
+                    .text_size(px(15.0))
+                    .font_medium()
                     .text_color(color::accent())
                     .cursor_pointer()
                     .hover(|element| element.text_color(color::accent_hover()))
@@ -55,7 +58,7 @@ impl AppView {
             )
             .child(
                 div()
-                    .pt_1()
+                    .pt_2()
                     .text_xs()
                     .text_color(color::text_muted())
                     .child(format!("{} / {}", pr.repo.full_name(), pr.head_sha)),
@@ -83,55 +86,66 @@ impl AppView {
             )
             .child(
                 div()
-                    .pt_2()
+                    .pt_3()
                     .flex()
+                    .flex_wrap()
+                    .items_center()
                     .gap_2()
                     .child(render_review_decision(pr.review_decision))
                     .child(render_merge_state(pr.merge_state))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(color::warning())
-                            .child(format!("{} unresolved", pr.unresolved_threads)),
-                    ),
+                    .child(crate::panels::render_status_pill(
+                        format!("{} unresolved", pr.unresolved_threads),
+                        if pr.unresolved_threads == 0 {
+                            Tone::Neutral
+                        } else {
+                            Tone::Warning
+                        },
+                    )),
             )
             .child(
                 div()
-                    .pt_3()
+                    .pt_4()
                     .flex()
                     .items_center()
-                    .gap_2()
+                    .justify_between()
+                    .gap_3()
                     .child(
-                        Button::new("approve-pr")
-                            .label("approve")
-                            .small()
-                            .primary()
-                            .tooltip(approve_tooltip.clone())
-                            .loading(pull_request_action_running)
-                            .disabled(review_action_disabled)
-                            .on_click(cx.listener(|view, _, window, cx| {
-                                view.run_pull_request_action(
-                                    PullRequestAction::Approve,
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
-                    .child(
-                        Button::new("request-pr-changes")
-                            .label("changes")
-                            .small()
-                            .outline()
-                            .tooltip(changes_tooltip.clone())
-                            .loading(pull_request_action_running)
-                            .disabled(review_action_disabled)
-                            .on_click(cx.listener(|view, _, window, cx| {
-                                view.run_pull_request_action(
-                                    PullRequestAction::RequestChanges,
-                                    window,
-                                    cx,
-                                );
-                            })),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Button::new("approve-pr")
+                                    .label("approve")
+                                    .small()
+                                    .primary()
+                                    .tooltip(approve_tooltip.clone())
+                                    .loading(pull_request_action_running)
+                                    .disabled(review_action_disabled)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.run_pull_request_action(
+                                            PullRequestAction::Approve,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new("request-pr-changes")
+                                    .label("changes")
+                                    .small()
+                                    .outline()
+                                    .tooltip(changes_tooltip.clone())
+                                    .loading(pull_request_action_running)
+                                    .disabled(review_action_disabled)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.run_pull_request_action(
+                                            PullRequestAction::RequestChanges,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            ),
                     )
                     .child({
                         let button = Button::new("merge-pr")
@@ -147,6 +161,7 @@ impl AppView {
                         button
                             .loading(pull_request_action_running)
                             .disabled(merge_action_disabled)
+                            .when(merge_action_disabled, |element| element.opacity(0.58))
                             .on_click(cx.listener(|view, _, window, cx| {
                                 view.run_pull_request_action(PullRequestAction::Merge, window, cx);
                             }))

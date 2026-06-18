@@ -44,10 +44,6 @@ fn keeps_three_digit_line_numbers_on_one_visual_line() {
 fn calculates_minimal_diff_list_splice_for_inline_composer() {
     let previous_items = vec![
         DiffListItem::FileHeader { file_index: 0 },
-        DiffListItem::Hunk {
-            file_index: 0,
-            hunk_index: 0,
-        },
         DiffListItem::Line {
             file_index: 0,
             hunk_index: 0,
@@ -62,7 +58,7 @@ fn calculates_minimal_diff_list_splice_for_inline_composer() {
     ];
     let mut next_items = previous_items.clone();
     next_items.insert(
-        3,
+        2,
         DiffListItem::ReviewComposer {
             file_index: 0,
             hunk_index: 0,
@@ -72,7 +68,7 @@ fn calculates_minimal_diff_list_splice_for_inline_composer() {
 
     assert_eq!(
         diff_list_splice(&previous_items, &next_items),
-        Some((3..3, 1))
+        Some((2..2, 1))
     );
 }
 
@@ -80,10 +76,6 @@ fn calculates_minimal_diff_list_splice_for_inline_composer() {
 fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() {
     let mut previous_items = vec![
         DiffListItem::FileHeader { file_index: 0 },
-        DiffListItem::Hunk {
-            file_index: 0,
-            hunk_index: 0,
-        },
         DiffListItem::Line {
             file_index: 0,
             hunk_index: 0,
@@ -98,7 +90,7 @@ fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() 
     ];
     let mut next_items = previous_items.clone();
     next_items.insert(
-        3,
+        2,
         DiffListItem::ReviewComposer {
             file_index: 0,
             hunk_index: 0,
@@ -107,7 +99,7 @@ fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() 
     );
     let list_state = ListState::new(previous_items.len(), ListAlignment::Top, px(0.0));
     list_state.scroll_to(ListOffset {
-        item_ix: 4,
+        item_ix: 3,
         offset_in_item: px(0.0),
     });
 
@@ -115,7 +107,7 @@ fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() 
 
     assert_eq!(list_state.item_count(), next_items.len());
     assert_eq!(previous_items, next_items);
-    assert_eq!(list_state.logical_scroll_top().item_ix, 5);
+    assert_eq!(list_state.logical_scroll_top().item_ix, 4);
     assert_eq!(list_state.logical_scroll_top().offset_in_item, px(0.0));
 }
 
@@ -143,10 +135,6 @@ fn builds_diff_items_across_visible_files() {
         )),
         vec![
             DiffListItem::FileHeader { file_index: 0 },
-            DiffListItem::Hunk {
-                file_index: 0,
-                hunk_index: 0,
-            },
             DiffListItem::Line {
                 file_index: 0,
                 hunk_index: 0,
@@ -160,10 +148,6 @@ fn builds_diff_items_across_visible_files() {
             DiffListItem::FileHeader { file_index: 1 },
             DiffListItem::DiffUnavailable { file_index: 1 },
             DiffListItem::FileHeader { file_index: 2 },
-            DiffListItem::Hunk {
-                file_index: 2,
-                hunk_index: 0,
-            },
             DiffListItem::Line {
                 file_index: 2,
                 hunk_index: 0,
@@ -186,7 +170,7 @@ fn calculates_large_diff_items_with_linear_cost() {
         .collect::<Vec<_>>();
     let visible_file_indices = (0..file_count).collect::<Vec<_>>();
     let reviewed_file_paths = HashSet::new();
-    let items_per_file = 1 + hunk_count * (lines_per_hunk + 1);
+    let items_per_file = 1 + hunk_count * lines_per_hunk;
 
     let started_at = Instant::now();
     let items = continuous_diff_items(test_layout_input(
@@ -209,12 +193,12 @@ fn calculates_large_diff_items_with_linear_cost() {
     );
     assert_eq!(
         diff_hunk_item_index(&items, file_count - 1, hunk_count - 1),
-        Some((file_count - 1) * items_per_file + 1 + (hunk_count - 1) * (lines_per_hunk + 1))
+        Some((file_count - 1) * items_per_file + 1 + (hunk_count - 1) * lines_per_hunk)
     );
 }
 
 #[test]
-fn finds_file_and_hunk_items_across_missing_patches() {
+fn finds_file_and_diff_section_items_across_missing_patches() {
     let files = vec![
         test_file("src/a.rs"),
         test_file("src/generated.bin"),
@@ -234,8 +218,8 @@ fn finds_file_and_hunk_items_across_missing_patches() {
         &reviewed_file_paths,
     ));
 
-    assert_eq!(diff_file_item_index(&items, 2), Some(6));
-    assert_eq!(diff_hunk_item_index(&items, 2, 0), Some(7));
+    assert_eq!(diff_file_item_index(&items, 2), Some(5));
+    assert_eq!(diff_hunk_item_index(&items, 2, 0), Some(6));
     assert_eq!(diff_hunk_item_index(&items, 1, 0), None);
 }
 
@@ -262,7 +246,7 @@ fn collapses_reviewed_file_sections_in_diff_items() {
             &reviewed_file_paths
         ))
         .len(),
-        6
+        5
     );
     assert_eq!(
         continuous_diff_file_item_index(
@@ -308,10 +292,6 @@ fn skips_hidden_files_when_building_diff_items() {
         )),
         vec![
             DiffListItem::FileHeader { file_index: 1 },
-            DiffListItem::Hunk {
-                file_index: 1,
-                hunk_index: 0,
-            },
             DiffListItem::Line {
                 file_index: 1,
                 hunk_index: 0,
@@ -340,20 +320,18 @@ fn finds_diff_section_for_item_across_file_boundaries() {
     let items = continuous_diff_items(layout_input);
 
     assert_eq!(
-        continuous_diff_section_for_item(layout_input, &items, 5,),
+        continuous_diff_section_for_item(layout_input, &items, 4,),
         Some(DiffFileSection {
             file_index: 1,
-            header_item_index: 4,
-            hunk_count: None,
+            header_item_index: 3,
             reviewed: false,
         })
     );
     assert_eq!(
-        continuous_diff_section_for_item(layout_input, &items, 7,),
+        continuous_diff_section_for_item(layout_input, &items, 6,),
         Some(DiffFileSection {
             file_index: 2,
-            header_item_index: 6,
-            hunk_count: Some(1),
+            header_item_index: 5,
             reviewed: false,
         })
     );
@@ -387,7 +365,7 @@ fn places_inline_review_items_before_later_hunks() {
             0,
             1,
         ),
-        Some(4)
+        Some(3)
     );
 }
 
@@ -418,10 +396,6 @@ fn places_inline_review_thread_items_after_matching_line() {
         }),
         vec![
             DiffListItem::FileHeader { file_index: 0 },
-            DiffListItem::Hunk {
-                file_index: 0,
-                hunk_index: 0,
-            },
             DiffListItem::Line {
                 file_index: 0,
                 hunk_index: 0,

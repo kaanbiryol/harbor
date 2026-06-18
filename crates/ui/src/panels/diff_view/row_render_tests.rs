@@ -3,7 +3,7 @@ use gpui::{
 };
 use gpui_component::{Root, Theme, ThemeMode};
 
-use crate::diff::DiffLineKind;
+use crate::diff::{DiffHunk, DiffLineKind};
 use crate::workspace::AppView;
 
 use super::*;

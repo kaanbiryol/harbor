@@ -6,7 +6,7 @@ use gpui_component::{
 use harbor_domain::{DiffFile, FileStatus};
 
 use crate::{
-    visual::{Tone, color, font},
+    visual::{Tone, color, font, tone_text},
     workspace::AppView,
 };
 
@@ -16,13 +16,11 @@ use super::{DIFF_FILE_HEADER_HEIGHT, DIFF_ROW_HEIGHT};
 pub(super) fn render_diff_file_section_header(
     file_index: usize,
     file: DiffFile,
-    hunk_count: Option<usize>,
     active: bool,
     reviewed: bool,
     sticky: bool,
     view_entity: Entity<AppView>,
 ) -> AnyElement {
-    let hunk_label = hunk_count.map_or_else(|| "no parsed hunks".to_string(), hunk_count_label);
     let header_id = if sticky {
         format!("sticky-diff-file-header-{file_index}")
     } else {
@@ -69,27 +67,25 @@ pub(super) fn render_diff_file_section_header(
         .flex()
         .items_center()
         .justify_between()
-        .gap_4()
+        .gap_3()
         .px_3()
-        .border_1()
+        .border_b_1()
         .border_color(if active || sticky {
-            color::border_strong()
-        } else {
             color::border()
+        } else {
+            color::border_subtle()
         })
-        .bg(if active {
-            color::row_selected_subtle()
-        } else if reviewed {
+        .bg(if active || reviewed {
             color::content_background()
         } else {
-            color::panel_background()
+            color::elevated_background()
         })
         .font_family(font::UI)
         .text_color(color::text_primary())
         .whitespace_nowrap()
         .cursor_pointer()
         .when(sticky, |element| element.shadow_lg())
-        .hover(|element| element.bg(color::row_hover()))
+        .hover(|element| element.bg(color::elevated_background()))
         .on_click(move |_, _, cx| {
             select_view_entity.update(cx, |view, cx| {
                 view.select_file(file_index, cx);
@@ -101,13 +97,13 @@ pub(super) fn render_diff_file_section_header(
                 .flex_1()
                 .flex()
                 .items_center()
-                .gap_3()
+                .gap_2()
                 .child(review_button)
                 .child(
                     div()
                         .min_w_0()
                         .truncate()
-                        .text_size(px(15.0))
+                        .text_sm()
                         .font_medium()
                         .text_color(if reviewed {
                             color::text_muted()
@@ -122,11 +118,14 @@ pub(super) fn render_diff_file_section_header(
                 .flex_none()
                 .flex()
                 .items_center()
-                .gap_3()
+                .gap_2()
                 .text_xs()
                 .font_medium()
                 .text_color(color::text_secondary())
-                .child(render_file_status_pill(file.status))
+                .when(
+                    !matches!(file.status, FileStatus::Modified | FileStatus::Changed),
+                    |element| element.child(render_file_status(file.status)),
+                )
                 .child(render_status_pill(
                     format!("+{}", file.additions),
                     Tone::Success,
@@ -135,7 +134,6 @@ pub(super) fn render_diff_file_section_header(
                     format!("-{}", file.deletions),
                     Tone::Danger,
                 ))
-                .child(render_status_pill(hunk_label, Tone::Neutral))
                 .when(reviewed, |element| {
                     element.child(render_status_pill("reviewed", Tone::Success))
                 }),
@@ -143,7 +141,7 @@ pub(super) fn render_diff_file_section_header(
         .into_any_element()
 }
 
-fn render_file_status_pill(status: FileStatus) -> impl IntoElement {
+fn render_file_status(status: FileStatus) -> impl IntoElement {
     let (label, tone) = match status {
         FileStatus::Added => ("added", Tone::Success),
         FileStatus::Modified => ("modified", Tone::Info),
@@ -154,15 +152,12 @@ fn render_file_status_pill(status: FileStatus) -> impl IntoElement {
         FileStatus::Unchanged => ("unchanged", Tone::Neutral),
     };
 
-    render_status_pill(label, tone)
-}
-
-fn hunk_count_label(count: usize) -> String {
-    if count == 1 {
-        "1 hunk".to_string()
-    } else {
-        format!("{count} hunks")
-    }
+    div()
+        .flex_none()
+        .text_xs()
+        .font_medium()
+        .text_color(tone_text(tone))
+        .child(label)
 }
 
 pub(super) fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {

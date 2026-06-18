@@ -59,7 +59,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let Some((file_index, hunk_index)) = self.next_visible_diff_hunk(cx) else {
-            self.status = "No parsed diff hunks for visible files".to_string();
+            self.status = "No diff sections for visible files".to_string();
             cx.notify();
             return;
         };
@@ -75,7 +75,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let Some((file_index, hunk_index)) = self.previous_visible_diff_hunk(cx) else {
-            self.status = "No parsed diff hunks for visible files".to_string();
+            self.status = "No diff sections for visible files".to_string();
             cx.notify();
             return;
         };
@@ -215,7 +215,7 @@ impl AppView {
             .get(file_index)
             .map(|file| file.path.as_str())
             .unwrap_or("selected file");
-        self.status = format!("Selected hunk {} in {path}", hunk_index + 1);
+        self.status = format!("Selected diff section {} in {path}", hunk_index + 1);
     }
 
     pub(super) fn copy_active_file_path(

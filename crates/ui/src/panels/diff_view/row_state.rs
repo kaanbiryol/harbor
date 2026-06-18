@@ -33,7 +33,6 @@ pub(super) struct DiffRowRenderState<'a> {
     pub(super) review_reaction_action: Option<&'a ReviewReactionAction>,
     pub(super) review_reaction_error: Option<&'a ReviewCommentUiError>,
     pub(super) active_file: usize,
-    pub(super) active_hunk: usize,
     pub(super) view_entity: Entity<AppView>,
 }
 
@@ -108,7 +107,6 @@ impl<'a> DiffRowRenderState<'a> {
             review_reaction_action: view.review_state.review_reaction_action(),
             review_reaction_error: view.review_state.review_reaction_error(),
             active_file: view.active_file_index(),
-            active_hunk: view.active_hunk_index(),
             view_entity,
         }
     }

@@ -48,6 +48,10 @@ pub(crate) mod color {
         rgb(0x1d2733)
     }
 
+    pub(crate) fn row_selected_active() -> Rgba {
+        rgb(0x202b38)
+    }
+
     pub(crate) fn row_selected_subtle() -> Rgba {
         rgb(0x19222c)
     }

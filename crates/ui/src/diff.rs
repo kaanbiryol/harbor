@@ -14,6 +14,7 @@ const MAX_SYNTAX_LINE_BYTES: usize = 10_000;
 const SYNTAX_PARSE_TIMEOUT: Duration = Duration::from_millis(50);
 
 pub type ParsedDiff = harbor_domain::diff::ParsedDiff<HighlightStyle>;
+#[cfg(test)]
 pub type DiffHunk = harbor_domain::diff::DiffHunk<HighlightStyle>;
 pub type DiffLine = harbor_domain::diff::DiffLine<HighlightStyle>;
 

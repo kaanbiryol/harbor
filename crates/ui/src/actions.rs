@@ -44,9 +44,9 @@ actions!(
         SelectNextFile,
         /// Selects the previous changed file.
         SelectPreviousFile,
-        /// Selects the next diff hunk.
+        /// Selects the next diff section.
         SelectNextHunk,
-        /// Selects the previous diff hunk.
+        /// Selects the previous diff section.
         SelectPreviousHunk,
         /// Copies the active changed file path.
         CopyActiveFilePath,

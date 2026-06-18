@@ -248,7 +248,6 @@ pub(crate) fn render_diff_panel(
                                         .child(render_diff_file_section_header(
                                             section.file_index,
                                             file,
-                                            section.hunk_count,
                                             section.file_index == input.active_file_index,
                                             section.reviewed,
                                             true,

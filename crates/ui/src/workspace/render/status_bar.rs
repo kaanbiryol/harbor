@@ -24,7 +24,17 @@ impl AppView {
         } else {
             "Show pull request inbox"
         };
-        let status_label = self.status.clone();
+        let status_label = self
+            .selected_pull_request()
+            .map(|pr| {
+                format!(
+                    "{} files changed · {} reviewed · {} unresolved",
+                    self.detail_state.files().len(),
+                    self.reviewed_file_count(),
+                    pr.unresolved_threads
+                )
+            })
+            .unwrap_or_else(|| self.status.clone());
         let (rate_limit_label, rate_limit_color) = if SHOW_STATUS_BAR_RATE_LIMITS {
             let rate_limits = self.github_api.latest_rate_limits();
             let rate_limit = self.github_api.latest_rate_limit();

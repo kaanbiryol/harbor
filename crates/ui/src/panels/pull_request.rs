@@ -7,7 +7,7 @@ use crate::{
         PullRequestRowRailTone, PullRequestRowSignal, PullRequestRowSignalKind,
         PullRequestRowSignalTone, pull_request_row_rail_tone, visible_pull_request_row_signals,
     },
-    visual::{Tone, color, tone_colors, tone_text},
+    visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
 
@@ -26,7 +26,7 @@ pub(crate) fn render_review_decision(decision: Option<ReviewDecision>) -> impl I
         None => Tone::Info,
     };
 
-    div().text_xs().text_color(tone_text(tone)).child(label)
+    super::render_status_pill(label, tone)
 }
 
 pub(crate) fn render_merge_state(state: Option<MergeState>) -> impl IntoElement {
@@ -45,7 +45,7 @@ pub(crate) fn render_merge_state(state: Option<MergeState>) -> impl IntoElement 
         Some(MergeState::Unknown) | None => Tone::Neutral,
     };
 
-    div().text_xs().text_color(tone_text(tone)).child(label)
+    super::render_status_pill(label, tone)
 }
 
 fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
@@ -139,7 +139,11 @@ pub(crate) fn render_pull_request_row(
     let signals = visible_pull_request_row_signals(pr);
     let primary_signal = signals.first().cloned();
     let secondary_signals = signals.iter().skip(1).cloned().collect::<Vec<_>>();
-    let rail_color = row_rail_color(pull_request_row_rail_tone(pr));
+    let rail_color = if selected {
+        color::accent()
+    } else {
+        row_rail_color(pull_request_row_rail_tone(pr))
+    };
 
     div()
         .id(("pr-row", index))
@@ -151,12 +155,18 @@ pub(crate) fn render_pull_request_row(
         .border_1()
         .border_color(color::border_subtle())
         .when(pr.is_draft, |element| element.opacity(0.72))
-        .when(selected, |element| element.bg(color::row_selected()))
+        .when(selected, |element| element.bg(color::row_selected_active()))
         .hover(|style| style.bg(color::row_hover()))
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_pull_request(index, cx);
         }))
-        .child(div().h_full().w(px(3.)).flex_none().bg(rail_color))
+        .child(
+            div()
+                .h_full()
+                .w(px(if selected { 3.0 } else { 2.0 }))
+                .flex_none()
+                .bg(rail_color),
+        )
         .child(
             div()
                 .flex_1()

@@ -89,12 +89,12 @@ async fn cached_detail_restore_rebuilds_diff_list_items(cx: &mut TestAppContext)
             !view
                 .diff_list_items
                 .iter()
-                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 0, .. }))
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 0, .. }))
         );
         assert!(
             view.diff_list_items
                 .iter()
-                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 1, .. }))
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 1, .. }))
         );
     });
     cx.run_until_parked();
@@ -180,12 +180,12 @@ async fn cached_inbox_restore_rebuilds_diff_list_items(cx: &mut TestAppContext) 
             !view
                 .diff_list_items
                 .iter()
-                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 0, .. }))
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 0, .. }))
         );
         assert!(
             view.diff_list_items
                 .iter()
-                .any(|item| matches!(item, DiffListItem::Hunk { file_index: 1, .. }))
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 1, .. }))
         );
     });
     cx.run_until_parked();
@@ -261,8 +261,7 @@ fn file_headers(items: &[DiffListItem]) -> Vec<usize> {
         .iter()
         .filter_map(|item| match item {
             DiffListItem::FileHeader { file_index } => Some(*file_index),
-            DiffListItem::Hunk { .. }
-            | DiffListItem::Line { .. }
+            DiffListItem::Line { .. }
             | DiffListItem::ReviewComposer { .. }
             | DiffListItem::ReviewThread { .. }
             | DiffListItem::DiffUnavailable { .. } => None,
