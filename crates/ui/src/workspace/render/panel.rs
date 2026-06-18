@@ -113,22 +113,43 @@ impl AppView {
                             )
                             .into_any_element()
                         }
-                        PanelTab::Review => render_review_panel(
-                            ReviewPanelRenderInput {
-                                reviews: &self.review_state.pull_request_reviews,
-                                comments: &self.review_state.pull_request_comments,
-                                threads: &self.review_state.review_threads,
-                                active_review_thread_reply: self
-                                    .review_state
-                                    .review_composer_state
-                                    .active_thread_reply(),
-                                is_loading: self.review_state.reviews_loading(),
-                                error: self.review_state.reviews_error(),
-                                scroll_handle: self.review_list_scroll.clone(),
-                            },
-                            cx,
-                        )
-                        .into_any_element(),
+                        PanelTab::Review => {
+                            let review_thread_reply_input = self
+                                .review_state
+                                .review_composer_state
+                                .thread_reply_input
+                                .clone();
+                            let reply_body_empty =
+                                review_thread_reply_input.read(cx).value().trim().is_empty();
+
+                            render_review_panel(
+                                ReviewPanelRenderInput {
+                                    reviews: &self.review_state.pull_request_reviews,
+                                    comments: &self.review_state.pull_request_comments,
+                                    threads: &self.review_state.review_threads,
+                                    files: self.detail_state.files(),
+                                    diffs: self.detail_state.diffs(),
+                                    active_review_thread_reply: self
+                                        .review_state
+                                        .review_composer_state
+                                        .active_thread_reply(),
+                                    review_thread_reply_input,
+                                    reply_body_empty,
+                                    is_submitting_reply: self
+                                        .review_state
+                                        .is_submitting_review_thread_reply(),
+                                    reply_error: self.review_state.review_thread_reply_error(),
+                                    action_thread_id: self
+                                        .review_state
+                                        .review_thread_action_thread_id(),
+                                    action_error: self.review_state.review_thread_action_error(),
+                                    is_loading: self.review_state.reviews_loading(),
+                                    error: self.review_state.reviews_error(),
+                                },
+                                cx,
+                            )
+                            .into_any_element()
+                        }
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             self.detail_state.check_runs(),

@@ -1,10 +1,8 @@
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use gpui::{
-    AnyElement, Context, IntoElement, UniformListScrollHandle, div, prelude::*, px, uniform_list,
-};
-use gpui_component::StyledExt;
+use gpui::{AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
+use gpui_component::{Sizable, StyledExt, avatar::Avatar, input::InputState};
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
     ReviewSide, ReviewThread, ReviewThreadState,
@@ -16,22 +14,28 @@ use crate::{
     workspace::AppView,
 };
 
-use super::review_thread_rows::{
-    ReviewThreadRowRenderState, render_review_thread_row, review_timeline_row_height,
-};
+use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
     render_empty_panel_card, render_error_panel_card, render_metric_pill, render_panel_header,
     render_status_pill,
 };
+use crate::workspace::ReviewThreadUiError;
 
 pub(crate) struct ReviewPanelRenderInput<'a> {
     pub(crate) reviews: &'a [PullRequestReview],
     pub(crate) comments: &'a [PullRequestComment],
     pub(crate) threads: &'a [ReviewThread],
+    pub(crate) files: &'a [DiffFile],
+    pub(crate) diffs: &'a [Option<ParsedDiff>],
     pub(crate) active_review_thread_reply: Option<&'a str>,
+    pub(crate) review_thread_reply_input: Entity<InputState>,
+    pub(crate) reply_body_empty: bool,
+    pub(crate) is_submitting_reply: bool,
+    pub(crate) reply_error: Option<&'a ReviewThreadUiError>,
+    pub(crate) action_thread_id: Option<&'a str>,
+    pub(crate) action_error: Option<&'a ReviewThreadUiError>,
     pub(crate) is_loading: bool,
     pub(crate) error: Option<&'a str>,
-    pub(crate) scroll_handle: UniformListScrollHandle,
 }
 
 pub(crate) fn render_review_panel(
@@ -42,27 +46,25 @@ pub(crate) fn render_review_panel(
         reviews,
         comments,
         threads,
+        files,
+        diffs,
         active_review_thread_reply,
+        review_thread_reply_input,
+        reply_body_empty,
+        is_submitting_reply,
+        reply_error,
+        action_thread_id,
+        action_error,
         is_loading,
         error,
-        scroll_handle,
     } = input;
     let (unresolved, resolved, outdated) = review_thread_counts(threads);
     let view_entity = cx.entity().clone();
     let timeline_items = review_timeline_items(reviews, threads, comments);
     let has_timeline_items = !timeline_items.is_empty();
-    let active_review_item_index = active_review_thread_reply.and_then(|thread_id| {
-        timeline_items.iter().position(|item| {
-            matches!(
-                &item.kind,
-                ReviewTimelineItemKind::Thread { thread_id: item_thread_id }
-                    if item_thread_id == thread_id
-            )
-        })
-    });
-    let timeline_items_for_render = timeline_items.clone();
 
     div()
+        .image_cache(gpui::retain_all("review-timeline-avatar-cache"))
         .id("review-panel")
         .flex()
         .flex_col()
@@ -99,136 +101,56 @@ pub(crate) fn render_review_panel(
         )
         .when(has_timeline_items, |element| {
             element.child(
-                div().flex().flex_col().flex_1().min_h_0().min_w_0().child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_h_0()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .child(
-                            uniform_list(
-                                "review-timeline-list",
-                                timeline_items_for_render.len(),
-                                cx.processor(
-                                    move |view, range: std::ops::Range<usize>, _window, _cx| {
-                                        let mut rows = Vec::with_capacity(range.len());
-                                        let active_review_thread_reply = view
-                                            .review_state
-                                            .review_composer_state
-                                            .active_thread_reply();
-                                        let use_expanded_rows = active_review_thread_reply
-                                            .is_some_and(|thread_id| {
-                                                view.review_state
-                                                    .review_threads
-                                                    .iter()
-                                                    .any(|thread| thread.id == thread_id)
-                                            });
+                div()
+                    .id("review-timeline-scroll")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .gap_2()
+                    .children(
+                        timeline_items
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, item)| match &item.kind {
+                                ReviewTimelineItemKind::Thread { thread_id } => {
+                                    let thread =
+                                        threads.iter().find(|thread| thread.id == *thread_id)?;
+                                    let diff_preview =
+                                        review_thread_diff_preview(thread, files, diffs);
 
-                                        for index in range {
-                                            let Some(item) = timeline_items_for_render.get(index)
-                                            else {
-                                                continue;
-                                            };
+                                    Some(render_review_thread_row(ReviewThreadRowRenderState {
+                                        index,
+                                        thread,
+                                        active_review_thread_reply,
+                                        review_thread_reply_input: review_thread_reply_input
+                                            .clone(),
+                                        reply_body_empty,
+                                        is_submitting_reply,
+                                        reply_error,
+                                        action_thread_id,
+                                        action_error,
+                                        diff_preview,
+                                        view_entity: view_entity.clone(),
+                                    }))
+                                }
+                                ReviewTimelineItemKind::Review { review_id } => {
+                                    let review =
+                                        reviews.iter().find(|review| review.id == *review_id)?;
 
-                                            match &item.kind {
-                                                ReviewTimelineItemKind::Thread { thread_id } => {
-                                                    let Some(thread) = view
-                                                        .review_state
-                                                        .review_threads
-                                                        .iter()
-                                                        .find(|thread| thread.id == *thread_id)
-                                                    else {
-                                                        continue;
-                                                    };
-                                                    let diff_preview = review_thread_diff_preview(
-                                                        thread,
-                                                        view.detail_state.files(),
-                                                        view.detail_state.diffs(),
-                                                    );
-                                                    rows.push(render_review_thread_row(
-                                                        ReviewThreadRowRenderState {
-                                                            index,
-                                                            thread,
-                                                            active_review_thread_reply,
-                                                            review_thread_reply_input: view
-                                                                .review_state
-                                                                .review_composer_state
-                                                                .thread_reply_input
-                                                                .clone(),
-                                                            reply_body_empty: view
-                                                                .review_state
-                                                                .review_composer_state
-                                                                .thread_reply_input
-                                                                .read(_cx)
-                                                                .value()
-                                                                .trim()
-                                                                .is_empty(),
-                                                            is_submitting_reply: view
-                                                                .review_state
-                                                                .is_submitting_review_thread_reply(
-                                                                ),
-                                                            reply_error: view
-                                                                .review_state
-                                                                .review_thread_reply_error(),
-                                                            action_thread_id: view
-                                                                .review_state
-                                                                .review_thread_action_thread_id(),
-                                                            action_error: view
-                                                                .review_state
-                                                                .review_thread_action_error(),
-                                                            use_expanded_rows,
-                                                            diff_preview,
-                                                            view_entity: view_entity.clone(),
-                                                        },
-                                                    ));
-                                                }
-                                                ReviewTimelineItemKind::Review { review_id } => {
-                                                    let Some(review) = view
-                                                        .review_state
-                                                        .pull_request_reviews
-                                                        .iter()
-                                                        .find(|review| review.id == *review_id)
-                                                    else {
-                                                        continue;
-                                                    };
-                                                    rows.push(render_pull_request_review_row(
-                                                        review,
-                                                        index,
-                                                        use_expanded_rows,
-                                                    ));
-                                                }
-                                                ReviewTimelineItemKind::Comment { comment_id } => {
-                                                    let Some(comment) = view
-                                                        .review_state
-                                                        .pull_request_comments
-                                                        .iter()
-                                                        .find(|comment| comment.id == *comment_id)
-                                                    else {
-                                                        continue;
-                                                    };
-                                                    rows.push(render_pull_request_comment_row(
-                                                        comment,
-                                                        index,
-                                                        use_expanded_rows,
-                                                    ));
-                                                }
-                                            }
-                                        }
+                                    Some(render_pull_request_review_row(review, index))
+                                }
+                                ReviewTimelineItemKind::Comment { comment_id } => {
+                                    let comment = comments
+                                        .iter()
+                                        .find(|comment| comment.id == *comment_id)?;
 
-                                        rows
-                                    },
-                                ),
-                            )
-                            .with_width_from_item(active_review_item_index)
-                            .track_scroll(&scroll_handle)
-                            .flex_1()
-                            .min_h_0()
-                            .w_full()
-                            .min_w_0(),
-                        ),
-                ),
+                                    Some(render_pull_request_comment_row(comment, index))
+                                }
+                            }),
+                    ),
             )
         })
 }
@@ -319,126 +241,133 @@ fn compare_review_timeline_items(
     .then_with(|| left.sequence.cmp(&right.sequence))
 }
 
-fn render_pull_request_comment_row(
-    comment: &PullRequestComment,
-    index: usize,
-    use_expanded_rows: bool,
-) -> AnyElement {
-    let row_height = review_timeline_row_height(use_expanded_rows);
-
+fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -> AnyElement {
     div()
         .id(("pull-request-comment-row", index))
-        .h(px(row_height))
         .w_full()
         .min_w_0()
         .flex()
-        .flex_col()
+        .items_start()
         .gap_2()
-        .px_3()
-        .py_2()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::app_background())
-        .overflow_hidden()
+        .py_1()
+        .child(render_review_avatar(
+            &comment.author,
+            comment.author_avatar_url.as_deref(),
+            24.0,
+        ))
         .child(
             div()
+                .min_w_0()
+                .flex_1()
                 .flex()
-                .items_center()
-                .justify_between()
-                .gap_3()
+                .flex_col()
+                .border_1()
+                .border_color(color::border())
+                .bg(color::app_background())
                 .child(
                     div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .text_color(color::text_primary())
-                        .child(format!("{} commented", comment.author)),
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .px_3()
+                        .py_2()
+                        .border_b_1()
+                        .border_color(color::border_subtle())
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .flex()
+                                .items_baseline()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .font_medium()
+                                        .text_color(color::text_primary())
+                                        .child(comment.author.clone()),
+                                )
+                                .child(div().text_xs().text_color(color::text_muted()).child(
+                                    format!("commented {}", comment_time_label(comment.created_at)),
+                                )),
+                        )
+                        .child(render_status_pill("commented", Tone::Info)),
                 )
-                .child(render_status_pill("commented", Tone::Info)),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(comment_time_label(comment.created_at)),
-        )
-        .child(
-            div()
-                .min_h_0()
-                .overflow_hidden()
-                .border_1()
-                .border_color(color::border_subtle())
-                .bg(color::content_background())
-                .px_2()
-                .py_2()
-                .text_xs()
-                .text_color(color::text_secondary())
-                .whitespace_normal()
-                .child(comment_body_text(&comment.body)),
+                .child(
+                    div()
+                        .px_3()
+                        .py_3()
+                        .text_sm()
+                        .text_color(color::text_secondary())
+                        .child(render_comment_body(&comment.body)),
+                ),
         )
         .into_any_element()
 }
 
-fn render_pull_request_review_row(
-    review: &PullRequestReview,
-    index: usize,
-    use_expanded_rows: bool,
-) -> AnyElement {
+fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> AnyElement {
     let (state_label, state_tone) = pull_request_review_state_tone(review.state);
-    let row_height = review_timeline_row_height(use_expanded_rows);
     let body = review
         .body
         .as_deref()
-        .and_then(review_body_summary)
+        .map(comment_body_text)
         .unwrap_or_else(|| format!("{} review", state_label));
 
     div()
         .id(("review-summary-row", index))
-        .h(px(row_height))
         .w_full()
         .min_w_0()
         .flex()
-        .flex_col()
+        .items_start()
         .gap_2()
-        .px_3()
-        .py_2()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::app_background())
-        .overflow_hidden()
+        .py_1()
+        .child(render_review_avatar(&review.author, None, 24.0))
         .child(
             div()
+                .min_w_0()
+                .flex_1()
                 .flex()
-                .items_center()
-                .justify_between()
-                .gap_3()
+                .flex_col()
+                .border_1()
+                .border_color(color::border())
+                .bg(color::app_background())
                 .child(
                     div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .text_color(color::text_primary())
-                        .child(format!("{} {}", review.author, state_label)),
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .px_3()
+                        .py_2()
+                        .border_b_1()
+                        .border_color(color::border_subtle())
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .flex()
+                                .items_baseline()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .font_medium()
+                                        .text_color(color::text_primary())
+                                        .child(review.author.clone()),
+                                )
+                                .child(div().text_xs().text_color(color::text_muted()).child(
+                                    format!("{} {}", state_label, review_time_label(review)),
+                                )),
+                        )
+                        .child(render_status_pill(state_label, state_tone)),
                 )
-                .child(render_status_pill(state_label, state_tone)),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(review_time_label(review)),
-        )
-        .child(
-            div()
-                .border_1()
-                .border_color(color::border_subtle())
-                .bg(color::content_background())
-                .px_2()
-                .py_2()
-                .text_xs()
-                .text_color(color::text_secondary())
-                .truncate()
-                .child(body),
+                .child(
+                    div()
+                        .px_3()
+                        .py_3()
+                        .text_sm()
+                        .text_color(color::text_secondary())
+                        .child(render_comment_body(&body)),
+                ),
         )
         .into_any_element()
 }
@@ -446,6 +375,11 @@ fn render_pull_request_review_row(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ReviewDiffPreview {
     path: String,
+    lines: Vec<ReviewDiffPreviewLine>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ReviewDiffPreviewLine {
     line: Option<u32>,
     marker: &'static str,
     text: String,
@@ -453,13 +387,7 @@ pub(super) struct ReviewDiffPreview {
 }
 
 pub(super) fn render_review_diff_preview(preview: ReviewDiffPreview) -> impl IntoElement {
-    let line_label = preview
-        .line
-        .map(|line| line.to_string())
-        .unwrap_or_else(|| "-".to_string());
-
     div()
-        .mt_2()
         .min_w_0()
         .overflow_hidden()
         .border_1()
@@ -475,32 +403,44 @@ pub(super) fn render_review_diff_preview(preview: ReviewDiffPreview) -> impl Int
                 .truncate()
                 .child(preview.path),
         )
+        .children(
+            preview
+                .lines
+                .into_iter()
+                .map(render_review_diff_preview_line),
+        )
+}
+
+fn render_review_diff_preview_line(line: ReviewDiffPreviewLine) -> impl IntoElement {
+    let line_label = line
+        .line
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "-".to_string());
+
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .px_2()
+        .py_1()
+        .text_xs()
+        .bg(tone_colors(line.tone).background)
+        .text_color(color::text_primary())
         .child(
             div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .px_2()
-                .py_1()
-                .text_xs()
-                .bg(tone_colors(preview.tone).background)
-                .text_color(color::text_primary())
-                .child(
-                    div()
-                        .w_8()
-                        .text_right()
-                        .font_family("monospace")
-                        .child(line_label),
-                )
-                .child(div().w_3().font_family("monospace").child(preview.marker))
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .font_family("monospace")
-                        .child(preview.text),
-                ),
+                .w_8()
+                .text_right()
+                .font_family("monospace")
+                .child(line_label),
+        )
+        .child(div().w_3().font_family("monospace").child(line.marker))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .font_family("monospace")
+                .child(line.text),
         )
 }
 
@@ -519,6 +459,93 @@ fn comment_body_text(body: &str) -> String {
         "empty comment".to_string()
     } else {
         body.to_string()
+    }
+}
+
+pub(super) fn render_comment_body(body: &str) -> impl IntoElement {
+    let lines = comment_body_lines(body);
+
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .children(lines.into_iter().map(|line| {
+            let line = if line.is_empty() {
+                " ".to_string()
+            } else {
+                line
+            };
+
+            div().min_w_0().whitespace_normal().child(line)
+        }))
+}
+
+fn comment_body_lines(body: &str) -> Vec<String> {
+    let body = body.trim();
+
+    if body.is_empty() {
+        return vec!["empty comment".to_string()];
+    }
+
+    body.lines()
+        .map(|line| line.trim_end().to_string())
+        .collect()
+}
+
+pub(super) fn render_review_avatar(
+    author: &str,
+    avatar_url: Option<&str>,
+    size: f32,
+) -> AnyElement {
+    if let Some(avatar_url) = avatar_url
+        .map(str::to_string)
+        .or_else(|| github_avatar_url_for_login(author))
+    {
+        return Avatar::new()
+            .src(avatar_url)
+            .name(author.to_string())
+            .with_size(px(size))
+            .into_any_element();
+    }
+
+    div()
+        .size(px(size))
+        .flex()
+        .items_center()
+        .justify_center()
+        .flex_none()
+        .rounded_full()
+        .border_1()
+        .border_color(color::border_strong())
+        .bg(color::row_selected_subtle())
+        .text_size(px((size * 0.52).max(10.0)))
+        .line_height(px(size))
+        .font_semibold()
+        .text_color(color::accent())
+        .child(review_avatar_initial(author))
+        .into_any_element()
+}
+
+fn review_avatar_initial(author: &str) -> String {
+    author
+        .trim()
+        .chars()
+        .find(|character| character.is_alphanumeric())
+        .map(|character| character.to_uppercase().collect())
+        .unwrap_or_else(|| "?".to_string())
+}
+
+fn github_avatar_url_for_login(login: &str) -> Option<String> {
+    let login = login.trim();
+
+    if login.is_empty()
+        || login.eq_ignore_ascii_case("ghost")
+        || login.eq_ignore_ascii_case("you")
+        || login.chars().any(char::is_whitespace)
+    {
+        None
+    } else {
+        Some(format!("https://github.com/{login}.png?size=48"))
     }
 }
 
@@ -556,68 +583,125 @@ fn review_comment_diff_preview(
     files: &[DiffFile],
     diffs: &[Option<ParsedDiff>],
 ) -> Option<ReviewDiffPreview> {
-    let (path, side, line) = review_comment_diff_target(comment, thread)?;
+    let target = review_comment_diff_target(comment, thread)?;
     let fallback = || ReviewDiffPreview {
-        path: path.clone(),
-        line: Some(line),
-        marker: "",
-        text: "diff context unavailable".to_string(),
-        tone: Tone::Neutral,
+        path: target.path.clone(),
+        lines: vec![ReviewDiffPreviewLine {
+            line: Some(target.end_line),
+            marker: "",
+            text: "diff context unavailable".to_string(),
+            tone: Tone::Neutral,
+        }],
     };
     let Some((_, diff)) = files.iter().zip(diffs.iter()).find(|(file, _)| {
-        file.path == path || file.previous_path.as_deref() == Some(path.as_str())
+        file.path == target.path || file.previous_path.as_deref() == Some(target.path.as_str())
     }) else {
         return Some(fallback());
     };
     let Some(diff) = diff.as_ref() else {
         return Some(fallback());
     };
-    let Some(diff_line) = diff
+    let diff_lines = diff
         .hunks
         .iter()
         .flat_map(|hunk| hunk.lines.iter())
-        .find(|diff_line| match side {
-            ReviewSide::Left => diff_line.old_line == Some(line),
-            ReviewSide::Right => diff_line.new_line == Some(line),
-        })
+        .collect::<Vec<_>>();
+    let Some(start_index) = diff_lines
+        .iter()
+        .position(|line| diff_line_matches_target(line, target.start_side, target.start_line))
     else {
         return Some(fallback());
     };
-    let (marker, tone) = match diff_line.kind {
-        DiffLineKind::Added => ("+", Tone::Success),
-        DiffLineKind::Removed => ("-", Tone::Danger),
-        DiffLineKind::Context => (" ", Tone::Neutral),
-        DiffLineKind::Metadata => ("", Tone::Neutral),
+    let Some(end_index) = diff_lines
+        .iter()
+        .position(|line| diff_line_matches_target(line, target.end_side, target.end_line))
+    else {
+        return Some(fallback());
     };
-    let preview_line = match side {
-        ReviewSide::Left => diff_line.old_line,
-        ReviewSide::Right => diff_line.new_line,
+    let range = if start_index <= end_index {
+        start_index..=end_index
+    } else {
+        end_index..=start_index
     };
+    let lines = diff_lines[range]
+        .iter()
+        .map(|line| review_diff_preview_line(line))
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return Some(fallback());
+    }
 
     Some(ReviewDiffPreview {
-        path,
-        line: preview_line,
-        marker,
-        text: diff_line.text.clone(),
-        tone,
+        path: target.path,
+        lines,
     })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ReviewDiffTarget {
+    path: String,
+    start_side: ReviewSide,
+    start_line: u32,
+    end_side: ReviewSide,
+    end_line: u32,
 }
 
 fn review_comment_diff_target(
     comment: &ReviewComment,
     thread: &ReviewThread,
-) -> Option<(String, ReviewSide, u32)> {
+) -> Option<ReviewDiffTarget> {
+    if let Some(range) = thread.range.as_ref() {
+        return Some(ReviewDiffTarget {
+            path: range.path.clone(),
+            start_side: range.start_side.unwrap_or(range.side),
+            start_line: range.start_line.unwrap_or(range.line),
+            end_side: range.side,
+            end_line: range.line,
+        });
+    }
+
     if let Some(position) = comment.position.as_ref() {
         let line = match position.side {
             ReviewSide::Left => position.original_line.or(position.line),
             ReviewSide::Right => position.line.or(position.original_line),
         }?;
-        return Some((position.path.clone(), position.side, line));
+        return Some(ReviewDiffTarget {
+            path: position.path.clone(),
+            start_side: position.side,
+            start_line: line,
+            end_side: position.side,
+            end_line: line,
+        });
     }
 
-    let range = thread.range.as_ref()?;
+    None
+}
 
-    Some((range.path.clone(), range.side, range.line))
+fn diff_line_matches_target(
+    line: &crate::diff::DiffLine,
+    side: ReviewSide,
+    target_line: u32,
+) -> bool {
+    match side {
+        ReviewSide::Left => line.old_line == Some(target_line),
+        ReviewSide::Right => line.new_line == Some(target_line),
+    }
+}
+
+fn review_diff_preview_line(line: &crate::diff::DiffLine) -> ReviewDiffPreviewLine {
+    let (marker, tone) = match line.kind {
+        DiffLineKind::Added => ("+", Tone::Success),
+        DiffLineKind::Removed => ("-", Tone::Danger),
+        DiffLineKind::Context => (" ", Tone::Neutral),
+        DiffLineKind::Metadata => ("", Tone::Neutral),
+    };
+
+    ReviewDiffPreviewLine {
+        line: line.new_line.or(line.old_line),
+        marker,
+        text: line.text.clone(),
+        tone,
+    }
 }
 
 pub(crate) fn review_thread_counts(threads: &[ReviewThread]) -> (usize, usize, usize) {
@@ -643,10 +727,6 @@ pub(crate) fn review_thread_location(thread: &ReviewThread) -> String {
         .find_map(|comment| comment.position.as_ref())
         .and_then(|position| position.line.or(position.original_line))
         .map_or_else(|| "file".to_string(), |line| format!("line {line}"))
-}
-
-pub(crate) fn single_line(value: &str) -> String {
-    review_body_summary(value).unwrap_or_else(|| "empty comment".to_string())
 }
 
 fn pull_request_review_state_tone(state: PullRequestReviewState) -> (&'static str, Tone) {
@@ -694,7 +774,7 @@ mod tests {
         Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
     };
     use gpui_component::{Root, Theme, ThemeMode, input::InputState};
-    use harbor_domain::FileStatus;
+    use harbor_domain::{FileStatus, ReviewCommentRange};
 
     use super::*;
     use crate::{
@@ -735,10 +815,46 @@ mod tests {
             review_thread_diff_preview(&thread, &files, &diffs),
             Some(ReviewDiffPreview {
                 path: "src/lib.rs".to_string(),
-                line: Some(11),
-                marker: "+",
-                text: "Please tighten this branch.".to_string(),
-                tone: Tone::Success,
+                lines: vec![ReviewDiffPreviewLine {
+                    line: Some(11),
+                    marker: "+",
+                    text: "Please tighten this branch.".to_string(),
+                    tone: Tone::Success,
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn builds_diff_preview_for_selected_review_ranges() {
+        let mut thread = review_thread();
+        thread.range = Some(ReviewCommentRange {
+            path: "src/lib.rs".to_string(),
+            line: 12,
+            side: ReviewSide::Right,
+            start_line: Some(11),
+            start_side: Some(ReviewSide::Right),
+        });
+        let (files, diffs) = review_diff_fixture();
+
+        assert_eq!(
+            review_thread_diff_preview(&thread, &files, &diffs),
+            Some(ReviewDiffPreview {
+                path: "src/lib.rs".to_string(),
+                lines: vec![
+                    ReviewDiffPreviewLine {
+                        line: Some(11),
+                        marker: "+",
+                        text: "Please tighten this branch.".to_string(),
+                        tone: Tone::Success,
+                    },
+                    ReviewDiffPreviewLine {
+                        line: Some(12),
+                        marker: "+",
+                        text: "Also cover this selected line.".to_string(),
+                        tone: Tone::Success,
+                    },
+                ],
             })
         );
     }
@@ -962,7 +1078,6 @@ mod tests {
                 reply_error: render_state.reply_error.as_ref(),
                 action_thread_id: render_state.action_thread_id.as_deref(),
                 action_error: render_state.action_error.as_ref(),
-                use_expanded_rows: render_state.active_reply_thread_id.is_some(),
                 diff_preview: None,
                 view_entity: self.view_entity.clone(),
             })
@@ -998,7 +1113,7 @@ mod tests {
             patch: None,
         };
         let diff = crate::diff::parse_unified_diff(
-            "@@ -10,2 +10,3 @@\n context\n+Please tighten this branch.\n unchanged\n",
+            "@@ -10,2 +10,4 @@\n context\n+Please tighten this branch.\n+Also cover this selected line.\n unchanged\n",
         );
 
         (vec![file], vec![Some(diff)])
