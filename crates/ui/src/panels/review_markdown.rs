@@ -1,7 +1,7 @@
 use std::{cell::RefCell, ops::Range};
 
 use gpui::{
-    AnyElement, ElementId, FontStyle, FontWeight, HighlightStyle, IntoElement, SharedString,
+    AnyElement, FontStyle, FontWeight, HighlightStyle, InteractiveText, IntoElement, SharedString,
     StrikethroughStyle, StyledText, UnderlineStyle, div, prelude::*, px,
 };
 use gpui_component::highlighter::LanguageRegistry;
@@ -27,20 +27,23 @@ struct ReviewMarkdownCacheEntry {
     blocks: Vec<ReviewMarkdownBlock>,
 }
 
-pub(crate) fn render_review_markdown_body(
-    id: impl Into<ElementId>,
-    body: &str,
-) -> impl IntoElement {
+pub(crate) fn render_review_markdown_body(id: impl Into<String>, body: &str) -> impl IntoElement {
+    let id = id.into();
     let blocks = cached_review_markdown_blocks(review_markdown_body(body));
 
     div()
-        .id(id.into())
+        .id(id.clone())
         .min_w_0()
         .flex_none()
         .flex()
         .flex_col()
         .gap_2()
-        .children(blocks.into_iter().map(render_review_markdown_block))
+        .children(
+            blocks
+                .into_iter()
+                .enumerate()
+                .map(|(index, block)| render_review_markdown_block(&id, index, block)),
+        )
 }
 
 pub(crate) fn review_markdown_body(body: &str) -> String {
@@ -86,6 +89,7 @@ struct ReviewInlineText {
     text: String,
     highlights: Vec<(Range<usize>, HighlightStyle)>,
     font_family_overrides: Vec<(Range<usize>, SharedString)>,
+    links: Vec<(Range<usize>, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -398,7 +402,7 @@ fn push_inline_nodes(
     style: InlineStyle,
 ) {
     for node in nodes {
-        push_inline_node(inline_text, node, style);
+        push_inline_node(inline_text, node, style.clone());
     }
 }
 
@@ -433,12 +437,12 @@ fn push_inline_node(inline_text: &mut ReviewInlineText, node: &mdast::Node, styl
         }
         mdast::Node::Link(link) => {
             let mut style = style;
-            style.link = true;
+            style.link = clickable_link_url(&link.url);
             push_inline_nodes(inline_text, &link.children, style);
         }
         mdast::Node::LinkReference(link) => {
             let mut style = style;
-            style.link = true;
+            style.link = None;
             push_inline_nodes(inline_text, &link.children, style);
         }
         mdast::Node::Image(image) => {
@@ -484,23 +488,36 @@ fn push_inline_node(inline_text: &mut ReviewInlineText, node: &mdast::Node, styl
     }
 }
 
-fn render_review_markdown_block(block: ReviewMarkdownBlock) -> AnyElement {
+fn render_review_markdown_block(
+    id_prefix: &str,
+    block_index: usize,
+    block: ReviewMarkdownBlock,
+) -> AnyElement {
     match block {
-        ReviewMarkdownBlock::Heading { level, text } => render_inline_text(text)
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_size(match level {
-                1 => px(15.0),
-                2 => px(14.0),
-                _ => px(13.0),
-            })
-            .into_any_element(),
-        ReviewMarkdownBlock::Paragraph(text) => render_inline_text(text).into_any_element(),
+        ReviewMarkdownBlock::Heading { level, text } => {
+            let heading =
+                render_inline_text(inline_text_id(id_prefix, block_index, "heading"), text);
+            heading
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_size(match level {
+                    1 => px(15.0),
+                    2 => px(14.0),
+                    _ => px(13.0),
+                })
+                .into_any_element()
+        }
+        ReviewMarkdownBlock::Paragraph(text) => {
+            render_inline_text(inline_text_id(id_prefix, block_index, "paragraph"), text)
+                .into_any_element()
+        }
         ReviewMarkdownBlock::List(items) => div()
             .min_w_0()
             .flex()
             .flex_col()
             .gap_1()
-            .children(items.into_iter().map(render_review_list_item))
+            .children(items.into_iter().enumerate().map(|(item_index, item)| {
+                render_review_list_item(id_prefix, block_index, item_index, item)
+            }))
             .into_any_element(),
         ReviewMarkdownBlock::Quote(lines) => div()
             .min_w_0()
@@ -511,13 +528,17 @@ fn render_review_markdown_block(block: ReviewMarkdownBlock) -> AnyElement {
             .border_color(color::border_strong())
             .pl_2()
             .text_color(color::text_muted())
-            .children(
-                lines
-                    .into_iter()
-                    .map(|line| render_inline_text(line).into_any_element()),
-            )
+            .children(lines.into_iter().enumerate().map(|(line_index, line)| {
+                render_inline_text(
+                    inline_text_id(id_prefix, block_index, &format!("quote-{line_index}")),
+                    line,
+                )
+                .into_any_element()
+            }))
             .into_any_element(),
-        ReviewMarkdownBlock::Table(rows) => render_table(rows).into_any_element(),
+        ReviewMarkdownBlock::Table(rows) => {
+            render_table(id_prefix, block_index, rows).into_any_element()
+        }
         ReviewMarkdownBlock::Code(lines) => render_code_block(lines).into_any_element(),
         ReviewMarkdownBlock::Rule => div()
             .min_w_0()
@@ -527,15 +548,47 @@ fn render_review_markdown_block(block: ReviewMarkdownBlock) -> AnyElement {
     }
 }
 
-fn render_inline_text(inline_text: ReviewInlineText) -> gpui::Div {
-    div().min_w_0().flex_none().whitespace_normal().child(
-        StyledText::new(inline_text.text)
-            .with_highlights(inline_text.highlights)
-            .with_font_family_overrides(inline_text.font_family_overrides),
-    )
+fn render_inline_text(id: String, inline_text: ReviewInlineText) -> gpui::Div {
+    let ReviewInlineText {
+        text,
+        highlights,
+        font_family_overrides,
+        links,
+    } = inline_text;
+    let styled_text = StyledText::new(text)
+        .with_highlights(highlights)
+        .with_font_family_overrides(font_family_overrides);
+    let text_element = if links.is_empty() {
+        styled_text.into_any_element()
+    } else {
+        let ranges = links
+            .iter()
+            .map(|(range, _)| range.clone())
+            .collect::<Vec<_>>();
+        let urls = links.into_iter().map(|(_, url)| url).collect::<Vec<_>>();
+
+        InteractiveText::new(id, styled_text)
+            .on_click(ranges, move |index, _, cx| {
+                if let Some(url) = urls.get(index) {
+                    cx.open_url(url);
+                }
+            })
+            .into_any_element()
+    };
+
+    div()
+        .min_w_0()
+        .flex_none()
+        .whitespace_normal()
+        .child(text_element)
 }
 
-fn render_review_list_item(item: ReviewListItem) -> AnyElement {
+fn render_review_list_item(
+    id_prefix: &str,
+    block_index: usize,
+    item_index: usize,
+    item: ReviewListItem,
+) -> AnyElement {
     div()
         .min_w_0()
         .flex()
@@ -549,35 +602,60 @@ fn render_review_list_item(item: ReviewListItem) -> AnyElement {
                 .text_color(color::text_muted())
                 .child(item.marker),
         )
-        .child(render_inline_text(item.text).flex_1())
+        .child(
+            render_inline_text(
+                inline_text_id(id_prefix, block_index, &format!("list-{item_index}")),
+                item.text,
+            )
+            .flex_1(),
+        )
         .into_any_element()
 }
 
-fn render_table(rows: Vec<Vec<ReviewInlineText>>) -> impl IntoElement {
+fn render_table(
+    id_prefix: &str,
+    block_index: usize,
+    rows: Vec<Vec<ReviewInlineText>>,
+) -> impl IntoElement {
     div()
         .min_w_0()
         .flex_none()
         .overflow_hidden()
         .border_1()
         .border_color(color::border_subtle())
-        .children(rows.into_iter().enumerate().map(|(index, row)| {
+        .children(rows.into_iter().enumerate().map(|(row_index, row)| {
             div()
                 .min_w_0()
                 .flex()
-                .when(index > 0, |element| {
+                .when(row_index > 0, |element| {
                     element.border_t_1().border_color(color::border_subtle())
                 })
-                .children(row.into_iter().map(render_table_cell))
+                .children(row.into_iter().enumerate().map(move |(cell_index, cell)| {
+                    render_table_cell(id_prefix, block_index, row_index, cell_index, cell)
+                }))
         }))
 }
 
-fn render_table_cell(cell: ReviewInlineText) -> AnyElement {
+fn render_table_cell(
+    id_prefix: &str,
+    block_index: usize,
+    row_index: usize,
+    cell_index: usize,
+    cell: ReviewInlineText,
+) -> AnyElement {
     div()
         .min_w_0()
         .flex_1()
         .px_2()
         .py_1()
-        .child(render_inline_text(cell))
+        .child(render_inline_text(
+            inline_text_id(
+                id_prefix,
+                block_index,
+                &format!("table-{row_index}-{cell_index}"),
+            ),
+            cell,
+        ))
         .into_any_element()
 }
 
@@ -602,13 +680,17 @@ fn render_code_block(lines: Vec<String>) -> impl IntoElement {
         }))
 }
 
-#[derive(Clone, Copy, Default)]
+fn inline_text_id(id_prefix: &str, block_index: usize, suffix: &str) -> String {
+    format!("{id_prefix}-inline-{block_index}-{suffix}")
+}
+
+#[derive(Clone, Default)]
 struct InlineStyle {
     bold: bool,
     italic: bool,
     strikethrough: bool,
     code: bool,
-    link: bool,
+    link: Option<String>,
 }
 
 fn push_inline_segment(inline_text: &mut ReviewInlineText, text: &str, style: InlineStyle) {
@@ -628,6 +710,9 @@ fn push_inline_segment(inline_text: &mut ReviewInlineText, text: &str, style: In
         inline_text
             .font_family_overrides
             .push((start..end, SharedString::from(font::MONO.to_string())));
+    }
+    if let Some(url) = style.link {
+        inline_text.links.push((start..end, url));
     }
 }
 
@@ -651,6 +736,12 @@ fn append_inline_text(target: &mut ReviewInlineText, source: ReviewInlineText) {
             .font_family_overrides
             .into_iter()
             .map(|(range, family)| (range.start + offset..range.end + offset, family)),
+    );
+    target.links.extend(
+        source
+            .links
+            .into_iter()
+            .map(|(range, url)| (range.start + offset..range.end + offset, url)),
     );
 }
 
@@ -679,11 +770,11 @@ fn stripped_html_text(html: &str) -> String {
 }
 
 impl InlineStyle {
-    fn highlight(self) -> HighlightStyle {
+    fn highlight(&self) -> HighlightStyle {
         HighlightStyle {
             font_weight: self.bold.then_some(FontWeight::BOLD),
             font_style: self.italic.then_some(FontStyle::Italic),
-            underline: self.link.then_some(UnderlineStyle {
+            underline: self.link.is_some().then_some(UnderlineStyle {
                 thickness: px(1.0),
                 ..Default::default()
             }),
@@ -693,6 +784,19 @@ impl InlineStyle {
             }),
             ..Default::default()
         }
+    }
+}
+
+fn clickable_link_url(url: &str) -> Option<String> {
+    let url = url.trim();
+    let (scheme, _) = url.split_once(':')?;
+    if ["https", "http", "mailto"]
+        .iter()
+        .any(|allowed_scheme| scheme.eq_ignore_ascii_case(allowed_scheme))
+    {
+        Some(url.to_string())
+    } else {
+        None
     }
 }
 
@@ -955,6 +1059,10 @@ mod tests {
                 assert_eq!(text.text, "Paragraph with bold and code rule.");
                 assert_eq!(text.highlights.len(), 2);
                 assert_eq!(text.font_family_overrides.len(), 1);
+                assert_eq!(text.links.len(), 1);
+                let (range, url) = &text.links[0];
+                assert_eq!(&text.text[range.clone()], "rule");
+                assert_eq!(url, "https://example.com");
             }
             block => panic!("expected paragraph, got {block:?}"),
         }
@@ -996,6 +1104,10 @@ mod tests {
                 assert_eq!(rows[0][0].text, "rule");
                 assert_eq!(rows[1][1].text, "https://example.com");
                 assert_eq!(rows[1][1].highlights.len(), 1);
+                assert_eq!(rows[1][1].links.len(), 1);
+                let (range, url) = &rows[1][1].links[0];
+                assert_eq!(&rows[1][1].text[range.clone()], "https://example.com");
+                assert_eq!(url, "https://example.com");
             }
             block => panic!("expected table, got {block:?}"),
         }
@@ -1005,6 +1117,24 @@ mod tests {
                 assert_eq!(text.highlights.len(), 1);
             }
             block => panic!("expected strikethrough paragraph, got {block:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_rewritten_html_anchors_as_clickable_links() {
+        let blocks = parse_review_markdown_blocks(&review_markdown_body(
+            "<a href=\"https://semgrep.dev/findings/1\">View finding</a>",
+        ));
+
+        match &blocks[0] {
+            ReviewMarkdownBlock::Paragraph(text) => {
+                assert_eq!(text.text, "View finding");
+                assert_eq!(text.links.len(), 1);
+                let (range, url) = &text.links[0];
+                assert_eq!(&text.text[range.clone()], "View finding");
+                assert_eq!(url, "https://semgrep.dev/findings/1");
+            }
+            block => panic!("expected paragraph, got {block:?}"),
         }
     }
 }
