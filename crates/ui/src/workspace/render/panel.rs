@@ -148,6 +148,7 @@ impl AppView {
                                     action_error: self.review_state.review_thread_action_error(),
                                     is_loading: self.review_state.reviews_loading(),
                                     error: self.review_state.reviews_error(),
+                                    review_list_scroll: &self.review_list_scroll,
                                 },
                                 cx,
                             )

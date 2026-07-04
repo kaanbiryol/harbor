@@ -183,8 +183,7 @@ impl AppView {
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.reset_diff_list_scroll();
-        self.review_list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
+        self.reset_review_list_scroll();
         self.status = format!("Selected {}", self.selected_pr_label());
 
         self.load_selected_pull_request(cx);

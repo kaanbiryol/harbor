@@ -1,7 +1,9 @@
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use gpui::{AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
+use gpui::{
+    AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px,
+};
 use gpui_component::{Sizable, StyledExt, avatar::Avatar, input::InputState};
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
@@ -14,6 +16,7 @@ use crate::{
     workspace::AppView,
 };
 
+use super::review_markdown::{render_review_markdown_body, review_markdown_body};
 use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
     render_empty_panel_card, render_error_panel_card, render_metric_pill, render_panel_header,
@@ -36,6 +39,7 @@ pub(crate) struct ReviewPanelRenderInput<'a> {
     pub(crate) action_error: Option<&'a ReviewThreadUiError>,
     pub(crate) is_loading: bool,
     pub(crate) error: Option<&'a str>,
+    pub(crate) review_list_scroll: &'a UniformListScrollHandle,
 }
 
 pub(crate) fn render_review_panel(
@@ -57,11 +61,13 @@ pub(crate) fn render_review_panel(
         action_error,
         is_loading,
         error,
+        review_list_scroll,
     } = input;
     let (unresolved, resolved, outdated) = review_thread_counts(threads);
     let view_entity = cx.entity().clone();
     let timeline_items = review_timeline_items(reviews, threads, comments);
     let has_timeline_items = !timeline_items.is_empty();
+    let review_scroll_handle = review_list_scroll.0.borrow().base_handle.clone();
 
     div()
         .image_cache(gpui::retain_all("review-timeline-avatar-cache"))
@@ -103,13 +109,12 @@ pub(crate) fn render_review_panel(
             element.child(
                 div()
                     .id("review-timeline-scroll")
-                    .flex()
-                    .flex_col()
+                    .block()
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
                     .overflow_y_scroll()
-                    .gap_2()
+                    .track_scroll(&review_scroll_handle)
                     .children(
                         timeline_items
                             .iter()
@@ -246,19 +251,12 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
         .id(("pull-request-comment-row", index))
         .w_full()
         .min_w_0()
-        .flex()
-        .items_start()
-        .gap_2()
+        .flex_initial()
         .py_1()
-        .child(render_review_avatar(
-            &comment.author,
-            comment.author_avatar_url.as_deref(),
-            24.0,
-        ))
         .child(
             div()
+                .w_full()
                 .min_w_0()
-                .flex_1()
                 .flex()
                 .flex_col()
                 .border_1()
@@ -279,17 +277,35 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                 .min_w_0()
                                 .flex_1()
                                 .flex()
-                                .items_baseline()
+                                .items_start()
                                 .gap_2()
+                                .child(render_review_avatar(
+                                    &comment.author,
+                                    comment.author_avatar_url.as_deref(),
+                                    24.0,
+                                ))
                                 .child(
                                     div()
-                                        .font_medium()
-                                        .text_color(color::text_primary())
-                                        .child(comment.author.clone()),
-                                )
-                                .child(div().text_xs().text_color(color::text_muted()).child(
-                                    format!("commented {}", comment_time_label(comment.created_at)),
-                                )),
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .items_baseline()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .font_medium()
+                                                .text_color(color::text_primary())
+                                                .child(comment.author.clone()),
+                                        )
+                                        .child(
+                                            div().text_xs().text_color(color::text_muted()).child(
+                                                format!(
+                                                    "commented {}",
+                                                    comment_time_label(comment.created_at)
+                                                ),
+                                            ),
+                                        ),
+                                ),
                         )
                         .child(render_status_pill("commented", Tone::Info)),
                 )
@@ -299,7 +315,10 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                         .py_3()
                         .text_sm()
                         .text_color(color::text_secondary())
-                        .child(render_comment_body(&comment.body)),
+                        .child(render_review_markdown_body(
+                            format!("pull-request-comment-body-{}", comment.id),
+                            &comment.body,
+                        )),
                 ),
         )
         .into_any_element()
@@ -317,15 +336,12 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
         .id(("review-summary-row", index))
         .w_full()
         .min_w_0()
-        .flex()
-        .items_start()
-        .gap_2()
+        .flex_initial()
         .py_1()
-        .child(render_review_avatar(&review.author, None, 24.0))
         .child(
             div()
+                .w_full()
                 .min_w_0()
-                .flex_1()
                 .flex()
                 .flex_col()
                 .border_1()
@@ -346,17 +362,32 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                 .min_w_0()
                                 .flex_1()
                                 .flex()
-                                .items_baseline()
+                                .items_start()
                                 .gap_2()
+                                .child(render_review_avatar(&review.author, None, 24.0))
                                 .child(
                                     div()
-                                        .font_medium()
-                                        .text_color(color::text_primary())
-                                        .child(review.author.clone()),
-                                )
-                                .child(div().text_xs().text_color(color::text_muted()).child(
-                                    format!("{} {}", state_label, review_time_label(review)),
-                                )),
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .items_baseline()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .font_medium()
+                                                .text_color(color::text_primary())
+                                                .child(review.author.clone()),
+                                        )
+                                        .child(
+                                            div().text_xs().text_color(color::text_muted()).child(
+                                                format!(
+                                                    "{} {}",
+                                                    state_label,
+                                                    review_time_label(review)
+                                                ),
+                                            ),
+                                        ),
+                                ),
                         )
                         .child(render_status_pill(state_label, state_tone)),
                 )
@@ -366,7 +397,10 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                         .py_3()
                         .text_sm()
                         .text_color(color::text_secondary())
-                        .child(render_comment_body(&body)),
+                        .child(render_review_markdown_body(
+                            format!("pull-request-review-body-{}", review.id),
+                            &body,
+                        )),
                 ),
         )
         .into_any_element()
@@ -453,43 +487,7 @@ fn review_body_summary(body: &str) -> Option<String> {
 }
 
 fn comment_body_text(body: &str) -> String {
-    let body = body.trim();
-
-    if body.is_empty() {
-        "empty comment".to_string()
-    } else {
-        body.to_string()
-    }
-}
-
-pub(super) fn render_comment_body(body: &str) -> impl IntoElement {
-    let lines = comment_body_lines(body);
-
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .children(lines.into_iter().map(|line| {
-            let line = if line.is_empty() {
-                " ".to_string()
-            } else {
-                line
-            };
-
-            div().min_w_0().whitespace_normal().child(line)
-        }))
-}
-
-fn comment_body_lines(body: &str) -> Vec<String> {
-    let body = body.trim();
-
-    if body.is_empty() {
-        return vec!["empty comment".to_string()];
-    }
-
-    body.lines()
-        .map(|line| line.trim_end().to_string())
-        .collect()
+    review_markdown_body(body)
 }
 
 pub(super) fn render_review_avatar(
@@ -946,6 +944,15 @@ mod tests {
             &items[0].kind,
             ReviewTimelineItemKind::Review { review_id } if review_id == "401"
         ));
+    }
+
+    #[test]
+    fn preserves_review_panel_comment_markdown_body() {
+        assert_eq!(
+            comment_body_text("**bold**\n\n- list item\n\n```suggestion\nlet value = 1;\n```"),
+            "**bold**\n\n- list item\n\n```text\nlet value = 1;\n```"
+        );
+        assert_eq!(comment_body_text(" \n\t "), "empty comment");
     }
 
     #[gpui::test]

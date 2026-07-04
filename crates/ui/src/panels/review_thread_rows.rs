@@ -11,9 +11,10 @@ use crate::{
 use super::{
     render_status_pill,
     review::{
-        ReviewDiffPreview, render_comment_body, render_review_avatar, render_review_diff_preview,
+        ReviewDiffPreview, render_review_avatar, render_review_diff_preview,
         review_comment_time_label, review_thread_location, review_thread_state_tone,
     },
+    review_markdown::render_review_markdown_body,
     review_thread_chrome::{
         ReviewThreadActionIds, ReviewThreadActionsState, ReviewThreadReplyComposerChrome,
         ReviewThreadReplyComposerIds, ReviewThreadReplyComposerState, render_review_thread_actions,
@@ -101,15 +102,12 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         .id(("review-thread-row", index))
         .w_full()
         .min_w_0()
-        .flex()
-        .items_start()
-        .gap_2()
+        .flex_initial()
         .py_1()
-        .child(render_review_avatar(header_author, header_avatar_url, 24.0))
         .child(
             div()
+                .w_full()
                 .min_w_0()
-                .flex_1()
                 .flex()
                 .flex_col()
                 .border_1()
@@ -130,31 +128,43 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                 .min_w_0()
                                 .flex_1()
                                 .flex()
-                                .flex_col()
-                                .gap_1()
+                                .items_start()
+                                .gap_2()
+                                .child(render_review_avatar(header_author, header_avatar_url, 24.0))
                                 .child(
                                     div()
+                                        .min_w_0()
+                                        .flex_1()
                                         .flex()
-                                        .items_baseline()
-                                        .gap_2()
+                                        .flex_col()
+                                        .gap_1()
                                         .child(
                                             div()
-                                                .font_medium()
-                                                .text_color(path_color)
-                                                .child(header_author.to_string()),
+                                                .flex()
+                                                .items_baseline()
+                                                .gap_2()
+                                                .child(
+                                                    div()
+                                                        .font_medium()
+                                                        .text_color(path_color)
+                                                        .child(header_author.to_string()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(metadata_color)
+                                                        .child(header_time.map_or_else(
+                                                            || "commented".to_string(),
+                                                            |time| format!("commented {time}"),
+                                                        )),
+                                                ),
                                         )
-                                        .child(div().text_xs().text_color(metadata_color).child(
-                                            header_time.map_or_else(
-                                                || "commented".to_string(),
-                                                |time| format!("commented {time}"),
-                                            ),
-                                        )),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(metadata_color)
-                                        .child(review_thread_metadata(thread, &location)),
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(metadata_color)
+                                                .child(review_thread_metadata(thread, &location)),
+                                        ),
                                 ),
                         )
                         .child(render_status_pill(label, tone)),
@@ -239,12 +249,12 @@ fn render_review_thread_comments(
         .px_3()
         .py_3()
         .when_some(first_comment, |element, comment| {
-            element.child(
-                div()
-                    .text_sm()
-                    .text_color(comment_color)
-                    .child(render_comment_body(&comment.body)),
-            )
+            element.child(div().text_sm().text_color(comment_color).child(
+                render_review_markdown_body(
+                    format!("review-thread-comment-body-{}", comment.id),
+                    &comment.body,
+                ),
+            ))
         })
         .when(thread.comments.len() > 1, |element| {
             element.child(
@@ -307,12 +317,12 @@ fn render_review_thread_reply(
                                 .child(review_comment_time_label(comment)),
                         ),
                 )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(comment_color)
-                        .child(render_comment_body(&comment.body)),
-                ),
+                .child(div().text_sm().text_color(comment_color).child(
+                    render_review_markdown_body(
+                        format!("review-thread-reply-body-{}", comment.id),
+                        &comment.body,
+                    ),
+                )),
         )
 }
 

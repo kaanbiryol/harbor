@@ -14,6 +14,8 @@ mod pull_request;
 mod pull_request_signals;
 #[path = "panels/review.rs"]
 mod review;
+#[path = "panels/review_markdown.rs"]
+mod review_markdown;
 #[path = "panels/review_thread_chrome.rs"]
 pub(crate) mod review_thread_chrome;
 #[path = "panels/review_thread_rows.rs"]

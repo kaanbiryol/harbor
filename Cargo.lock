@@ -2929,6 +2929,7 @@ dependencies = [
  "harbor-logs",
  "harbor-storage",
  "harbor-sync",
+ "markdown",
  "notify-rust",
  "tracing",
 ]

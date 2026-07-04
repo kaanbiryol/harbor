@@ -1,12 +1,9 @@
-use gpui::{AnyElement, Entity, IntoElement, StyleRefinement, div, prelude::*, px, rems};
-use gpui_component::{
-    StyledExt,
-    input::InputState,
-    text::{TextView, TextViewStyle},
-};
+use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
+use gpui_component::{StyledExt, input::InputState};
 use harbor_domain::ReviewComment;
 
 use crate::{
+    panels::review_markdown::render_review_markdown_body,
     visual::color,
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync},
 };
@@ -261,37 +258,14 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
 }
 
 fn render_review_comment_body(comment_id: &str, body: &str, color: gpui::Rgba) -> impl IntoElement {
-    div().pt_2().text_xs().text_color(color).child(
-        TextView::markdown(
+    div()
+        .pt_2()
+        .text_xs()
+        .text_color(color)
+        .child(render_review_markdown_body(
             format!("review-comment-body-{comment_id}"),
-            review_comment_body_markdown(body),
-        )
-        .style(review_comment_markdown_style())
-        .selectable(true),
-    )
-}
-
-fn review_comment_markdown_style() -> TextViewStyle {
-    TextViewStyle::default()
-        .paragraph_gap(rems(0.25))
-        .heading_font_size(|level, size| match level {
-            1..=2 => size,
-            _ => size * 0.9,
-        })
-        .code_block(
-            StyleRefinement::default()
-                .bg(color::input_background())
-                .p_1()
-                .text_size(px(11.0)),
-        )
-}
-
-pub(crate) fn review_comment_body_markdown(body: &str) -> String {
-    if body.trim().is_empty() {
-        "empty comment".to_string()
-    } else {
-        body.to_string()
-    }
+            body,
+        ))
 }
 
 pub(crate) fn review_comment_ui_state(
@@ -355,10 +329,16 @@ mod tests {
 
     #[test]
     fn preserves_review_comment_markdown_body() {
+        use crate::panels::review_markdown::review_markdown_body;
+
         assert_eq!(
-            review_comment_body_markdown("**bold**\n\n- list item"),
+            review_markdown_body("**bold**\n\n- list item"),
             "**bold**\n\n- list item"
         );
-        assert_eq!(review_comment_body_markdown(" \n\t "), "empty comment");
+        assert_eq!(review_markdown_body(" \n\t "), "empty comment");
+        assert_eq!(
+            review_markdown_body("```suggestion\nlet value = 1;\n```"),
+            "```text\nlet value = 1;\n```"
+        );
     }
 }
