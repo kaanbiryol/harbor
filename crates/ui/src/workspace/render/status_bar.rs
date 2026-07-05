@@ -1,13 +1,15 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, div, prelude::*};
 use gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
+    progress::ProgressCircle,
+    tooltip::Tooltip,
 };
 
 use crate::{actions::TogglePullRequestInbox, icons::Octicon, visual::color, workspace::AppView};
 
 use super::rate_limits::{
-    github_rate_limit_color, github_rate_limit_label, github_rate_limits_label,
+    GitHubRateLimitIndicator, github_rate_limit_indicator, github_rate_limit_indicator_color,
 };
 
 const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
@@ -35,19 +37,12 @@ impl AppView {
                 )
             })
             .unwrap_or_else(|| self.status.clone());
-        let (rate_limit_label, rate_limit_color) = if SHOW_STATUS_BAR_RATE_LIMITS {
+        let rate_limit_indicator = if SHOW_STATUS_BAR_RATE_LIMITS {
             let rate_limits = self.github_api.latest_rate_limits();
-            let rate_limit = self.github_api.latest_rate_limit();
-            (
-                github_rate_limits_label(&rate_limits)
-                    .or_else(|| rate_limit.as_ref().and_then(github_rate_limit_label)),
-                rate_limit
-                    .as_ref()
-                    .map(github_rate_limit_color)
-                    .unwrap_or_else(color::text_muted),
-            )
+            let fallback_rate_limit = self.github_api.latest_rate_limit();
+            github_rate_limit_indicator(&rate_limits, fallback_rate_limit.as_ref())
         } else {
-            (None, color::text_muted())
+            None
         };
 
         div()
@@ -72,15 +67,39 @@ impl AppView {
                     })),
             )
             .child(div().min_w_0().flex_1().truncate().child(status_label))
-            .when_some(rate_limit_label, |element, label| {
-                element.child(
-                    div()
-                        .flex_none()
-                        .max_w(px(260.))
-                        .truncate()
-                        .text_color(rate_limit_color)
-                        .child(label),
-                )
+            .when_some(rate_limit_indicator, |element, indicator| {
+                element.child(render_rate_limit_indicator(indicator))
             })
     }
+}
+
+fn render_rate_limit_indicator(indicator: GitHubRateLimitIndicator) -> impl IntoElement {
+    let details = indicator.details.clone();
+
+    div()
+        .id("github-rate-limit-indicator")
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .tooltip(move |window, cx| {
+            let details = details.clone();
+            Tooltip::element(move |_, _| render_rate_limit_tooltip(details.clone()))
+                .build(window, cx)
+        })
+        .child(
+            ProgressCircle::new("github-rate-limit-progress")
+                .large()
+                .value(indicator.value)
+                .color(github_rate_limit_indicator_color(indicator.tone)),
+        )
+}
+
+fn render_rate_limit_tooltip(details: Vec<String>) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .text_xs()
+        .children(details.into_iter().map(|detail| div().child(detail)))
 }

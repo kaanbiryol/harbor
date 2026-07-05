@@ -1,88 +1,129 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
+use gpui::Hsla;
 use harbor_github::GitHubRateLimitStatus;
 
 use crate::visual::color;
 
-pub(super) fn github_rate_limit_label(rate_limit: &GitHubRateLimitStatus) -> Option<String> {
-    let resource = rate_limit.resource.as_deref().unwrap_or("api");
-    let budget = match (rate_limit.remaining, rate_limit.limit) {
-        (Some(remaining), Some(limit)) => format!("{remaining}/{limit}"),
-        (Some(remaining), None) => format!("{remaining} left"),
-        (None, Some(limit)) => format!("limit {limit}"),
-        (None, None) => return None,
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct GitHubRateLimitIndicator {
+    pub(super) value: f32,
+    pub(super) tone: GitHubRateLimitTone,
+    pub(super) details: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum GitHubRateLimitTone {
+    Neutral,
+    Warning,
+    Danger,
+}
+
+pub(super) fn github_rate_limit_indicator(
+    rate_limits: &[GitHubRateLimitStatus],
+    fallback_rate_limit: Option<&GitHubRateLimitStatus>,
+) -> Option<GitHubRateLimitIndicator> {
+    let rate_limits = if rate_limits.is_empty() {
+        fallback_rate_limit.into_iter().collect::<Vec<_>>()
+    } else {
+        rate_limits.iter().collect::<Vec<_>>()
     };
 
-    if github_rate_limit_should_warn(rate_limit) {
-        if let Some(retry_after_seconds) = rate_limit.retry_after_seconds {
-            return Some(format!(
-                "github {resource}: {budget} retry {}",
-                duration_label(retry_after_seconds)
-            ));
-        }
-
-        if let Some(reset_label) = rate_limit.reset_epoch_seconds.and_then(reset_epoch_label) {
-            return Some(format!("github {resource}: {budget} resets {reset_label}"));
-        }
-    }
-
-    Some(format!("github {resource}: {budget}"))
-}
-
-pub(super) fn github_rate_limits_label(rate_limits: &[GitHubRateLimitStatus]) -> Option<String> {
-    if rate_limits.len() <= 1 {
-        return rate_limits.first().and_then(github_rate_limit_label);
-    }
-
-    let labels = rate_limits
+    let value = rate_limits
         .iter()
-        .filter_map(|rate_limit| {
-            let resource = rate_limit.resource.as_deref().unwrap_or("api");
-            match (rate_limit.remaining, rate_limit.limit) {
-                (Some(remaining), Some(limit)) => Some(format!("{resource} {remaining}/{limit}")),
-                (Some(remaining), None) => Some(format!("{resource} {remaining} left")),
-                _ => None,
-            }
-        })
+        .filter_map(|rate_limit| github_rate_limit_remaining_percentage(rate_limit))
+        .min_by(|left, right| left.total_cmp(right))?;
+    let details = rate_limits
+        .iter()
+        .filter_map(|rate_limit| github_rate_limit_detail(rate_limit))
         .collect::<Vec<_>>();
 
-    (!labels.is_empty()).then(|| format!("github {}", labels.join(" ")))
+    Some(GitHubRateLimitIndicator {
+        value,
+        tone: github_rate_limit_tone(value),
+        details,
+    })
 }
 
-pub(super) fn github_rate_limit_color(rate_limit: &GitHubRateLimitStatus) -> gpui::Rgba {
-    if rate_limit.remaining == Some(0) {
-        color::danger()
-    } else if github_rate_limit_should_warn(rate_limit) {
-        color::warning()
-    } else {
-        color::text_muted()
+pub(super) fn github_rate_limit_indicator_color(tone: GitHubRateLimitTone) -> Hsla {
+    let color: Hsla = match tone {
+        GitHubRateLimitTone::Neutral => color::text_muted(),
+        GitHubRateLimitTone::Warning => color::warning(),
+        GitHubRateLimitTone::Danger => color::danger(),
     }
+    .into();
+
+    color.alpha(0.72)
 }
 
-fn github_rate_limit_should_warn(rate_limit: &GitHubRateLimitStatus) -> bool {
+fn github_rate_limit_detail(rate_limit: &GitHubRateLimitStatus) -> Option<String> {
+    let resource = rate_limit.resource.as_deref().unwrap_or("api");
     match (rate_limit.remaining, rate_limit.limit) {
-        (Some(remaining), Some(limit)) if limit > 0 => remaining.saturating_mul(5) <= limit,
-        (Some(remaining), _) => remaining <= 100,
-        _ => false,
+        (Some(remaining), Some(limit)) => Some(format!("github {resource} {remaining}/{limit}")),
+        (Some(remaining), None) => Some(format!("github {resource} {remaining} left")),
+        (None, Some(limit)) => Some(format!("github {resource} limit {limit}")),
+        (None, None) => None,
     }
 }
 
-fn reset_epoch_label(epoch_seconds: u64) -> Option<String> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
-
-    if epoch_seconds <= now {
-        return Some("now".to_string());
+fn github_rate_limit_remaining_percentage(rate_limit: &GitHubRateLimitStatus) -> Option<f32> {
+    let (Some(remaining), Some(limit)) = (rate_limit.remaining, rate_limit.limit) else {
+        return None;
+    };
+    if limit == 0 {
+        return None;
     }
 
-    Some(duration_label(epoch_seconds - now))
+    Some((remaining as f32 / limit as f32 * 100.).clamp(0., 100.))
 }
 
-fn duration_label(seconds: u64) -> String {
-    if seconds < 60 {
-        format!("in {seconds}s")
-    } else if seconds < 3600 {
-        format!("in {}m", seconds.div_ceil(60))
+fn github_rate_limit_tone(value: f32) -> GitHubRateLimitTone {
+    if value <= 5. {
+        GitHubRateLimitTone::Danger
+    } else if value <= 20. {
+        GitHubRateLimitTone::Warning
     } else {
-        format!("in {}h", seconds.div_ceil(3600))
+        GitHubRateLimitTone::Neutral
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rate_limit(resource: &str, remaining: u64, limit: u64) -> GitHubRateLimitStatus {
+        GitHubRateLimitStatus {
+            resource: Some(resource.to_string()),
+            remaining: Some(remaining),
+            limit: Some(limit),
+            ..GitHubRateLimitStatus::default()
+        }
+    }
+
+    #[test]
+    fn indicator_uses_lowest_remaining_percentage() {
+        let indicator = github_rate_limit_indicator(
+            &[
+                rate_limit("core", 4_900, 5_000),
+                rate_limit("graphql", 750, 5_000),
+            ],
+            None,
+        )
+        .unwrap();
+
+        assert!((indicator.value - 15.).abs() < 0.001);
+        assert_eq!(indicator.tone, GitHubRateLimitTone::Warning);
+        assert_eq!(
+            indicator.details,
+            vec!["github core 4900/5000", "github graphql 750/5000"]
+        );
+    }
+
+    #[test]
+    fn indicator_falls_back_to_latest_rate_limit() {
+        let fallback = rate_limit("core", 5, 5_000);
+        let indicator = github_rate_limit_indicator(&[], Some(&fallback)).unwrap();
+
+        assert_eq!(indicator.value, 0.1);
+        assert_eq!(indicator.tone, GitHubRateLimitTone::Danger);
+        assert_eq!(indicator.details, vec!["github core 5/5000"]);
     }
 }
