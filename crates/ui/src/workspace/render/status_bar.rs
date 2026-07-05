@@ -1,9 +1,8 @@
-use gpui::{Context, IntoElement, div, prelude::*};
+use gpui::{Context, Div, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
     progress::ProgressCircle,
-    tooltip::Tooltip,
 };
 
 use crate::{actions::TogglePullRequestInbox, icons::Octicon, visual::color, workspace::AppView};
@@ -78,28 +77,43 @@ fn render_rate_limit_indicator(indicator: GitHubRateLimitIndicator) -> impl Into
 
     div()
         .id("github-rate-limit-indicator")
+        .group("github-rate-limit-indicator")
+        .relative()
         .flex_none()
         .flex()
         .items_center()
         .justify_center()
-        .tooltip(move |window, cx| {
-            let details = details.clone();
-            Tooltip::element(move |_, _| render_rate_limit_tooltip(details.clone()))
-                .build(window, cx)
-        })
+        .size_5()
         .child(
             ProgressCircle::new("github-rate-limit-progress")
-                .large()
+                .small()
                 .value(indicator.value)
                 .color(github_rate_limit_indicator_color(indicator.tone)),
         )
+        .child(
+            render_rate_limit_tooltip(details)
+                .absolute()
+                .right_0()
+                .bottom(px(24.0))
+                .invisible()
+                .group_hover("github-rate-limit-indicator", |element| element.visible()),
+        )
 }
 
-fn render_rate_limit_tooltip(details: Vec<String>) -> impl IntoElement {
+fn render_rate_limit_tooltip(details: Vec<String>) -> Div {
     div()
         .flex()
         .flex_col()
         .gap_1()
+        .whitespace_nowrap()
+        .rounded_xs()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::elevated_background())
+        .px_2()
+        .py_1()
+        .shadow_lg()
         .text_xs()
+        .text_color(color::text_secondary())
         .children(details.into_iter().map(|detail| div().child(detail)))
 }
