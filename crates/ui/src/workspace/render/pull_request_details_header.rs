@@ -1,6 +1,6 @@
 use gpui::{ClipboardItem, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, Sizable, StyledExt,
+    ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::PullRequest;
@@ -9,7 +9,7 @@ use crate::{
     actions::PullRequestAction,
     icons::Octicon,
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
-    visual::{Tone, color, font},
+    visual::{Tone, color},
     workspace::AppView,
 };
 
@@ -109,7 +109,7 @@ impl AppView {
                     .child(
                         div()
                             .flex_none()
-                            .font_family(font::MONO)
+                            .font_family(cx.theme().mono_font_family.clone())
                             .child(short_head_sha.clone()),
                     )
                     .child(render_copy_button(
