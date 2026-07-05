@@ -1,5 +1,7 @@
 use gpui::{App, KeyBinding, actions};
 
+use crate::icons::Octicon;
+
 pub(crate) const KEY_CONTEXT: &str = "HarborWorkspace";
 const KEY_BINDING_CONTEXT: &str = "HarborWorkspace && !Input";
 
@@ -119,6 +121,16 @@ impl PanelTab {
             Self::Checks => "Checks",
             Self::Actions => "Actions",
             Self::Logs => "Logs",
+        }
+    }
+
+    pub(crate) fn icon(self) -> Octicon {
+        match self {
+            Self::Diff => Octicon::CodeSquare,
+            Self::Review => Octicon::CommentDiscussion,
+            Self::Checks => Octicon::CheckCircle,
+            Self::Actions => Octicon::Gear,
+            Self::Logs => Octicon::Terminal,
         }
     }
 

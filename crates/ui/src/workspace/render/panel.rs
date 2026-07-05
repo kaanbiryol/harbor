@@ -1,5 +1,5 @@
 use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::StyledExt;
+use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::PullRequest;
 
 use crate::{
@@ -47,19 +47,23 @@ impl AppView {
                             .enumerate()
                             .map(|(index, tab)| {
                                 let active = tab == self.active_tab;
+                                let tab_color = if active {
+                                    color::accent()
+                                } else {
+                                    color::text_secondary()
+                                };
                                 let view = view.clone();
 
                                 div()
                                     .id(("panel-tab", index))
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
                                     .px_3()
                                     .pb_2()
                                     .pt_1()
                                     .text_sm()
-                                    .text_color(if active {
-                                        color::accent()
-                                    } else {
-                                        color::text_secondary()
-                                    })
+                                    .text_color(tab_color)
                                     .cursor_pointer()
                                     .when(active, |element| {
                                         element
@@ -79,6 +83,7 @@ impl AppView {
                                             view.select_panel_tab(tab, cx);
                                         });
                                     })
+                                    .child(Icon::new(tab.icon()).xsmall().text_color(tab_color))
                                     .child(tab.label())
                             }),
                     ),
