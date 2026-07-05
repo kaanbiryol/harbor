@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, div, prelude::*};
+use gpui::{Context, IntoElement, ListState, div, list, prelude::*};
 use gpui_component::{
     Disableable, IconName, Sizable,
     button::{Button, ButtonVariants},
@@ -11,18 +11,32 @@ use crate::workspace::AppView;
 
 use super::{
     render_empty_panel_card, render_error_panel_card, render_key_hint, render_panel_card,
-    render_panel_header, render_status_pill,
+    render_panel_header, render_status_pill, sync_virtual_list_item_count,
 };
 
+pub(crate) struct ActionsPanelRenderInput<'a> {
+    pub(crate) pr: Option<&'a PullRequest>,
+    pub(crate) workflow_runs: &'a [WorkflowRun],
+    pub(crate) is_loading: bool,
+    pub(crate) error: Option<&'a str>,
+    pub(crate) action_error: Option<&'a str>,
+    pub(crate) is_running_action: bool,
+    pub(crate) list_state: ListState,
+}
+
 pub(crate) fn render_actions_panel(
-    pr: Option<&PullRequest>,
-    workflow_runs: &[WorkflowRun],
-    is_loading: bool,
-    error: Option<&str>,
-    action_error: Option<&str>,
-    is_running_action: bool,
+    input: ActionsPanelRenderInput<'_>,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
+    let ActionsPanelRenderInput {
+        pr,
+        workflow_runs,
+        is_loading,
+        error,
+        action_error,
+        is_running_action,
+        list_state,
+    } = input;
     let rerun_target = workflow_runs
         .iter()
         .find(|run| workflow_run_failed(run))
@@ -31,14 +45,14 @@ pub(crate) fn render_actions_panel(
     let can_rerun = !is_loading && error.is_none() && rerun_target.is_some() && !is_running_action;
     let can_dispatch =
         !is_loading && error.is_none() && dispatch_target.is_some() && !is_running_action;
+    sync_virtual_list_item_count(&list_state, workflow_runs.len());
 
     div()
-        .id("actions-panel-scroll")
+        .id("actions-panel")
         .flex()
         .flex_col()
         .flex_1()
         .min_h_0()
-        .overflow_y_scroll()
         .gap_2()
         .child(render_panel_header(
             "Workflow runs",
@@ -107,7 +121,23 @@ pub(crate) fn render_actions_panel(
                 ))
             },
         )
-        .children(workflow_runs.iter().map(render_workflow_run))
+        .when(!workflow_runs.is_empty(), |element| {
+            element.child(
+                list(
+                    list_state,
+                    cx.processor(|view, index: usize, _window, _cx| {
+                        let Some(run) = view.detail_state.workflow_runs().get(index) else {
+                            return div().into_any_element();
+                        };
+
+                        render_workflow_run(run).into_any_element()
+                    }),
+                )
+                .flex_1()
+                .min_h_0()
+                .min_w_0(),
+            )
+        })
 }
 
 fn render_workflow_action_targets(

@@ -1,11 +1,14 @@
-use gpui::{IntoElement, div, prelude::*};
+use gpui::{Context, IntoElement, ListState, div, list, prelude::*};
 use harbor_domain::{CheckConclusion, CheckRun, CheckStatus, ChecksSummary};
 
-use crate::visual::{Tone, color};
+use crate::{
+    visual::{Tone, color},
+    workspace::AppView,
+};
 
 use super::{
     render_empty_panel_card, render_error_panel_card, render_metric_pill, render_panel_card,
-    render_panel_header, render_status_pill,
+    render_panel_header, render_status_pill, sync_virtual_list_item_count,
 };
 
 pub(crate) fn render_checks_panel(
@@ -13,14 +16,17 @@ pub(crate) fn render_checks_panel(
     check_runs: &[CheckRun],
     is_loading: bool,
     error: Option<&str>,
+    list_state: ListState,
+    cx: &mut Context<AppView>,
 ) -> impl IntoElement {
+    sync_virtual_list_item_count(&list_state, check_runs.len());
+
     div()
-        .id("checks-panel-scroll")
+        .id("checks-panel")
         .flex()
         .flex_col()
         .flex_1()
         .min_h_0()
-        .overflow_y_scroll()
         .gap_2()
         .child(render_panel_header(
             "Checks",
@@ -60,7 +66,23 @@ pub(crate) fn render_checks_panel(
                 ))
             },
         )
-        .children(check_runs.iter().map(render_check_run))
+        .when(!check_runs.is_empty(), |element| {
+            element.child(
+                list(
+                    list_state,
+                    cx.processor(|view, index: usize, _window, _cx| {
+                        let Some(check_run) = view.detail_state.check_runs().get(index) else {
+                            return div().into_any_element();
+                        };
+
+                        render_check_run(check_run).into_any_element()
+                    }),
+                )
+                .flex_1()
+                .min_h_0()
+                .min_w_0(),
+            )
+        })
 }
 
 pub(crate) fn render_check_run(check_run: &CheckRun) -> impl IntoElement {

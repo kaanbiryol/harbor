@@ -1,4 +1,4 @@
-use gpui::{Div, IntoElement, div, prelude::*, px};
+use gpui::{Div, IntoElement, ListState, div, prelude::*, px};
 use gpui_component::StyledExt;
 
 use crate::visual::{Tone, color, tone_colors};
@@ -97,4 +97,11 @@ pub(crate) fn render_key_hint(label: impl Into<String>) -> impl IntoElement {
         .font_medium()
         .text_color(color::text_secondary())
         .child(label.into())
+}
+
+pub(crate) fn sync_virtual_list_item_count(list_state: &ListState, item_count: usize) {
+    let current_item_count = list_state.item_count();
+    if current_item_count != item_count {
+        list_state.splice(0..current_item_count, item_count);
+    }
 }

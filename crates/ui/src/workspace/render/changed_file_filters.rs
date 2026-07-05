@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, div, prelude::*, px, uniform_list};
 use gpui_component::{
     IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
@@ -7,7 +7,10 @@ use gpui_component::{
 
 use crate::{visual::color, workspace::AppView};
 
-use super::{changed_file_filter_rows::render_file_filter_row, render_switcher_section_label};
+use super::{
+    changed_file_filter_rows::{file_filter_list_height, render_file_filter_row},
+    render_switcher_section_label,
+};
 
 impl AppView {
     pub(super) fn render_changed_files_filter_bar(
@@ -71,7 +74,7 @@ impl AppView {
                             .id("changed-file-filters-menu")
                             .w(px(360.))
                             .max_h(px(520.))
-                            .overflow_y_scroll()
+                            .overflow_hidden()
                             .border_1()
                             .border_color(color::border_strong())
                             .bg(color::elevated_background())
@@ -156,22 +159,52 @@ impl AppView {
                                 })
                             });
 
-                        for filter in type_filters.clone() {
+                        if !type_filters.is_empty() {
+                            let row_count = type_filters.len();
+                            let list_height = file_filter_list_height(row_count);
+                            let type_filters = type_filters.clone();
                             let view = view.clone();
-                            let file_type = filter.key.clone();
+
                             menu = menu.child(
-                                render_file_filter_row(
-                                    format!("file-type-filter-{file_type}"),
-                                    filter.label,
-                                    Some(filter.file_count),
-                                    filter.included,
-                                    false,
+                                uniform_list(
+                                    "file-type-filter-list",
+                                    row_count,
+                                    move |range, _window, _cx| {
+                                        let mut rows = Vec::with_capacity(range.len());
+
+                                        for row_index in range {
+                                            let Some(filter) = type_filters.get(row_index).cloned()
+                                            else {
+                                                continue;
+                                            };
+                                            let view = view.clone();
+                                            let file_type = filter.key.clone();
+
+                                            rows.push(
+                                                render_file_filter_row(
+                                                    format!("file-type-filter-{file_type}"),
+                                                    filter.label,
+                                                    Some(filter.file_count),
+                                                    filter.included,
+                                                    false,
+                                                )
+                                                .on_click(move |_, _, cx| {
+                                                    view.update(cx, |view, cx| {
+                                                        view.toggle_changed_file_type_filter(
+                                                            file_type.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                            );
+                                        }
+
+                                        rows
+                                    },
                                 )
-                                .on_click(move |_, _, cx| {
-                                    view.update(cx, |view, cx| {
-                                        view.toggle_changed_file_type_filter(file_type.clone(), cx);
-                                    });
-                                }),
+                                .h(px(list_height))
+                                .w_full()
+                                .min_h_0(),
                             );
                         }
 

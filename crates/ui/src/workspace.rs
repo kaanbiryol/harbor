@@ -82,6 +82,7 @@ pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fm
 }
 
 const DIFF_LIST_OVERDRAW: f32 = 240.0;
+const PANEL_LIST_OVERDRAW: f32 = 160.0;
 
 pub struct AppView {
     focus_handle: FocusHandle,
@@ -103,7 +104,9 @@ pub struct AppView {
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
     diff_list_items: Vec<DiffListItem>,
-    review_list_scroll: UniformListScrollHandle,
+    review_list_state: ListState,
+    checks_list_state: ListState,
+    actions_list_state: ListState,
     selection_state: PullRequestSelectionState,
     active_tab: PanelTab,
     pull_request_inbox: PullRequestInboxState,
@@ -183,7 +186,7 @@ impl AppView {
             .scroll_to_item(index, ScrollStrategy::Center);
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.reset_diff_list_scroll();
-        self.reset_review_list_scroll();
+        self.reset_panel_list_scrolls();
         self.status = format!("Selected {}", self.selected_pr_label());
 
         self.load_selected_pull_request(cx);

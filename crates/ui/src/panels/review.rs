@@ -1,10 +1,8 @@
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use gpui::{
-    AnyElement, Context, Entity, IntoElement, UniformListScrollHandle, div, prelude::*, px,
-};
-use gpui_component::{Sizable, StyledExt, avatar::Avatar, input::InputState};
+use gpui::{AnyElement, Context, IntoElement, ListState, div, list, prelude::*, px};
+use gpui_component::{Sizable, StyledExt, avatar::Avatar};
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
     ReviewSide, ReviewThread, ReviewThreadState,
@@ -20,26 +18,16 @@ use super::review_markdown::{render_review_markdown_body, review_markdown_body};
 use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
     render_empty_panel_card, render_error_panel_card, render_metric_pill, render_panel_header,
-    render_status_pill,
+    render_status_pill, sync_virtual_list_item_count,
 };
-use crate::workspace::ReviewThreadUiError;
 
 pub(crate) struct ReviewPanelRenderInput<'a> {
     pub(crate) reviews: &'a [PullRequestReview],
     pub(crate) comments: &'a [PullRequestComment],
     pub(crate) threads: &'a [ReviewThread],
-    pub(crate) files: &'a [DiffFile],
-    pub(crate) diffs: &'a [Option<ParsedDiff>],
-    pub(crate) active_review_thread_reply: Option<&'a str>,
-    pub(crate) review_thread_reply_input: Entity<InputState>,
-    pub(crate) reply_body_empty: bool,
-    pub(crate) is_submitting_reply: bool,
-    pub(crate) reply_error: Option<&'a ReviewThreadUiError>,
-    pub(crate) action_thread_id: Option<&'a str>,
-    pub(crate) action_error: Option<&'a ReviewThreadUiError>,
     pub(crate) is_loading: bool,
     pub(crate) error: Option<&'a str>,
-    pub(crate) review_list_scroll: &'a UniformListScrollHandle,
+    pub(crate) review_list_state: ListState,
 }
 
 pub(crate) fn render_review_panel(
@@ -50,24 +38,16 @@ pub(crate) fn render_review_panel(
         reviews,
         comments,
         threads,
-        files,
-        diffs,
-        active_review_thread_reply,
-        review_thread_reply_input,
-        reply_body_empty,
-        is_submitting_reply,
-        reply_error,
-        action_thread_id,
-        action_error,
         is_loading,
         error,
-        review_list_scroll,
+        review_list_state,
     } = input;
     let (unresolved, resolved, outdated) = review_thread_counts(threads);
     let view_entity = cx.entity().clone();
     let timeline_items = review_timeline_items(reviews, threads, comments);
     let has_timeline_items = !timeline_items.is_empty();
-    let review_scroll_handle = review_list_scroll.0.borrow().base_handle.clone();
+    sync_virtual_list_item_count(&review_list_state, timeline_items.len());
+    let timeline_items_for_render = timeline_items.clone();
 
     div()
         .image_cache(gpui::retain_all("review-timeline-avatar-cache"))
@@ -107,55 +87,77 @@ pub(crate) fn render_review_panel(
         )
         .when(has_timeline_items, |element| {
             element.child(
-                div()
-                    .id("review-timeline-scroll")
-                    .block()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&review_scroll_handle)
-                    .children(
-                        timeline_items
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, item)| match &item.kind {
-                                ReviewTimelineItemKind::Thread { thread_id } => {
-                                    let thread =
-                                        threads.iter().find(|thread| thread.id == *thread_id)?;
-                                    let diff_preview =
-                                        review_thread_diff_preview(thread, files, diffs);
+                list(
+                    review_list_state,
+                    cx.processor(move |view, index: usize, _window, cx| {
+                        let Some(item) = timeline_items_for_render.get(index) else {
+                            return div().into_any_element();
+                        };
 
-                                    Some(render_review_thread_row(ReviewThreadRowRenderState {
-                                        index,
-                                        thread,
-                                        active_review_thread_reply,
-                                        review_thread_reply_input: review_thread_reply_input
-                                            .clone(),
-                                        reply_body_empty,
-                                        is_submitting_reply,
-                                        reply_error,
-                                        action_thread_id,
-                                        action_error,
-                                        diff_preview,
-                                        view_entity: view_entity.clone(),
-                                    }))
-                                }
-                                ReviewTimelineItemKind::Review { review_id } => {
-                                    let review =
-                                        reviews.iter().find(|review| review.id == *review_id)?;
+                        match &item.kind {
+                            ReviewTimelineItemKind::Thread { thread_id } => {
+                                let Some(thread) = view
+                                    .review_state
+                                    .review_threads
+                                    .iter()
+                                    .find(|thread| thread.id == *thread_id)
+                                else {
+                                    return div().into_any_element();
+                                };
+                                let review_thread_reply_input = view
+                                    .review_state
+                                    .review_composer_state
+                                    .thread_reply_input
+                                    .clone();
+                                let reply_body_empty =
+                                    review_thread_reply_input.read(cx).value().trim().is_empty();
+                                let diff_preview = review_thread_diff_preview(
+                                    thread,
+                                    view.detail_state.files(),
+                                    view.detail_state.diffs(),
+                                );
 
-                                    Some(render_pull_request_review_row(review, index))
-                                }
-                                ReviewTimelineItemKind::Comment { comment_id } => {
-                                    let comment = comments
-                                        .iter()
-                                        .find(|comment| comment.id == *comment_id)?;
-
-                                    Some(render_pull_request_comment_row(comment, index))
-                                }
-                            }),
-                    ),
+                                render_review_thread_row(ReviewThreadRowRenderState {
+                                    index,
+                                    thread,
+                                    active_review_thread_reply: view
+                                        .review_state
+                                        .review_composer_state
+                                        .active_thread_reply(),
+                                    review_thread_reply_input,
+                                    reply_body_empty,
+                                    is_submitting_reply: view
+                                        .review_state
+                                        .is_submitting_review_thread_reply(),
+                                    reply_error: view.review_state.review_thread_reply_error(),
+                                    action_thread_id: view
+                                        .review_state
+                                        .review_thread_action_thread_id(),
+                                    action_error: view.review_state.review_thread_action_error(),
+                                    diff_preview,
+                                    view_entity: view_entity.clone(),
+                                })
+                            }
+                            ReviewTimelineItemKind::Review { review_id } => view
+                                .review_state
+                                .pull_request_reviews
+                                .iter()
+                                .find(|review| review.id == *review_id)
+                                .map(|review| render_pull_request_review_row(review, index))
+                                .unwrap_or_else(|| div().into_any_element()),
+                            ReviewTimelineItemKind::Comment { comment_id } => view
+                                .review_state
+                                .pull_request_comments
+                                .iter()
+                                .find(|comment| comment.id == *comment_id)
+                                .map(|comment| render_pull_request_comment_row(comment, index))
+                                .unwrap_or_else(|| div().into_any_element()),
+                        }
+                    }),
+                )
+                .flex_1()
+                .min_h_0()
+                .min_w_0(),
             )
         })
 }

@@ -1,7 +1,15 @@
-use gpui::{Div, IntoElement, Stateful, div, prelude::*};
+use gpui::{Div, IntoElement, Stateful, div, prelude::*, px};
 use gpui_component::StyledExt;
 
 use crate::visual::color;
+
+const PULL_REQUEST_INBOX_SEARCH_ROW_HEIGHT: f32 = 58.0;
+const PULL_REQUEST_INBOX_SEARCH_MAX_VISIBLE_ROWS: usize = 7;
+
+pub(super) fn pull_request_inbox_search_list_height(row_count: usize) -> f32 {
+    PULL_REQUEST_INBOX_SEARCH_ROW_HEIGHT
+        * row_count.min(PULL_REQUEST_INBOX_SEARCH_MAX_VISIBLE_ROWS) as f32
+}
 
 pub(super) fn render_pull_request_inbox_search_empty_row(label: &'static str) -> impl IntoElement {
     div()
@@ -21,6 +29,7 @@ pub(super) fn render_pull_request_inbox_search_row(
 ) -> Stateful<Div> {
     div()
         .id(("pull-request-inbox-search-row", number))
+        .h(px(PULL_REQUEST_INBOX_SEARCH_ROW_HEIGHT))
         .flex()
         .flex_col()
         .gap_1()

@@ -1,4 +1,4 @@
-use gpui::{ScrollStrategy, point, px};
+use gpui::{ListOffset, ScrollStrategy, px};
 
 use crate::{actions::PanelTab, workspace::AppView};
 
@@ -86,17 +86,26 @@ impl AppView {
     pub(super) fn reset_detail_scrolls(&mut self) {
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.reset_diff_list_scroll();
-        self.reset_review_list_scroll();
+        self.reset_panel_list_scrolls();
         self.detail_state
             .log_state
             .list_scroll
             .scroll_to_item(0, ScrollStrategy::Top);
     }
 
-    pub(super) fn reset_review_list_scroll(&mut self) {
-        let scroll_handle = self.review_list_scroll.0.borrow().base_handle.clone();
-        scroll_handle.set_offset(point(px(0.0), px(0.0)));
-        scroll_handle.scroll_to_top_of_item(0);
+    pub(super) fn reset_panel_list_scrolls(&mut self) {
+        self.review_list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
+        self.checks_list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
+        self.actions_list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
     }
 
     pub(super) fn clear_authenticated_github_content(&mut self) {

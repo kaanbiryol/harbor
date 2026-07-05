@@ -8,7 +8,7 @@ use crate::{actions::PanelTab, diff::parse_files_with_syntax};
 
 use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
-    SettingsSection,
+    PANEL_LIST_OVERDRAW, SettingsSection,
     external_apps::ExternalAppAvailability,
     github_service::{GitHubApi, RealGitHubApi},
     notifications::NativeNotificationSink,
@@ -183,7 +183,9 @@ impl AppView {
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
             diff_list_items: Vec::new(),
-            review_list_scroll: UniformListScrollHandle::new(),
+            review_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+            checks_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+            actions_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             selection_state: PullRequestSelectionState::default(),
             active_tab: PanelTab::Diff,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),

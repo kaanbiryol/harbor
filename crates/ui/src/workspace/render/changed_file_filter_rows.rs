@@ -3,6 +3,13 @@ use gpui_component::{Icon, IconName, Sizable};
 
 use crate::visual::color;
 
+const FILE_FILTER_ROW_HEIGHT: f32 = 34.0;
+const FILE_FILTER_MAX_VISIBLE_ROWS: usize = 8;
+
+pub(super) fn file_filter_list_height(row_count: usize) -> f32 {
+    FILE_FILTER_ROW_HEIGHT * row_count.min(FILE_FILTER_MAX_VISIBLE_ROWS) as f32
+}
+
 pub(super) fn render_file_filter_row(
     id: impl Into<gpui::ElementId>,
     label: String,
@@ -12,7 +19,7 @@ pub(super) fn render_file_filter_row(
 ) -> Stateful<Div> {
     div()
         .id(id)
-        .h(px(34.))
+        .h(px(FILE_FILTER_ROW_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()

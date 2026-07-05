@@ -105,7 +105,7 @@ impl AppView {
                     })
                     .w(px(460.))
                     .max_h(px(520.))
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .border_1()
                     .border_color(color::border_strong())
                     .bg(color::elevated_background())

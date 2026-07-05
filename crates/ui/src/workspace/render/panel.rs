@@ -5,8 +5,9 @@ use harbor_domain::PullRequest;
 use crate::{
     actions::PanelTab,
     panels::{
-        DiffPanelRenderInput, ReviewPanelRenderInput, render_actions_panel, render_checks_panel,
-        render_diff_panel, render_logs_panel, render_review_panel,
+        ActionsPanelRenderInput, DiffPanelRenderInput, ReviewPanelRenderInput,
+        render_actions_panel, render_checks_panel, render_diff_panel, render_logs_panel,
+        render_review_panel,
     },
     visual::color,
     workspace::AppView,
@@ -116,58 +117,37 @@ impl AppView {
                             )
                             .into_any_element()
                         }
-                        PanelTab::Review => {
-                            let review_thread_reply_input = self
-                                .review_state
-                                .review_composer_state
-                                .thread_reply_input
-                                .clone();
-                            let reply_body_empty =
-                                review_thread_reply_input.read(cx).value().trim().is_empty();
-
-                            render_review_panel(
-                                ReviewPanelRenderInput {
-                                    reviews: &self.review_state.pull_request_reviews,
-                                    comments: &self.review_state.pull_request_comments,
-                                    threads: &self.review_state.review_threads,
-                                    files: self.detail_state.files(),
-                                    diffs: self.detail_state.diffs(),
-                                    active_review_thread_reply: self
-                                        .review_state
-                                        .review_composer_state
-                                        .active_thread_reply(),
-                                    review_thread_reply_input,
-                                    reply_body_empty,
-                                    is_submitting_reply: self
-                                        .review_state
-                                        .is_submitting_review_thread_reply(),
-                                    reply_error: self.review_state.review_thread_reply_error(),
-                                    action_thread_id: self
-                                        .review_state
-                                        .review_thread_action_thread_id(),
-                                    action_error: self.review_state.review_thread_action_error(),
-                                    is_loading: self.review_state.reviews_loading(),
-                                    error: self.review_state.reviews_error(),
-                                    review_list_scroll: &self.review_list_scroll,
-                                },
-                                cx,
-                            )
-                            .into_any_element()
-                        }
+                        PanelTab::Review => render_review_panel(
+                            ReviewPanelRenderInput {
+                                reviews: &self.review_state.pull_request_reviews,
+                                comments: &self.review_state.pull_request_comments,
+                                threads: &self.review_state.review_threads,
+                                is_loading: self.review_state.reviews_loading(),
+                                error: self.review_state.reviews_error(),
+                                review_list_state: self.review_list_state.clone(),
+                            },
+                            cx,
+                        )
+                        .into_any_element(),
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             self.detail_state.check_runs(),
                             self.detail_state.checks_loading(),
                             self.detail_state.checks_error(),
+                            self.checks_list_state.clone(),
+                            cx,
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
-                            pr,
-                            self.detail_state.workflow_runs(),
-                            self.detail_state.workflows_loading(),
-                            self.detail_state.workflows_error(),
-                            self.action_runtime.workflow_action_error(),
-                            self.action_runtime.workflow_action_running(),
+                            ActionsPanelRenderInput {
+                                pr,
+                                workflow_runs: self.detail_state.workflow_runs(),
+                                is_loading: self.detail_state.workflows_loading(),
+                                error: self.detail_state.workflows_error(),
+                                action_error: self.action_runtime.workflow_action_error(),
+                                is_running_action: self.action_runtime.workflow_action_running(),
+                                list_state: self.actions_list_state.clone(),
+                            },
                             cx,
                         )
                         .into_any_element(),

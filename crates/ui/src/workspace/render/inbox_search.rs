@@ -1,4 +1,6 @@
-use gpui::{Anchor, App, Context, Entity, IntoElement, KeyDownEvent, div, prelude::*, px};
+use gpui::{
+    Anchor, App, Context, Entity, IntoElement, KeyDownEvent, div, prelude::*, px, uniform_list,
+};
 use gpui_component::{
     Disableable, IconName, Sizable,
     button::{Button, ButtonVariants},
@@ -13,7 +15,8 @@ use crate::{
 
 use super::{
     inbox_search_rows::{
-        render_pull_request_inbox_search_empty_row, render_pull_request_inbox_search_row,
+        pull_request_inbox_search_list_height, render_pull_request_inbox_search_empty_row,
+        render_pull_request_inbox_search_row,
     },
     render_switcher_section_label,
 };
@@ -73,7 +76,7 @@ impl AppView {
                 let mut results = div()
                     .id("pull-request-inbox-search-results")
                     .max_h(px(408.))
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .p_2()
                     .child(render_switcher_section_label("results"));
 
@@ -89,36 +92,63 @@ impl AppView {
                     };
                     results = results.child(render_pull_request_inbox_search_empty_row(label));
                 } else {
-                    for (row_index, (index, pull_request)) in pull_requests.iter().enumerate() {
-                        let current = *index == selected_pull_request;
-                        let highlighted = row_index == pull_request_selection;
-                        let number = pull_request.number;
-                        let title = pull_request.title.clone();
-                        let author = pull_request.author.clone();
-                        let view = view.clone();
-                        let popover = popover.clone();
-                        let index = *index;
+                    let row_count = pull_requests.len();
+                    let list_height = pull_request_inbox_search_list_height(row_count);
+                    let pull_requests = pull_requests.clone();
+                    let view = view.clone();
+                    let popover = popover.clone();
 
-                        results = results.child(
-                            render_pull_request_inbox_search_row(
-                                number,
-                                title,
-                                author,
-                                current,
-                                highlighted,
-                            )
-                            .on_click(move |_, window, cx| {
-                                view.update(cx, |view, cx| {
-                                    view.select_pull_request(index, cx);
-                                    view.pull_request_inbox_search_open = false;
-                                    cx.notify();
-                                });
-                                popover.update(cx, |popover, cx| {
-                                    popover.dismiss(window, cx);
-                                });
-                            }),
-                        );
-                    }
+                    results = results.child(
+                        uniform_list(
+                            "pull-request-inbox-search-list",
+                            row_count,
+                            move |range, _window, _cx| {
+                                let mut rows = Vec::with_capacity(range.len());
+
+                                for row_index in range {
+                                    let Some((index, pull_request)) =
+                                        pull_requests.get(row_index).cloned()
+                                    else {
+                                        continue;
+                                    };
+                                    let current = index == selected_pull_request;
+                                    let highlighted = row_index == pull_request_selection;
+                                    let number = pull_request.number;
+                                    let title = pull_request.title;
+                                    let author = pull_request.author;
+                                    let view = view.clone();
+                                    let popover = popover.clone();
+
+                                    rows.push(
+                                        render_pull_request_inbox_search_row(
+                                            number,
+                                            title,
+                                            author,
+                                            current,
+                                            highlighted,
+                                        )
+                                        .on_click(
+                                            move |_, window, cx| {
+                                                view.update(cx, |view, cx| {
+                                                    view.select_pull_request(index, cx);
+                                                    view.pull_request_inbox_search_open = false;
+                                                    cx.notify();
+                                                });
+                                                popover.update(cx, |popover, cx| {
+                                                    popover.dismiss(window, cx);
+                                                });
+                                            },
+                                        ),
+                                    );
+                                }
+
+                                rows
+                            },
+                        )
+                        .h(px(list_height))
+                        .w_full()
+                        .min_h_0(),
+                    );
                 }
 
                 div()
