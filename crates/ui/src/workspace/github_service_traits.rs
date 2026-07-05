@@ -203,7 +203,13 @@ pub(crate) trait GitHubReviewMutationApi: Send + Sync {
 
 #[async_trait]
 pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
-    async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()>;
+    async fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: Option<&str>,
+    ) -> Result<()>;
 
     async fn request_pull_request_changes(
         &self,

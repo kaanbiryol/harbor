@@ -76,6 +76,35 @@ pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
 pub(crate) use auth_state::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
 pub(crate) use settings::{AuthSwitchStatus, SettingsSection};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReviewActionCommentTarget {
+    Approve,
+    RequestChanges,
+}
+
+impl ReviewActionCommentTarget {
+    pub(crate) fn title(self) -> &'static str {
+        match self {
+            Self::Approve => "Approve with comment",
+            Self::RequestChanges => "Request changes",
+        }
+    }
+
+    pub(crate) fn placeholder(self) -> &'static str {
+        match self {
+            Self::Approve => "Leave an approval comment",
+            Self::RequestChanges => "Describe the requested changes",
+        }
+    }
+
+    pub(crate) fn submit_label(self) -> &'static str {
+        match self {
+            Self::Approve => "Approve",
+            Self::RequestChanges => "Request changes",
+        }
+    }
+}
+
 pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fmt::Display) {
     tracing::warn!(%error, "{}", context);
 }
@@ -112,6 +141,8 @@ pub struct AppView {
     prefetch_inbox_counts: bool,
     pull_request_inbox_search_open: bool,
     file_filter_popover_open: bool,
+    review_action_comment_target: Option<ReviewActionCommentTarget>,
+    review_action_comment_input: Entity<InputState>,
     pull_request_switcher_selection: usize,
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,

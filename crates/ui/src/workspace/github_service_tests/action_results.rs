@@ -69,7 +69,7 @@ async fn pull_request_action_reports_success_and_failure_from_service(cx: &mut T
     success_view.update_in(cx, |view, window, cx| {
         view.pull_requests = vec![pull_request()];
         view.selection_state.reset_pull_request_index();
-        view.run_pull_request_action(PullRequestAction::Approve, window, cx);
+        view.run_pull_request_action(PullRequestAction::Approve { body: None }, window, cx);
         assert!(view.action_runtime.pull_request_action_running());
         assert_eq!(view.status, "Approving PR #7");
     });
@@ -89,7 +89,7 @@ async fn pull_request_action_reports_success_and_failure_from_service(cx: &mut T
     failure_view.update_in(cx, |view, window, cx| {
         view.pull_requests = vec![pull_request()];
         view.selection_state.reset_pull_request_index();
-        view.run_pull_request_action(PullRequestAction::Approve, window, cx);
+        view.run_pull_request_action(PullRequestAction::Approve { body: None }, window, cx);
         assert_eq!(view.status, "Approving PR #7");
     });
     cx.run_until_parked();

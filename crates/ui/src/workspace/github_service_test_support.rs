@@ -406,7 +406,13 @@ impl GitHubWorkflowActionApi for FakeGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestActionApi for FakeGitHubApi {
-    async fn approve_pull_request(&self, _owner: &str, _repo: &str, _number: u64) -> Result<()> {
+    async fn approve_pull_request(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _body: Option<&str>,
+    ) -> Result<()> {
         self.record_call("approve_pull_request");
         pop_result(&self.approve_results, "approve_pull_request")
     }

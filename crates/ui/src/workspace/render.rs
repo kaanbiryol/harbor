@@ -40,6 +40,8 @@ mod pending_review;
 mod pull_request_details_header;
 #[path = "render/rate_limits.rs"]
 mod rate_limits;
+#[path = "render/review_action_comment_dialog.rs"]
+mod review_action_comment_dialog;
 #[path = "render/settings.rs"]
 mod settings;
 #[path = "render/settings_account.rs"]
@@ -115,6 +117,8 @@ impl Render for AppView {
             .on_action(cx.listener(Self::open_in_browser))
             .on_action(cx.listener(Self::approve_pr))
             .on_action(cx.listener(Self::request_changes))
+            .on_action(cx.listener(Self::open_approve_comment_dialog))
+            .on_action(cx.listener(Self::open_request_changes_comment_dialog))
             .on_action(cx.listener(Self::merge_pr))
             .on_action(cx.listener(Self::merge_pr_with_merge_commit))
             .on_action(cx.listener(Self::rebase_pr))
@@ -158,6 +162,9 @@ impl Render for AppView {
             })
             .when(self.settings_open(), |element| {
                 element.child(self.render_settings_overlay(cx))
+            })
+            .when(self.review_action_comment_target.is_some(), |element| {
+                element.child(self.render_review_action_comment_dialog(cx))
             })
     }
 }

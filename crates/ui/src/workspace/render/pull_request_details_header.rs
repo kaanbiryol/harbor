@@ -8,7 +8,8 @@ use harbor_domain::{MergeMethod, PullRequest};
 
 use crate::{
     actions::{
-        MergePullRequest, MergePullRequestWithMergeCommit, PullRequestAction, RebasePullRequest,
+        MergePullRequest, MergePullRequestWithMergeCommit, OpenApproveCommentDialog,
+        OpenRequestChangesCommentDialog, PullRequestAction, RebasePullRequest,
     },
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
     visual::{Tone, color},
@@ -29,9 +30,6 @@ impl AppView {
         let approve_tooltip = review_action_blocker
             .clone()
             .unwrap_or_else(|| "Approve pull request".to_string());
-        let changes_tooltip = review_action_blocker
-            .clone()
-            .unwrap_or_else(|| "Request changes".to_string());
         let merge_tooltip = merge_blocker
             .clone()
             .unwrap_or_else(|| "Merge pull request".to_string());
@@ -168,44 +166,41 @@ impl AppView {
                     .items_center()
                     .justify_between()
                     .gap_3()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                Button::new("approve-pr")
+                    .child(div().flex().items_center().gap_2().child({
+                        DropdownButton::new("review-pr")
+                            .button(
+                                Button::new("approve-pr-primary")
                                     .label("approve")
                                     .small()
-                                    .primary()
-                                    .tooltip(approve_tooltip.clone())
                                     .loading(pull_request_action_running)
                                     .disabled(review_action_disabled)
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.run_pull_request_action(
-                                            PullRequestAction::Approve,
+                                            PullRequestAction::Approve { body: None },
                                             window,
                                             cx,
                                         );
                                     })),
                             )
-                            .child(
-                                Button::new("request-pr-changes")
-                                    .label("changes")
-                                    .small()
-                                    .outline()
-                                    .tooltip(changes_tooltip.clone())
-                                    .loading(pull_request_action_running)
-                                    .disabled(review_action_disabled)
-                                    .on_click(cx.listener(|view, _, window, cx| {
-                                        view.run_pull_request_action(
-                                            PullRequestAction::RequestChanges,
-                                            window,
-                                            cx,
-                                        );
-                                    })),
-                            ),
-                    )
+                            .small()
+                            .compact()
+                            .primary()
+                            .tooltip(approve_tooltip.clone())
+                            .loading(pull_request_action_running)
+                            .disabled(review_action_disabled)
+                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
+                                menu.menu_with_disabled(
+                                    "Approve with comment...",
+                                    Box::new(OpenApproveCommentDialog),
+                                    review_action_disabled,
+                                )
+                                .menu_with_disabled(
+                                    "Request changes...",
+                                    Box::new(OpenRequestChangesCommentDialog),
+                                    review_action_disabled,
+                                )
+                            })
+                    }))
                     .child({
                         let button = Button::new("merge-pr-primary")
                             .label(merge_method_button_label(MergeMethod::Squash))

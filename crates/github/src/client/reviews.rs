@@ -451,11 +451,19 @@ where
         Ok(())
     }
 
-    pub async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
+    pub async fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: Option<&str>,
+    ) -> Result<()> {
         let path = format!("/repos/{owner}/{repo}/pulls/{number}/reviews");
-        self.transport
-            .rest_post(&path, json!({ "event": "APPROVE" }))
-            .await?;
+        let body = match body.filter(|body| !body.trim().is_empty()) {
+            Some(body) => json!({ "event": "APPROVE", "body": body }),
+            None => json!({ "event": "APPROVE" }),
+        };
+        self.transport.rest_post(&path, body).await?;
 
         Ok(())
     }

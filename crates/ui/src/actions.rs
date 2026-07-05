@@ -33,6 +33,10 @@ actions!(
         ApprovePullRequest,
         /// Requests changes on the selected pull request.
         RequestChanges,
+        /// Opens the approval comment dialog.
+        OpenApproveCommentDialog,
+        /// Opens the request-changes comment dialog.
+        OpenRequestChangesCommentDialog,
         /// Merges the selected pull request.
         MergePullRequest,
         /// Merges the selected pull request with a merge commit.
@@ -154,10 +158,10 @@ pub(crate) enum WorkflowAction {
     RerunFailedJobs,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum PullRequestAction {
-    Approve,
-    RequestChanges,
+    Approve { body: Option<String> },
+    RequestChanges { body: Option<String> },
     Merge(MergeMethod),
 }
 
@@ -219,6 +223,7 @@ pub(crate) enum PullRequestActionRequest {
         owner: String,
         repo: String,
         number: u64,
+        body: Option<String>,
     },
     RequestChanges {
         owner: String,

@@ -85,6 +85,12 @@ impl AppView {
                 .placeholder("Review summary")
                 .clean_on_escape()
         });
+        let review_action_comment_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(3, 8)
+                .placeholder("Review comment")
+                .clean_on_escape()
+        });
         let repository_search_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Search repositories...")
@@ -119,6 +125,11 @@ impl AppView {
             ),
             cx.subscribe_in(
                 &pending_review_body_input,
+                window,
+                Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
+                &review_action_comment_input,
                 window,
                 Self::on_review_input_event,
             ),
@@ -192,6 +203,8 @@ impl AppView {
             prefetch_inbox_counts: start_startup_tasks,
             pull_request_inbox_search_open: false,
             file_filter_popover_open: false,
+            review_action_comment_target: None,
+            review_action_comment_input,
             pull_request_switcher_selection: 0,
             pull_request_search_input,
             external_app_availability: ExternalAppAvailability::default(),

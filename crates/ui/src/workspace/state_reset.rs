@@ -70,6 +70,7 @@ impl AppView {
         self.clear_review_data_state();
         self.clear_detail_loaded_state();
         self.clear_review_submission_errors();
+        self.review_action_comment_target = None;
         self.clear_log_content();
         self.reset_diff_selection();
         self.reset_detail_scrolls();

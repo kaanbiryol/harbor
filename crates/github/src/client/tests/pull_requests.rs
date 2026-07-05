@@ -304,7 +304,7 @@ fn posts_pull_request_approval() {
     let transport = RecordingTransport::default();
     let client = GitHubClient::new(transport.clone());
 
-    smol::block_on(client.approve_pull_request("acme", "app", 7)).unwrap();
+    smol::block_on(client.approve_pull_request("acme", "app", 7, None)).unwrap();
 
     let posts = transport
         .posts
@@ -313,6 +313,28 @@ fn posts_pull_request_approval() {
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].0, "/repos/acme/app/pulls/7/reviews");
     assert_eq!(posts[0].1, json!({ "event": "APPROVE" }));
+}
+
+#[test]
+fn posts_pull_request_approval_with_body() {
+    let transport = RecordingTransport::default();
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.approve_pull_request("acme", "app", 7, Some("Looks good."))).unwrap();
+
+    let posts = transport
+        .posts
+        .lock()
+        .expect("posts mutex should not be poisoned");
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0].0, "/repos/acme/app/pulls/7/reviews");
+    assert_eq!(
+        posts[0].1,
+        json!({
+            "event": "APPROVE",
+            "body": "Looks good.",
+        })
+    );
 }
 
 #[test]

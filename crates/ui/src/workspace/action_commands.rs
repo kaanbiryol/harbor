@@ -5,12 +5,12 @@ use harbor_github::SubmitPullRequestReviewEvent;
 use crate::{
     actions::{
         ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest,
-        MergePullRequestWithMergeCommit, PanelTab, PullRequestAction, PullRequestActionRequest,
-        RebasePullRequest, RequestChanges, RerunFailedJobs, TriggerBuild, WorkflowAction,
-        WorkflowActionRequest,
+        MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenRequestChangesCommentDialog,
+        PanelTab, PullRequestAction, PullRequestActionRequest, RebasePullRequest, RequestChanges,
+        RerunFailedJobs, TriggerBuild, WorkflowAction, WorkflowActionRequest,
     },
     panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
-    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
+    workspace::{AppView, ReviewActionCommentTarget, async_updates::AppViewAsyncUpdateExt},
 };
 
 impl AppView {
@@ -153,7 +153,7 @@ impl AppView {
         let repo = pr.repo.clone();
 
         match action {
-            PullRequestAction::Approve => {
+            PullRequestAction::Approve { body } => {
                 if let Some(blocker) = review_action_blocker(pr) {
                     return Err(blocker);
                 }
@@ -162,9 +162,10 @@ impl AppView {
                     owner: repo.owner,
                     repo: repo.name,
                     number: pr.number,
+                    body,
                 })
             }
-            PullRequestAction::RequestChanges => {
+            PullRequestAction::RequestChanges { body } => {
                 if let Some(blocker) = review_action_blocker(pr) {
                     return Err(blocker);
                 }
@@ -173,7 +174,7 @@ impl AppView {
                     owner: repo.owner,
                     repo: repo.name,
                     number: pr.number,
-                    body: DEFAULT_REQUEST_CHANGES_BODY.to_string(),
+                    body: body.unwrap_or_else(|| DEFAULT_REQUEST_CHANGES_BODY.to_string()),
                 })
             }
             PullRequestAction::Merge(method) => {
@@ -200,7 +201,7 @@ impl AppView {
     ) {
         if self.review_state.has_pending_review() {
             match action {
-                PullRequestAction::Approve => {
+                PullRequestAction::Approve { .. } => {
                     self.submit_pending_pull_request_review(
                         SubmitPullRequestReviewEvent::Approve,
                         window,
@@ -208,7 +209,7 @@ impl AppView {
                     );
                     return;
                 }
-                PullRequestAction::RequestChanges => {
+                PullRequestAction::RequestChanges { .. } => {
                     self.submit_pending_pull_request_review(
                         SubmitPullRequestReviewEvent::RequestChanges,
                         window,
@@ -248,7 +249,12 @@ impl AppView {
                     owner,
                     repo,
                     number,
-                } => github_api.approve_pull_request(owner, repo, *number).await,
+                    body,
+                } => {
+                    github_api
+                        .approve_pull_request(owner, repo, *number, body.as_deref())
+                        .await
+                }
                 PullRequestActionRequest::RequestChanges {
                     owner,
                     repo,
@@ -304,7 +310,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Approve, window, cx);
+        self.run_pull_request_action(PullRequestAction::Approve { body: None }, window, cx);
     }
 
     pub(super) fn request_changes(
@@ -313,7 +319,90 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::RequestChanges, window, cx);
+        self.run_pull_request_action(PullRequestAction::RequestChanges { body: None }, window, cx);
+    }
+
+    pub(super) fn open_approve_comment_dialog(
+        &mut self,
+        _: &OpenApproveCommentDialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_review_action_comment_dialog(ReviewActionCommentTarget::Approve, window, cx);
+    }
+
+    pub(super) fn open_request_changes_comment_dialog(
+        &mut self,
+        _: &OpenRequestChangesCommentDialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_review_action_comment_dialog(
+            ReviewActionCommentTarget::RequestChanges,
+            window,
+            cx,
+        );
+    }
+
+    pub(crate) fn open_review_action_comment_dialog(
+        &mut self,
+        target: ReviewActionCommentTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.review_action_comment_target = Some(target);
+        self.repository_state.repository_switcher_open = false;
+        self.pull_request_inbox_search_open = false;
+        self.file_filter_popover_open = false;
+        self.review_action_comment_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+            input.set_placeholder(target.placeholder(), window, cx);
+            input.focus(window, cx);
+        });
+        self.status = format!("Opened {}", target.title().to_lowercase());
+        cx.notify();
+    }
+
+    pub(crate) fn close_review_action_comment_dialog(&mut self, cx: &mut Context<Self>) {
+        self.review_action_comment_target = None;
+        self.status = "Closed review comment".to_string();
+        cx.notify();
+    }
+
+    pub(crate) fn submit_review_action_comment_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(target) = self.review_action_comment_target else {
+            self.status = "No review action comment to submit".to_string();
+            cx.notify();
+            return;
+        };
+
+        let body = self
+            .review_action_comment_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        if target == ReviewActionCommentTarget::Approve && body.is_empty() {
+            self.status = "Add a comment before approving with comment".to_string();
+            cx.notify();
+            return;
+        }
+
+        let body = (!body.is_empty()).then_some(body);
+        let action = match target {
+            ReviewActionCommentTarget::Approve => PullRequestAction::Approve { body },
+            ReviewActionCommentTarget::RequestChanges => PullRequestAction::RequestChanges { body },
+        };
+
+        self.review_action_comment_target = None;
+        self.review_action_comment_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.run_pull_request_action(action, window, cx);
     }
 
     pub(super) fn merge_pr(

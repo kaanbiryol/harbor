@@ -362,9 +362,15 @@ impl GitHubReviewMutationApi for RealGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestActionApi for RealGitHubApi {
-    async fn approve_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
+    async fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: Option<&str>,
+    ) -> Result<()> {
         self.client()?
-            .approve_pull_request(owner, repo, number)
+            .approve_pull_request(owner, repo, number, body)
             .await
     }
 
