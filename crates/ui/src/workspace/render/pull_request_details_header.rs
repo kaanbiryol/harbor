@@ -36,7 +36,6 @@ impl AppView {
         let pull_request_url = pr.url.clone();
         let pull_request_link = pr.url.clone();
         let pull_request_number = pr.number;
-        let repository_name = pr.repo.full_name();
         let branch_name = pr.head_ref.clone();
         let head_sha = pr.head_sha.clone();
         let short_head_sha = short_commit_sha(&head_sha);
@@ -89,8 +88,6 @@ impl AppView {
                     .min_w_0()
                     .text_xs()
                     .text_color(color::text_muted())
-                    .child(div().flex_none().child(repository_name))
-                    .child(div().flex_none().child("/"))
                     .child(
                         div()
                             .min_w_0()
