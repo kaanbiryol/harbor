@@ -73,6 +73,8 @@ pub(super) fn render_review_comment_actions_menu(
                                         .label(if active_edit { "Editing" } else { "Edit" })
                                         .small()
                                         .ghost()
+                                        .w_full()
+                                        .justify_start()
                                         .disabled(edit_submitting || action_running)
                                         .debug_selector({
                                             let selector =
@@ -107,6 +109,8 @@ pub(super) fn render_review_comment_actions_menu(
                                         .label("Delete")
                                         .small()
                                         .ghost()
+                                        .w_full()
+                                        .justify_start()
                                         .loading(action_running)
                                         .disabled(action_running || edit_submitting)
                                         .on_click({
