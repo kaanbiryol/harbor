@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{ClipboardItem, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
@@ -7,8 +7,9 @@ use harbor_domain::PullRequest;
 
 use crate::{
     actions::PullRequestAction,
+    icons::Octicon,
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
-    visual::{Tone, color},
+    visual::{Tone, color, font},
     workspace::AppView,
 };
 
@@ -33,7 +34,12 @@ impl AppView {
             .clone()
             .unwrap_or_else(|| "Merge pull request".to_string());
         let pull_request_url = pr.url.clone();
+        let pull_request_link = pr.url.clone();
         let pull_request_number = pr.number;
+        let repository_name = pr.repo.full_name();
+        let branch_name = pr.head_ref.clone();
+        let head_sha = pr.head_sha.clone();
+        let short_head_sha = short_commit_sha(&head_sha);
 
         div()
             .px_3()
@@ -43,25 +49,76 @@ impl AppView {
             .bg(color::panel_background())
             .child(
                 div()
-                    .id(("pull-request-title-link", pr.number))
-                    .text_size(px(15.0))
-                    .font_medium()
-                    .text_color(color::accent())
-                    .cursor_pointer()
-                    .hover(|element| element.text_color(color::accent_hover()))
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        cx.open_url(&pull_request_url);
-                        view.status = format!("Opened PR #{pull_request_number} in browser");
-                        cx.notify();
-                    }))
-                    .child(format!("#{} {}", pr.number, pr.title)),
+                    .flex()
+                    .items_start()
+                    .gap_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .id(("pull-request-title-link", pr.number))
+                            .min_w_0()
+                            .flex_1()
+                            .text_size(px(15.0))
+                            .font_medium()
+                            .text_color(color::accent())
+                            .cursor_pointer()
+                            .hover(|element| element.text_color(color::accent_hover()))
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                cx.open_url(&pull_request_url);
+                                view.status =
+                                    format!("Opened PR #{pull_request_number} in browser");
+                                cx.notify();
+                            }))
+                            .child(format!("#{} {}", pr.number, pr.title)),
+                    )
+                    .child(render_copy_button(
+                        format!("copy-pr-link-{}", pr.number),
+                        "Copy pull request link",
+                        pull_request_link,
+                        "Copied PR link".to_string(),
+                        cx,
+                    )),
             )
             .child(
                 div()
                     .pt_2()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_1()
+                    .min_w_0()
                     .text_xs()
                     .text_color(color::text_muted())
-                    .child(format!("{} / {}", pr.repo.full_name(), pr.head_sha)),
+                    .child(div().flex_none().child(repository_name))
+                    .child(div().flex_none().child("/"))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .max_w(px(220.))
+                            .truncate()
+                            .child(branch_name.clone()),
+                    )
+                    .child(render_copy_button(
+                        format!("copy-pr-branch-{}", pr.number),
+                        "Copy branch name",
+                        branch_name.clone(),
+                        format!("Copied branch {branch_name}"),
+                        cx,
+                    ))
+                    .child(div().flex_none().child("/"))
+                    .child(
+                        div()
+                            .flex_none()
+                            .font_family(font::MONO)
+                            .child(short_head_sha.clone()),
+                    )
+                    .child(render_copy_button(
+                        format!("copy-pr-sha-{}", pr.number),
+                        "Copy commit SHA",
+                        head_sha,
+                        format!("Copied commit {short_head_sha}"),
+                        cx,
+                    )),
             )
             .when(self.detail_state.details_loading(), |element| {
                 element.child(
@@ -187,5 +244,47 @@ impl AppView {
                     )
                 },
             )
+    }
+}
+
+fn render_copy_button(
+    id: String,
+    tooltip: &'static str,
+    clipboard_value: String,
+    status: String,
+    cx: &mut Context<AppView>,
+) -> impl IntoElement {
+    Button::new(id)
+        .icon(Octicon::Copy)
+        .small()
+        .compact()
+        .ghost()
+        .tooltip(tooltip)
+        .on_click(cx.listener(move |view, _, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(clipboard_value.clone()));
+            view.status = status.clone();
+            cx.notify();
+        }))
+}
+
+fn short_commit_sha(sha: &str) -> String {
+    sha.chars().take(7).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_commit_sha;
+
+    #[test]
+    fn short_commit_sha_limits_full_hashes_to_seven_characters() {
+        assert_eq!(
+            short_commit_sha("ffe970011a044b2d6aa767d1608993b9c94d690e"),
+            "ffe9700"
+        );
+    }
+
+    #[test]
+    fn short_commit_sha_preserves_short_hashes() {
+        assert_eq!(short_commit_sha("abc123"), "abc123");
     }
 }
