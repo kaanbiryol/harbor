@@ -17,7 +17,6 @@ harbor-github = { path = "../github" }
 harbor-logs = { path = "../logs" }
 harbor-storage = { path = "../storage" }
 harbor-sync = { path = "../sync" }
-markdown = "1"
 notify-rust = "4"
 tracing.workspace = true
 
