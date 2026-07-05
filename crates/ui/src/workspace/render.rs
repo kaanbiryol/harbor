@@ -149,7 +149,7 @@ impl Render for AppView {
             .bg(color::app_background())
             .text_color(color::text_primary())
             .font_family(font::UI)
-            .child(self.render_title_bar(cx))
+            .child(self.render_title_bar(window, cx))
             .child(content)
             .when(!show_auth_gate, |element| {
                 element.child(self.render_status_bar(cx))

@@ -21,7 +21,11 @@ use super::{
 };
 
 impl AppView {
-    pub(super) fn render_repository_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_repository_switcher(
+        &self,
+        is_fullscreen: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let view = cx.entity().clone();
         let repository_label = self.header_repository_label();
         let repository_search_value = self
@@ -42,6 +46,24 @@ impl AppView {
         let repository_search_input = self.repository_state.repository_search_input.clone();
         let has_repository_query = !repository_query.is_empty();
         let repository_switcher_disabled = self.github_auth_gate_visible();
+
+        let repository_switcher_trigger = Button::new("repository-switcher")
+            .small()
+            .compact()
+            .dropdown_caret(!repository_switcher_disabled)
+            .disabled(repository_switcher_disabled)
+            .max_w(px(260.))
+            .when(is_fullscreen, |button| button.text())
+            .when(!is_fullscreen, |button| button.ghost())
+            .child(
+                div()
+                    .debug_selector(|| "repository-switcher-label".to_string())
+                    .min_w_0()
+                    .truncate()
+                    .font_medium()
+                    .text_color(color::text_primary())
+                    .child(repository_label),
+            );
 
         Popover::new("repository-switcher-popover")
             .appearance(false)
@@ -75,23 +97,7 @@ impl AppView {
                     });
                 }
             })
-            .trigger(
-                Button::new("repository-switcher")
-                    .ghost()
-                    .small()
-                    .compact()
-                    .dropdown_caret(!repository_switcher_disabled)
-                    .disabled(repository_switcher_disabled)
-                    .max_w(px(260.))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .font_medium()
-                            .text_color(color::text_primary())
-                            .child(repository_label),
-                    ),
-            )
+            .trigger(repository_switcher_trigger)
             .content(move |_, _window, popover_cx| {
                 let view = view.clone();
                 let popover = popover_cx.entity().clone();

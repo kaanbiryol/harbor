@@ -7,10 +7,12 @@ mod repository_switcher_rows;
 #[path = "header/switchers.rs"]
 mod switchers;
 
-use gpui::{Context, IntoElement, div, prelude::*};
+use gpui::{Context, IntoElement, Window, div, prelude::*, px};
 use gpui_component::{StyledExt, TitleBar};
 
 use crate::{visual::color, workspace::AppView};
+
+const FULLSCREEN_TITLE_BAR_CONTENT_INSET: f32 = 12.;
 
 impl AppView {
     fn header_repository_label(&self) -> String {
@@ -19,15 +21,28 @@ impl AppView {
             .unwrap_or_else(|| "repository".to_string())
     }
 
-    pub(super) fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_title_bar(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let is_fullscreen = window.is_fullscreen();
         let show_repository_switcher = !self.github_auth_gate_visible();
-        let mut left_controls = div().flex().h_full().min_w_0().items_center().gap_1();
+        let mut left_controls = div()
+            .flex()
+            .h_full()
+            .min_w_0()
+            .items_center()
+            .gap_1()
+            .when(is_fullscreen, |element| {
+                element.ml(px(-FULLSCREEN_TITLE_BAR_CONTENT_INSET))
+            });
         if show_repository_switcher {
-            left_controls = left_controls.child(self.render_repository_switcher(cx));
+            left_controls = left_controls.child(self.render_repository_switcher(is_fullscreen, cx));
         } else {
             left_controls = left_controls.child(
                 div()
-                    .pl_2()
+                    .when(!is_fullscreen, |element| element.pl_2())
                     .font_medium()
                     .text_color(color::text_secondary())
                     .child("Harbor"),
@@ -37,6 +52,7 @@ impl AppView {
         TitleBar::new()
             .bg(color::app_background())
             .border_color(color::border())
+            .when(is_fullscreen, |title_bar| title_bar.pl(px(0.)))
             .child(
                 div()
                     .flex()

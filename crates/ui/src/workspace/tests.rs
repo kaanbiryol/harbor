@@ -1,6 +1,6 @@
 use super::*;
 use crate::actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher};
-use gpui::{AppContext, TestAppContext};
+use gpui::{AppContext, TestAppContext, px};
 use gpui_component::{Root, Theme, ThemeMode};
 
 #[test]
@@ -34,6 +34,41 @@ async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
         .read_with(cx, |view, _| {
             assert!(!view.repository_state.repository_switcher_open);
         });
+}
+
+#[gpui::test]
+async fn fullscreen_repository_title_starts_at_left_edge(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        window.toggle_fullscreen();
+        let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+        view.update(cx, |view, cx| {
+            view.auth_status = GitHubAuthStatus::SignedIn {
+                login: Some("octocat".to_string()),
+                source: GitHubAuthSource::GhCli,
+            };
+            view.repository_state
+                .select_repository(RepoId::new("harbor", "harbor-fixtures"));
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    cx.run_until_parked();
+
+    let bounds = cx
+        .debug_bounds("repository-switcher-label")
+        .expect("repository label should render");
+    assert_eq!(
+        bounds.origin.x,
+        px(0.),
+        "fullscreen repository title should start at the left edge"
+    );
 }
 
 #[gpui::test]
