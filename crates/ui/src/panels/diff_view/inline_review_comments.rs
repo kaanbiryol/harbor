@@ -113,6 +113,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
     } = state;
     let comment_id = comment.id.clone();
     let comment_body = comment.body.clone();
+    let author = comment.author.clone();
     let author_color = if thread_resolved {
         color::text_secondary()
     } else {
@@ -165,12 +166,11 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                                 .items_center()
                                 .gap_2()
                                 .text_xs()
-                                .child(
-                                    div()
-                                        .font_medium()
-                                        .text_color(author_color)
-                                        .child(comment.author.clone()),
-                                )
+                                .child(render_review_comment_author_link(
+                                    comment_id.clone(),
+                                    author,
+                                    author_color,
+                                ))
                                 .child(
                                     div()
                                         .text_color(metadata_color)
@@ -268,6 +268,29 @@ fn render_review_comment_body(comment_id: &str, body: &str, color: gpui::Rgba) -
         ))
 }
 
+fn render_review_comment_author_link(
+    comment_id: String,
+    author: String,
+    color: gpui::Rgba,
+) -> impl IntoElement {
+    let profile_url = review_comment_author_profile_url(&author);
+
+    div()
+        .id(format!("review-comment-author-link-{comment_id}"))
+        .font_medium()
+        .text_color(color)
+        .cursor_pointer()
+        .hover(|element| element.text_color(color::accent_hover()))
+        .on_click(move |_, _, cx| {
+            cx.open_url(&profile_url);
+        })
+        .child(author)
+}
+
+fn review_comment_author_profile_url(author: &str) -> String {
+    format!("https://github.com/{author}")
+}
+
 pub(crate) fn review_comment_ui_state(
     comment: &ReviewComment,
     active_review_comment_edit: Option<&str>,
@@ -339,6 +362,14 @@ mod tests {
         assert_eq!(
             review_markdown_body("```suggestion\nlet value = 1;\n```"),
             "```text\nlet value = 1;\n```"
+        );
+    }
+
+    #[test]
+    fn builds_review_comment_author_profile_url() {
+        assert_eq!(
+            review_comment_author_profile_url("octocat"),
+            "https://github.com/octocat"
         );
     }
 }
