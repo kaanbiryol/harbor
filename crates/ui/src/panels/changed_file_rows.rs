@@ -3,13 +3,13 @@ use gpui_component::{
     Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
-use harbor_domain::{DiffFile, FileStatus};
+use harbor_domain::DiffFile;
 
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
     visual::color,
-    workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label},
+    workspace::{AppView, ChangedFileFolderRow, ChangedFileRow},
 };
 
 const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 38.;
@@ -80,7 +80,6 @@ pub(crate) fn render_changed_file_row(
     cx: &mut Context<AppView>,
 ) -> AnyElement {
     let index = row.file_index;
-    let show_status = !matches!(file.status, FileStatus::Modified | FileStatus::Changed);
     let review_icon = if reviewed {
         Icon::new(Octicon::CheckCircle).text_color(color::success())
     } else {
@@ -118,7 +117,7 @@ pub(crate) fn render_changed_file_row(
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_file(index, cx);
         }))
-        .child(render_file_icon(&file.path))
+        .child(render_file_icon(file.status))
         .child(
             div()
                 .min_w_0()
@@ -138,17 +137,7 @@ pub(crate) fn render_changed_file_row(
                             color::text_primary()
                         })
                         .child(row.name.clone()),
-                )
-                .when(show_status, |element| {
-                    element.child(
-                        div()
-                            .flex_none()
-                            .truncate()
-                            .text_xs()
-                            .text_color(file_status_color(file.status))
-                            .child(changed_file_status_label(file.status)),
-                    )
-                }),
+                ),
         )
         .child(
             div()
@@ -188,16 +177,6 @@ fn folder_review_summary(file_count: usize) -> String {
 
 fn file_tree_padding(depth: usize) -> gpui::Pixels {
     px(10. + depth as f32 * 16.)
-}
-
-fn file_status_color(status: FileStatus) -> gpui::Rgba {
-    match status {
-        FileStatus::Added => color::success(),
-        FileStatus::Removed => color::danger(),
-        FileStatus::Renamed | FileStatus::Copied => color::accent(),
-        FileStatus::Modified | FileStatus::Changed => color::text_muted(),
-        FileStatus::Unchanged => color::text_muted(),
-    }
 }
 
 fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {

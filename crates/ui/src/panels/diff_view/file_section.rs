@@ -3,12 +3,12 @@ use gpui_component::{
     Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
-use harbor_domain::{DiffFile, FileStatus};
+use harbor_domain::DiffFile;
 
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
-    visual::{Tone, color, font, tone_text},
+    visual::{Tone, color, font},
     workspace::AppView,
 };
 
@@ -97,7 +97,7 @@ pub(super) fn render_diff_file_section_header(
                 .items_center()
                 .gap_2()
                 .child(review_button)
-                .child(render_file_icon(&path))
+                .child(render_file_icon(file.status))
                 .child(
                     div()
                         .min_w_0()
@@ -121,10 +121,6 @@ pub(super) fn render_diff_file_section_header(
                 .text_xs()
                 .font_medium()
                 .text_color(color::text_secondary())
-                .when(
-                    !matches!(file.status, FileStatus::Modified | FileStatus::Changed),
-                    |element| element.child(render_file_status(file.status)),
-                )
                 .child(render_status_pill(
                     format!("+{}", file.additions),
                     Tone::Success,
@@ -138,25 +134,6 @@ pub(super) fn render_diff_file_section_header(
                 }),
         )
         .into_any_element()
-}
-
-fn render_file_status(status: FileStatus) -> impl IntoElement {
-    let (label, tone) = match status {
-        FileStatus::Added => ("added", Tone::Success),
-        FileStatus::Modified => ("modified", Tone::Info),
-        FileStatus::Removed => ("removed", Tone::Danger),
-        FileStatus::Renamed => ("renamed", Tone::Warning),
-        FileStatus::Copied => ("copied", Tone::Neutral),
-        FileStatus::Changed => ("changed", Tone::Info),
-        FileStatus::Unchanged => ("unchanged", Tone::Neutral),
-    };
-
-    div()
-        .flex_none()
-        .text_xs()
-        .font_medium()
-        .text_color(tone_text(tone))
-        .child(label)
 }
 
 pub(super) fn render_diff_unavailable_row(row_index: usize) -> impl IntoElement {

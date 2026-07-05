@@ -55,8 +55,7 @@ pub(crate) use cache::{
 };
 pub(crate) use changed_files::{
     ChangedFileFilters, ChangedFileFolderRow, ChangedFileRow, ChangedFileTreeRow,
-    ChangedFileTypeFilter, changed_file_status_label, changed_file_tree_rows,
-    changed_file_type_filters,
+    ChangedFileTypeFilter, changed_file_tree_rows, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
 use github_service::GitHubApi;
