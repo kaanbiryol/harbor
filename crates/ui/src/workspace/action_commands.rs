@@ -1,11 +1,13 @@
 use gpui::{Context, Window};
+use harbor_domain::MergeMethod;
 use harbor_github::SubmitPullRequestReviewEvent;
 
 use crate::{
     actions::{
-        ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest, PanelTab,
-        PullRequestAction, PullRequestActionRequest, RequestChanges, RerunFailedJobs, TriggerBuild,
-        WorkflowAction, WorkflowActionRequest,
+        ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest,
+        MergePullRequestWithMergeCommit, PanelTab, PullRequestAction, PullRequestActionRequest,
+        RebasePullRequest, RequestChanges, RerunFailedJobs, TriggerBuild, WorkflowAction,
+        WorkflowActionRequest,
     },
     panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
     workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
@@ -174,7 +176,7 @@ impl AppView {
                     body: DEFAULT_REQUEST_CHANGES_BODY.to_string(),
                 })
             }
-            PullRequestAction::Merge => {
+            PullRequestAction::Merge(method) => {
                 if let Some(blocker) = merge_blocker(pr) {
                     return Err(blocker);
                 }
@@ -184,6 +186,7 @@ impl AppView {
                     repo: repo.name,
                     number: pr.number,
                     head_sha: pr.head_sha.clone(),
+                    method,
                 })
             }
         }
@@ -213,7 +216,7 @@ impl AppView {
                     );
                     return;
                 }
-                PullRequestAction::Merge => {}
+                PullRequestAction::Merge(_) => {}
             }
         }
 
@@ -261,9 +264,10 @@ impl AppView {
                     repo,
                     number,
                     head_sha,
+                    method,
                 } => {
                     github_api
-                        .merge_pull_request(owner, repo, *number, head_sha)
+                        .merge_pull_request(owner, repo, *number, head_sha, *method)
                         .await
                 }
             };
@@ -318,7 +322,25 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Merge, window, cx);
+        self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Squash), window, cx);
+    }
+
+    pub(super) fn merge_pr_with_merge_commit(
+        &mut self,
+        _: &MergePullRequestWithMergeCommit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Merge), window, cx);
+    }
+
+    pub(super) fn rebase_pr(
+        &mut self,
+        _: &RebasePullRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Rebase), window, cx);
     }
 
     pub(super) fn trigger_build(

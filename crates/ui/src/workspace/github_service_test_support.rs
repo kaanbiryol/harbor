@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReactionContent,
-    RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
+    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
@@ -431,6 +431,7 @@ impl GitHubPullRequestActionApi for FakeGitHubApi {
         _repo: &str,
         _number: u64,
         _head_sha: &str,
+        _method: MergeMethod,
     ) -> Result<()> {
         self.record_call("merge_pull_request");
         pop_result(&self.merge_results, "merge_pull_request")

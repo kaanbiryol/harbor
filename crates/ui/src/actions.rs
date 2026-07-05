@@ -1,4 +1,5 @@
 use gpui::{App, KeyBinding, actions};
+use harbor_domain::MergeMethod;
 
 use crate::icons::Octicon;
 
@@ -34,6 +35,10 @@ actions!(
         RequestChanges,
         /// Merges the selected pull request.
         MergePullRequest,
+        /// Merges the selected pull request with a merge commit.
+        MergePullRequestWithMergeCommit,
+        /// Rebases and merges the selected pull request.
+        RebasePullRequest,
         /// Opens logs for the selected workflow run.
         OpenLogs,
         /// Dispatches the selected workflow build.
@@ -153,7 +158,7 @@ pub(crate) enum WorkflowAction {
 pub(crate) enum PullRequestAction {
     Approve,
     RequestChanges,
-    Merge,
+    Merge(MergeMethod),
 }
 
 #[derive(Clone, Debug)]
@@ -226,6 +231,7 @@ pub(crate) enum PullRequestActionRequest {
         repo: String,
         number: u64,
         head_sha: String,
+        method: MergeMethod,
     },
 }
 

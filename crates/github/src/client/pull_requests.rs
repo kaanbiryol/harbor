@@ -1,4 +1,4 @@
-use harbor_domain::{DiffFile, PullRequest, RepoId};
+use harbor_domain::{DiffFile, MergeMethod, PullRequest, RepoId};
 use serde_json::json;
 
 use crate::{
@@ -326,6 +326,7 @@ where
         repo: &str,
         number: u64,
         head_sha: &str,
+        method: MergeMethod,
     ) -> Result<()> {
         let path = format!("/repos/{owner}/{repo}/pulls/{number}/merge");
         self.transport
@@ -333,12 +334,20 @@ where
                 &path,
                 json!({
                     "sha": head_sha,
-                    "merge_method": "squash",
+                    "merge_method": merge_method_name(method),
                 }),
             )
             .await?;
 
         Ok(())
+    }
+}
+
+fn merge_method_name(method: MergeMethod) -> &'static str {
+    match method {
+        MergeMethod::Merge => "merge",
+        MergeMethod::Squash => "squash",
+        MergeMethod::Rebase => "rebase",
     }
 }
 

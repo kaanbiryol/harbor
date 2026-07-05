@@ -1,13 +1,15 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
+    button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
 };
-use harbor_domain::PullRequest;
+use harbor_domain::{MergeMethod, PullRequest};
 
 use crate::{
-    actions::PullRequestAction,
+    actions::{
+        MergePullRequest, MergePullRequestWithMergeCommit, PullRequestAction, RebasePullRequest,
+    },
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
     visual::{Tone, color},
     workspace::{AppView, log_entity_update_error},
@@ -205,23 +207,51 @@ impl AppView {
                             ),
                     )
                     .child({
-                        let button = Button::new("merge-pr")
-                            .label("merge")
+                        let button = Button::new("merge-pr-primary")
+                            .label(merge_method_button_label(MergeMethod::Squash))
                             .small()
-                            .tooltip(merge_tooltip.clone());
-                        let button = if merge_action_disabled {
-                            button.outline()
-                        } else {
-                            button.primary()
-                        };
-
-                        button
                             .loading(pull_request_action_running)
                             .disabled(merge_action_disabled)
-                            .when(merge_action_disabled, |element| element.opacity(0.58))
                             .on_click(cx.listener(|view, _, window, cx| {
-                                view.run_pull_request_action(PullRequestAction::Merge, window, cx);
-                            }))
+                                view.run_pull_request_action(
+                                    PullRequestAction::Merge(MergeMethod::Squash),
+                                    window,
+                                    cx,
+                                );
+                            }));
+                        let dropdown = DropdownButton::new("merge-pr")
+                            .button(button)
+                            .small()
+                            .compact()
+                            .tooltip(merge_tooltip.clone())
+                            .loading(pull_request_action_running)
+                            .disabled(merge_action_disabled)
+                            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                                menu.menu_with_check_and_disabled(
+                                    MergeMethod::Merge.label(),
+                                    false,
+                                    Box::new(MergePullRequestWithMergeCommit),
+                                    merge_action_disabled,
+                                )
+                                .menu_with_check_and_disabled(
+                                    MergeMethod::Squash.label(),
+                                    true,
+                                    Box::new(MergePullRequest),
+                                    merge_action_disabled,
+                                )
+                                .menu_with_check_and_disabled(
+                                    MergeMethod::Rebase.label(),
+                                    false,
+                                    Box::new(RebasePullRequest),
+                                    merge_action_disabled,
+                                )
+                            });
+
+                        if merge_action_disabled {
+                            dropdown.outline().opacity(0.58)
+                        } else {
+                            dropdown.primary()
+                        }
                     }),
             )
             .when_some(
@@ -244,6 +274,14 @@ impl AppView {
                     )
                 },
             )
+    }
+}
+
+fn merge_method_button_label(method: MergeMethod) -> &'static str {
+    match method {
+        MergeMethod::Merge => "merge",
+        MergeMethod::Squash => "squash and merge",
+        MergeMethod::Rebase => "rebase and merge",
     }
 }
 

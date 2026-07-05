@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReactionContent,
-    RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
+    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{GitHubRateLimitStatus, RepositoryList, Result, SubmitPullRequestReviewEvent};
 use harbor_sync::PullRequestInboxSource;
@@ -219,5 +219,6 @@ pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
         repo: &str,
         number: u64,
         head_sha: &str,
+        method: MergeMethod,
     ) -> Result<()>;
 }

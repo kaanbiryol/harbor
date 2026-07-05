@@ -116,6 +116,8 @@ impl Render for AppView {
             .on_action(cx.listener(Self::approve_pr))
             .on_action(cx.listener(Self::request_changes))
             .on_action(cx.listener(Self::merge_pr))
+            .on_action(cx.listener(Self::merge_pr_with_merge_commit))
+            .on_action(cx.listener(Self::rebase_pr))
             .on_action(cx.listener(Self::open_logs))
             .on_action(cx.listener(Self::trigger_build))
             .on_action(cx.listener(Self::rerun_failed))

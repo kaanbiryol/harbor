@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 use super::super::{GitHubClient, PullRequestListFilter, test_support::RecordingTransport};
 use crate::{ConditionalFetch, HttpCacheValidator, PullRequestPageCursor};
-use harbor_domain::RepoId;
+use harbor_domain::{MergeMethod, RepoId};
 
 #[test]
 fn queries_repository_pull_request_filters() {
@@ -348,7 +348,8 @@ fn puts_pull_request_squash_merge() {
     let transport = RecordingTransport::default();
     let client = GitHubClient::new(transport.clone());
 
-    smol::block_on(client.merge_pull_request("acme", "app", 7, "abc123")).unwrap();
+    smol::block_on(client.merge_pull_request("acme", "app", 7, "abc123", MergeMethod::Squash))
+        .unwrap();
 
     let puts = transport
         .puts
@@ -363,4 +364,31 @@ fn puts_pull_request_squash_merge() {
             "merge_method": "squash",
         })
     );
+}
+
+#[test]
+fn puts_pull_request_merge_methods() {
+    for (method, expected) in [
+        (MergeMethod::Merge, "merge"),
+        (MergeMethod::Rebase, "rebase"),
+    ] {
+        let transport = RecordingTransport::default();
+        let client = GitHubClient::new(transport.clone());
+
+        smol::block_on(client.merge_pull_request("acme", "app", 7, "abc123", method)).unwrap();
+
+        let puts = transport
+            .puts
+            .lock()
+            .expect("puts mutex should not be poisoned");
+        assert_eq!(puts.len(), 1);
+        assert_eq!(puts[0].0, "/repos/acme/app/pulls/7/merge");
+        assert_eq!(
+            puts[0].1,
+            json!({
+                "sha": "abc123",
+                "merge_method": expected,
+            })
+        );
+    }
 }

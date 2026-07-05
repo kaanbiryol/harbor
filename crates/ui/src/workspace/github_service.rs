@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReactionContent,
-    RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
+    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubClient, GitHubRateLimitStatus, GitHubTransportSource,
@@ -386,9 +386,10 @@ impl GitHubPullRequestActionApi for RealGitHubApi {
         repo: &str,
         number: u64,
         head_sha: &str,
+        method: MergeMethod,
     ) -> Result<()> {
         self.client()?
-            .merge_pull_request(owner, repo, number, head_sha)
+            .merge_pull_request(owner, repo, number, head_sha, method)
             .await
     }
 }
