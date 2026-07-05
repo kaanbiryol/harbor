@@ -3,7 +3,7 @@ use gpui_component::{
     Disableable, Sizable,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
-    popover::Popover,
+    popover::{Popover, PopoverState},
 };
 use harbor_domain::ReviewComment;
 
@@ -49,7 +49,9 @@ pub(super) fn render_review_comment_actions_menu(
                 })
                 .tooltip("Comment actions"),
         )
-        .content(move |_, _window, _popover_cx| {
+        .content(move |_, _window, popover_cx| {
+            let popover: Entity<PopoverState> = popover_cx.entity().clone();
+
             div()
                 .w(px(160.0))
                 .border_1()
@@ -85,6 +87,7 @@ pub(super) fn render_review_comment_actions_menu(
                                             let view_entity = view_entity.clone();
                                             let comment_id = comment_id.clone();
                                             let comment_body = comment_body.clone();
+                                            let popover = popover.clone();
                                             move |_, window, cx| {
                                                 view_entity.update(cx, |view, cx| {
                                                     view.open_review_comment_edit(
@@ -93,6 +96,9 @@ pub(super) fn render_review_comment_actions_menu(
                                                         window,
                                                         cx,
                                                     );
+                                                });
+                                                popover.update(cx, |popover, cx| {
+                                                    popover.dismiss(window, cx);
                                                 });
                                             }
                                         }),
