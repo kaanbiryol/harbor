@@ -1,16 +1,16 @@
-use gpui::{ClipboardItem, Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    clipboard::Clipboard,
 };
 use harbor_domain::PullRequest;
 
 use crate::{
     actions::PullRequestAction,
-    icons::Octicon,
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
     visual::{Tone, color},
-    workspace::AppView,
+    workspace::{AppView, log_entity_update_error},
 };
 
 impl AppView {
@@ -254,17 +254,19 @@ fn render_copy_button(
     status: String,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
-    Button::new(id)
-        .icon(Octicon::Copy)
-        .small()
-        .compact()
-        .ghost()
+    let view = cx.weak_entity();
+
+    Clipboard::new(id)
         .tooltip(tooltip)
-        .on_click(cx.listener(move |view, _, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(clipboard_value.clone()));
-            view.status = status.clone();
-            cx.notify();
-        }))
+        .value(clipboard_value)
+        .on_copied(move |_, _, cx| {
+            if let Err(error) = view.update(cx, |view, cx| {
+                view.status = status.clone();
+                cx.notify();
+            }) {
+                log_entity_update_error("failed to update clipboard copy status", error);
+            }
+        })
 }
 
 fn short_commit_sha(sha: &str) -> String {
