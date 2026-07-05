@@ -69,12 +69,15 @@ impl AppView {
                             button.ghost()
                         }
                     })
-                    .content(move |_, _window, _popover_cx| {
+                    .content(move |_, window, _popover_cx| {
+                        let menu_max_height = (window.viewport_size().height - px(16.))
+                            .max(px(160.))
+                            .min(px(520.));
                         let mut menu = div()
                             .id("changed-file-filters-menu")
                             .w(px(360.))
-                            .max_h(px(520.))
-                            .overflow_hidden()
+                            .max_h(menu_max_height)
+                            .overflow_y_scroll()
                             .border_1()
                             .border_color(color::border_strong())
                             .bg(color::elevated_background())
