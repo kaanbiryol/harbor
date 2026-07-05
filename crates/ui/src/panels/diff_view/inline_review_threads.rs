@@ -1,5 +1,5 @@
 use gpui::{Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{StyledExt, input::InputState};
+use gpui_component::input::InputState;
 use harbor_domain::ReviewThreadState;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
             ReviewThreadReplyComposerState as SharedReviewThreadReplyComposerState,
             render_review_thread_actions,
             render_review_thread_reply_composer as render_shared_review_thread_reply_composer,
-            render_review_thread_status_pill, review_comment_count_label,
+            render_review_thread_status_pill,
         },
     },
     visual::color,
@@ -25,8 +25,6 @@ use super::super::DIFF_ROW_HEIGHT;
 pub(super) struct ReviewThreadHeaderState {
     pub(super) thread_id: String,
     pub(super) thread_state: ReviewThreadState,
-    pub(super) anchor_label: Option<String>,
-    pub(super) comment_count: usize,
     pub(super) active_reply: bool,
     pub(super) reply_button_disabled: bool,
     pub(super) action_running: bool,
@@ -47,8 +45,6 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
     let ReviewThreadHeaderState {
         thread_id,
         thread_state,
-        anchor_label,
-        comment_count,
         active_reply,
         reply_button_disabled,
         action_running,
@@ -57,11 +53,6 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
     } = state;
     let (label, color) = review_thread_state_label(thread_state);
     let is_resolved = thread_state == ReviewThreadState::Resolved;
-    let comment_count_color = if is_resolved {
-        color::text_disabled()
-    } else {
-        color::text_muted()
-    };
 
     div()
         .border_b_1()
@@ -88,43 +79,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(render_review_thread_status_pill(label, color))
-                .when_some(anchor_label, |element, anchor_label| {
-                    element.child(
-                        div()
-                            .min_w_0()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .text_xs()
-                                    .font_medium()
-                                    .text_color(color::text_secondary())
-                                    .child("Comment on"),
-                            )
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_xs()
-                                    .text_color(if is_resolved {
-                                        color::text_disabled()
-                                    } else {
-                                        color::accent()
-                                    })
-                                    .child(anchor_label),
-                            ),
-                    )
-                })
-                .child(
-                    div()
-                        .flex_none()
-                        .text_xs()
-                        .text_color(comment_count_color)
-                        .child(review_comment_count_label(comment_count)),
-                ),
+                .child(render_review_thread_status_pill(label, color)),
         )
         .child(render_review_thread_actions(ReviewThreadActionsState {
             ids: ReviewThreadActionIds::inline(&thread_id),

@@ -82,18 +82,6 @@ pub(super) fn review_comment_range_label(range: &ReviewCommentRange) -> String {
     }
 }
 
-pub(super) fn review_diff_line_anchor_label(file: &DiffFile, line: &DiffLine) -> Option<String> {
-    match line.kind {
-        DiffLineKind::Removed => line
-            .old_line
-            .map(|line_number| format!("old line {line_number} in {}", file.path)),
-        DiffLineKind::Added | DiffLineKind::Context => line
-            .new_line
-            .map(|line_number| format!("new line {line_number} in {}", file.path)),
-        DiffLineKind::Metadata => None,
-    }
-}
-
 fn path_matches_file(file: &DiffFile, path: &str) -> bool {
     path == file.path || file.previous_path.as_deref() == Some(path)
 }

@@ -15,7 +15,7 @@ use super::{
     file_section::{render_diff_file_section_header, render_diff_unavailable_row},
     inline_review_layout::{
         review_comment_range_matches_file, review_comment_range_matches_line,
-        review_diff_line_anchor_label, review_line_target_for_line,
+        review_line_target_for_line,
     },
     inline_reviews::{
         ReviewCommentListRenderState, ReviewComposerRenderState, ReviewThreadRenderState,
@@ -82,18 +82,9 @@ pub(super) fn render_diff_list_item(
         ),
         DiffListItem::ReviewThread {
             file_index,
-            hunk_index,
-            line_index,
             thread_id,
-        } => render_review_thread_item(
-            files,
-            diffs,
-            *file_index,
-            *hunk_index,
-            *line_index,
-            thread_id,
-            row_state,
-        ),
+            ..
+        } => render_review_thread_item(diffs, *file_index, thread_id, row_state),
         DiffListItem::DiffUnavailable { .. } => {
             render_diff_unavailable_row(item_index).into_any_element()
         }
@@ -201,25 +192,14 @@ fn render_review_composer_item(
 }
 
 fn render_review_thread_item(
-    files: &[DiffFile],
     diffs: &[Option<ParsedDiff>],
     file_index: usize,
-    hunk_index: usize,
-    line_index: usize,
     thread_id: &str,
     row_state: &DiffRowRenderState<'_>,
 ) -> AnyElement {
-    let Some(file) = files.get(file_index) else {
-        return div().into_any_element();
-    };
     let Some(diff) = parsed_diff_for_file(diffs, file_index) else {
         return div().into_any_element();
     };
-    let anchor_label = diff
-        .hunks
-        .get(hunk_index)
-        .and_then(|hunk| hunk.lines.get(line_index))
-        .and_then(|line| review_diff_line_anchor_label(file, line));
     let Some(thread) = row_state
         .review_threads
         .iter()
@@ -230,7 +210,6 @@ fn render_review_thread_item(
 
     render_review_thread_inline(ReviewThreadRenderState {
         thread,
-        anchor_label,
         line_number_width: line_number_width_for_diff(diff),
         active_review_thread_reply: row_state.active_review_thread_reply,
         review_thread_reply_input: row_state.review_thread_reply_input.clone(),

@@ -49,7 +49,6 @@ pub(super) struct ReviewComposerRenderState {
 
 pub(super) struct ReviewThreadRenderState<'a> {
     pub(super) thread: &'a ReviewThread,
-    pub(super) anchor_label: Option<String>,
     pub(super) line_number_width: f32,
     pub(super) active_review_thread_reply: Option<&'a str>,
     pub(super) review_thread_reply_input: Entity<InputState>,
@@ -216,7 +215,6 @@ pub(super) fn render_review_thread_inline(
 ) -> impl IntoElement + use<> {
     let ReviewThreadRenderState {
         thread,
-        anchor_label,
         line_number_width,
         active_review_thread_reply,
         review_thread_reply_input,
@@ -273,8 +271,6 @@ pub(super) fn render_review_thread_inline(
             .child(render_review_thread_header(ReviewThreadHeaderState {
                 thread_id: thread_id.clone(),
                 thread_state: thread.state,
-                anchor_label,
-                comment_count: thread.comments.len(),
                 active_reply: ui_state.active_reply,
                 reply_button_disabled: ui_state.reply_button_disabled,
                 action_running: ui_state.action_running,

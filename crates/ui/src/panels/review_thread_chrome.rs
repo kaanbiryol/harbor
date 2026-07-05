@@ -341,14 +341,6 @@ pub(crate) fn render_review_thread_reply_composer(
         )
 }
 
-pub(crate) fn review_comment_count_label(comment_count: usize) -> String {
-    if comment_count == 1 {
-        "1 comment".to_string()
-    } else {
-        format!("{comment_count} comments")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

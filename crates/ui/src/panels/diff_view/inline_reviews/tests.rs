@@ -208,7 +208,6 @@ impl Render for InlineReviewThreadHarness {
 
         render_review_thread_inline(ReviewThreadRenderState {
             thread: &self.thread,
-            anchor_label: Some("new line 12 in src/lib.rs".to_string()),
             line_number_width: 44.0,
             active_review_thread_reply: active_reply_thread_id,
             review_thread_reply_input: render_state.reply_input.clone(),
