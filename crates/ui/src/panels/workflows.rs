@@ -1,11 +1,12 @@
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*};
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Sizable,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{PullRequest, WorkflowConclusion, WorkflowRun, WorkflowStatus};
 
 use crate::actions::WorkflowAction;
+use crate::icons::Octicon;
 use crate::visual::{Tone, color};
 use crate::workspace::AppView;
 
@@ -65,7 +66,7 @@ pub(crate) fn render_actions_panel(
                 .gap_2()
                 .child(
                     Button::new("trigger-build")
-                        .icon(IconName::Redo)
+                        .icon(Octicon::Sync)
                         .label("trigger build")
                         .small()
                         .primary()
@@ -77,7 +78,7 @@ pub(crate) fn render_actions_panel(
                 )
                 .child(
                     Button::new("rerun-failed-jobs")
-                        .icon(IconName::Redo)
+                        .icon(Octicon::Sync)
                         .label("rerun failed")
                         .small()
                         .outline()

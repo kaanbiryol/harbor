@@ -1,13 +1,13 @@
 use gpui::{Anchor, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Sizable,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
     popover::Popover,
 };
 use harbor_domain::ReviewComment;
 
-use crate::{visual::color, workspace::AppView};
+use crate::{icons::Octicon, visual::color, workspace::AppView};
 
 pub(super) struct ReviewCommentActionsMenuState {
     pub(super) comment_id: String,
@@ -39,7 +39,7 @@ pub(super) fn render_review_comment_actions_menu(
         .anchor(Anchor::TopRight)
         .trigger(
             Button::new(format!("comment-actions-trigger-{comment_id}"))
-                .icon(IconName::Ellipsis)
+                .icon(Octicon::KebabHorizontal)
                 .xsmall()
                 .compact()
                 .ghost()
@@ -69,7 +69,7 @@ pub(super) fn render_review_comment_actions_menu(
                             move |element| {
                                 element.child(
                                     Button::new(format!("edit-comment-{comment_id}"))
-                                        .icon(IconName::ALargeSmall)
+                                        .icon(Octicon::Pencil)
                                         .label(if active_edit { "Editing" } else { "Edit" })
                                         .small()
                                         .ghost()
@@ -103,7 +103,7 @@ pub(super) fn render_review_comment_actions_menu(
                             move |element| {
                                 element.child(
                                     Button::new(format!("delete-comment-{comment_id}"))
-                                        .icon(IconName::Delete)
+                                        .icon(Octicon::Trash)
                                         .label("Delete")
                                         .small()
                                         .ghost()

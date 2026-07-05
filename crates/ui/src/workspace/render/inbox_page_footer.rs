@@ -1,10 +1,10 @@
 use gpui::{AnyElement, Context, div, prelude::*, px};
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Sizable,
     button::{Button, ButtonVariants},
 };
 
-use crate::{visual::color, workspace::AppView};
+use crate::{icons::Octicon, visual::color, workspace::AppView};
 
 impl AppView {
     pub(super) fn render_pull_request_inbox_page_footer(
@@ -60,7 +60,7 @@ impl AppView {
                             .ghost()
                             .small()
                             .compact()
-                            .icon(IconName::ChevronDown)
+                            .icon(Octicon::ChevronDown)
                             .label("Load more")
                             .tooltip("Load more pull requests")
                             .loading(self.pull_request_inbox.is_loading_more())

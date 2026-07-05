@@ -1,8 +1,9 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
-use gpui_component::{Icon, IconName, Sizable, StyledExt};
+use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::{MergeState, PullRequest, ReviewDecision};
 
 use crate::{
+    icons::Octicon,
     panels::pull_request_signals::{
         PullRequestRowRailTone, PullRequestRowSignal, PullRequestRowSignalKind,
         PullRequestRowSignalTone, pull_request_row_rail_tone, visible_pull_request_row_signals,
@@ -83,16 +84,16 @@ fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
         })
 }
 
-fn row_signal_icon(kind: PullRequestRowSignalKind) -> IconName {
+fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
     match kind {
-        PullRequestRowSignalKind::Conflict => IconName::TriangleAlert,
-        PullRequestRowSignalKind::ChecksFailed => IconName::CircleX,
-        PullRequestRowSignalKind::ChecksRunning => IconName::LoaderCircle,
-        PullRequestRowSignalKind::ChecksPassed => IconName::Check,
-        PullRequestRowSignalKind::ReviewApproved => IconName::ThumbsUp,
-        PullRequestRowSignalKind::ReviewChangesRequested => IconName::ThumbsDown,
-        PullRequestRowSignalKind::ReviewNeeded => IconName::Eye,
-        PullRequestRowSignalKind::UnresolvedThreads => IconName::Info,
+        PullRequestRowSignalKind::Conflict => Octicon::Alert,
+        PullRequestRowSignalKind::ChecksFailed => Octicon::XCircle,
+        PullRequestRowSignalKind::ChecksRunning => Octicon::Clock,
+        PullRequestRowSignalKind::ChecksPassed => Octicon::Check,
+        PullRequestRowSignalKind::ReviewApproved => Octicon::ThumbsUp,
+        PullRequestRowSignalKind::ReviewChangesRequested => Octicon::ThumbsDown,
+        PullRequestRowSignalKind::ReviewNeeded => Octicon::Eye,
+        PullRequestRowSignalKind::UnresolvedThreads => Octicon::CommentDiscussion,
     }
 }
 

@@ -1,12 +1,13 @@
 use gpui::{Entity, IntoElement, Pixels, div, prelude::*};
 use gpui_component::{
-    Disableable, IconName, Sizable, StyledExt,
+    Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
 };
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
+    icons::Octicon,
     visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
@@ -186,9 +187,9 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
             };
             let button = if show_toggle_icon {
                 button.icon(if is_resolved {
-                    IconName::Undo2
+                    Octicon::Undo
                 } else {
-                    IconName::CircleCheck
+                    Octicon::CheckCircle
                 })
             } else {
                 button

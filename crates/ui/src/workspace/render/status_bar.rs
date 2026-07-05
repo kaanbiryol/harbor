@@ -1,10 +1,10 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    IconName, Sizable,
+    Sizable,
     button::{Button, ButtonVariants},
 };
 
-use crate::{actions::TogglePullRequestInbox, visual::color, workspace::AppView};
+use crate::{actions::TogglePullRequestInbox, icons::Octicon, visual::color, workspace::AppView};
 
 use super::rate_limits::{
     github_rate_limit_color, github_rate_limit_label, github_rate_limits_label,
@@ -15,9 +15,9 @@ const SHOW_STATUS_BAR_RATE_LIMITS: bool = true;
 impl AppView {
     pub(super) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let inbox_toggle_icon = if self.pull_request_inbox.is_visible() {
-            IconName::PanelLeft
+            Octicon::SidebarCollapse
         } else {
-            IconName::PanelLeftOpen
+            Octicon::SidebarExpand
         };
         let inbox_toggle_tooltip = if self.pull_request_inbox.is_visible() {
             "Hide pull request inbox"

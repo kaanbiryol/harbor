@@ -1,10 +1,11 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, IconName, Sizable, StyledExt,
+    Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 
 use crate::{
+    icons::Octicon,
     visual::color,
     workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode},
 };
@@ -65,7 +66,7 @@ impl AppView {
                                     .ghost()
                                     .small()
                                     .compact()
-                                    .icon(IconName::Redo)
+                                    .icon(Octicon::Sync)
                                     .tooltip("Refresh pull requests")
                                     .loading(self.pull_request_inbox.is_loading())
                                     .disabled(!self.repository_state.has_configured_repo())

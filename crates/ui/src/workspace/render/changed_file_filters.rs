@@ -1,11 +1,11 @@
 use gpui::{Context, IntoElement, div, prelude::*, px, uniform_list};
 use gpui_component::{
-    IconName, Sizable, StyledExt,
+    Sizable, StyledExt,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
 
-use crate::{visual::color, workspace::AppView};
+use crate::{icons::Octicon, visual::color, workspace::AppView};
 
 use super::{
     changed_file_filter_rows::{file_filter_list_height, render_file_filter_row},
@@ -59,7 +59,7 @@ impl AppView {
                     .trigger({
                         let button = Button::new("changed-file-filters")
                             .label(filter_label)
-                            .icon(IconName::Settings2)
+                            .icon(Octicon::Gear)
                             .small()
                             .compact()
                             .dropdown_caret(true);

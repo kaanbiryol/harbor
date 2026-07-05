@@ -1,11 +1,12 @@
 use gpui::{Anchor, IntoElement, px};
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Sizable,
     button::{Button, DropdownButton},
 };
 use harbor_git::ExternalApp;
 
 use crate::actions::*;
+use crate::icons::Octicon;
 use crate::workspace::AppView;
 
 pub(super) fn open_with_action(app: ExternalApp) -> Box<dyn gpui::Action> {
@@ -21,15 +22,12 @@ pub(super) fn open_with_action(app: ExternalApp) -> Box<dyn gpui::Action> {
     }
 }
 
-pub(super) fn open_with_icon(app: ExternalApp) -> IconName {
+pub(super) fn open_with_icon(app: ExternalApp) -> Octicon {
     match app {
-        ExternalApp::Finder => IconName::FolderOpen,
-        ExternalApp::Terminal | ExternalApp::Ghostty | ExternalApp::Warp => {
-            IconName::SquareTerminal
-        }
-        ExternalApp::VsCode | ExternalApp::Cursor | ExternalApp::Zed | ExternalApp::Xcode => {
-            IconName::Frame
-        }
+        ExternalApp::Finder => Octicon::FileDirectoryOpen,
+        ExternalApp::Terminal | ExternalApp::Ghostty | ExternalApp::Warp => Octicon::Terminal,
+        ExternalApp::VsCode => Octicon::VsCode,
+        ExternalApp::Cursor | ExternalApp::Zed | ExternalApp::Xcode => Octicon::CodeSquare,
     }
 }
 
@@ -52,7 +50,7 @@ impl AppView {
         DropdownButton::new("open-with")
             .button(
                 Button::new("open-with-primary")
-                    .icon(IconName::ExternalLink)
+                    .icon(Octicon::LinkExternal)
                     .label("Open With")
                     .small()
                     .compact(),

@@ -1,11 +1,12 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, Icon, IconName, Sizable, StyledExt,
+    Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 
 use crate::{
     actions::{SignInToGitHub, UseGitHubCli},
+    icons::Octicon,
     visual::color,
     workspace::{AppView, GitHubCliAvailability},
 };
@@ -61,7 +62,7 @@ impl AppView {
                                     .border_1()
                                     .border_color(color::border_strong())
                                     .bg(color::row_selected_subtle())
-                                    .child(Icon::new(IconName::Github).large()),
+                                    .child(Icon::new(Octicon::MarkGithub).large()),
                             )
                             .child(
                                 div()
@@ -80,7 +81,7 @@ impl AppView {
                                 Button::new("github-auth-empty-state-sign-in")
                                     .primary()
                                     .large()
-                                    .icon(IconName::Github)
+                                    .icon(Octicon::MarkGithub)
                                     .child("Continue with GitHub")
                                     .w_full()
                                     .disabled(oauth_disabled)
@@ -94,7 +95,7 @@ impl AppView {
                             .child(
                                 Button::new("github-auth-empty-state-gh-cli")
                                     .large()
-                                    .icon(IconName::SquareTerminal)
+                                    .icon(Octicon::Terminal)
                                     .child("Use GitHub CLI")
                                     .w_full()
                                     .disabled(cli_disabled)

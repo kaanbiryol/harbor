@@ -3,13 +3,14 @@ use gpui::{
     prelude::*, px, uniform_list,
 };
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Sizable,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{WorkflowJob, WorkflowRun, WorkflowStep};
 use harbor_logs::{LogChunk, LogLine, LogSeverity};
 
 use crate::{
+    icons::Octicon,
     visual::{Tone, color, font, tone_text},
     workspace::AppView,
 };
@@ -53,7 +54,7 @@ pub(crate) fn render_logs_panel(
                 ))
                 .child(
                     Button::new("load-workflow-logs")
-                        .icon(IconName::Redo)
+                        .icon(Octicon::Sync)
                         .label("load logs")
                         .small()
                         .primary()

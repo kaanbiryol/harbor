@@ -1,11 +1,12 @@
 use gpui::{AnyElement, Context, div, prelude::*, px};
 use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
+    Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{DiffFile, FileStatus};
 
 use crate::{
+    icons::Octicon,
     visual::color,
     workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label},
 };
@@ -18,14 +19,14 @@ pub(crate) fn render_changed_folder_row(
 ) -> AnyElement {
     let folder_path = folder.path.clone();
     let chevron = if folder.expanded {
-        IconName::ChevronDown
+        Octicon::ChevronDown
     } else {
-        IconName::ChevronRight
+        Octicon::ChevronRight
     };
     let folder_icon = if folder.expanded {
-        IconName::FolderOpen
+        Octicon::FileDirectoryOpen
     } else {
-        IconName::FolderClosed
+        Octicon::FileDirectory
     };
 
     div()
@@ -81,9 +82,9 @@ pub(crate) fn render_changed_file_row(
     let show_status = !matches!(file.status, FileStatus::Modified | FileStatus::Changed);
     let review_button = Button::new(format!("file-reviewed-{index}"))
         .icon(Icon::new(if reviewed {
-            IconName::Check
+            Octicon::Check
         } else {
-            IconName::Eye
+            Octicon::Eye
         }))
         .small()
         .compact()
@@ -126,7 +127,7 @@ pub(crate) fn render_changed_file_row(
                 .items_center()
                 .justify_center()
                 .child(
-                    Icon::new(IconName::File)
+                    Icon::new(Octicon::File)
                         .xsmall()
                         .text_color(color::text_muted()),
                 ),

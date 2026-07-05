@@ -2,13 +2,14 @@ use gpui::{
     Anchor, App, Context, Entity, IntoElement, KeyDownEvent, div, prelude::*, px, uniform_list,
 };
 use gpui_component::{
-    Disableable, IconName, Sizable,
+    Disableable, Sizable,
     button::{Button, ButtonVariants},
     input::Input,
     popover::Popover,
 };
 
 use crate::{
+    icons::Octicon,
     visual::color,
     workspace::{AppView, normalized_search_query},
 };
@@ -66,7 +67,7 @@ impl AppView {
                     .ghost()
                     .small()
                     .compact()
-                    .icon(IconName::Search)
+                    .icon(Octicon::Search)
                     .tooltip("Search pull requests")
                     .disabled(!has_current_repository),
             )

@@ -1,6 +1,7 @@
 mod actions;
 mod diff;
 mod diff_reviews;
+mod icons;
 mod panels;
 #[cfg(test)]
 mod test_fixtures;

@@ -1,6 +1,6 @@
 use gpui::{Anchor, AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
+    Icon, Sizable, StyledExt,
     avatar::Avatar,
     button::{Button, ButtonVariants},
     popover::Popover,
@@ -8,6 +8,7 @@ use gpui_component::{
 
 use crate::{
     actions::SignOutOfGitHub,
+    icons::Octicon,
     visual::color,
     workspace::{AppView, GitHubAuthSource, GitHubAuthStatus},
 };
@@ -54,7 +55,7 @@ fn render_github_auth_trigger(status: &GitHubAuthStatus) -> Button {
             .ghost()
             .small()
             .compact()
-            .icon(IconName::Github)
+            .icon(Octicon::MarkGithub)
             .child(status.label()),
     }
 }
@@ -225,7 +226,7 @@ fn render_github_account_popover(
                 .child(
                     render_github_account_menu_row(
                         "github-account-settings",
-                        IconName::Settings2,
+                        Octicon::Gear,
                         "Settings",
                         false,
                     )
@@ -242,7 +243,7 @@ fn render_github_account_popover(
         .child(
             render_github_account_menu_row(
                 "github-account-sign-out",
-                IconName::ArrowRight,
+                Octicon::ArrowRight,
                 "Sign out",
                 true,
             )
@@ -256,7 +257,7 @@ fn render_github_account_popover(
 
 fn render_github_account_menu_row(
     id: &'static str,
-    icon: IconName,
+    icon: Octicon,
     label: &'static str,
     danger: bool,
 ) -> gpui::Stateful<gpui::Div> {
@@ -293,7 +294,7 @@ fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {
             .with_size(px(size))
             .into_any_element(),
         None => Avatar::new()
-            .placeholder(IconName::Github)
+            .placeholder(Octicon::MarkGithub)
             .with_size(px(size))
             .into_any_element(),
     }

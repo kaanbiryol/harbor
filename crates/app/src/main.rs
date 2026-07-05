@@ -1,7 +1,7 @@
-use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
+use gpui::{AppContext, AssetSource, Bounds, SharedString, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
-use gpui_component_assets::Assets;
 use harbor_ui::{AppView, bind_keys};
+use std::borrow::Cow;
 use std::sync::Arc;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -10,7 +10,7 @@ fn main() {
     init_logging();
 
     gpui_platform::application()
-        .with_assets(Assets)
+        .with_assets(AppAssets)
         .run(move |cx| {
             let http_client = reqwest_client::ReqwestClient::user_agent("harbor")
                 .expect("failed to initialize GPUI HTTP client");
@@ -40,6 +40,42 @@ fn main() {
             })
             .detach();
         });
+}
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../ui/assets"]
+#[include = "icons/**/*.svg"]
+struct HarborUiAssets;
+
+struct AppAssets;
+
+impl AssetSource for AppAssets {
+    fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
+        if path.is_empty() {
+            return Ok(None);
+        }
+
+        if let Some(asset) = HarborUiAssets::get(path) {
+            return Ok(Some(asset.data));
+        }
+
+        let component_assets = gpui_component_assets::Assets;
+        component_assets.load(path)
+    }
+
+    fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
+        let mut paths: Vec<SharedString> = HarborUiAssets::iter()
+            .filter_map(|asset_path| {
+                asset_path
+                    .starts_with(path)
+                    .then(|| SharedString::from(asset_path.into_owned()))
+            })
+            .collect();
+
+        let component_assets = gpui_component_assets::Assets;
+        paths.extend(component_assets.list(path)?);
+        Ok(paths)
+    }
 }
 
 fn install_rustls_provider() {

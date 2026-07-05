@@ -1,6 +1,7 @@
 use gpui::{Div, Stateful, div, prelude::*, px};
-use gpui_component::{Icon, IconName, Sizable};
+use gpui_component::{Icon, Sizable};
 
+use crate::icons::Octicon;
 use crate::visual::color;
 
 const FILE_FILTER_ROW_HEIGHT: f32 = 34.0;
@@ -56,7 +57,7 @@ pub(super) fn render_file_filter_row(
                         .justify_center()
                         .when(checked, |element| {
                             element.child(
-                                Icon::new(IconName::Check)
+                                Icon::new(Octicon::Check)
                                     .xsmall()
                                     .text_color(color::accent()),
                             )

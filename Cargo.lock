@@ -2841,6 +2841,7 @@ dependencies = [
  "gpui_platform",
  "harbor-ui",
  "reqwest_client",
+ "rust-embed",
  "rustls",
  "tracing",
  "tracing-subscriber",

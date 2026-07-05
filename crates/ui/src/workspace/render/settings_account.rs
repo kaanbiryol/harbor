@@ -1,11 +1,12 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
+    Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 
 use crate::{
     actions::SignOutOfGitHub,
+    icons::Octicon,
     visual::color,
     workspace::{AppView, GitHubAuthSource, GitHubAuthStatus},
 };
@@ -53,7 +54,7 @@ impl AppView {
                         .border_1()
                         .border_color(color::border())
                         .bg(color::row_selected_subtle())
-                        .child(Icon::new(IconName::Github).small()),
+                        .child(Icon::new(Octicon::MarkGithub).small()),
                 )
                 .child(
                     div()

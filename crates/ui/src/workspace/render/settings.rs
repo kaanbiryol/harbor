@@ -1,10 +1,10 @@
 use gpui::{Context, IntoElement, div, prelude::*, px, rgba};
 use gpui_component::{
-    IconName, Sizable, StyledExt,
+    Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 
-use crate::{actions::CloseSettings, visual::color, workspace::AppView};
+use crate::{actions::CloseSettings, icons::Octicon, visual::color, workspace::AppView};
 
 impl AppView {
     pub(super) fn render_settings_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -56,7 +56,7 @@ impl AppView {
                     .ghost()
                     .small()
                     .compact()
-                    .icon(IconName::Close)
+                    .icon(Octicon::X)
                     .tooltip("Close settings")
                     .on_click(cx.listener(|view, _, window, cx| {
                         view.close_settings(&CloseSettings, window, cx);

@@ -1,11 +1,12 @@
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    IconName, Sizable, StyledExt,
+    Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{DiffFile, FileStatus};
 
 use crate::{
+    icons::Octicon,
     visual::{Tone, color, font, tone_text},
     workspace::AppView,
 };
@@ -31,9 +32,9 @@ pub(super) fn render_diff_file_section_header(
         if sticky { "sticky" } else { "row" }
     ))
     .icon(if reviewed {
-        IconName::Check
+        Octicon::Check
     } else {
-        IconName::Eye
+        Octicon::Eye
     })
     .small()
     .compact()

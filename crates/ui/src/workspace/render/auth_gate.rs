@@ -1,12 +1,13 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
+    Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     spinner::Spinner,
 };
 
 use crate::{
     actions::SignInToGitHub,
+    icons::Octicon,
     visual::color,
     workspace::{AppView, GitHubAuthStatus},
 };
@@ -127,7 +128,7 @@ impl AppView {
                                     .child(if show_spinner {
                                         Spinner::new().large().into_any_element()
                                     } else {
-                                        Icon::new(IconName::Github).large().into_any_element()
+                                        Icon::new(Octicon::MarkGithub).large().into_any_element()
                                     }),
                             )
                         })
@@ -154,7 +155,7 @@ impl AppView {
                         })
                         .when_some(button, |element, (label, action)| {
                             let button = Button::new("github-auth-empty-state-action")
-                                .icon(IconName::Github)
+                                .icon(Octicon::MarkGithub)
                                 .child(label)
                                 .on_click(cx.listener(move |view, _, window, cx| match action {
                                     AuthGateButton::SignIn => {

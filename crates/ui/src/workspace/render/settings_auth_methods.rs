@@ -1,8 +1,9 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
-use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt, button::Button};
+use gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button};
 
 use crate::{
     actions::{SwitchGitHubAuthToGhCli, SwitchGitHubAuthToOAuth},
+    icons::Octicon,
     visual::color,
     workspace::{AppView, GitHubAuthSource},
 };
@@ -26,7 +27,7 @@ impl AppView {
         let mut rows = div().flex().flex_col().gap_2();
 
         rows = rows.child(render_auth_method_row(
-            IconName::Github,
+            Octicon::MarkGithub,
             "GitHub OAuth",
             "Device login. Harbor stores the OAuth token in app credentials.",
             current_source == Some(GitHubAuthSource::OAuth),
@@ -42,7 +43,7 @@ impl AppView {
         ));
 
         rows = rows.child(render_auth_method_row(
-            IconName::SquareTerminal,
+            Octicon::Terminal,
             "GitHub CLI",
             "Reuse your authenticated gh session. Harbor does not copy its token.",
             current_source == Some(GitHubAuthSource::GhCli),
@@ -91,12 +92,12 @@ fn render_current_auth_badge() -> impl IntoElement {
         .text_xs()
         .font_medium()
         .text_color(color::text_primary())
-        .child(Icon::new(IconName::Check).xsmall())
+        .child(Icon::new(Octicon::Check).xsmall())
         .child("Current")
 }
 
 fn render_auth_method_row(
-    icon: IconName,
+    icon: Octicon,
     title: &'static str,
     description: &'static str,
     selected: bool,

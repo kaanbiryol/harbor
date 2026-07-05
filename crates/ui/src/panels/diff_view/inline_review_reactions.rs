@@ -1,12 +1,13 @@
 use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, IconName, Sizable, StyledExt,
+    Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     popover::{Popover, PopoverState},
 };
 use harbor_domain::{ReactionContent, ReviewComment};
 
 use crate::{
+    icons::Octicon,
     visual::color,
     workspace::{AppView, ReviewReactionAction, review_reaction},
 };
@@ -126,7 +127,7 @@ fn render_add_reaction_popover(
         .anchor(Anchor::TopRight)
         .trigger(
             Button::new(format!("add-reaction-trigger-{comment_id}"))
-                .icon(IconName::Plus)
+                .icon(Octicon::Plus)
                 .xsmall()
                 .compact()
                 .ghost()

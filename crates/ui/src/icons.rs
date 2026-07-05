@@ -1,0 +1,76 @@
+use gpui::SharedString;
+use gpui_component::IconNamed;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Octicon {
+    Alert,
+    ArrowRight,
+    Check,
+    CheckCircle,
+    ChevronDown,
+    ChevronRight,
+    Clock,
+    CodeSquare,
+    CommentDiscussion,
+    Eye,
+    File,
+    FileDirectory,
+    FileDirectoryOpen,
+    Gear,
+    KebabHorizontal,
+    LinkExternal,
+    MarkGithub,
+    Pencil,
+    Plus,
+    Search,
+    SidebarCollapse,
+    SidebarExpand,
+    Sync,
+    Terminal,
+    ThumbsDown,
+    ThumbsUp,
+    Trash,
+    Undo,
+    VsCode,
+    X,
+    XCircle,
+}
+
+impl IconNamed for Octicon {
+    fn path(self) -> SharedString {
+        match self {
+            Self::Alert => "icons/alert-16.svg",
+            Self::ArrowRight => "icons/arrow-right-16.svg",
+            Self::Check => "icons/check-16.svg",
+            Self::CheckCircle => "icons/check-circle-16.svg",
+            Self::ChevronDown => "icons/chevron-down-16.svg",
+            Self::ChevronRight => "icons/chevron-right-16.svg",
+            Self::Clock => "icons/clock-16.svg",
+            Self::CodeSquare => "icons/code-square-16.svg",
+            Self::CommentDiscussion => "icons/comment-discussion-16.svg",
+            Self::Eye => "icons/eye-16.svg",
+            Self::File => "icons/file-16.svg",
+            Self::FileDirectory => "icons/file-directory-16.svg",
+            Self::FileDirectoryOpen => "icons/file-directory-open-fill-16.svg",
+            Self::Gear => "icons/gear-16.svg",
+            Self::KebabHorizontal => "icons/kebab-horizontal-16.svg",
+            Self::LinkExternal => "icons/link-external-16.svg",
+            Self::MarkGithub => "icons/mark-github-16.svg",
+            Self::Pencil => "icons/pencil-16.svg",
+            Self::Plus => "icons/plus-16.svg",
+            Self::Search => "icons/search-16.svg",
+            Self::SidebarCollapse => "icons/sidebar-collapse-16.svg",
+            Self::SidebarExpand => "icons/sidebar-expand-16.svg",
+            Self::Sync => "icons/sync-16.svg",
+            Self::Terminal => "icons/terminal-16.svg",
+            Self::ThumbsDown => "icons/thumbsdown-16.svg",
+            Self::ThumbsUp => "icons/thumbsup-16.svg",
+            Self::Trash => "icons/trash-16.svg",
+            Self::Undo => "icons/undo-16.svg",
+            Self::VsCode => "icons/vscode-16.svg",
+            Self::X => "icons/x-16.svg",
+            Self::XCircle => "icons/x-circle-16.svg",
+        }
+        .into()
+    }
+}
