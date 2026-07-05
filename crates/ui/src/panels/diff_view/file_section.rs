@@ -128,10 +128,7 @@ pub(super) fn render_diff_file_section_header(
                 .child(render_status_pill(
                     format!("-{}", file.deletions),
                     Tone::Danger,
-                ))
-                .when(reviewed, |element| {
-                    element.child(render_status_pill("reviewed", Tone::Success))
-                }),
+                )),
         )
         .into_any_element()
 }
