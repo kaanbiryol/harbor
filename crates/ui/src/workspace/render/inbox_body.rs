@@ -146,6 +146,10 @@ impl AppView {
                             "pull-request-inbox-rows",
                             pull_request_list_item_count,
                             cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
+                                view.prefetch_visible_pull_request_row_enrichments(
+                                    range.clone(),
+                                    cx,
+                                );
                                 let mut rows = Vec::with_capacity(range.len());
 
                                 for index in range {

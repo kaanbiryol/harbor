@@ -20,7 +20,7 @@ mod tasks;
 mod workflow_log;
 
 pub(crate) use detail::{PullRequestDetailLoadedState, PullRequestDetailUiState};
-pub(crate) use inbox::PullRequestInboxState;
+pub(crate) use inbox::{PullRequestInboxState, PullRequestRowEnrichmentKey};
 pub(crate) use notification::NotificationState;
 pub(crate) use repository::RepositoryUiState;
 #[cfg(test)]

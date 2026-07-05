@@ -16,6 +16,7 @@ use crate::workspace::{
 
 mod load_more;
 mod prefetch_counts;
+mod prefetch_visible_rows;
 
 impl AppView {
     pub(super) fn load_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
@@ -193,6 +194,7 @@ impl AppView {
                         match refresh {
                             Ok(PullRequestInboxRefresh::NotModified) => {
                                 view.mark_sync_success(mode.active_sync_target());
+                                view.pull_request_inbox.clear_row_enrichment_attempts();
                                 view.status = format!(
                                     "{} from {} unchanged",
                                     mode.status_label(),
@@ -270,6 +272,7 @@ impl AppView {
 
         self.repository_state.select_repository(repo);
         self.pull_request_inbox.set_mode(mode);
+        self.pull_request_inbox.clear_row_enrichment_attempts();
         self.pull_requests = pull_requests;
         self.pull_request_inbox.set_page_info(page_info.clone());
         self.update_pull_request_inbox_count(key, &page_info);

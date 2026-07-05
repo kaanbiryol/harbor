@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use harbor_domain::PullRequest;
 use harbor_github::PullRequestPageCursor;
 use harbor_sync::PullRequestInboxPageInfo;
 
@@ -13,9 +14,35 @@ pub(crate) struct PullRequestInboxState {
     mode: PullRequestInboxMode,
     cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
     counts: HashMap<PullRequestInboxCacheKey, usize>,
+    row_enrichment_attempts: HashSet<PullRequestRowEnrichmentKey>,
     page_info: PullRequestInboxPageInfo,
     load: LoadStatus,
     more_load: LoadStatus,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct PullRequestRowEnrichmentKey {
+    inbox: PullRequestInboxCacheKey,
+    node_id: String,
+    head_sha: String,
+}
+
+impl PullRequestRowEnrichmentKey {
+    pub(crate) fn new(inbox: PullRequestInboxCacheKey, pull_request: &PullRequest) -> Option<Self> {
+        if pull_request.node_id.is_empty() {
+            return None;
+        }
+
+        Some(Self {
+            inbox,
+            node_id: pull_request.node_id.clone(),
+            head_sha: pull_request.head_sha.clone(),
+        })
+    }
+
+    pub(crate) fn node_id(&self) -> &str {
+        &self.node_id
+    }
 }
 
 impl PullRequestInboxState {
@@ -121,6 +148,17 @@ impl PullRequestInboxState {
 
     pub(crate) fn load_more_error(&self) -> Option<&str> {
         self.more_load.error()
+    }
+
+    pub(crate) fn mark_row_enrichment_attempted(
+        &mut self,
+        key: PullRequestRowEnrichmentKey,
+    ) -> bool {
+        self.row_enrichment_attempts.insert(key)
+    }
+
+    pub(crate) fn clear_row_enrichment_attempts(&mut self) {
+        self.row_enrichment_attempts.clear();
     }
 
     pub(crate) fn insert_snapshot(

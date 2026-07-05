@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
-use harbor_domain::PullRequest;
+use harbor_domain::{MergeState, PullRequest};
 use harbor_github::{
     ConditionalFetch, PullRequestEnrichment, PullRequestPage, PullRequestPageCursor,
 };
@@ -246,6 +246,56 @@ async fn manual_inbox_refresh_can_force_enrichment(cx: &mut TestAppContext) {
             "enrich_pull_requests_by_node_ids"
         ]
     );
+}
+
+#[gpui::test]
+async fn visible_pull_request_rows_prefetch_merge_state_without_selection(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let mut pull_request = pull_request();
+    pull_request.merge_state = Some(MergeState::Unknown);
+    api.push_pull_request_enrichments(Ok(vec![PullRequestEnrichment {
+        node_id: pull_request.node_id.clone(),
+        review_decision: pull_request.review_decision,
+        merge_state: Some(MergeState::Dirty),
+        checks_summary: Default::default(),
+    }]));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state
+            .select_repository(pull_request.repo.clone());
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = vec![pull_request.clone()];
+        view.prefetch_visible_pull_request_row_enrichments(0..1, cx);
+    });
+    cx.run_until_parked();
+
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.pull_requests[0].merge_state, Some(MergeState::Dirty));
+        assert!(view.detail_state.files().is_empty());
+    });
+    assert_eq!(api.calls(), vec!["enrich_pull_requests_by_node_ids"]);
+}
+
+#[gpui::test]
+async fn visible_pull_request_row_prefetch_only_attempts_each_head_once(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let mut pull_request = pull_request();
+    pull_request.merge_state = Some(MergeState::Unknown);
+    api.push_pull_request_enrichments(Err(github_error("enrichment failed")));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state
+            .select_repository(pull_request.repo.clone());
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = vec![pull_request.clone()];
+        view.prefetch_visible_pull_request_row_enrichments(0..1, cx);
+        view.prefetch_visible_pull_request_row_enrichments(0..1, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(api.calls(), vec!["enrich_pull_requests_by_node_ids"]);
 }
 
 fn enrichment(pull_request: &PullRequest) -> PullRequestEnrichment {

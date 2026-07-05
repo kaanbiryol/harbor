@@ -66,9 +66,9 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    NotificationState, PullRequestDetailUiState, PullRequestInboxState, PullRequestSelectionState,
-    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
-    WorkspaceTasks,
+    NotificationState, PullRequestDetailUiState, PullRequestInboxState,
+    PullRequestRowEnrichmentKey, PullRequestSelectionState, RepositoryUiState, ReviewComposerState,
+    ReviewRuntimeState, SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};

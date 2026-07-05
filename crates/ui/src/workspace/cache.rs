@@ -28,6 +28,14 @@ impl PullRequestInboxCacheKey {
     pub(crate) fn new(repository: RepoId, mode: PullRequestInboxMode) -> Self {
         Self { repository, mode }
     }
+
+    pub(crate) fn repository(&self) -> &RepoId {
+        &self.repository
+    }
+
+    pub(crate) fn mode(&self) -> PullRequestInboxMode {
+        self.mode
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
