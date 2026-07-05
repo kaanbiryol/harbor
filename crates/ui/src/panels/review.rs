@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use gpui::{AnyElement, Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{Sizable, StyledExt, avatar::Avatar};
+use gpui::{AnyElement, Context, IntoElement, ListState, SharedString, div, list, prelude::*, px};
+use gpui_component::{ActiveTheme, Sizable, StyledExt, avatar::Avatar};
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
     ReviewSide, ReviewThread, ReviewThreadState,
@@ -135,6 +135,7 @@ pub(crate) fn render_review_panel(
                                         .review_thread_action_thread_id(),
                                     action_error: view.review_state.review_thread_action_error(),
                                     diff_preview,
+                                    mono_font_family: cx.theme().mono_font_family.clone(),
                                     view_entity: view_entity.clone(),
                                 })
                             }
@@ -422,7 +423,10 @@ pub(super) struct ReviewDiffPreviewLine {
     tone: Tone,
 }
 
-pub(super) fn render_review_diff_preview(preview: ReviewDiffPreview) -> impl IntoElement {
+pub(super) fn render_review_diff_preview(
+    preview: ReviewDiffPreview,
+    mono_font_family: SharedString,
+) -> impl IntoElement {
     div()
         .min_w_0()
         .overflow_hidden()
@@ -443,11 +447,14 @@ pub(super) fn render_review_diff_preview(preview: ReviewDiffPreview) -> impl Int
             preview
                 .lines
                 .into_iter()
-                .map(render_review_diff_preview_line),
+                .map(move |line| render_review_diff_preview_line(line, mono_font_family.clone())),
         )
 }
 
-fn render_review_diff_preview_line(line: ReviewDiffPreviewLine) -> impl IntoElement {
+fn render_review_diff_preview_line(
+    line: ReviewDiffPreviewLine,
+    mono_font_family: SharedString,
+) -> impl IntoElement {
     let line_label = line
         .line
         .map(|line| line.to_string())
@@ -462,22 +469,10 @@ fn render_review_diff_preview_line(line: ReviewDiffPreviewLine) -> impl IntoElem
         .text_xs()
         .bg(tone_colors(line.tone).background)
         .text_color(color::text_primary())
-        .child(
-            div()
-                .w_8()
-                .text_right()
-                .font_family("monospace")
-                .child(line_label),
-        )
-        .child(div().w_3().font_family("monospace").child(line.marker))
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .truncate()
-                .font_family("monospace")
-                .child(line.text),
-        )
+        .font_family(mono_font_family)
+        .child(div().w_8().text_right().child(line_label))
+        .child(div().w_3().child(line.marker))
+        .child(div().min_w_0().flex_1().truncate().child(line.text))
 }
 
 fn review_body_summary(body: &str) -> Option<String> {
@@ -1088,6 +1083,7 @@ mod tests {
                 action_thread_id: render_state.action_thread_id.as_deref(),
                 action_error: render_state.action_error.as_ref(),
                 diff_preview: None,
+                mono_font_family: cx.theme().mono_font_family.clone(),
                 view_entity: self.view_entity.clone(),
             })
         }

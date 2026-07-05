@@ -1,6 +1,6 @@
 use gpui::{IntoElement, Rgba, div, prelude::*, px};
 
-use crate::visual::{color, font};
+use crate::visual::color;
 
 pub(super) fn render_auth_preview_skeleton_row(index: usize, selected: bool) -> impl IntoElement {
     let title_widths = [186., 224., 154., 205., 168.];
@@ -76,7 +76,6 @@ pub(super) fn render_auth_preview_diff_row(index: usize) -> impl IntoElement {
         .items_center()
         .gap_3()
         .px_3()
-        .font_family(font::MONO)
         .text_xs()
         .child(
             div()

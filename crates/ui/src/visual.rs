@@ -2,7 +2,6 @@ use gpui::{Rgba, rgb};
 
 pub(crate) mod font {
     pub(crate) const UI: &str = ".SystemUIFont";
-    pub(crate) const MONO: &str = "Menlo";
 }
 
 pub(crate) mod color {

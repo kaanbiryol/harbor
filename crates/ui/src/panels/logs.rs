@@ -3,7 +3,7 @@ use gpui::{
     prelude::*, px, uniform_list,
 };
 use gpui_component::{
-    Disableable, Sizable,
+    ActiveTheme, Disableable, Sizable,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{WorkflowJob, WorkflowRun, WorkflowStep};
@@ -11,7 +11,7 @@ use harbor_logs::{LogChunk, LogLine, LogSeverity};
 
 use crate::{
     icons::Octicon,
-    visual::{Tone, color, font, tone_text},
+    visual::{Tone, color, tone_text},
     workspace::AppView,
 };
 
@@ -127,7 +127,7 @@ pub(crate) fn render_logs_panel(
                         .flex_1()
                         .min_h_0()
                         .min_w_0()
-                        .font_family(font::MONO)
+                        .font_family(cx.theme().mono_font_family.clone())
                         .text_xs(),
                     ),
             )

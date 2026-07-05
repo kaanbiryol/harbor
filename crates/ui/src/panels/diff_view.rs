@@ -16,10 +16,11 @@ mod row_state;
 use std::collections::HashSet;
 
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
+use gpui_component::ActiveTheme;
 use harbor_domain::{DiffFile, ReviewThread};
 
 use crate::diff::ParsedDiff;
-use crate::visual::{color, font};
+use crate::visual::color;
 use crate::workspace::{AppView, ReviewComposer};
 
 use file_section::render_diff_file_section_header;
@@ -228,7 +229,7 @@ pub(crate) fn render_diff_panel(
                             .flex_1()
                             .min_h_0()
                             .min_w_0()
-                            .font_family(font::MONO)
+                            .font_family(cx.theme().mono_font_family.clone())
                             .text_xs(),
                         )
                         .when_some(sticky_section, {

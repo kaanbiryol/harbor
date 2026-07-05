@@ -1,6 +1,6 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, Icon, Sizable, StyledExt,
+    ActiveTheme, Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 
@@ -33,7 +33,9 @@ impl AppView {
             .border_1()
             .border_color(color::border())
             .bg(color::panel_background())
-            .child(render_signed_out_workspace_preview())
+            .child(render_signed_out_workspace_preview(
+                cx.theme().mono_font_family.clone(),
+            ))
             .child(
                 div()
                     .absolute()

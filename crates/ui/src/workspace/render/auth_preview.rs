@@ -1,7 +1,7 @@
 #[path = "auth_preview_elements.rs"]
 mod auth_preview_elements;
 
-use gpui::{IntoElement, div, prelude::*, px};
+use gpui::{IntoElement, SharedString, div, prelude::*, px};
 use gpui_component::StyledExt;
 
 use crate::visual::color;
@@ -18,7 +18,9 @@ pub(super) fn render_auth_option_reason(reason: String) -> impl IntoElement {
         .child(reason)
 }
 
-pub(super) fn render_signed_out_workspace_preview() -> impl IntoElement {
+pub(super) fn render_signed_out_workspace_preview(
+    mono_font_family: SharedString,
+) -> impl IntoElement {
     div()
         .absolute()
         .inset_0()
@@ -28,7 +30,7 @@ pub(super) fn render_signed_out_workspace_preview() -> impl IntoElement {
         .opacity(0.58)
         .child(render_auth_preview_inbox())
         .child(render_auth_preview_details())
-        .child(render_auth_preview_diff())
+        .child(render_auth_preview_diff(mono_font_family))
 }
 
 fn render_auth_preview_inbox() -> impl IntoElement {
@@ -145,7 +147,7 @@ fn render_auth_preview_details() -> impl IntoElement {
         )
 }
 
-fn render_auth_preview_diff() -> impl IntoElement {
+fn render_auth_preview_diff(mono_font_family: SharedString) -> impl IntoElement {
     div()
         .h_full()
         .flex_1()
@@ -195,6 +197,7 @@ fn render_auth_preview_diff() -> impl IntoElement {
                     .border_1()
                     .border_color(color::border())
                     .overflow_hidden()
+                    .font_family(mono_font_family)
                     .children((0..18).map(render_auth_preview_diff_row)),
             ),
         )

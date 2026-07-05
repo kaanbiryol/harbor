@@ -6,7 +6,7 @@ use harbor_domain::{DiffFile, ReviewThreadState};
 use crate::{
     diff::{DiffLine, ParsedDiff},
     diff_reviews::{anchored_review_threads, review_threads_for_line},
-    visual::{color, font},
+    visual::color,
     workspace::{AppView, ReviewLineTarget},
 };
 
@@ -290,7 +290,6 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         .items_start()
         .bg(style.background)
         .text_color(style.text_color)
-        .font_family(font::MONO)
         .line_height(px(DIFF_ROW_HEIGHT))
         .child(render_line_number(line.old_line, line_number_width))
         .child(render_line_number(line.new_line, line_number_width))

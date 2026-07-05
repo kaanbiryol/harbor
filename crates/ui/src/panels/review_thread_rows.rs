@@ -1,4 +1,4 @@
-use gpui::{AnyElement, Entity, div, prelude::*, px};
+use gpui::{AnyElement, Entity, SharedString, div, prelude::*, px};
 use gpui_component::StyledExt;
 use gpui_component::input::InputState;
 use harbor_domain::{ReviewComment, ReviewThread};
@@ -33,6 +33,7 @@ pub(crate) struct ReviewThreadRowRenderState<'a> {
     pub(crate) action_thread_id: Option<&'a str>,
     pub(crate) action_error: Option<&'a ReviewThreadUiError>,
     pub(crate) diff_preview: Option<ReviewDiffPreview>,
+    pub(crate) mono_font_family: SharedString,
     pub(crate) view_entity: Entity<AppView>,
 }
 
@@ -48,6 +49,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         action_thread_id,
         action_error,
         diff_preview,
+        mono_font_family,
         view_entity,
     } = state;
     let (label, tone) = review_thread_state_tone(thread.state);
@@ -169,13 +171,11 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                         )
                         .child(render_status_pill(label, tone)),
                 )
-                .when_some(diff_preview, |element, preview| {
-                    element.child(
-                        div()
-                            .px_3()
-                            .pt_2()
-                            .child(render_review_diff_preview(preview)),
-                    )
+                .when_some(diff_preview, move |element, preview| {
+                    element.child(div().px_3().pt_2().child(render_review_diff_preview(
+                        preview,
+                        mono_font_family.clone(),
+                    )))
                 })
                 .child(render_review_thread_comments(
                     thread,
