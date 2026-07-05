@@ -1,4 +1,4 @@
-use gpui::{Context, Entity, IntoElement, div, prelude::*};
+use gpui::{Entity, IntoElement, div, prelude::*};
 use gpui_component::{Sizable, StyledExt, button::Button};
 
 use crate::{
@@ -6,17 +6,10 @@ use crate::{
     workspace::{AppView, AuthSwitchStatus},
 };
 
-impl AppView {
-    pub(super) fn render_auth_switch_status(
-        &self,
-        status: AuthSwitchStatus,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        render_auth_switch_status(status, cx.entity().clone())
-    }
-}
-
-fn render_auth_switch_status(status: AuthSwitchStatus, view: Entity<AppView>) -> impl IntoElement {
+pub(super) fn render_auth_switch_status(
+    status: AuthSwitchStatus,
+    view: Entity<AppView>,
+) -> impl IntoElement {
     let is_error = matches!(status, AuthSwitchStatus::Failed(_));
     div()
         .border_1()

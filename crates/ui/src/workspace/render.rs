@@ -1,4 +1,5 @@
 use gpui::{App, Context, FocusHandle, Focusable, IntoElement, Render, Window, div, prelude::*};
+use gpui_component::Root;
 
 use crate::actions::*;
 use crate::visual::{color, font};
@@ -160,11 +161,9 @@ impl Render for AppView {
             .when(!show_auth_gate, |element| {
                 element.child(self.render_status_bar(cx))
             })
-            .when(self.settings_open(), |element| {
-                element.child(self.render_settings_overlay(cx))
-            })
             .when(self.review_action_comment_target.is_some(), |element| {
                 element.child(self.render_review_action_comment_dialog(cx))
             })
+            .children(Root::render_dialog_layer(window, cx))
     }
 }

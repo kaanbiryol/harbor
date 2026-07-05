@@ -1,4 +1,4 @@
-use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
+use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button};
 
 use crate::{
@@ -9,57 +9,74 @@ use crate::{
 };
 
 impl AppView {
-    pub(super) fn render_auth_method_rows(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let current_source = self.current_github_auth_source();
-        let oauth_reason = if current_source == Some(GitHubAuthSource::OAuth) {
-            None
-        } else {
-            self.github_oauth_unavailable_reason().map(str::to_string)
-        };
-        let cli_reason = if current_source == Some(GitHubAuthSource::GhCli) {
-            None
-        } else {
-            self.github_cli_availability()
-                .unavailable_reason()
-                .map(str::to_string)
-        };
-
-        let mut rows = div().flex().flex_col().gap_2();
-
-        rows = rows.child(render_auth_method_row(
-            Octicon::MarkGithub,
-            "GitHub OAuth",
-            "Device login. Harbor stores the OAuth token in app credentials.",
-            current_source == Some(GitHubAuthSource::OAuth),
-            oauth_reason.as_deref(),
-            render_auth_method_action(
-                "settings-switch-github-oauth",
-                current_source == Some(GitHubAuthSource::OAuth),
-                oauth_reason.is_some(),
-                cx.listener(|view, _, window, cx| {
-                    view.switch_github_auth_to_oauth(&SwitchGitHubAuthToOAuth, window, cx);
-                }),
-            ),
-        ));
-
-        rows = rows.child(render_auth_method_row(
-            Octicon::Terminal,
-            "GitHub CLI",
-            "Reuse your authenticated gh session. Harbor does not copy its token.",
-            current_source == Some(GitHubAuthSource::GhCli),
-            cli_reason.as_deref(),
-            render_auth_method_action(
-                "settings-switch-github-cli",
-                current_source == Some(GitHubAuthSource::GhCli),
-                cli_reason.is_some(),
-                cx.listener(|view, _, window, cx| {
-                    view.switch_github_auth_to_gh_cli(&SwitchGitHubAuthToGhCli, window, cx);
-                }),
-            ),
-        ));
-
-        rows
+    pub(super) fn render_auth_method_rows_for_dialog(
+        &self,
+        view: Entity<AppView>,
+    ) -> impl IntoElement {
+        render_auth_method_rows(self, view)
     }
+}
+
+fn render_auth_method_rows(view_state: &AppView, view: Entity<AppView>) -> impl IntoElement {
+    let current_source = view_state.current_github_auth_source();
+    let oauth_reason = if current_source == Some(GitHubAuthSource::OAuth) {
+        None
+    } else {
+        view_state
+            .github_oauth_unavailable_reason()
+            .map(str::to_string)
+    };
+    let cli_reason = if current_source == Some(GitHubAuthSource::GhCli) {
+        None
+    } else {
+        view_state
+            .github_cli_availability()
+            .unavailable_reason()
+            .map(str::to_string)
+    };
+
+    let mut rows = div().flex().flex_col().gap_2();
+
+    rows = rows.child(render_auth_method_row(
+        Octicon::MarkGithub,
+        "GitHub OAuth",
+        "Device login. Harbor stores the OAuth token in app credentials.",
+        current_source == Some(GitHubAuthSource::OAuth),
+        oauth_reason.as_deref(),
+        render_auth_method_action(
+            "settings-switch-github-oauth",
+            current_source == Some(GitHubAuthSource::OAuth),
+            oauth_reason.is_some(),
+            {
+                let view = view.clone();
+                move |_, window, cx| {
+                    view.update(cx, |view, cx| {
+                        view.switch_github_auth_to_oauth(&SwitchGitHubAuthToOAuth, window, cx);
+                    });
+                }
+            },
+        ),
+    ));
+
+    rows = rows.child(render_auth_method_row(
+        Octicon::Terminal,
+        "GitHub CLI",
+        "Reuse your authenticated gh session. Harbor does not copy its token.",
+        current_source == Some(GitHubAuthSource::GhCli),
+        cli_reason.as_deref(),
+        render_auth_method_action(
+            "settings-switch-github-cli",
+            current_source == Some(GitHubAuthSource::GhCli),
+            cli_reason.is_some(),
+            move |_, window, cx| {
+                view.update(cx, |view, cx| {
+                    view.switch_github_auth_to_gh_cli(&SwitchGitHubAuthToGhCli, window, cx);
+                });
+            },
+        ),
+    ));
+
+    rows
 }
 
 fn render_auth_method_action(

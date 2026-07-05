@@ -1,4 +1,5 @@
 use gpui::{Context, Window};
+use gpui_component::{Root, WindowExt};
 
 use crate::{
     actions::{CloseSettings, OpenSettings},
@@ -44,6 +45,7 @@ impl AuthSwitchStatus {
 }
 
 impl AppView {
+    #[cfg(test)]
     pub(crate) fn settings_open(&self) -> bool {
         self.settings_open
     }
@@ -57,33 +59,38 @@ impl AppView {
         self.auth_switch_status.as_ref()
     }
 
-    pub(crate) fn open_github_settings(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn open_github_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = true;
         self.settings_section = SettingsSection::GitHub;
         self.github_auth_popover_open = false;
+        self.review_action_comment_target = None;
         if self.current_github_auth_source() == Some(GitHubAuthSource::OAuth) {
             self.probe_github_cli_availability(cx);
         }
         self.status = "Opened settings".to_string();
+        self.open_settings_dialog(window, cx);
         cx.notify();
     }
 
     pub(super) fn open_settings(
         &mut self,
         _: &OpenSettings,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_github_settings(cx);
+        self.open_github_settings(window, cx);
     }
 
     pub(super) fn close_settings(
         &mut self,
         _: &CloseSettings,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.settings_open = false;
+        if window.root::<Root>().flatten().is_some() {
+            window.close_dialog(cx);
+        }
         self.status = "Closed settings".to_string();
         cx.notify();
     }

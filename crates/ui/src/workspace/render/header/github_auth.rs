@@ -232,9 +232,9 @@ fn render_github_account_popover(
                     )
                     .on_click({
                         let view = view.clone();
-                        move |_, _, cx| {
+                        move |_, window, cx| {
                             view.update(cx, |view, cx| {
-                                view.open_github_settings(cx);
+                                view.open_github_settings(window, cx);
                             });
                         }
                     }),
