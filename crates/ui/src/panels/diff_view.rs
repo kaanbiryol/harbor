@@ -79,12 +79,6 @@ pub(crate) fn render_diff_panel(
             .flex_col()
             .flex_1()
             .min_h_0()
-            .gap_2()
-            .child(
-                div()
-                    .text_color(color::text_primary())
-                    .child("Unified diff preview"),
-            )
             .child(
                 div()
                     .border_1()
@@ -103,12 +97,6 @@ pub(crate) fn render_diff_panel(
             .flex_col()
             .flex_1()
             .min_h_0()
-            .gap_2()
-            .child(
-                div()
-                    .text_color(color::text_primary())
-                    .child("Unified diff preview"),
-            )
             .child(
                 div()
                     .border_1()
@@ -127,12 +115,6 @@ pub(crate) fn render_diff_panel(
             .flex_col()
             .flex_1()
             .min_h_0()
-            .gap_2()
-            .child(
-                div()
-                    .text_color(color::text_primary())
-                    .child("Unified diff preview"),
-            )
             .child(
                 div()
                     .border_1()
@@ -171,22 +153,6 @@ pub(crate) fn render_diff_panel(
         .flex_1()
         .min_h_0()
         .min_w_0()
-        .gap_2()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap_3()
-                .text_color(color::text_primary())
-                .child("Unified diff preview")
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(color::text_muted())
-                        .child(format!("{} files", input.visible_file_indices.len())),
-                ),
-        )
         .child(
             div()
                 .flex()

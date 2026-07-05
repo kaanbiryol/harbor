@@ -175,23 +175,6 @@ fn render_auth_preview_diff(mono_font_family: SharedString) -> impl IntoElement 
                 .child(render_auth_preview_tab("Logs", false)),
         )
         .child(
-            div()
-                .p_3()
-                .border_b_1()
-                .border_color(color::border())
-                .flex()
-                .items_center()
-                .justify_between()
-                .child(
-                    div()
-                        .text_sm()
-                        .font_semibold()
-                        .text_color(color::text_secondary())
-                        .child("Unified diff preview"),
-                )
-                .child(render_auth_preview_bar(52., color::border_strong())),
-        )
-        .child(
             div().flex_1().min_h_0().p_3().child(
                 div()
                     .border_1()
