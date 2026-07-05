@@ -1,11 +1,12 @@
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Sizable, StyledExt,
+    Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
 use harbor_domain::{DiffFile, FileStatus};
 
 use crate::{
+    file_icons::render_file_icon,
     icons::Octicon,
     visual::{Tone, color, font, tone_text},
     workspace::AppView,
@@ -32,22 +33,18 @@ pub(super) fn render_diff_file_section_header(
         if sticky { "sticky" } else { "row" }
     ))
     .icon(if reviewed {
-        Octicon::Check
+        Icon::new(Octicon::CheckCircle).text_color(color::success())
     } else {
-        Octicon::Eye
+        Icon::new(Octicon::Eye).text_color(color::text_muted())
     })
     .small()
     .compact()
+    .ghost()
     .tooltip(if reviewed {
         "Mark as unreviewed"
     } else {
         "Mark as reviewed"
     });
-    let review_button = if reviewed {
-        review_button.primary()
-    } else {
-        review_button.ghost()
-    };
     let review_button = review_button.on_click({
         let view_entity = view_entity.clone();
         move |_, _, cx| {
@@ -100,6 +97,7 @@ pub(super) fn render_diff_file_section_header(
                 .items_center()
                 .gap_2()
                 .child(review_button)
+                .child(render_file_icon(&path))
                 .child(
                     div()
                         .min_w_0()

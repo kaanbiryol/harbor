@@ -6,6 +6,7 @@ use gpui_component::{
 use harbor_domain::{DiffFile, FileStatus};
 
 use crate::{
+    file_icons::render_file_icon,
     icons::Octicon,
     visual::color,
     workspace::{AppView, ChangedFileFolderRow, ChangedFileRow, changed_file_status_label},
@@ -80,24 +81,21 @@ pub(crate) fn render_changed_file_row(
 ) -> AnyElement {
     let index = row.file_index;
     let show_status = !matches!(file.status, FileStatus::Modified | FileStatus::Changed);
+    let review_icon = if reviewed {
+        Icon::new(Octicon::CheckCircle).text_color(color::success())
+    } else {
+        Icon::new(Octicon::Eye).text_color(color::text_muted())
+    };
     let review_button = Button::new(format!("file-reviewed-{index}"))
-        .icon(Icon::new(if reviewed {
-            Octicon::Check
-        } else {
-            Octicon::Eye
-        }))
+        .icon(review_icon)
         .small()
         .compact()
+        .ghost()
         .tooltip(if reviewed {
             "Mark as unreviewed"
         } else {
             "Mark as reviewed"
         });
-    let review_button = if reviewed {
-        review_button.primary()
-    } else {
-        review_button.ghost()
-    };
 
     div()
         .id(("file-row", index))
@@ -120,18 +118,7 @@ pub(crate) fn render_changed_file_row(
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_file(index, cx);
         }))
-        .child(
-            div()
-                .w(px(14.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    Icon::new(Octicon::File)
-                        .xsmall()
-                        .text_color(color::text_muted()),
-                ),
-        )
+        .child(render_file_icon(&file.path))
         .child(
             div()
                 .min_w_0()
