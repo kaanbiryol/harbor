@@ -88,7 +88,7 @@ fn path_matches_file(file: &DiffFile, path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{FileStatus, ReviewSide};
+    use harbor_domain::{FileStatus, FileViewedState, ReviewSide};
 
     use crate::{diff::parse_unified_diff, workspace::review_range_from_targets};
 
@@ -178,6 +178,7 @@ mod tests {
             deletions: 1,
             changes: 2,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         }
     }
 }

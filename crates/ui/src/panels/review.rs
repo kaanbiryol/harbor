@@ -769,7 +769,7 @@ mod tests {
         Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
     };
     use gpui_component::{Root, Theme, ThemeMode, input::InputState};
-    use harbor_domain::{FileStatus, ReviewCommentRange};
+    use harbor_domain::{FileStatus, FileViewedState, ReviewCommentRange};
 
     use super::*;
     use crate::{
@@ -1116,6 +1116,7 @@ mod tests {
             deletions: 0,
             changes: 1,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         let diff = crate::diff::parse_unified_diff(
             "@@ -10,2 +10,4 @@\n context\n+Please tighten this branch.\n+Also cover this selected line.\n unchanged\n",

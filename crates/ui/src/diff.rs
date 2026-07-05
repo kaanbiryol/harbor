@@ -248,7 +248,7 @@ fn language_for_path(path: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{DiffFile, FileStatus};
+    use harbor_domain::{DiffFile, FileStatus, FileViewedState};
 
     use super::*;
 
@@ -263,6 +263,7 @@ mod tests {
                 deletions: 1,
                 changes: 2,
                 patch: Some("@@ -1 +1 @@\n-old\n+new\n".to_string()),
+                viewed_state: FileViewedState::Unviewed,
             },
             DiffFile {
                 path: "assets/logo.png".to_string(),
@@ -272,6 +273,7 @@ mod tests {
                 deletions: 0,
                 changes: 0,
                 patch: None,
+                viewed_state: FileViewedState::Unviewed,
             },
         ];
 
@@ -304,6 +306,7 @@ mod tests {
             deletions: 1,
             changes: 2,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         let parsed = parse_unified_diff_with_syntax(
             &file,
@@ -327,6 +330,7 @@ mod tests {
             deletions: 0,
             changes: 3,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         let parsed = parse_unified_diff_with_syntax(
             &file,
@@ -350,6 +354,7 @@ mod tests {
             deletions: 1,
             changes: 2,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         let parsed = parse_unified_diff_with_syntax(
             &file,
@@ -376,6 +381,7 @@ mod tests {
             deletions: 0,
             changes: 0,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         assert!(
             parse_files_with_syntax(&[missing_patch], &HighlightTheme::default_dark())[0].is_none()
@@ -390,6 +396,7 @@ mod tests {
             deletions: 0,
             changes: 1,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         let parsed = parse_unified_diff_with_syntax(
             &file,
@@ -410,6 +417,7 @@ mod tests {
             deletions: 0,
             changes: 1,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         };
         let filler = " context\n".repeat(MAX_SYNTAX_PATCH_BYTES / " context\n".len() + 1);
         let parsed = parse_unified_diff_with_syntax(

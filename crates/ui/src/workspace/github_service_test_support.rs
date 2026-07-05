@@ -39,6 +39,8 @@ pub(crate) struct FakeGitHubApi {
     pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
     pull_request_details: FakeQueue<PullRequest>,
     files: FakeQueue<Vec<DiffFile>>,
+    mark_file_viewed_results: FakeQueue<()>,
+    unmark_file_viewed_results: FakeQueue<()>,
     check_runs: FakeQueue<Vec<CheckRun>>,
     workflow_runs: FakeQueue<Vec<WorkflowRun>>,
     workflow_jobs: FakeQueue<Vec<WorkflowJob>>,
@@ -108,6 +110,14 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_files(&self, result: Result<Vec<DiffFile>>) {
         push_result(&self.files, result);
+    }
+
+    pub(crate) fn push_mark_file_viewed(&self, result: Result<()>) {
+        push_result(&self.mark_file_viewed_results, result);
+    }
+
+    pub(crate) fn push_unmark_file_viewed(&self, result: Result<()>) {
+        push_result(&self.unmark_file_viewed_results, result);
     }
 
     pub(crate) fn push_check_runs(&self, result: Result<Vec<CheckRun>>) {
@@ -292,6 +302,30 @@ impl GitHubPullRequestDetailApi for FakeGitHubApi {
     ) -> Result<Vec<DiffFile>> {
         self.record_call("list_pull_request_files");
         pop_result(&self.files, "list_pull_request_files")
+    }
+
+    async fn mark_pull_request_file_viewed(
+        &self,
+        _pull_request_node_id: &str,
+        _path: &str,
+    ) -> Result<()> {
+        self.record_call("mark_pull_request_file_viewed");
+        pop_result(
+            &self.mark_file_viewed_results,
+            "mark_pull_request_file_viewed",
+        )
+    }
+
+    async fn unmark_pull_request_file_viewed(
+        &self,
+        _pull_request_node_id: &str,
+        _path: &str,
+    ) -> Result<()> {
+        self.record_call("unmark_pull_request_file_viewed");
+        pop_result(
+            &self.unmark_file_viewed_results,
+            "unmark_pull_request_file_viewed",
+        )
     }
 
     async fn list_check_runs(

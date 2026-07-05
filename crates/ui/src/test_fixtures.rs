@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use harbor_domain::{
-    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, MergeState,
-    PullRequest, PullRequestState, ReactionContent, RepoId, ReviewComment, ReviewCommentPosition,
-    ReviewReaction, ReviewSide, ReviewThread, ReviewThreadState, WorkflowConclusion, WorkflowRun,
-    WorkflowStatus,
+    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, DiffFile, FileStatus, FileViewedState,
+    MergeState, PullRequest, PullRequestState, ReactionContent, RepoId, ReviewComment,
+    ReviewCommentPosition, ReviewReaction, ReviewSide, ReviewThread, ReviewThreadState,
+    WorkflowConclusion, WorkflowRun, WorkflowStatus,
 };
 
 pub(crate) fn pull_request() -> PullRequest {
@@ -44,6 +44,7 @@ pub(crate) fn diff_file(path: &str, status: FileStatus) -> DiffFile {
         deletions: 0,
         changes: 1,
         patch: Some("@@ -1 +1 @@".to_string()),
+        viewed_state: FileViewedState::Unviewed,
     }
 }
 

@@ -129,6 +129,14 @@ pub enum FileStatus {
     Unchanged,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub enum FileViewedState {
+    ChangedSinceViewed,
+    #[default]
+    Unviewed,
+    Viewed,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DiffFile {
     pub path: String,
@@ -138,6 +146,8 @@ pub struct DiffFile {
     pub deletions: u32,
     pub changes: u32,
     pub patch: Option<String>,
+    #[serde(default)]
+    pub viewed_state: FileViewedState,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

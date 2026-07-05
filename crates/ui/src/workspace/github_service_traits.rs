@@ -65,6 +65,18 @@ pub(crate) trait GitHubPullRequestDetailApi: Send + Sync {
         number: u64,
     ) -> Result<Vec<DiffFile>>;
 
+    async fn mark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()>;
+
+    async fn unmark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()>;
+
     async fn list_check_runs(
         &self,
         owner: &str,

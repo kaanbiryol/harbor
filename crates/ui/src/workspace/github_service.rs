@@ -145,6 +145,26 @@ impl GitHubPullRequestDetailApi for RealGitHubApi {
             .await
     }
 
+    async fn mark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()> {
+        self.client()?
+            .mark_pull_request_file_viewed(pull_request_node_id, path)
+            .await
+    }
+
+    async fn unmark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()> {
+        self.client()?
+            .unmark_pull_request_file_viewed(pull_request_node_id, path)
+            .await
+    }
+
     async fn list_check_runs(
         &self,
         owner: &str,

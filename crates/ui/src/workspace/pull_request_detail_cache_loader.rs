@@ -107,6 +107,7 @@ impl AppView {
                             && view.detail_state.files().is_empty()
                         {
                             view.detail_state.replace_diff_files(files, diffs);
+                            view.sync_reviewed_file_paths_from_files();
                             view.ensure_active_file_visible(cx);
                             view.sync_diff_list_items(cx);
                             applied_any = true;

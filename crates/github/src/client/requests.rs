@@ -152,6 +152,37 @@ query HarborPullRequestEnrichment($ids: [ID!]!) {
 }
 "#;
 
+pub(super) const PULL_REQUEST_FILE_VIEWED_STATES_QUERY: &str = r#"
+query HarborPullRequestFileViewedStates(
+  $owner: String!,
+  $repo: String!,
+  $number: Int!,
+  $first: Int!,
+  $after: String
+) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      files(first: $first, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          path
+          viewerViewedState
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    limit
+    used
+  }
+}
+"#;
+
 pub(super) const REVIEW_THREAD_COMMENTS_QUERY: &str = r#"
 query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String, $commentPageSize: Int!) {
   node(id: $threadId) {
@@ -194,6 +225,26 @@ query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String, $com
     remaining
     limit
     used
+  }
+}
+"#;
+
+pub(super) const MARK_FILE_AS_VIEWED_MUTATION: &str = r#"
+mutation HarborMarkFileAsViewed($input: MarkFileAsViewedInput!) {
+  markFileAsViewed(input: $input) {
+    pullRequest {
+      id
+    }
+  }
+}
+"#;
+
+pub(super) const UNMARK_FILE_AS_VIEWED_MUTATION: &str = r#"
+mutation HarborUnmarkFileAsViewed($input: UnmarkFileAsViewedInput!) {
+  unmarkFileAsViewed(input: $input) {
+    pullRequest {
+      id
+    }
   }
 }
 "#;

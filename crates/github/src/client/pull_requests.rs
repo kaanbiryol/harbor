@@ -1,4 +1,6 @@
-use harbor_domain::{DiffFile, MergeMethod, PullRequest, RepoId};
+use std::collections::HashMap;
+
+use harbor_domain::{DiffFile, FileViewedState, MergeMethod, PullRequest, RepoId};
 use serde_json::json;
 
 use crate::{
@@ -9,13 +11,18 @@ use crate::{
 use super::{
     GitHubClient, PullRequestListFilter,
     requests::{
-        PULL_REQUEST_ENRICHMENT_QUERY, REPOSITORY_PULL_REQUEST_COUNT_QUERY,
-        REPOSITORY_PULL_REQUESTS_QUERY, repository_pull_requests_query,
+        MARK_FILE_AS_VIEWED_MUTATION, PULL_REQUEST_ENRICHMENT_QUERY,
+        PULL_REQUEST_FILE_VIEWED_STATES_QUERY, REPOSITORY_PULL_REQUEST_COUNT_QUERY,
+        REPOSITORY_PULL_REQUESTS_QUERY, UNMARK_FILE_AS_VIEWED_MUTATION,
+        repository_pull_requests_query,
     },
 };
 
 const REPOSITORY_PULL_REQUEST_PAGE_LIMIT: usize = 10;
 const PULL_REQUEST_ENRICHMENT_CHUNK_SIZE: usize = 10;
+const PULL_REQUEST_FILE_PAGE_LIMIT: usize = 30;
+const PULL_REQUEST_FILE_PAGE_SIZE: usize = 100;
+const PULL_REQUEST_FILE_PAGE_SIZE_QUERY: &str = "100";
 
 impl<T> GitHubClient<T>
 where
@@ -312,12 +319,141 @@ where
         number: u64,
     ) -> Result<Vec<DiffFile>> {
         let path = format!("/repos/{owner}/{repo}/pulls/{number}/files");
-        let response = self
-            .transport
-            .rest_get(&path, &[("per_page", "100")])
+        let mut files = Vec::new();
+        let mut page = 1;
+
+        loop {
+            if page > PULL_REQUEST_FILE_PAGE_LIMIT {
+                return Err(GitHubError::RequestBudget(format!(
+                    "stopped loading pull request files after {PULL_REQUEST_FILE_PAGE_LIMIT} pages"
+                )));
+            }
+
+            let page_string = page.to_string();
+            let response = self
+                .transport
+                .rest_get(
+                    &path,
+                    &[
+                        ("per_page", PULL_REQUEST_FILE_PAGE_SIZE_QUERY),
+                        ("page", page_string.as_str()),
+                    ],
+                )
+                .await?;
+            let mut page_files = dto::diff_files_from_value(response)?;
+            let page_count = page_files.len();
+            files.append(&mut page_files);
+
+            if page_count < PULL_REQUEST_FILE_PAGE_SIZE {
+                break;
+            }
+            if page == PULL_REQUEST_FILE_PAGE_LIMIT {
+                break;
+            }
+
+            page += 1;
+        }
+
+        let viewed_states = self
+            .list_pull_request_file_viewed_states(owner, repo, number)
+            .await?;
+        for file in &mut files {
+            if let Some(viewed_state) = viewed_states.get(&file.path) {
+                file.viewed_state = *viewed_state;
+            }
+        }
+
+        Ok(files)
+    }
+
+    async fn list_pull_request_file_viewed_states(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<HashMap<String, FileViewedState>> {
+        let mut viewed_states = HashMap::new();
+        let mut after = None;
+        let mut pages_loaded = 0;
+
+        loop {
+            if pages_loaded >= PULL_REQUEST_FILE_PAGE_LIMIT {
+                return Err(GitHubError::RequestBudget(format!(
+                    "stopped loading pull request file viewed states after {PULL_REQUEST_FILE_PAGE_LIMIT} pages"
+                )));
+            }
+            pages_loaded += 1;
+
+            let response = self
+                .transport
+                .graphql(
+                    PULL_REQUEST_FILE_VIEWED_STATES_QUERY,
+                    json!({
+                        "owner": owner,
+                        "repo": repo,
+                        "number": number,
+                        "first": PULL_REQUEST_FILE_PAGE_SIZE,
+                        "after": after,
+                    }),
+                )
+                .await?;
+            let page = dto::pull_request_file_viewed_states_page_from_graphql_value(response)?;
+            for file_state in page.file_states {
+                viewed_states.insert(file_state.path, file_state.viewed_state);
+            }
+
+            if !page.has_next_page {
+                break;
+            }
+
+            after = Some(page.end_cursor.ok_or_else(|| {
+                GitHubError::Mapping(
+                    "pull request file viewed states page was missing an end cursor".to_string(),
+                )
+            })?);
+        }
+
+        Ok(viewed_states)
+    }
+
+    pub async fn mark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                MARK_FILE_AS_VIEWED_MUTATION,
+                json!({
+                    "input": {
+                        "pullRequestId": pull_request_node_id,
+                        "path": path,
+                    },
+                }),
+            )
             .await?;
 
-        dto::diff_files_from_value(response)
+        Ok(())
+    }
+
+    pub async fn unmark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                UNMARK_FILE_AS_VIEWED_MUTATION,
+                json!({
+                    "input": {
+                        "pullRequestId": pull_request_node_id,
+                        "path": path,
+                    },
+                }),
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub async fn merge_pull_request(

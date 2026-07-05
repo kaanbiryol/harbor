@@ -155,7 +155,7 @@ impl AppView {
                                 view.detail_state.replace_diff_files(files, diffs);
                                 view.reset_diff_selection();
                                 view.reset_changed_file_filters();
-                                view.prune_reviewed_file_paths();
+                                view.sync_reviewed_file_paths_from_files();
                                 view.ensure_active_file_visible(cx);
                                 view.clear_review_composer_state();
                                 view.sync_diff_list_items(cx);

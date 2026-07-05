@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use harbor_domain::{CheckRun, DiffFile, WorkflowJob, WorkflowRun};
+use harbor_domain::{CheckRun, DiffFile, FileViewedState, WorkflowJob, WorkflowRun};
 
 use crate::{
     diff::ParsedDiff,
@@ -134,6 +134,12 @@ impl PullRequestDetailUiState {
 
     pub(crate) fn files(&self) -> &[DiffFile] {
         &self.files
+    }
+
+    pub(crate) fn set_file_viewed_state(&mut self, path: &str, viewed_state: FileViewedState) {
+        if let Some(file) = self.files.iter_mut().find(|file| file.path == path) {
+            file.viewed_state = viewed_state;
+        }
     }
 
     pub(crate) fn diffs(&self) -> &[Option<ParsedDiff>] {

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use gpui::{App, AppContext, Context, ListOffset, ScrollStrategy, px};
-use harbor_domain::DiffFile;
+use harbor_domain::{DiffFile, FileViewedState};
 
 use crate::{
     actions::PanelTab,
@@ -10,11 +10,13 @@ use crate::{
         ContinuousDiffLayoutInput, continuous_diff_items, diff_file_item_index,
         sync_diff_list_state,
     },
+    workspace::async_updates::AppViewAsyncUpdateExt,
 };
 
 use super::{
     AppView, ChangedFileFilters, ChangedFileTreeRow, ChangedFileTypeFilter, changed_file_tree_rows,
     changed_file_type_filters, codeowners::codeowners_owned_file_paths, log_entity_update_error,
+    review_data_loaders::selected_pull_request_matches,
 };
 
 impl AppView {
@@ -168,6 +170,29 @@ impl AppView {
             .retain(|path| file_paths.contains(path));
     }
 
+    pub(super) fn sync_reviewed_file_paths_from_files(&mut self) {
+        self.reviewed_file_paths = self
+            .detail_state
+            .files()
+            .iter()
+            .filter(|file| file.viewed_state == FileViewedState::Viewed)
+            .map(|file| file.path.clone())
+            .collect();
+        self.prune_reviewed_file_paths();
+    }
+
+    fn set_changed_file_reviewed_by_path(&mut self, path: &str, reviewed: bool) {
+        if reviewed {
+            self.reviewed_file_paths.insert(path.to_string());
+            self.detail_state
+                .set_file_viewed_state(path, FileViewedState::Viewed);
+        } else {
+            self.reviewed_file_paths.remove(path);
+            self.detail_state
+                .set_file_viewed_state(path, FileViewedState::Unviewed);
+        }
+    }
+
     pub(super) fn reset_changed_file_filters(&mut self) {
         self.excluded_file_type_filters.clear();
         self.show_files_owned_by_current_user = false;
@@ -231,12 +256,63 @@ impl AppView {
             return;
         };
 
-        let reviewed = if self.reviewed_file_paths.remove(&path) {
-            false
-        } else {
-            self.reviewed_file_paths.insert(path.clone());
-            true
+        let Some(pull_request) = self.selected_pull_request().cloned() else {
+            self.status = "No pull request selected for file viewed sync".to_string();
+            cx.notify();
+            return;
         };
+        if pull_request.node_id.is_empty() {
+            self.status =
+                "Cannot sync file viewed state without a pull request node ID".to_string();
+            cx.notify();
+            return;
+        }
+
+        let reviewed = !self.reviewed_file_paths.contains(&path);
+        self.set_changed_file_reviewed_by_path(&path, reviewed);
+
+        let github_api = self.github_api.clone();
+        let repo = pull_request.repo.clone();
+        let number = pull_request.number;
+        let pull_request_node_id = pull_request.node_id.clone();
+        let sync_path = path.clone();
+        cx.spawn(async move |this, cx| {
+            let result = if reviewed {
+                github_api
+                    .mark_pull_request_file_viewed(&pull_request_node_id, &sync_path)
+                    .await
+            } else {
+                github_api
+                    .unmark_pull_request_file_viewed(&pull_request_node_id, &sync_path)
+                    .await
+            };
+
+            if let Err(error) = result {
+                let error = error.to_string();
+                this.update_or_log(
+                    cx,
+                    "failed to update pull request file viewed state",
+                    move |view, cx| {
+                        if !selected_pull_request_matches(view, &repo, number) {
+                            return;
+                        }
+
+                        if view.reviewed_file_paths.contains(&sync_path) == reviewed {
+                            view.set_changed_file_reviewed_by_path(&sync_path, !reviewed);
+                            view.sync_diff_list_items(cx);
+                        }
+                        view.status = if reviewed {
+                            format!("Failed to mark {sync_path} as reviewed: {error}")
+                        } else {
+                            format!("Failed to mark {sync_path} as unreviewed: {error}")
+                        };
+                        cx.notify();
+                    },
+                );
+            }
+        })
+        .detach();
+
         let reviewed_count = self.reviewed_file_count();
         let total_count = self.detail_state.files().len();
 

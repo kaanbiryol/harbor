@@ -210,8 +210,8 @@ fn review_thread_anchor_row<T>(
 #[cfg(test)]
 mod tests {
     use crate::{
-        DiffFile, FileStatus, ReviewComment, ReviewCommentPosition, ReviewCommentRange, ReviewSide,
-        ReviewThread, ReviewThreadState,
+        DiffFile, FileStatus, FileViewedState, ReviewComment, ReviewCommentPosition,
+        ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState,
     };
     use chrono::{DateTime, Utc};
 
@@ -443,6 +443,7 @@ mod tests {
             deletions: 1,
             changes: 2,
             patch: None,
+            viewed_state: FileViewedState::Unviewed,
         }
     }
 

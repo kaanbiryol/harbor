@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use harbor_domain::{
-    CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, Label, MergeState,
-    PullRequest, PullRequestState, RepoId, ReviewDecision,
+    CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, FileViewedState, Label,
+    MergeState, PullRequest, PullRequestState, RepoId, ReviewDecision,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -81,6 +81,42 @@ struct GraphQlPullRequestEnrichmentResponse {
 struct GraphQlPullRequestEnrichmentData {
     #[serde(default)]
     nodes: Vec<Option<GraphQlPullRequestEnrichmentNode>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestFileViewedStatesResponse {
+    data: Option<GraphQlPullRequestFileViewedStatesData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestFileViewedStatesData {
+    repository: Option<GraphQlPullRequestFileViewedStatesRepository>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestFileViewedStatesRepository {
+    #[serde(rename = "pullRequest")]
+    pull_request: Option<GraphQlPullRequestFileViewedStatesPullRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestFileViewedStatesPullRequest {
+    files: GraphQlPullRequestFileViewedStatesConnection,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestFileViewedStatesConnection {
+    #[serde(default)]
+    nodes: Vec<Option<GraphQlPullRequestFileViewedStateNode>>,
+    #[serde(default, rename = "pageInfo")]
+    page_info: GraphQlPageInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlPullRequestFileViewedStateNode {
+    path: String,
+    #[serde(rename = "viewerViewedState")]
+    viewer_viewed_state: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,6 +252,17 @@ pub(crate) struct PullRequestSearchPage {
     pub(crate) end_cursor: Option<String>,
 }
 
+pub(crate) struct PullRequestFileViewedStatesPage {
+    pub(crate) file_states: Vec<PullRequestFileViewedState>,
+    pub(crate) has_next_page: bool,
+    pub(crate) end_cursor: Option<String>,
+}
+
+pub(crate) struct PullRequestFileViewedState {
+    pub(crate) path: String,
+    pub(crate) viewed_state: FileViewedState,
+}
+
 #[derive(Debug, Deserialize)]
 struct ApiDiffFile {
     filename: String,
@@ -295,6 +342,34 @@ pub(crate) fn pull_request_enrichments_from_graphql_value(
         .filter(|node| node.is_pull_request())
         .map(GraphQlPullRequestEnrichmentNode::into_domain)
         .collect()
+}
+
+pub(crate) fn pull_request_file_viewed_states_page_from_graphql_value(
+    value: Value,
+) -> Result<PullRequestFileViewedStatesPage> {
+    let response: GraphQlPullRequestFileViewedStatesResponse =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let data = response
+        .data
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL response data".to_string()))?;
+    let repository = data
+        .repository
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL repository".to_string()))?;
+    let pull_request = repository
+        .pull_request
+        .ok_or_else(|| GitHubError::Mapping("missing GraphQL pull request".to_string()))?;
+
+    Ok(PullRequestFileViewedStatesPage {
+        file_states: pull_request
+            .files
+            .nodes
+            .into_iter()
+            .flatten()
+            .map(GraphQlPullRequestFileViewedStateNode::into_domain)
+            .collect(),
+        has_next_page: pull_request.files.page_info.has_next_page,
+        end_cursor: pull_request.files.page_info.end_cursor,
+    })
 }
 
 pub fn diff_files_from_value(value: Value) -> Result<Vec<DiffFile>> {
@@ -428,6 +503,16 @@ impl ApiDiffFile {
             deletions: self.deletions,
             changes: self.changes,
             patch: self.patch,
+            viewed_state: FileViewedState::Unviewed,
+        }
+    }
+}
+
+impl GraphQlPullRequestFileViewedStateNode {
+    fn into_domain(self) -> PullRequestFileViewedState {
+        PullRequestFileViewedState {
+            path: self.path,
+            viewed_state: map_file_viewed_state(&self.viewer_viewed_state),
         }
     }
 }
@@ -540,15 +625,25 @@ fn map_file_status(status: &str) -> FileStatus {
     }
 }
 
+fn map_file_viewed_state(state: &str) -> FileViewedState {
+    match state {
+        "VIEWED" => FileViewedState::Viewed,
+        "DISMISSED" => FileViewedState::ChangedSinceViewed,
+        _ => FileViewedState::Unviewed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use harbor_domain::{FileStatus, MergeState, PullRequestState, RepoId, ReviewDecision};
+    use harbor_domain::{
+        FileStatus, FileViewedState, MergeState, PullRequestState, RepoId, ReviewDecision,
+    };
     use serde_json::json;
 
     use super::{
-        diff_files_from_value, pull_request_from_value,
-        pull_request_search_count_from_graphql_value, pull_request_search_page_from_graphql_value,
-        pull_requests_from_value,
+        diff_files_from_value, pull_request_file_viewed_states_page_from_graphql_value,
+        pull_request_from_value, pull_request_search_count_from_graphql_value,
+        pull_request_search_page_from_graphql_value, pull_requests_from_value,
     };
 
     #[test]
@@ -788,5 +883,48 @@ mod tests {
             Some("assets/old-logo.png")
         );
         assert!(files[1].patch.is_none());
+        assert_eq!(files[1].viewed_state, FileViewedState::Unviewed);
+    }
+
+    #[test]
+    fn maps_pull_request_file_viewed_states_from_graphql() {
+        let value = json!({
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "id": "pr-node",
+                        "files": {
+                            "pageInfo": {
+                                "hasNextPage": true,
+                                "endCursor": "cursor-1"
+                            },
+                            "nodes": [
+                                {
+                                    "path": "src/lib.rs",
+                                    "viewerViewedState": "VIEWED"
+                                },
+                                {
+                                    "path": "src/new.rs",
+                                    "viewerViewedState": "DISMISSED"
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        });
+
+        let page = pull_request_file_viewed_states_page_from_graphql_value(value).unwrap();
+
+        assert!(page.has_next_page);
+        assert_eq!(page.end_cursor.as_deref(), Some("cursor-1"));
+        assert_eq!(page.file_states.len(), 2);
+        assert_eq!(page.file_states[0].path, "src/lib.rs");
+        assert_eq!(page.file_states[0].viewed_state, FileViewedState::Viewed);
+        assert_eq!(page.file_states[1].path, "src/new.rs");
+        assert_eq!(
+            page.file_states[1].viewed_state,
+            FileViewedState::ChangedSinceViewed
+        );
     }
 }

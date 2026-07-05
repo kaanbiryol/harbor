@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 use gpui::{ListAlignment, ListOffset, px};
-use harbor_domain::{FileStatus, ReviewCommentRange, ReviewSide, ReviewThreadState};
+use harbor_domain::{
+    FileStatus, FileViewedState, ReviewCommentRange, ReviewSide, ReviewThreadState,
+};
 
 use crate::{
     diff::{DiffHunk, DiffLine, DiffLineKind, ParsedDiff, parse_unified_diff},
@@ -484,6 +486,7 @@ fn test_file(path: &str) -> DiffFile {
         deletions: 1,
         changes: 2,
         patch: None,
+        viewed_state: FileViewedState::Unviewed,
     }
 }
 

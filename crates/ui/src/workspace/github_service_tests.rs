@@ -19,6 +19,8 @@ mod action_results;
 mod auth;
 #[path = "github_service_tests/cache.rs"]
 mod cache;
+#[path = "github_service_tests/file_viewed_state.rs"]
+mod file_viewed_state;
 #[path = "github_service_tests/focus.rs"]
 mod focus;
 #[path = "github_service_tests/inbox.rs"]

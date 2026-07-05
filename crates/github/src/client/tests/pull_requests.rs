@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 use super::super::{GitHubClient, PullRequestListFilter, test_support::RecordingTransport};
 use crate::{ConditionalFetch, HttpCacheValidator, PullRequestPageCursor};
-use harbor_domain::{MergeMethod, RepoId};
+use harbor_domain::{FileViewedState, MergeMethod, RepoId};
 
 #[test]
 fn queries_repository_pull_request_filters() {
@@ -297,6 +297,172 @@ fn enriches_pull_requests_by_node_ids() {
     assert_eq!(calls.len(), 1);
     assert!(calls[0].0.contains("HarborPullRequestEnrichment"));
     assert_eq!(calls[0].1, json!({ "ids": ["pr-node"] }));
+}
+
+#[test]
+fn lists_pull_request_files_with_viewer_viewed_state() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_response
+        .lock()
+        .expect("get response mutex should not be poisoned") = Some(json!([
+        {
+            "filename": "src/lib.rs",
+            "status": "modified",
+            "additions": 2,
+            "deletions": 1,
+            "changes": 3,
+            "patch": "@@ -1 +1 @@\n-old\n+new\n"
+        },
+        {
+            "filename": "src/new.rs",
+            "status": "added",
+            "additions": 1,
+            "deletions": 0,
+            "changes": 1,
+            "patch": "@@ -0,0 +1 @@\n+new\n"
+        }
+    ]));
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "id": "pr-node",
+                    "files": {
+                        "pageInfo": {
+                            "hasNextPage": false,
+                            "endCursor": null
+                        },
+                        "nodes": [
+                            {
+                                "path": "src/lib.rs",
+                                "viewerViewedState": "VIEWED"
+                            },
+                            {
+                                "path": "src/new.rs",
+                                "viewerViewedState": "DISMISSED"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    let files = smol::block_on(client.list_pull_request_files("acme", "app", 7)).unwrap();
+
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].path, "src/lib.rs");
+    assert_eq!(files[0].viewed_state, FileViewedState::Viewed);
+    assert!(files[0].patch.is_some());
+    assert_eq!(files[1].path, "src/new.rs");
+    assert_eq!(files[1].viewed_state, FileViewedState::ChangedSinceViewed);
+
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets.len(), 1);
+    assert_eq!(gets[0].0, "/repos/acme/app/pulls/7/files");
+    assert!(gets[0].1.contains(&("per_page".into(), "100".into())));
+    assert!(gets[0].1.contains(&("page".into(), "1".into())));
+
+    let graphql_calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(graphql_calls.len(), 1);
+    assert!(
+        graphql_calls[0]
+            .0
+            .contains("HarborPullRequestFileViewedStates")
+    );
+    assert_eq!(
+        graphql_calls[0].1,
+        json!({
+            "owner": "acme",
+            "repo": "app",
+            "number": 7,
+            "first": 100,
+            "after": null,
+        })
+    );
+}
+
+#[test]
+fn marks_pull_request_file_viewed() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "markFileAsViewed": {
+                "pullRequest": {
+                    "id": "pr-node"
+                }
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.mark_pull_request_file_viewed("pr-node", "src/lib.rs")).unwrap();
+
+    let graphql_calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(graphql_calls.len(), 1);
+    assert!(graphql_calls[0].0.contains("HarborMarkFileAsViewed"));
+    assert_eq!(
+        graphql_calls[0].1,
+        json!({
+            "input": {
+                "pullRequestId": "pr-node",
+                "path": "src/lib.rs",
+            }
+        })
+    );
+}
+
+#[test]
+fn unmarks_pull_request_file_viewed() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "unmarkFileAsViewed": {
+                "pullRequest": {
+                    "id": "pr-node"
+                }
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.unmark_pull_request_file_viewed("pr-node", "src/lib.rs")).unwrap();
+
+    let graphql_calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(graphql_calls.len(), 1);
+    assert!(graphql_calls[0].0.contains("HarborUnmarkFileAsViewed"));
+    assert_eq!(
+        graphql_calls[0].1,
+        json!({
+            "input": {
+                "pullRequestId": "pr-node",
+                "path": "src/lib.rs",
+            }
+        })
+    );
 }
 
 #[test]
