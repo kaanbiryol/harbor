@@ -80,6 +80,7 @@ pub(crate) fn render_checks_panel(
                 )
                 .flex_1()
                 .min_h_0()
+                .w_full()
                 .min_w_0(),
             )
         })
@@ -91,16 +92,21 @@ pub(crate) fn render_check_run(check_run: &CheckRun) -> impl IntoElement {
         .items_center()
         .justify_between()
         .gap_3()
+        .overflow_hidden()
         .px_3()
         .py_2()
         .child(
             div()
+                .min_w_0()
+                .flex_1()
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(check_run.name.clone())
+                .child(div().min_w_0().truncate().child(check_run.name.clone()))
                 .child(
                     div()
+                        .min_w_0()
+                        .truncate()
                         .text_xs()
                         .text_color(color::text_muted())
                         .child(format!("{:?}", check_run.status)),

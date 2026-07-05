@@ -13,6 +13,8 @@ pub(super) fn pull_request_inbox_search_list_height(row_count: usize) -> f32 {
 
 pub(super) fn render_pull_request_inbox_search_empty_row(label: &'static str) -> impl IntoElement {
     div()
+        .w_full()
+        .min_w_0()
         .px_2()
         .py_2()
         .text_sm()
@@ -30,9 +32,12 @@ pub(super) fn render_pull_request_inbox_search_row(
     div()
         .id(("pull-request-inbox-search-row", number))
         .h(px(PULL_REQUEST_INBOX_SEARCH_ROW_HEIGHT))
+        .w_full()
+        .min_w_0()
         .flex()
         .flex_col()
         .gap_1()
+        .overflow_hidden()
         .px_2()
         .py_2()
         .text_sm()
@@ -45,6 +50,7 @@ pub(super) fn render_pull_request_inbox_search_row(
         .child(
             div()
                 .flex()
+                .w_full()
                 .min_w_0()
                 .items_center()
                 .gap_2()
@@ -58,6 +64,7 @@ pub(super) fn render_pull_request_inbox_search_row(
                 .child(
                     div()
                         .min_w_0()
+                        .flex_1()
                         .truncate()
                         .text_color(color::text_secondary())
                         .child(title),
@@ -66,12 +73,13 @@ pub(super) fn render_pull_request_inbox_search_row(
         .child(
             div()
                 .flex()
+                .w_full()
                 .min_w_0()
                 .items_center()
                 .gap_2()
                 .text_xs()
                 .text_color(color::text_muted())
-                .child("by")
-                .child(div().min_w_0().truncate().child(author)),
+                .child(div().flex_none().child("by"))
+                .child(div().min_w_0().flex_1().truncate().child(author)),
         )
 }

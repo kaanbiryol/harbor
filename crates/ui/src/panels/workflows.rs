@@ -136,6 +136,7 @@ pub(crate) fn render_actions_panel(
                 )
                 .flex_1()
                 .min_h_0()
+                .w_full()
                 .min_w_0(),
             )
         })
@@ -146,28 +147,32 @@ fn render_workflow_action_targets(
     dispatch_target: Option<&WorkflowRun>,
     rerun_target: Option<&WorkflowRun>,
 ) -> impl IntoElement {
+    let dispatch_target_label = format!(
+        "dispatch target: {} on {}",
+        dispatch_target
+            .map(workflow_run_label)
+            .unwrap_or_else(|| "none".to_string()),
+        pr.map(|pr| pr.head_ref.as_str())
+            .unwrap_or("no selected branch")
+    );
+    let rerun_target_label = format!(
+        "rerun target: {}",
+        rerun_target
+            .map(workflow_run_label)
+            .unwrap_or_else(|| "none".to_string())
+    );
+
     render_panel_card()
         .px_3()
         .py_2()
         .flex()
         .flex_col()
         .gap_1()
+        .overflow_hidden()
         .text_xs()
         .text_color(color::text_muted())
-        .child(format!(
-            "dispatch target: {} on {}",
-            dispatch_target
-                .map(workflow_run_label)
-                .unwrap_or_else(|| "none".to_string()),
-            pr.map(|pr| pr.head_ref.as_str())
-                .unwrap_or("no selected branch")
-        ))
-        .child(format!(
-            "rerun target: {}",
-            rerun_target
-                .map(workflow_run_label)
-                .unwrap_or_else(|| "none".to_string())
-        ))
+        .child(div().min_w_0().truncate().child(dispatch_target_label))
+        .child(div().min_w_0().truncate().child(rerun_target_label))
 }
 
 pub(crate) fn workflow_run_label(run: &WorkflowRun) -> String {
@@ -198,16 +203,21 @@ pub(crate) fn render_workflow_run(run: &WorkflowRun) -> impl IntoElement {
         .items_center()
         .justify_between()
         .gap_3()
+        .overflow_hidden()
         .px_3()
         .py_2()
         .child(
             div()
+                .min_w_0()
+                .flex_1()
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(run.name.clone())
+                .child(div().min_w_0().truncate().child(run.name.clone()))
                 .child(
                     div()
+                        .min_w_0()
+                        .truncate()
                         .text_xs()
                         .text_color(color::text_muted())
                         .child(format!(

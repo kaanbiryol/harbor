@@ -36,6 +36,8 @@ pub(crate) fn render_panel_header(
 
 pub(crate) fn render_panel_card() -> Div {
     div()
+        .w_full()
+        .min_w_0()
         .border_1()
         .border_color(color::border())
         .bg(color::content_background())
@@ -50,6 +52,8 @@ pub(crate) fn render_empty_panel_card(message: impl Into<String>) -> impl IntoEl
 
 pub(crate) fn render_error_panel_card(message: impl Into<String>) -> impl IntoElement {
     div()
+        .w_full()
+        .min_w_0()
         .border_1()
         .border_color(color::danger_background())
         .bg(color::danger_background())
