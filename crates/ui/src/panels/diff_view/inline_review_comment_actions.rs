@@ -1,9 +1,10 @@
 use gpui::{Anchor, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    Disableable, Sizable,
+    Disableable, Icon, Sizable,
     button::{Button, ButtonVariants},
     input::{Input, InputState},
     popover::{Popover, PopoverState},
+    spinner::Spinner,
 };
 use harbor_domain::ReviewComment;
 
@@ -54,16 +55,16 @@ pub(super) fn render_review_comment_actions_menu(
 
             div()
                 .w(px(160.0))
+                .rounded_xs()
                 .border_1()
                 .border_color(color::border_strong())
                 .bg(color::elevated_background())
-                .p_1()
+                .p_0p5()
                 .shadow_lg()
                 .child(
                     div()
                         .flex()
                         .flex_col()
-                        .gap_1()
                         .when(can_update, {
                             let view_entity = view_entity.clone();
                             let comment_id = comment_id.clone();
@@ -71,13 +72,16 @@ pub(super) fn render_review_comment_actions_menu(
                             move |element| {
                                 element.child(
                                     Button::new(format!("edit-comment-{comment_id}"))
-                                        .icon(Octicon::Pencil)
-                                        .label(if active_edit { "Editing" } else { "Edit" })
                                         .small()
                                         .ghost()
                                         .w_full()
                                         .justify_start()
-                                        .disabled(edit_submitting || action_running)
+                                        .disabled(active_edit || edit_submitting || action_running)
+                                        .child(render_review_comment_action_menu_item(
+                                            Octicon::Pencil,
+                                            "Edit",
+                                            false,
+                                        ))
                                         .debug_selector({
                                             let selector =
                                                 format!("inline-review-comment-edit-{comment_id}");
@@ -111,14 +115,17 @@ pub(super) fn render_review_comment_actions_menu(
                             move |element| {
                                 element.child(
                                     Button::new(format!("delete-comment-{comment_id}"))
-                                        .icon(Octicon::Trash)
-                                        .label("Delete")
                                         .small()
                                         .ghost()
                                         .w_full()
                                         .justify_start()
                                         .loading(action_running)
                                         .disabled(action_running || edit_submitting)
+                                        .child(render_review_comment_action_menu_item(
+                                            Octicon::Trash,
+                                            "Delete",
+                                            action_running,
+                                        ))
                                         .on_click({
                                             let view_entity = view_entity.clone();
                                             let comment_id = comment_id.clone();
@@ -136,6 +143,26 @@ pub(super) fn render_review_comment_actions_menu(
                         }),
                 )
         })
+}
+
+fn render_review_comment_action_menu_item(
+    icon: Octicon,
+    label: &'static str,
+    loading: bool,
+) -> impl IntoElement {
+    div()
+        .w_full()
+        .min_w_0()
+        .flex()
+        .items_center()
+        .justify_start()
+        .gap_2()
+        .child(if loading {
+            Spinner::new().small().into_any_element()
+        } else {
+            Icon::new(icon).small().into_any_element()
+        })
+        .child(div().min_w_0().flex_1().text_left().child(label))
 }
 
 pub(super) fn render_review_comment_edit_composer(

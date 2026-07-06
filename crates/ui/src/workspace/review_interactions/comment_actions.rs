@@ -1,4 +1,5 @@
 use gpui::{Context, Window};
+use gpui_component::input::Position;
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
@@ -18,8 +19,9 @@ impl AppView {
             .review_composer_state
             .comment_edit_input
             .update(cx, |input, cx| {
+                let cursor_position = review_comment_edit_cursor_position(&body);
                 input.set_value(body, window, cx);
-                input.focus(window, cx);
+                input.set_cursor_position(cursor_position, window, cx);
             });
         self.sync_diff_list_items(cx);
         self.status = "Opened review comment editor".to_string();
@@ -211,5 +213,38 @@ impl AppView {
             );
         })
         .detach();
+    }
+}
+
+fn review_comment_edit_cursor_position(body: &str) -> Position {
+    let mut line = 0;
+    let mut character = 0;
+
+    for (line_index, line_text) in body.split('\n').enumerate() {
+        line = u32::try_from(line_index).unwrap_or(u32::MAX);
+        character = line_text.chars().count().min(u32::MAX as usize) as u32;
+    }
+
+    Position::new(line, character)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn edit_cursor_position_points_to_body_end() {
+        assert_eq!(
+            review_comment_edit_cursor_position("first line\nsecond line"),
+            Position::new(1, 11)
+        );
+    }
+
+    #[test]
+    fn edit_cursor_position_preserves_trailing_empty_line() {
+        assert_eq!(
+            review_comment_edit_cursor_position("first line\n"),
+            Position::new(1, 0)
+        );
     }
 }
