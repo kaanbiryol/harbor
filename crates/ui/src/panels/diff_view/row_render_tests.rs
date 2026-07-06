@@ -63,6 +63,7 @@ struct DiffLineWrapHarness {
 
 impl Render for DiffLineWrapHarness {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let mono_font_family = gpui::SharedString::from("monospace");
         let line = DiffLine {
             kind: DiffLineKind::Added,
             old_line: None,
@@ -89,6 +90,7 @@ impl Render for DiffLineWrapHarness {
                     line_number_width: 36.0,
                     review_marker_width: REVIEW_MARKER_WIDTH,
                     view_entity: self.view_entity.clone(),
+                    mono_font_family: &mono_font_family,
                 })),
             div()
                 .id("diff-line-number-wrap-harness")
@@ -128,6 +130,7 @@ impl Render for DiffLineWrapHarness {
                     }),
                     review_marker_width: REVIEW_MARKER_WIDTH,
                     view_entity: self.view_entity.clone(),
+                    mono_font_family: &mono_font_family,
                 })),
         ])
     }

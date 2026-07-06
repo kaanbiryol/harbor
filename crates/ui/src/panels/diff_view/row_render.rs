@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use gpui::{AnyElement, Entity, IntoElement, MouseButton, StyledText, div, prelude::*, px};
+use gpui::{
+    AnyElement, Entity, IntoElement, MouseButton, SharedString, StyledText, div, prelude::*, px,
+};
 use harbor_domain::{DiffFile, ReviewThreadState};
 
 use crate::{
@@ -149,6 +151,7 @@ fn render_diff_line_item(
         line_number_width: line_number_width_for_diff(diff),
         review_marker_width: REVIEW_MARKER_WIDTH,
         view_entity: row_state.view_entity.clone(),
+        mono_font_family: &row_state.mono_font_family,
     })
     .into_any_element()
 }
@@ -254,6 +257,7 @@ struct DiffLineRenderInput<'a> {
     line_number_width: f32,
     review_marker_width: f32,
     view_entity: Entity<AppView>,
+    mono_font_family: &'a SharedString,
 }
 
 fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
@@ -270,6 +274,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         line_number_width,
         review_marker_width,
         view_entity,
+        mono_font_family,
     } = input;
     let line_id = format!("diff-line-{item_index}");
     let style = diff_line_style(DiffLineStyleInput {
@@ -290,6 +295,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         .items_start()
         .bg(style.background)
         .text_color(style.text_color)
+        .font_family(mono_font_family.clone())
         .line_height(px(DIFF_ROW_HEIGHT))
         .child(render_line_number(line.old_line, line_number_width))
         .child(render_line_number(line.new_line, line_number_width))

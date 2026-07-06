@@ -1,5 +1,5 @@
-use gpui::{App, Entity};
-use gpui_component::input::InputState;
+use gpui::{App, Entity, SharedString};
+use gpui_component::{ActiveTheme, input::InputState};
 use harbor_domain::ReviewThread;
 
 use crate::workspace::{
@@ -34,6 +34,7 @@ pub(super) struct DiffRowRenderState<'a> {
     pub(super) review_reaction_error: Option<&'a ReviewCommentUiError>,
     pub(super) active_file: usize,
     pub(super) view_entity: Entity<AppView>,
+    pub(super) mono_font_family: SharedString,
 }
 
 impl<'a> DiffRowRenderState<'a> {
@@ -108,6 +109,7 @@ impl<'a> DiffRowRenderState<'a> {
             review_reaction_error: view.review_state.review_reaction_error(),
             active_file: view.active_file_index(),
             view_entity,
+            mono_font_family: cx.theme().mono_font_family.clone(),
         }
     }
 }
