@@ -49,14 +49,15 @@ impl AppView {
             .child(
                 div()
                     .flex()
-                    .items_start()
+                    .items_center()
                     .gap_1()
                     .min_w_0()
                     .child(
                         div()
                             .id(("pull-request-title-link", pr.number))
                             .min_w_0()
-                            .flex_1()
+                            .flex_initial()
+                            .truncate()
                             .text_size(px(15.0))
                             .font_medium()
                             .text_color(color::accent())
@@ -70,13 +71,13 @@ impl AppView {
                             }))
                             .child(format!("#{} {}", pr.number, pr.title)),
                     )
-                    .child(render_copy_button(
+                    .child(div().flex_none().child(render_copy_button(
                         format!("copy-pr-link-{}", pr.number),
                         "Copy pull request link",
                         pull_request_link,
                         "Copied PR link".to_string(),
                         cx,
-                    )),
+                    ))),
             )
             .child(
                 div()
