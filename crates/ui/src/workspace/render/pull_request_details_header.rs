@@ -165,7 +165,7 @@ impl AppView {
                     .justify_between()
                     .gap_3()
                     .child(div().flex().items_center().gap_2().child({
-                        DropdownButton::new("review-pr")
+                        let dropdown = DropdownButton::new("review-pr")
                             .button(
                                 Button::new("approve-pr-primary")
                                     .label("approve")
@@ -182,7 +182,6 @@ impl AppView {
                             )
                             .small()
                             .compact()
-                            .primary()
                             .tooltip(approve_tooltip.clone())
                             .loading(pull_request_action_running)
                             .disabled(review_action_disabled)
@@ -197,7 +196,13 @@ impl AppView {
                                     Box::new(OpenRequestChangesCommentDialog),
                                     review_action_disabled,
                                 )
-                            })
+                            });
+
+                        if review_action_disabled {
+                            dropdown.outline().opacity(0.58)
+                        } else {
+                            dropdown.success().outline()
+                        }
                     }))
                     .child({
                         let button = Button::new("merge-pr-primary")
@@ -243,7 +248,7 @@ impl AppView {
                         if merge_action_disabled {
                             dropdown.outline().opacity(0.58)
                         } else {
-                            dropdown.primary()
+                            dropdown.success()
                         }
                     }),
             )
