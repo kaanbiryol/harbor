@@ -1,6 +1,6 @@
 use gpui::{Context, IntoElement, div, prelude::*, px, uniform_list};
 use gpui_component::{
-    Sizable, StyledExt,
+    Sizable,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
@@ -26,14 +26,21 @@ impl AppView {
         let has_owned_filter_data = self.has_owned_file_filter_data();
         let owned_filter_active = self.show_files_owned_by_current_user;
         let has_active_filter = included_type_count < type_filters.len() || owned_filter_active;
-        let filter_label = if has_active_filter {
-            format!("Filters {visible_count}/{total_count}")
+        let visible_label = if has_active_filter {
+            format!("{visible_count}/{total_count} visible")
         } else {
-            "Filters".to_string()
+            format!("{visible_count} visible")
+        };
+        let visible_label_color = if has_active_filter {
+            color::accent()
+        } else {
+            color::text_muted()
         };
 
         div()
-            .pt_2()
+            .h(px(40.0))
+            .w_full()
+            .px_2()
             .flex()
             .items_center()
             .justify_between()
@@ -58,52 +65,66 @@ impl AppView {
                     })
                     .trigger({
                         let button = Button::new("changed-file-filters")
-                            .label(filter_label)
-                            .icon(Octicon::Gear)
+                            .label("Filters")
+                            .icon(Octicon::Sliders)
                             .small()
                             .compact()
-                            .dropdown_caret(true);
+                            .tooltip("Filter changed files");
+
                         if has_active_filter {
-                            button.primary()
+                            button.outline()
                         } else {
                             button.ghost()
                         }
                     })
                     .content(move |_, window, _popover_cx| {
+                        let reset_view = view.clone();
                         let menu_max_height = (window.viewport_size().height - px(16.))
                             .max(px(160.))
                             .min(px(520.));
                         let mut menu = div()
                             .id("changed-file-filters-menu")
-                            .w(px(360.))
+                            .w(px(320.))
                             .max_h(menu_max_height)
                             .overflow_y_scroll()
                             .border_1()
                             .border_color(color::border_strong())
                             .bg(color::elevated_background())
-                            .p_2()
+                            .p_1()
                             .shadow_lg()
-                            .child(
-                                div()
-                                    .px_1()
-                                    .pb_2()
-                                    .flex()
-                                    .items_center()
-                                    .justify_between()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .font_medium()
-                                            .text_color(color::text_primary())
-                                            .child("Filter changed files"),
-                                    )
-                                    .child(
-                                        div().text_xs().text_color(color::text_muted()).child(
-                                            format!("{visible_count}/{total_count} visible"),
+                            .when(has_active_filter, |menu| {
+                                menu.child(
+                                    div()
+                                        .px_2()
+                                        .py_1()
+                                        .flex()
+                                        .justify_end()
+                                        .text_xs()
+                                        .child(
+                                            div()
+                                                .id("reset-changed-file-filters")
+                                                .cursor_pointer()
+                                                .text_color(color::accent())
+                                                .hover(|element| {
+                                                    element.text_color(color::accent_hover())
+                                                })
+                                                .on_click(move |_, _, cx| {
+                                                    reset_view.update(cx, |view, cx| {
+                                                        view.reset_changed_file_filters();
+                                                        view.ensure_active_file_visible(cx);
+                                                        view.sync_diff_list_items(cx);
+                                                        let visible_count =
+                                                            view.visible_file_indices(cx).len();
+                                                        view.status = format!(
+                                                            "Reset file filters ({visible_count} visible)"
+                                                        );
+                                                        cx.notify();
+                                                    });
+                                                })
+                                                .child("Reset"),
                                         ),
-                                    ),
-                            )
+                                )
+                            })
                             .child(render_switcher_section_label("Ownership"))
                             .child({
                                 let view = view.clone();
@@ -121,28 +142,31 @@ impl AppView {
                                 })
                             })
                             .child({
-                                let view = view.clone();
-                                render_file_filter_row(
+                                let row = render_file_filter_row(
                                     "owned-by-current-user-filter-menu",
-                                    "Files owned by you".to_string(),
+                                    "Files owned by me".to_string(),
                                     Some(owned_file_count),
                                     owned_filter_active,
                                     !has_owned_filter_data,
-                                )
-                                .on_click(move |_, _, cx| {
-                                    view.update(cx, |view, cx| {
-                                        if has_owned_filter_data {
+                                );
+
+                                if has_owned_filter_data {
+                                    let view = view.clone();
+                                    row.on_click(move |_, _, cx| {
+                                        view.update(cx, |view, cx| {
                                             view.toggle_files_owned_by_current_user_filter(cx);
-                                        }
-                                    });
-                                })
+                                        });
+                                    })
+                                } else {
+                                    row
+                                }
                             })
                             .child(
                                 div()
-                                    .mt_2()
+                                    .mt_1()
                                     .border_t_1()
                                     .border_color(color::border())
-                                    .pt_2()
+                                    .pt_1()
                                     .child(render_switcher_section_label("File types")),
                             )
                             .child({
@@ -216,13 +240,14 @@ impl AppView {
             )
             .child(
                 div()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .gap_1()
                     .text_xs()
-                    .text_color(color::text_muted())
-                    .child(if has_active_filter {
-                        format!("{visible_count}/{total_count} visible")
-                    } else {
-                        format!("{visible_count} visible")
-                    }),
+                    .text_color(visible_label_color)
+                    .child(div().truncate().child(visible_label)),
             )
     }
 }

@@ -1,9 +1,10 @@
 use gpui::{AnyElement, Context, IntoElement, Rgba, SharedString, div, prelude::*, uniform_list};
-use gpui_component::StyledExt;
+use gpui_component::{Icon, Sizable, StyledExt};
 
 use crate::{
-    panels::{render_changed_file_row, render_changed_folder_row},
-    visual::color,
+    icons::Octicon,
+    panels::{render_changed_file_row, render_changed_folder_row, render_status_pill},
+    visual::{Tone, color},
     workspace::{AppView, ChangedFileTreeRow},
 };
 
@@ -85,30 +86,56 @@ impl AppView {
     pub(super) fn render_changed_files_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let reviewed_count = self.reviewed_file_count();
         let total_count = self.detail_state.files().len();
+        let reviewed_tone = if total_count > 0 && reviewed_count == total_count {
+            Tone::Success
+        } else if reviewed_count > 0 {
+            Tone::Info
+        } else {
+            Tone::Neutral
+        };
 
         div()
-            .px_3()
-            .py_2()
             .border_1()
             .border_color(color::border())
+            .bg(color::content_background())
             .child(
                 div()
+                    .px_3()
+                    .py_2()
                     .flex()
                     .items_center()
                     .justify_between()
                     .gap_2()
-                    .text_xs()
+                    .border_b_1()
+                    .border_color(color::border_subtle())
                     .child(
                         div()
-                            .font_medium()
-                            .text_color(color::text_primary())
-                            .child("Changed files"),
+                            .min_w_0()
+                            .flex_1()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(Octicon::File)
+                                    .xsmall()
+                                    .text_color(color::text_muted()),
+                            )
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(color::text_primary())
+                                    .child("Changed files"),
+                            ),
                     )
-                    .child(
-                        div()
-                            .text_color(color::text_muted())
-                            .child(format!("{reviewed_count}/{total_count} reviewed")),
-                    ),
+                    .child(div().flex_none().flex().items_center().gap_2().child(
+                        render_status_pill(
+                            format!("{reviewed_count}/{total_count} reviewed"),
+                            reviewed_tone,
+                        ),
+                    )),
             )
             .child(self.render_changed_files_filter_bar(cx))
     }

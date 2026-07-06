@@ -62,13 +62,6 @@ pub(crate) fn render_changed_folder_row(
                 .text_color(color::text_secondary())
                 .child(folder.name.clone()),
         )
-        .child(
-            div()
-                .flex_none()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(folder_review_summary(folder.file_count)),
-        )
         .into_any_element()
 }
 
@@ -165,14 +158,6 @@ pub(crate) fn render_changed_file_row(
                 .when(!reviewed, |element| element.opacity(0.32)),
         )
         .into_any_element()
-}
-
-fn folder_review_summary(file_count: usize) -> String {
-    if file_count == 1 {
-        "1 file".to_string()
-    } else {
-        format!("{file_count} files")
-    }
 }
 
 fn file_tree_padding(depth: usize) -> gpui::Pixels {

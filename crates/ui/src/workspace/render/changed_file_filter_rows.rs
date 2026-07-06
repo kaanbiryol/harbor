@@ -4,8 +4,8 @@ use gpui_component::{Icon, Sizable};
 use crate::icons::Octicon;
 use crate::visual::color;
 
-const FILE_FILTER_ROW_HEIGHT: f32 = 34.0;
-const FILE_FILTER_MAX_VISIBLE_ROWS: usize = 8;
+const FILE_FILTER_ROW_HEIGHT: f32 = 30.0;
+const FILE_FILTER_MAX_VISIBLE_ROWS: usize = 9;
 
 pub(super) fn file_filter_list_height(row_count: usize) -> f32 {
     FILE_FILTER_ROW_HEIGHT * row_count.min(FILE_FILTER_MAX_VISIBLE_ROWS) as f32
@@ -29,11 +29,11 @@ pub(super) fn render_file_filter_row(
         .gap_3()
         .rounded_xs()
         .px_2()
-        .mb_1()
+        .mb_0p5()
         .text_sm()
         .cursor_pointer()
         .when(checked && !disabled, |element| {
-            element.bg(color::row_selected())
+            element.bg(color::row_selected_subtle())
         })
         .when(disabled, |element| element.cursor_default().opacity(0.45))
         .hover(move |element| {
