@@ -1,4 +1,5 @@
 mod actions;
+mod date_time;
 mod diff;
 mod diff_reviews;
 mod file_icons;

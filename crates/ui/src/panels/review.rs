@@ -2,13 +2,17 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
 use gpui::{AnyElement, Context, IntoElement, ListState, SharedString, div, list, prelude::*, px};
-use gpui_component::{ActiveTheme, Sizable, StyledExt, avatar::Avatar};
+use gpui_component::{ActiveTheme, Sizable, StyledExt, avatar::Avatar, tooltip::Tooltip};
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
     ReviewSide, ReviewThread, ReviewThreadState,
 };
 
 use crate::{
+    date_time::{
+        full_time_label, full_time_label_with_edit, natural_time_label,
+        natural_time_label_with_edit,
+    },
     diff::{DiffLineKind, ParsedDiff},
     visual::{Tone, color, tone_colors, tone_text},
     workspace::AppView,
@@ -250,6 +254,9 @@ fn compare_review_timeline_items(
 }
 
 fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -> AnyElement {
+    let time_label = format!("commented {}", pull_request_comment_time_label(comment));
+    let time_tooltip = pull_request_comment_time_tooltip(comment);
+
     div()
         .id(("pull-request-comment-row", index))
         .w_full()
@@ -302,14 +309,12 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                             comment.author.clone(),
                                             color::text_primary(),
                                         ))
-                                        .child(
-                                            div().text_xs().text_color(color::text_muted()).child(
-                                                format!(
-                                                    "commented {}",
-                                                    comment_time_label(comment.created_at)
-                                                ),
-                                            ),
-                                        ),
+                                        .child(render_time_metadata(
+                                            format!("pull-request-comment-time-{}", comment.id),
+                                            time_label,
+                                            Some(time_tooltip),
+                                            color::text_muted(),
+                                        )),
                                 ),
                         )
                         .child(render_status_pill("commented", Tone::Info)),
@@ -336,6 +341,8 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
         .as_deref()
         .map(comment_body_text)
         .unwrap_or_else(|| format!("{} review", state_label));
+    let time_label = format!("{} {}", state_label, review_time_label(review));
+    let time_tooltip = review_time_tooltip(review);
 
     div()
         .id(("review-summary-row", index))
@@ -385,15 +392,12 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                             review.author.clone(),
                                             color::text_primary(),
                                         ))
-                                        .child(
-                                            div().text_xs().text_color(color::text_muted()).child(
-                                                format!(
-                                                    "{} {}",
-                                                    state_label,
-                                                    review_time_label(review)
-                                                ),
-                                            ),
-                                        ),
+                                        .child(render_time_metadata(
+                                            format!("pull-request-review-time-{}", review.id),
+                                            time_label,
+                                            time_tooltip,
+                                            color::text_muted(),
+                                        )),
                                 ),
                         )
                         .child(render_status_pill(state_label, state_tone)),
@@ -778,16 +782,44 @@ pub(super) fn review_thread_state_tone(state: ReviewThreadState) -> (&'static st
 pub(crate) fn review_time_label(review: &PullRequestReview) -> String {
     review
         .submitted_at
-        .map(comment_time_label)
+        .map(natural_time_label)
         .unwrap_or_else(|| "not submitted".to_string())
 }
 
-pub(super) fn review_comment_time_label(comment: &ReviewComment) -> String {
-    comment_time_label(comment.created_at)
+fn review_time_tooltip(review: &PullRequestReview) -> Option<String> {
+    review.submitted_at.map(full_time_label)
 }
 
-fn comment_time_label(created_at: DateTime<Utc>) -> String {
-    created_at.format("%Y-%m-%d %H:%M").to_string()
+pub(super) fn review_comment_time_label(comment: &ReviewComment) -> String {
+    natural_time_label_with_edit(comment.created_at, comment.updated_at)
+}
+
+pub(super) fn review_comment_time_tooltip(comment: &ReviewComment) -> String {
+    full_time_label_with_edit(comment.created_at, comment.updated_at)
+}
+
+fn pull_request_comment_time_label(comment: &PullRequestComment) -> String {
+    natural_time_label_with_edit(comment.created_at, comment.updated_at)
+}
+
+fn pull_request_comment_time_tooltip(comment: &PullRequestComment) -> String {
+    full_time_label_with_edit(comment.created_at, comment.updated_at)
+}
+
+fn render_time_metadata(
+    id: String,
+    label: String,
+    tooltip: Option<String>,
+    text_color: gpui::Rgba,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .text_xs()
+        .text_color(text_color)
+        .when_some(tooltip, |element, tooltip| {
+            element.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        })
+        .child(label)
 }
 
 #[cfg(test)]

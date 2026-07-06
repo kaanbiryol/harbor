@@ -1,9 +1,9 @@
-use chrono::{DateTime, Duration, Utc};
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{StyledExt, input::InputState, tooltip::Tooltip};
 use harbor_domain::ReviewComment;
 
 use crate::{
+    date_time::{full_time_label_with_edit, natural_time_label_with_edit},
     panels::review_markdown::render_review_markdown_body,
     visual::color,
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync},
@@ -318,83 +318,18 @@ pub(crate) fn review_comment_ui_state(
 }
 
 fn review_comment_time_label(comment: &ReviewComment) -> String {
-    review_comment_time_label_at(comment, Utc::now())
-}
-
-fn review_comment_time_label_at(comment: &ReviewComment, now: DateTime<Utc>) -> String {
-    let mut label = relative_time_label(comment.created_at, now);
-
-    if comment
-        .updated_at
-        .is_some_and(|updated_at| updated_at != comment.created_at)
-    {
-        label.push_str(" (edited)");
-    }
-
-    label
+    natural_time_label_with_edit(comment.created_at, comment.updated_at)
 }
 
 fn review_comment_time_tooltip(comment: &ReviewComment) -> String {
-    let mut tooltip = absolute_time_label(comment.created_at);
-
-    if let Some(updated_at) = comment
-        .updated_at
-        .filter(|updated_at| *updated_at != comment.created_at)
-    {
-        tooltip.push_str(" edited ");
-        tooltip.push_str(&absolute_time_label(updated_at));
-    }
-
-    tooltip
-}
-
-fn relative_time_label(time: DateTime<Utc>, now: DateTime<Utc>) -> String {
-    let duration = now.signed_duration_since(time);
-    if duration.num_seconds().abs() < 60 {
-        return "just now".to_string();
-    }
-
-    let future = duration < Duration::zero();
-    let distance = if future { -duration } else { duration };
-    let distance = relative_time_distance(distance);
-
-    if future {
-        format!("in {distance}")
-    } else {
-        format!("{distance} ago")
-    }
-}
-
-fn relative_time_distance(duration: Duration) -> String {
-    let (value, unit) = if duration.num_days() >= 365 {
-        (duration.num_days() / 365, "year")
-    } else if duration.num_days() >= 30 {
-        (duration.num_days() / 30, "month")
-    } else if duration.num_days() >= 7 {
-        (duration.num_days() / 7, "week")
-    } else if duration.num_days() >= 1 {
-        (duration.num_days(), "day")
-    } else if duration.num_hours() >= 1 {
-        (duration.num_hours(), "hour")
-    } else {
-        (duration.num_minutes(), "minute")
-    };
-
-    if value == 1 {
-        format!("1 {unit}")
-    } else {
-        format!("{value} {unit}s")
-    }
-}
-
-fn absolute_time_label(time: DateTime<Utc>) -> String {
-    time.format("%Y-%m-%d %H:%M UTC").to_string()
+    full_time_label_with_edit(comment.created_at, comment.updated_at)
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, TimeZone, Utc};
 
+    use crate::date_time::natural_time_label_with_edit_at;
     use crate::test_fixtures::review_comment;
 
     use super::*;
@@ -455,7 +390,10 @@ mod tests {
             .single()
             .expect("valid timestamp");
 
-        assert_eq!(review_comment_time_label_at(&comment, now), "3 weeks ago");
+        assert_eq!(
+            natural_time_label_with_edit_at(comment.created_at, comment.updated_at, now),
+            "3 weeks ago"
+        );
     }
 
     #[test]
@@ -465,21 +403,8 @@ mod tests {
         let now = comment.created_at + Duration::minutes(30);
 
         assert_eq!(
-            review_comment_time_label_at(&comment, now),
+            natural_time_label_with_edit_at(comment.created_at, comment.updated_at, now),
             "30 minutes ago (edited)"
-        );
-    }
-
-    #[test]
-    fn formats_future_review_comment_time() {
-        let now = Utc
-            .with_ymd_and_hms(2026, 7, 5, 13, 42, 0)
-            .single()
-            .expect("valid timestamp");
-
-        assert_eq!(
-            relative_time_label(now + Duration::hours(2), now),
-            "in 2 hours"
         );
     }
 

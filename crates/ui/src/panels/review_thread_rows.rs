@@ -1,6 +1,6 @@
 use gpui::{AnyElement, Entity, SharedString, div, prelude::*, px};
-use gpui_component::StyledExt;
 use gpui_component::input::InputState;
+use gpui_component::{StyledExt, tooltip::Tooltip};
 use harbor_domain::{ReviewComment, ReviewThread};
 
 use crate::{
@@ -12,8 +12,8 @@ use super::{
     render_status_pill,
     review::{
         ReviewDiffPreview, render_review_author_link, render_review_avatar,
-        render_review_diff_preview, review_comment_time_label, review_thread_location,
-        review_thread_state_tone,
+        render_review_diff_preview, review_comment_time_label, review_comment_time_tooltip,
+        review_thread_location, review_thread_state_tone,
     },
     review_markdown::render_review_markdown_body,
     review_thread_chrome::{
@@ -99,7 +99,11 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
     let header_author =
         latest_comment.map_or(thread.path.as_str(), |comment| comment.author.as_str());
     let header_avatar_url = latest_comment.and_then(|comment| comment.author_avatar_url.as_deref());
-    let header_time = latest_comment.map(review_comment_time_label);
+    let header_time_label = latest_comment.map_or_else(
+        || "commented".to_string(),
+        |comment| format!("commented {}", review_comment_time_label(comment)),
+    );
+    let header_time_tooltip = latest_comment.map(review_comment_time_tooltip);
 
     div()
         .id(("review-thread-row", index))
@@ -165,15 +169,12 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                                             .into_any_element()
                                                     }
                                                 })
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(metadata_color)
-                                                        .child(header_time.map_or_else(
-                                                            || "commented".to_string(),
-                                                            |time| format!("commented {time}"),
-                                                        )),
-                                                ),
+                                                .child(render_time_metadata(
+                                                    format!("review-thread-time-{index}"),
+                                                    header_time_label,
+                                                    header_time_tooltip,
+                                                    metadata_color,
+                                                )),
                                         )
                                         .child(
                                             div()
@@ -324,11 +325,12 @@ fn render_review_thread_reply(
                             comment.author.clone(),
                             color::text_primary(),
                         ))
-                        .child(
-                            div()
-                                .text_color(metadata_color)
-                                .child(review_comment_time_label(comment)),
-                        ),
+                        .child(render_time_metadata(
+                            format!("review-thread-reply-time-{}", comment.id),
+                            review_comment_time_label(comment),
+                            Some(review_comment_time_tooltip(comment)),
+                            metadata_color,
+                        )),
                 )
                 .child(div().text_sm().text_color(comment_color).child(
                     render_review_markdown_body(
@@ -337,6 +339,22 @@ fn render_review_thread_reply(
                     ),
                 )),
         )
+}
+
+fn render_time_metadata(
+    id: String,
+    label: String,
+    tooltip: Option<String>,
+    text_color: gpui::Rgba,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .text_xs()
+        .text_color(text_color)
+        .when_some(tooltip, |element, tooltip| {
+            element.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        })
+        .child(label)
 }
 
 fn review_thread_metadata(thread: &ReviewThread, location: &str) -> String {
