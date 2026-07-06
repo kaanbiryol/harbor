@@ -179,6 +179,7 @@ fn lists_light_pull_requests_with_conditional_validator() {
                 "labels": [],
                 "merged": false,
                 "mergeable_state": "clean",
+                "created_at": "2026-05-01T09:00:00Z",
                 "updated_at": "2026-05-01T10:00:00Z"
             }]),
             validator: Some(validator.clone()),
@@ -201,6 +202,10 @@ fn lists_light_pull_requests_with_conditional_validator() {
     };
     assert_eq!(value.len(), 1);
     assert_eq!(value[0].number, 7);
+    assert_eq!(
+        value[0].created_at.map(|time| time.to_rfc3339()),
+        Some("2026-05-01T09:00:00+00:00".to_string())
+    );
     assert_eq!(returned_validator, Some(validator.clone()));
 
     let calls = transport

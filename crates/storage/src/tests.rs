@@ -659,6 +659,7 @@ fn pull_request(number: u64) -> PullRequest {
         labels: Vec::new(),
         checks_summary: ChecksSummary::default(),
         unresolved_threads: 0,
+        created_at: DateTime::from_timestamp(1_777_777_777, 0),
         updated_at: DateTime::from_timestamp(1_777_777_777, 0),
     }
 }

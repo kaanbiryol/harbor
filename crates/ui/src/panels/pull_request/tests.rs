@@ -32,7 +32,7 @@ fn shows_missing_checks_without_no_review_noise() {
 }
 
 #[test]
-fn prioritizes_action_signals_without_draft_text() {
+fn changes_requested_colors_unresolved_thread_count_as_danger() {
     let mut pr = pull_request();
     pr.is_draft = true;
     pr.checks_summary = ChecksSummary {
@@ -49,17 +49,10 @@ fn prioritizes_action_signals_without_draft_text() {
 
     assert_eq!(
         signal_summary(&signals),
-        vec![
-            (PullRequestRowSignalKind::ChecksFailed, None),
-            (
-                PullRequestRowSignalKind::ReviewChangesRequested,
-                Some("changes".to_string())
-            ),
-            (
-                PullRequestRowSignalKind::UnresolvedThreads,
-                Some("2".to_string())
-            )
-        ]
+        vec![(
+            PullRequestRowSignalKind::ReviewChangesRequestedThreads,
+            Some("2".to_string())
+        )]
     );
 }
 
@@ -80,25 +73,23 @@ fn shows_unresolved_threads_without_no_review_noise() {
 }
 
 #[test]
-fn shows_conflict_as_the_only_row_signal() {
+fn changes_requested_without_threads_still_has_review_signal() {
     let mut pr = pull_request();
-    pr.merge_state = Some(MergeState::Dirty);
-    pr.review_decision = Some(ReviewDecision::Approved);
-    pr.unresolved_threads = 2;
+    pr.review_decision = Some(ReviewDecision::ChangesRequested);
 
     let signals = visible_pull_request_row_signals(&pr);
 
     assert_eq!(
         signal_summary(&signals),
         vec![(
-            PullRequestRowSignalKind::Conflict,
-            Some("conflict".to_string())
+            PullRequestRowSignalKind::ReviewChangesRequestedThreads,
+            Some("changes".to_string())
         )]
     );
 }
 
 #[test]
-fn ready_pull_request_suppresses_redundant_approved_signal() {
+fn approved_pull_request_shows_review_signal() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::Approved);
 
@@ -106,7 +97,26 @@ fn ready_pull_request_suppresses_redundant_approved_signal() {
 
     assert_eq!(
         signal_summary(&signals),
-        vec![(PullRequestRowSignalKind::ChecksPassed, None)]
+        vec![(
+            PullRequestRowSignalKind::ReviewApproved,
+            Some("approved".to_string())
+        )]
+    );
+}
+
+#[test]
+fn review_required_pull_request_shows_review_signal() {
+    let mut pr = pull_request();
+    pr.review_decision = Some(ReviewDecision::ReviewRequired);
+
+    let signals = visible_pull_request_row_signals(&pr);
+
+    assert_eq!(
+        signal_summary(&signals),
+        vec![(
+            PullRequestRowSignalKind::ReviewNeeded,
+            Some("review".to_string())
+        )]
     );
 }
 

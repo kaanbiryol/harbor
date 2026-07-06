@@ -24,6 +24,9 @@ pub(super) fn merge_light_pull_request_rows(previous: &[PullRequest], current: &
         pull_request.review_decision = previous_pull_request.review_decision;
         pull_request.checks_summary = previous_pull_request.checks_summary;
         pull_request.unresolved_threads = previous_pull_request.unresolved_threads;
+        if pull_request.created_at.is_none() {
+            pull_request.created_at = previous_pull_request.created_at;
+        }
         if pull_request.merge_state == Some(MergeState::Unknown)
             || pull_request.merge_state.is_none()
         {
@@ -109,6 +112,7 @@ mod tests {
         let mut current = vec![pull_request(8), pull_request(7)];
         current[0].node_id.clear();
         current[1].node_id.clear();
+        current[1].created_at = None;
 
         merge_light_pull_request_rows(&[previous, other_previous], &mut current);
 
@@ -119,6 +123,7 @@ mod tests {
         assert_eq!(current[1].review_decision, Some(ReviewDecision::Approved));
         assert_eq!(current[1].unresolved_threads, 3);
         assert_eq!(current[1].checks_summary.failed, 1);
+        assert_eq!(current[1].created_at, Some(time(1)));
     }
 
     #[test]
@@ -170,6 +175,7 @@ mod tests {
                 skipped: 0,
             },
             unresolved_threads: 0,
+            created_at: Some(time(1)),
             updated_at: Some(time(1)),
         }
     }

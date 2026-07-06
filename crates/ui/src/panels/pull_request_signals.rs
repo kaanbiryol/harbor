@@ -22,12 +22,8 @@ pub(crate) enum PullRequestRowRailTone {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PullRequestRowSignalKind {
-    Conflict,
-    ChecksFailed,
-    ChecksRunning,
-    ChecksPassed,
     ReviewApproved,
-    ReviewChangesRequested,
+    ReviewChangesRequestedThreads,
     ReviewNeeded,
     UnresolvedThreads,
 }
@@ -39,10 +35,6 @@ pub(crate) struct PullRequestRowSignal {
 }
 
 impl PullRequestRowSignal {
-    fn new(kind: PullRequestRowSignalKind) -> Self {
-        Self { kind, label: None }
-    }
-
     fn with_label(kind: PullRequestRowSignalKind, label: impl Into<String>) -> Self {
         Self {
             kind,
@@ -140,84 +132,40 @@ pub(crate) fn visible_pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequ
 }
 
 fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
-    if pr.merge_state == Some(MergeState::Dirty) {
-        return vec![PullRequestRowSignal::with_label(
-            PullRequestRowSignalKind::Conflict,
-            "conflict",
-        )];
-    }
-
-    let mut action_signals = Vec::new();
-
-    if let Some(signal) = action_checks_signal(pr.checks_summary) {
-        action_signals.push(signal);
-    }
+    let mut signals = Vec::new();
 
     match pr.review_decision {
-        Some(ReviewDecision::ChangesRequested) => {
-            action_signals.push(PullRequestRowSignal::with_label(
-                PullRequestRowSignalKind::ReviewChangesRequested,
-                "changes",
-            ))
-        }
+        Some(ReviewDecision::ChangesRequested) => signals.push(PullRequestRowSignal::with_label(
+            PullRequestRowSignalKind::ReviewChangesRequestedThreads,
+            if pr.unresolved_threads > 0 {
+                pr.unresolved_threads.to_string()
+            } else {
+                "changes".to_string()
+            },
+        )),
         Some(ReviewDecision::ReviewRequired) => {
-            action_signals.push(PullRequestRowSignal::new(
+            signals.push(PullRequestRowSignal::with_label(
                 PullRequestRowSignalKind::ReviewNeeded,
+                "review",
             ));
         }
-        Some(ReviewDecision::Approved) | None => {}
+        Some(ReviewDecision::Approved) => {
+            signals.push(PullRequestRowSignal::with_label(
+                PullRequestRowSignalKind::ReviewApproved,
+                "approved",
+            ));
+        }
+        None => {}
     }
 
-    if pr.unresolved_threads > 0 {
-        action_signals.push(PullRequestRowSignal::with_label(
+    if pr.review_decision != Some(ReviewDecision::ChangesRequested) && pr.unresolved_threads > 0 {
+        signals.push(PullRequestRowSignal::with_label(
             PullRequestRowSignalKind::UnresolvedThreads,
             pr.unresolved_threads.to_string(),
         ));
     }
 
-    if !action_signals.is_empty() {
-        return action_signals;
-    }
-
-    let mut quiet_signals = Vec::new();
-
-    if !is_ready_to_merge(pr) && pr.review_decision == Some(ReviewDecision::Approved) {
-        quiet_signals.push(PullRequestRowSignal::new(
-            PullRequestRowSignalKind::ReviewApproved,
-        ));
-    }
-
-    if quiet_signals.is_empty()
-        && let Some(signal) = quiet_checks_signal(pr.checks_summary)
-    {
-        quiet_signals.push(signal);
-    }
-
-    quiet_signals
-}
-
-fn action_checks_signal(summary: ChecksSummary) -> Option<PullRequestRowSignal> {
-    if summary.failed > 0 {
-        Some(PullRequestRowSignal::new(
-            PullRequestRowSignalKind::ChecksFailed,
-        ))
-    } else if summary.pending > 0 {
-        Some(PullRequestRowSignal::new(
-            PullRequestRowSignalKind::ChecksRunning,
-        ))
-    } else {
-        None
-    }
-}
-
-fn quiet_checks_signal(summary: ChecksSummary) -> Option<PullRequestRowSignal> {
-    if summary.total > 0 && summary.failed == 0 && summary.pending == 0 {
-        Some(PullRequestRowSignal::new(
-            PullRequestRowSignalKind::ChecksPassed,
-        ))
-    } else {
-        None
-    }
+    signals
 }
 
 pub(crate) fn is_ready_to_merge(pr: &PullRequest) -> bool {

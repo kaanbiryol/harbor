@@ -322,6 +322,7 @@ mod tests {
                 skipped: 0,
             },
             unresolved_threads: 0,
+            created_at: Some(time(1)),
             updated_at: Some(time(1)),
         }
     }

@@ -30,6 +30,8 @@ struct ApiPullRequest {
     #[serde(default)]
     mergeable_state: Option<String>,
     #[serde(default)]
+    created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
     updated_at: Option<DateTime<Utc>>,
 }
 
@@ -171,6 +173,8 @@ struct GraphQlPullRequestSearchNode {
     base_ref_name: Option<String>,
     #[serde(default, rename = "headRefOid")]
     head_ref_oid: Option<String>,
+    #[serde(default, rename = "createdAt")]
+    created_at: Option<DateTime<Utc>>,
     #[serde(default, rename = "updatedAt")]
     updated_at: Option<DateTime<Utc>>,
     #[serde(default, rename = "reviewDecision")]
@@ -413,6 +417,7 @@ impl ApiPullRequest {
                 .collect(),
             checks_summary: ChecksSummary::default(),
             unresolved_threads: 0,
+            created_at: self.created_at,
             updated_at: self.updated_at,
         }
     }
@@ -467,6 +472,7 @@ impl GraphQlPullRequestSearchNode {
                 .map(checks_summary_from_graphql_rollup)
                 .unwrap_or_default(),
             unresolved_threads: 0,
+            created_at: self.created_at,
             updated_at: self.updated_at,
         })
     }
@@ -661,7 +667,8 @@ mod tests {
                 "head": { "ref": "feature/list", "sha": "abc123" },
                 "base": { "ref": "main", "sha": "def456" },
                 "labels": [{ "name": "performance", "color": "34d399" }],
-                "mergeable_state": "clean"
+                "mergeable_state": "clean",
+                "created_at": "2026-05-10T10:00:00Z"
             }
         ]);
 
@@ -677,6 +684,10 @@ mod tests {
         assert_eq!(pulls[0].state, PullRequestState::Open);
         assert_eq!(pulls[0].merge_state, Some(MergeState::Clean));
         assert_eq!(pulls[0].labels[0].name, "performance");
+        assert_eq!(
+            pulls[0].created_at.map(|time| time.to_rfc3339()),
+            Some("2026-05-10T10:00:00+00:00".to_string())
+        );
     }
 
     #[test]
@@ -706,6 +717,7 @@ mod tests {
                             "headRefName": "feature/list",
                             "baseRefName": "main",
                             "headRefOid": "abc123",
+                            "createdAt": "2026-05-10T10:00:00Z",
                             "reviewDecision": "REVIEW_REQUIRED",
                             "mergeStateStatus": "CLEAN",
                             "statusCheckRollup": {
@@ -805,6 +817,12 @@ mod tests {
         assert_eq!(page.pull_requests[0].checks_summary.failed, 1);
         assert_eq!(page.pull_requests[0].checks_summary.pending, 1);
         assert_eq!(page.pull_requests[0].labels[0].name, "performance");
+        assert_eq!(
+            page.pull_requests[0]
+                .created_at
+                .map(|time| time.to_rfc3339()),
+            Some("2026-05-10T10:00:00+00:00".to_string())
+        );
         assert_eq!(page.pull_requests[1].state, PullRequestState::Closed);
         assert_eq!(page.pull_requests[2].state, PullRequestState::Merged);
         assert_eq!(

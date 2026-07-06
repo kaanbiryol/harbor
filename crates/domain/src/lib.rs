@@ -105,6 +105,7 @@ pub struct PullRequest {
     pub labels: Vec<Label>,
     pub checks_summary: ChecksSummary,
     pub unresolved_threads: usize,
+    pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 

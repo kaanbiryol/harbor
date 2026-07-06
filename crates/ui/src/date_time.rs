@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 
 pub(crate) fn natural_time_label(time: DateTime<Utc>) -> String {
     natural_time_label_at(time, Utc::now())
@@ -44,6 +44,10 @@ pub(crate) fn natural_time_label_with_edit_at(
 
 pub(crate) fn full_time_label(time: DateTime<Utc>) -> String {
     time.format("%Y-%m-%d %H:%M UTC").to_string()
+}
+
+pub(crate) fn month_day_label(time: DateTime<Utc>) -> String {
+    format!("{} {}", time.format("%b"), time.day())
 }
 
 pub(crate) fn full_time_label_with_edit(
@@ -151,5 +155,15 @@ mod tests {
             full_time_label_with_edit(created_at, Some(created_at + Duration::minutes(5))),
             "2026-06-14 13:42 UTC edited 2026-06-14 13:47 UTC"
         );
+    }
+
+    #[test]
+    fn formats_month_day_label() {
+        let time = Utc
+            .with_ymd_and_hms(2026, 5, 10, 13, 42, 0)
+            .single()
+            .expect("valid timestamp");
+
+        assert_eq!(month_day_label(time), "May 10");
     }
 }

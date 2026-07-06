@@ -1,8 +1,9 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{Icon, Sizable, StyledExt};
-use harbor_domain::{MergeState, PullRequest, ReviewDecision};
+use harbor_domain::{ChecksSummary, MergeState, PullRequest, ReviewDecision};
 
 use crate::{
+    date_time::month_day_label,
     icons::Octicon,
     panels::pull_request_signals::{
         PullRequestRowRailTone, PullRequestRowSignal, PullRequestRowSignalKind,
@@ -86,12 +87,8 @@ fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
 
 fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
     match kind {
-        PullRequestRowSignalKind::Conflict => Octicon::Alert,
-        PullRequestRowSignalKind::ChecksFailed => Octicon::XCircle,
-        PullRequestRowSignalKind::ChecksRunning => Octicon::Clock,
-        PullRequestRowSignalKind::ChecksPassed => Octicon::Check,
         PullRequestRowSignalKind::ReviewApproved => Octicon::ThumbsUp,
-        PullRequestRowSignalKind::ReviewChangesRequested => Octicon::ThumbsDown,
+        PullRequestRowSignalKind::ReviewChangesRequestedThreads => Octicon::CommentDiscussion,
         PullRequestRowSignalKind::ReviewNeeded => Octicon::Eye,
         PullRequestRowSignalKind::UnresolvedThreads => Octicon::CommentDiscussion,
     }
@@ -99,15 +96,11 @@ fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
 
 fn row_signal_tone(kind: PullRequestRowSignalKind) -> PullRequestRowSignalTone {
     match kind {
-        PullRequestRowSignalKind::Conflict
-        | PullRequestRowSignalKind::ChecksFailed
-        | PullRequestRowSignalKind::ReviewChangesRequested => PullRequestRowSignalTone::Danger,
-        PullRequestRowSignalKind::ChecksRunning
-        | PullRequestRowSignalKind::ReviewNeeded
-        | PullRequestRowSignalKind::UnresolvedThreads => PullRequestRowSignalTone::Warning,
-        PullRequestRowSignalKind::ChecksPassed | PullRequestRowSignalKind::ReviewApproved => {
-            PullRequestRowSignalTone::Success
+        PullRequestRowSignalKind::ReviewChangesRequestedThreads => PullRequestRowSignalTone::Danger,
+        PullRequestRowSignalKind::ReviewNeeded | PullRequestRowSignalKind::UnresolvedThreads => {
+            PullRequestRowSignalTone::Warning
         }
+        PullRequestRowSignalKind::ReviewApproved => PullRequestRowSignalTone::Success,
     }
 }
 
@@ -131,6 +124,58 @@ fn row_rail_color(tone: PullRequestRowRailTone) -> gpui::Rgba {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestCheckIndicator {
+    Failed,
+    Pending,
+    Passed,
+}
+
+fn pull_request_check_indicator(summary: ChecksSummary) -> Option<PullRequestCheckIndicator> {
+    if summary.failed > 0 {
+        Some(PullRequestCheckIndicator::Failed)
+    } else if summary.pending > 0 {
+        Some(PullRequestCheckIndicator::Pending)
+    } else if summary.total > 0 {
+        Some(PullRequestCheckIndicator::Passed)
+    } else {
+        None
+    }
+}
+
+fn render_check_indicator(indicator: PullRequestCheckIndicator) -> impl IntoElement {
+    let (icon, tone) = match indicator {
+        PullRequestCheckIndicator::Failed => (Octicon::XCircle, Tone::Danger),
+        PullRequestCheckIndicator::Pending => (Octicon::Clock, Tone::Warning),
+        PullRequestCheckIndicator::Passed => (Octicon::Check, Tone::Success),
+    };
+
+    Icon::new(icon).xsmall().text_color(tone_colors(tone).text)
+}
+
+fn pull_request_metadata_label(pr: &PullRequest) -> String {
+    pr.created_at
+        .as_ref()
+        .or(pr.updated_at.as_ref())
+        .map(|time| format!("{} by {}", month_day_label(*time), pr.author))
+        .unwrap_or_else(|| format!("by {}", pr.author))
+}
+
+fn render_conflict_metadata() -> impl IntoElement {
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap_1()
+        .text_color(color::danger())
+        .child(
+            Icon::new(Octicon::Alert)
+                .xsmall()
+                .text_color(color::danger()),
+        )
+        .child("conflict")
+}
+
 pub(crate) fn render_pull_request_row(
     index: usize,
     pr: &PullRequest,
@@ -141,11 +186,10 @@ pub(crate) fn render_pull_request_row(
     let primary_signal = signals.first().cloned();
     let secondary_signals = signals.iter().skip(1).cloned().collect::<Vec<_>>();
     let is_draft = pr.is_draft;
-    let rail_color = if selected {
-        color::accent()
-    } else {
-        row_rail_color(pull_request_row_rail_tone(pr))
-    };
+    let check_indicator = pull_request_check_indicator(pr.checks_summary);
+    let metadata_label = pull_request_metadata_label(pr);
+    let has_merge_conflict = pr.merge_state == Some(MergeState::Dirty);
+    let rail_color = row_rail_color(pull_request_row_rail_tone(pr));
 
     div()
         .id(("pr-row", index))
@@ -210,7 +254,10 @@ pub(crate) fn render_pull_request_row(
                                         .text_color(color::text_muted())
                                         .child(format!("#{}", pr.number)),
                                 )
-                                .child(div().min_w_0().flex_1().truncate().child(pr.title.clone())),
+                                .child(div().min_w_0().flex_1().truncate().child(pr.title.clone()))
+                                .when_some(check_indicator, |element, indicator| {
+                                    element.child(render_check_indicator(indicator))
+                                }),
                         )
                         .when_some(primary_signal, |element, signal| {
                             element.child(render_row_signal(signal))
@@ -230,12 +277,14 @@ pub(crate) fn render_pull_request_row(
                             div()
                                 .min_w_0()
                                 .flex_1()
-                                .truncate()
+                                .flex()
+                                .items_center()
+                                .gap_2()
                                 .text_color(color::text_secondary())
-                                .child(format!(
-                                    "{} into {} by {}",
-                                    pr.head_ref, pr.base_ref, pr.author
-                                )),
+                                .child(div().min_w_0().truncate().child(metadata_label))
+                                .when(has_merge_conflict, |element| {
+                                    element.child(render_conflict_metadata())
+                                }),
                         )
                         .child(
                             div()

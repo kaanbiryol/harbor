@@ -82,6 +82,7 @@ async fn selected_metadata_replace_preserves_cached_row_signals(cx: &mut TestApp
     metadata.merge_state = Some(MergeState::Unknown);
     metadata.checks_summary = ChecksSummary::default();
     metadata.unresolved_threads = 0;
+    metadata.created_at = None;
     let (view_entity, cx) = init_workspace_service_test(cx, api);
 
     view_entity.update(cx, |view, _| {
@@ -97,5 +98,6 @@ async fn selected_metadata_replace_preserves_cached_row_signals(cx: &mut TestApp
         assert_eq!(selected.merge_state, Some(MergeState::Clean));
         assert_eq!(selected.checks_summary, row_pull_request.checks_summary);
         assert_eq!(selected.unresolved_threads, 2);
+        assert_eq!(selected.created_at, row_pull_request.created_at);
     });
 }

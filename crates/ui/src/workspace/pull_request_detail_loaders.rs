@@ -73,6 +73,9 @@ impl AppView {
         }
         detail.checks_summary = selected.checks_summary;
         detail.unresolved_threads = selected.unresolved_threads;
+        if detail.created_at.is_none() {
+            detail.created_at = selected.created_at;
+        }
 
         *selected = detail;
     }
