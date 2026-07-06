@@ -147,6 +147,8 @@ pub struct AppView {
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,
     collapsed_file_tree_folders: HashSet<String>,
+    expanded_diff_file_paths: HashSet<String>,
+    collapsed_diff_file_paths: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
@@ -200,6 +202,8 @@ impl AppView {
 
         self.reset_diff_selection();
         self.collapsed_file_tree_folders.clear();
+        self.expanded_diff_file_paths.clear();
+        self.collapsed_diff_file_paths.clear();
         self.reviewed_file_paths.clear();
         self.reset_changed_file_filters();
         self.owned_file_paths.clear();

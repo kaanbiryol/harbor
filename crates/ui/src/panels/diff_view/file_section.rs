@@ -20,6 +20,7 @@ pub(super) fn render_diff_file_section_header(
     file: DiffFile,
     active: bool,
     reviewed: bool,
+    expanded: bool,
     sticky: bool,
     view_entity: Entity<AppView>,
 ) -> AnyElement {
@@ -55,7 +56,12 @@ pub(super) fn render_diff_file_section_header(
         }
     });
     let path = file.path.clone();
-    let select_view_entity = view_entity.clone();
+    let toggle_section_view_entity = view_entity.clone();
+    let chevron = if expanded {
+        Octicon::ChevronDown
+    } else {
+        Octicon::ChevronRight
+    };
 
     div()
         .id(header_id)
@@ -85,9 +91,10 @@ pub(super) fn render_diff_file_section_header(
         .when(sticky, |element| element.shadow_lg())
         .hover(|element| element.bg(color::elevated_background()))
         .on_click(move |_, _, cx| {
-            select_view_entity.update(cx, |view, cx| {
-                view.select_file(file_index, cx);
+            toggle_section_view_entity.update(cx, |view, cx| {
+                view.toggle_diff_file_section(file_index, cx);
             });
+            cx.stop_propagation();
         })
         .child(
             div()
@@ -96,6 +103,7 @@ pub(super) fn render_diff_file_section_header(
                 .flex()
                 .items_center()
                 .gap_2()
+                .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
                 .child(review_button)
                 .child(render_file_icon(file.status))
                 .child(

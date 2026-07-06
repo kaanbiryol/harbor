@@ -41,7 +41,10 @@ pub(super) fn render_diff_list_item(
     };
 
     match item {
-        DiffListItem::FileHeader { file_index } => {
+        DiffListItem::FileHeader {
+            file_index,
+            expanded,
+        } => {
             let Some(file) = files.get(*file_index).cloned() else {
                 return div().into_any_element();
             };
@@ -52,6 +55,7 @@ pub(super) fn render_diff_list_item(
                 file,
                 *file_index == row_state.active_file,
                 reviewed,
+                *expanded,
                 false,
                 row_state.view_entity.clone(),
             )

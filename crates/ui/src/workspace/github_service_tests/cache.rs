@@ -103,6 +103,50 @@ async fn cached_detail_restore_rebuilds_diff_list_items(cx: &mut TestAppContext)
 }
 
 #[gpui::test]
+async fn cached_detail_restore_preserves_diff_section_overrides(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        let files = vec![patched_file("src/a.rs"), patched_file("src/b.rs")];
+        view.detail_state
+            .replace_diff_files(files.clone(), parse_files(&files));
+        view.reviewed_file_paths.insert("src/a.rs".to_string());
+        view.expanded_diff_file_paths.insert("src/a.rs".to_string());
+        view.collapsed_diff_file_paths
+            .insert("src/b.rs".to_string());
+        mark_detail_sections_loaded(view);
+        view.cache_current_pull_request_detail_snapshot();
+
+        view.reviewed_file_paths.clear();
+        view.expanded_diff_file_paths.clear();
+        view.collapsed_diff_file_paths.clear();
+        view.sync_diff_list_items(cx);
+
+        assert!(view.restore_selected_pull_request_detail_snapshot(cx));
+        assert!(view.reviewed_file_paths.contains("src/a.rs"));
+        assert!(view.expanded_diff_file_paths.contains("src/a.rs"));
+        assert!(view.collapsed_diff_file_paths.contains("src/b.rs"));
+        assert!(
+            view.diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 0, .. }))
+        );
+        assert!(
+            !view
+                .diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 1, .. }))
+        );
+    });
+    cx.run_until_parked();
+
+    assert!(api.calls().is_empty());
+}
+
+#[gpui::test]
 async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
     let pull_request = pull_request();
@@ -260,7 +304,7 @@ fn file_headers(items: &[DiffListItem]) -> Vec<usize> {
     items
         .iter()
         .filter_map(|item| match item {
-            DiffListItem::FileHeader { file_index } => Some(*file_index),
+            DiffListItem::FileHeader { file_index, .. } => Some(*file_index),
             DiffListItem::Line { .. }
             | DiffListItem::ReviewComposer { .. }
             | DiffListItem::ReviewThread { .. }

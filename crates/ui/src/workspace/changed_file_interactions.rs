@@ -118,6 +118,8 @@ impl AppView {
             diffs: self.detail_state.diffs(),
             visible_file_indices: &visible_file_indices,
             reviewed_file_paths: &self.reviewed_file_paths,
+            expanded_diff_file_paths: &self.expanded_diff_file_paths,
+            collapsed_diff_file_paths: &self.collapsed_diff_file_paths,
             review_threads: &self.review_state.review_threads,
             review_composer: self.review_state.review_composer_state.inline_composer(),
         });
@@ -168,6 +170,10 @@ impl AppView {
             .retain(|path| file_paths.contains(path));
         self.owned_file_paths
             .retain(|path| file_paths.contains(path));
+        self.expanded_diff_file_paths
+            .retain(|path| file_paths.contains(path));
+        self.collapsed_diff_file_paths
+            .retain(|path| file_paths.contains(path));
     }
 
     pub(super) fn sync_reviewed_file_paths_from_files(&mut self) {
@@ -182,6 +188,9 @@ impl AppView {
     }
 
     fn set_changed_file_reviewed_by_path(&mut self, path: &str, reviewed: bool) {
+        self.expanded_diff_file_paths.remove(path);
+        self.collapsed_diff_file_paths.remove(path);
+
         if reviewed {
             self.reviewed_file_paths.insert(path.to_string());
             self.detail_state
@@ -219,6 +228,35 @@ impl AppView {
             self.status = format!("Selected {path}");
         }
 
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_diff_file_section(&mut self, file_index: usize, cx: &mut Context<Self>) {
+        let Some(file) = self.detail_state.files().get(file_index) else {
+            self.status = "No changed file section to toggle".to_string();
+            cx.notify();
+            return;
+        };
+
+        let path = file.path.clone();
+        let reviewed = self.reviewed_file_paths.contains(&path);
+        let expanded = self.expanded_diff_file_paths.contains(&path)
+            || (!reviewed && !self.collapsed_diff_file_paths.contains(&path));
+
+        self.expanded_diff_file_paths.remove(&path);
+        self.collapsed_diff_file_paths.remove(&path);
+
+        self.status = if expanded {
+            if !reviewed {
+                self.collapsed_diff_file_paths.insert(path.clone());
+            }
+            format!("Collapsed {path}")
+        } else {
+            self.expanded_diff_file_paths.insert(path.clone());
+            format!("Expanded {path}")
+        };
+
+        self.sync_diff_list_items(cx);
         cx.notify();
     }
 

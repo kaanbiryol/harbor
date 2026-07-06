@@ -5,6 +5,7 @@ use harbor_domain::FileViewedState;
 
 use crate::{
     diff::parse_files,
+    panels::DiffListItem,
     test_fixtures::{patched_diff_file, pull_request},
     workspace::github_service::test_support::FakeGitHubApi,
 };
@@ -96,4 +97,40 @@ async fn failed_mark_changed_file_reviewed_rolls_back(cx: &mut TestAppContext) {
         );
     });
     assert_eq!(api.calls(), vec!["mark_pull_request_file_viewed"]);
+}
+
+#[gpui::test]
+async fn toggling_diff_file_section_does_not_select_file_or_sync_reviewed_state(
+    cx: &mut TestAppContext,
+) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        let mut first_file = patched_diff_file();
+        first_file.path = "src/a.rs".to_string();
+        let mut second_file = patched_diff_file();
+        second_file.path = "src/b.rs".to_string();
+        let files = vec![first_file, second_file];
+        view.detail_state
+            .replace_diff_files(files.clone(), parse_files(&files));
+        view.selection_state.set_diff_position(1, 0);
+        view.sync_diff_list_items(cx);
+
+        view.toggle_diff_file_section(0, cx);
+
+        assert_eq!(view.active_file_index(), 1);
+        assert!(view.collapsed_diff_file_paths.contains("src/a.rs"));
+        assert!(!view.reviewed_file_paths().contains("src/a.rs"));
+        assert!(
+            !view
+                .diff_list_items
+                .iter()
+                .any(|item| matches!(item, DiffListItem::Line { file_index: 0, .. }))
+        );
+        assert_eq!(view.status, "Collapsed src/a.rs");
+    });
+    cx.run_until_parked();
+
+    assert!(api.calls().is_empty());
 }

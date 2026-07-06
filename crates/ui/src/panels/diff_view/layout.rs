@@ -20,6 +20,8 @@ pub(crate) struct ContinuousDiffLayoutInput<'a> {
     pub(crate) diffs: &'a [Option<ParsedDiff>],
     pub(crate) visible_file_indices: &'a [usize],
     pub(crate) reviewed_file_paths: &'a HashSet<String>,
+    pub(crate) expanded_diff_file_paths: &'a HashSet<String>,
+    pub(crate) collapsed_diff_file_paths: &'a HashSet<String>,
     pub(crate) review_threads: &'a [ReviewThread],
     pub(crate) review_composer: Option<&'a ReviewComposer>,
 }
@@ -43,6 +45,7 @@ struct ReviewLayoutControls<'a> {
 pub(crate) enum DiffListItem {
     FileHeader {
         file_index: usize,
+        expanded: bool,
     },
     Line {
         file_index: usize,
@@ -73,11 +76,19 @@ pub(crate) fn continuous_diff_items(input: ContinuousDiffLayoutInput<'_>) -> Vec
             continue;
         };
 
+        let expanded = diff_file_section_expanded(
+            file,
+            input.reviewed_file_paths,
+            input.expanded_diff_file_paths,
+            input.collapsed_diff_file_paths,
+        );
+
         items.push(DiffListItem::FileHeader {
             file_index: *file_index,
+            expanded,
         });
 
-        if file_is_reviewed(file, input.reviewed_file_paths) {
+        if !expanded {
             continue;
         }
 
@@ -159,7 +170,7 @@ pub(crate) fn diff_file_item_index(
     target_file_index: usize,
 ) -> Option<usize> {
     items.iter().position(|item| {
-        matches!(item, DiffListItem::FileHeader { file_index } if *file_index == target_file_index)
+        matches!(item, DiffListItem::FileHeader { file_index, .. } if *file_index == target_file_index)
     })
 }
 
@@ -207,11 +218,27 @@ pub(super) fn file_is_reviewed(file: &DiffFile, reviewed_file_paths: &HashSet<St
     reviewed_file_paths.contains(&file.path)
 }
 
+fn diff_file_section_expanded(
+    file: &DiffFile,
+    reviewed_file_paths: &HashSet<String>,
+    expanded_diff_file_paths: &HashSet<String>,
+    collapsed_diff_file_paths: &HashSet<String>,
+) -> bool {
+    if expanded_diff_file_paths.contains(&file.path) {
+        true
+    } else if file_is_reviewed(file, reviewed_file_paths) {
+        false
+    } else {
+        !collapsed_diff_file_paths.contains(&file.path)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct DiffFileSection {
     pub(super) file_index: usize,
     pub(super) header_item_index: usize,
     pub(super) reviewed: bool,
+    pub(super) expanded: bool,
 }
 
 pub(super) fn continuous_diff_section_for_item(
@@ -222,12 +249,17 @@ pub(super) fn continuous_diff_section_for_item(
     let target_item_index = target_item_index.min(items.len().checked_sub(1)?);
 
     for header_item_index in (0..=target_item_index).rev() {
-        if let DiffListItem::FileHeader { file_index } = items[header_item_index] {
+        if let DiffListItem::FileHeader {
+            file_index,
+            expanded,
+        } = items[header_item_index]
+        {
             let file = input.files.get(file_index)?;
             return Some(DiffFileSection {
                 file_index,
                 header_item_index,
                 reviewed: file_is_reviewed(file, input.reviewed_file_paths),
+                expanded,
             });
         }
     }

@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::LazyLock,
+    time::{Duration, Instant},
+};
 
 use gpui::{ListAlignment, ListOffset, px};
 use harbor_domain::{
@@ -45,7 +48,10 @@ fn keeps_three_digit_line_numbers_on_one_visual_line() {
 #[test]
 fn calculates_minimal_diff_list_splice_for_inline_composer() {
     let previous_items = vec![
-        DiffListItem::FileHeader { file_index: 0 },
+        DiffListItem::FileHeader {
+            file_index: 0,
+            expanded: true,
+        },
         DiffListItem::Line {
             file_index: 0,
             hunk_index: 0,
@@ -56,7 +62,10 @@ fn calculates_minimal_diff_list_splice_for_inline_composer() {
             hunk_index: 0,
             line_index: 1,
         },
-        DiffListItem::FileHeader { file_index: 1 },
+        DiffListItem::FileHeader {
+            file_index: 1,
+            expanded: true,
+        },
     ];
     let mut next_items = previous_items.clone();
     next_items.insert(
@@ -77,7 +86,10 @@ fn calculates_minimal_diff_list_splice_for_inline_composer() {
 #[test]
 fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() {
     let mut previous_items = vec![
-        DiffListItem::FileHeader { file_index: 0 },
+        DiffListItem::FileHeader {
+            file_index: 0,
+            expanded: true,
+        },
         DiffListItem::Line {
             file_index: 0,
             hunk_index: 0,
@@ -88,7 +100,10 @@ fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() 
             hunk_index: 0,
             line_index: 1,
         },
-        DiffListItem::FileHeader { file_index: 1 },
+        DiffListItem::FileHeader {
+            file_index: 1,
+            expanded: true,
+        },
     ];
     let mut next_items = previous_items.clone();
     next_items.insert(
@@ -136,7 +151,10 @@ fn builds_diff_items_across_visible_files() {
             &reviewed_file_paths
         )),
         vec![
-            DiffListItem::FileHeader { file_index: 0 },
+            DiffListItem::FileHeader {
+                file_index: 0,
+                expanded: true,
+            },
             DiffListItem::Line {
                 file_index: 0,
                 hunk_index: 0,
@@ -147,9 +165,15 @@ fn builds_diff_items_across_visible_files() {
                 hunk_index: 0,
                 line_index: 1,
             },
-            DiffListItem::FileHeader { file_index: 1 },
+            DiffListItem::FileHeader {
+                file_index: 1,
+                expanded: true,
+            },
             DiffListItem::DiffUnavailable { file_index: 1 },
-            DiffListItem::FileHeader { file_index: 2 },
+            DiffListItem::FileHeader {
+                file_index: 2,
+                expanded: true,
+            },
             DiffListItem::Line {
                 file_index: 2,
                 hunk_index: 0,
@@ -276,6 +300,67 @@ fn collapses_reviewed_file_sections_in_diff_items() {
 }
 
 #[test]
+fn collapses_manually_closed_file_sections_in_diff_items() {
+    let files = vec![test_file("src/a.rs"), test_file("src/b.rs")];
+    let diffs = vec![
+        Some(parse_unified_diff("@@ -1 +1 @@\n a\n")),
+        Some(parse_unified_diff("@@ -1 +1 @@\n b\n")),
+    ];
+    let visible_file_indices = vec![0, 1];
+    let reviewed_file_paths = HashSet::new();
+    let collapsed_diff_file_paths = HashSet::from(["src/a.rs".to_string()]);
+
+    assert_eq!(
+        continuous_diff_items(ContinuousDiffLayoutInput {
+            collapsed_diff_file_paths: &collapsed_diff_file_paths,
+            ..test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths)
+        }),
+        vec![
+            DiffListItem::FileHeader {
+                file_index: 0,
+                expanded: false,
+            },
+            DiffListItem::FileHeader {
+                file_index: 1,
+                expanded: true,
+            },
+            DiffListItem::Line {
+                file_index: 1,
+                hunk_index: 0,
+                line_index: 0,
+            },
+        ]
+    );
+}
+
+#[test]
+fn expands_reviewed_file_sections_when_manually_opened() {
+    let files = vec![test_file("src/a.rs")];
+    let diffs = vec![Some(parse_unified_diff("@@ -1 +1 @@\n a\n"))];
+    let visible_file_indices = vec![0];
+    let reviewed_file_paths = HashSet::from(["src/a.rs".to_string()]);
+    let expanded_diff_file_paths = HashSet::from(["src/a.rs".to_string()]);
+
+    assert_eq!(
+        continuous_diff_items(ContinuousDiffLayoutInput {
+            expanded_diff_file_paths: &expanded_diff_file_paths,
+            ..test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths)
+        }),
+        vec![
+            DiffListItem::FileHeader {
+                file_index: 0,
+                expanded: true,
+            },
+            DiffListItem::Line {
+                file_index: 0,
+                hunk_index: 0,
+                line_index: 0,
+            },
+        ]
+    );
+}
+
+#[test]
 fn skips_hidden_files_when_building_diff_items() {
     let files = vec![test_file("src/hidden.rs"), test_file("src/visible.rs")];
     let diffs = vec![
@@ -293,7 +378,10 @@ fn skips_hidden_files_when_building_diff_items() {
             &reviewed_file_paths
         )),
         vec![
-            DiffListItem::FileHeader { file_index: 1 },
+            DiffListItem::FileHeader {
+                file_index: 1,
+                expanded: true,
+            },
             DiffListItem::Line {
                 file_index: 1,
                 hunk_index: 0,
@@ -327,6 +415,7 @@ fn finds_diff_section_for_item_across_file_boundaries() {
             file_index: 1,
             header_item_index: 3,
             reviewed: false,
+            expanded: true,
         })
     );
     assert_eq!(
@@ -335,6 +424,7 @@ fn finds_diff_section_for_item_across_file_boundaries() {
             file_index: 2,
             header_item_index: 5,
             reviewed: false,
+            expanded: true,
         })
     );
 }
@@ -357,12 +447,9 @@ fn places_inline_review_items_before_later_hunks() {
     assert_eq!(
         continuous_diff_hunk_item_index(
             ContinuousDiffLayoutInput {
-                files: &files,
-                diffs: &diffs,
-                visible_file_indices: &visible_file_indices,
-                reviewed_file_paths: &reviewed_file_paths,
                 review_threads: &[],
                 review_composer: Some(&composer),
+                ..test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths)
             },
             0,
             1,
@@ -389,15 +476,15 @@ fn places_inline_review_thread_items_after_matching_line() {
 
     assert_eq!(
         continuous_diff_items(ContinuousDiffLayoutInput {
-            files: &files,
-            diffs: &diffs,
-            visible_file_indices: &visible_file_indices,
-            reviewed_file_paths: &reviewed_file_paths,
             review_threads: std::slice::from_ref(&thread),
             review_composer: Some(&composer),
+            ..test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths)
         }),
         vec![
-            DiffListItem::FileHeader { file_index: 0 },
+            DiffListItem::FileHeader {
+                file_index: 0,
+                expanded: true,
+            },
             DiffListItem::Line {
                 file_index: 0,
                 hunk_index: 0,
@@ -445,12 +532,9 @@ fn places_loaded_review_thread_range_on_added_line() {
 
     assert!(
         continuous_diff_items(ContinuousDiffLayoutInput {
-            files: &files,
-            diffs: &diffs,
-            visible_file_indices: &visible_file_indices,
-            reviewed_file_paths: &reviewed_file_paths,
             review_threads: &[thread],
             review_composer: None,
+            ..test_layout_input(&files, &diffs, &visible_file_indices, &reviewed_file_paths)
         })
         .contains(&DiffListItem::ReviewThread {
             file_index: 0,
@@ -472,10 +556,14 @@ fn test_layout_input<'a>(
         diffs,
         visible_file_indices,
         reviewed_file_paths,
+        expanded_diff_file_paths: &EMPTY_FILE_PATHS,
+        collapsed_diff_file_paths: &EMPTY_FILE_PATHS,
         review_threads: &[],
         review_composer: None,
     }
 }
+
+static EMPTY_FILE_PATHS: LazyLock<HashSet<String>> = LazyLock::new(HashSet::new);
 
 fn test_file(path: &str) -> DiffFile {
     DiffFile {

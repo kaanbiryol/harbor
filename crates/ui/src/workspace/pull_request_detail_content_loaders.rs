@@ -154,6 +154,8 @@ impl AppView {
                                 let count = files.len();
                                 view.detail_state.replace_diff_files(files, diffs);
                                 view.reset_diff_selection();
+                                view.expanded_diff_file_paths.clear();
+                                view.collapsed_diff_file_paths.clear();
                                 view.reset_changed_file_filters();
                                 view.sync_reviewed_file_paths_from_files();
                                 view.ensure_active_file_visible(cx);
@@ -174,6 +176,8 @@ impl AppView {
                                 let error = error.to_string();
                                 view.detail_state.clear_diff_files();
                                 view.collapsed_file_tree_folders.clear();
+                                view.expanded_diff_file_paths.clear();
+                                view.collapsed_diff_file_paths.clear();
                                 view.reviewed_file_paths.clear();
                                 view.reset_changed_file_filters();
                                 view.owned_file_paths.clear();

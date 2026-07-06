@@ -30,6 +30,8 @@ fn detail_snapshot() -> PullRequestDetailSnapshot {
         log_chunk: None,
         current_user_login: None,
         collapsed_file_tree_folders: HashSet::new(),
+        expanded_diff_file_paths: HashSet::new(),
+        collapsed_diff_file_paths: HashSet::new(),
         reviewed_file_paths: HashSet::new(),
         excluded_file_type_filters: HashSet::new(),
         show_files_owned_by_current_user: false,

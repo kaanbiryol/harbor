@@ -71,6 +71,8 @@ pub(crate) struct PullRequestDetailSnapshot {
     log_chunk: Option<LogChunk>,
     current_user_login: Option<String>,
     collapsed_file_tree_folders: HashSet<String>,
+    expanded_diff_file_paths: HashSet<String>,
+    collapsed_diff_file_paths: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
@@ -97,6 +99,8 @@ pub(crate) struct PullRequestInboxSnapshot {
     log_chunk: Option<LogChunk>,
     current_user_login: Option<String>,
     collapsed_file_tree_folders: HashSet<String>,
+    expanded_diff_file_paths: HashSet<String>,
+    collapsed_diff_file_paths: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
@@ -188,6 +192,8 @@ impl AppView {
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
+            expanded_diff_file_paths: self.expanded_diff_file_paths.clone(),
+            collapsed_diff_file_paths: self.collapsed_diff_file_paths.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
             show_files_owned_by_current_user: self.show_files_owned_by_current_user,
@@ -238,6 +244,8 @@ impl AppView {
         );
         self.detail_state.log_state.set_chunk(snapshot.log_chunk);
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
+        self.expanded_diff_file_paths = snapshot.expanded_diff_file_paths;
+        self.collapsed_diff_file_paths = snapshot.collapsed_diff_file_paths;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
         self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
@@ -278,6 +286,8 @@ impl AppView {
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login.clone(),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
+            expanded_diff_file_paths: self.expanded_diff_file_paths.clone(),
+            collapsed_diff_file_paths: self.collapsed_diff_file_paths.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
             excluded_file_type_filters: self.excluded_file_type_filters.clone(),
             show_files_owned_by_current_user: self.show_files_owned_by_current_user,
@@ -333,6 +343,8 @@ impl AppView {
         );
         self.detail_state.log_state.set_chunk(snapshot.log_chunk);
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders;
+        self.expanded_diff_file_paths = snapshot.expanded_diff_file_paths;
+        self.collapsed_diff_file_paths = snapshot.collapsed_diff_file_paths;
         self.reviewed_file_paths = snapshot.reviewed_file_paths;
         self.excluded_file_type_filters = snapshot.excluded_file_type_filters;
         self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
