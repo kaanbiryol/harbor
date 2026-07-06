@@ -11,8 +11,9 @@ use crate::{
 use super::{
     render_status_pill,
     review::{
-        ReviewDiffPreview, render_review_avatar, render_review_diff_preview,
-        review_comment_time_label, review_thread_location, review_thread_state_tone,
+        ReviewDiffPreview, render_review_author_link, render_review_avatar,
+        render_review_diff_preview, review_comment_time_label, review_thread_location,
+        review_thread_state_tone,
     },
     review_markdown::render_review_markdown_body,
     review_thread_chrome::{
@@ -145,12 +146,25 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                                 .flex()
                                                 .items_baseline()
                                                 .gap_2()
-                                                .child(
-                                                    div()
-                                                        .font_medium()
-                                                        .text_color(path_color)
-                                                        .child(header_author.to_string()),
-                                                )
+                                                .child({
+                                                    if latest_comment.is_some() {
+                                                        render_review_author_link(
+                                                            format!(
+                                                                "review-thread-author-link-{}",
+                                                                thread.id
+                                                            ),
+                                                            header_author.to_string(),
+                                                            path_color,
+                                                        )
+                                                        .into_any_element()
+                                                    } else {
+                                                        div()
+                                                            .font_medium()
+                                                            .text_color(path_color)
+                                                            .child(header_author.to_string())
+                                                            .into_any_element()
+                                                    }
+                                                })
                                                 .child(
                                                     div()
                                                         .text_xs()
@@ -305,12 +319,11 @@ fn render_review_thread_reply(
                         .items_baseline()
                         .gap_2()
                         .text_xs()
-                        .child(
-                            div()
-                                .font_medium()
-                                .text_color(color::text_primary())
-                                .child(comment.author.clone()),
-                        )
+                        .child(render_review_author_link(
+                            format!("review-thread-reply-author-link-{}", comment.id),
+                            comment.author.clone(),
+                            color::text_primary(),
+                        ))
                         .child(
                             div()
                                 .text_color(metadata_color)

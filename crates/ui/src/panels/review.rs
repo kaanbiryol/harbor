@@ -294,12 +294,14 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                         .flex()
                                         .items_baseline()
                                         .gap_2()
-                                        .child(
-                                            div()
-                                                .font_medium()
-                                                .text_color(color::text_primary())
-                                                .child(comment.author.clone()),
-                                        )
+                                        .child(render_review_author_link(
+                                            format!(
+                                                "pull-request-comment-author-link-{}",
+                                                comment.id
+                                            ),
+                                            comment.author.clone(),
+                                            color::text_primary(),
+                                        ))
                                         .child(
                                             div().text_xs().text_color(color::text_muted()).child(
                                                 format!(
@@ -375,12 +377,14 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                         .flex()
                                         .items_baseline()
                                         .gap_2()
-                                        .child(
-                                            div()
-                                                .font_medium()
-                                                .text_color(color::text_primary())
-                                                .child(review.author.clone()),
-                                        )
+                                        .child(render_review_author_link(
+                                            format!(
+                                                "pull-request-review-author-link-{}",
+                                                review.id
+                                            ),
+                                            review.author.clone(),
+                                            color::text_primary(),
+                                        ))
                                         .child(
                                             div().text_xs().text_color(color::text_muted()).child(
                                                 format!(
@@ -542,6 +546,29 @@ fn github_avatar_url_for_login(login: &str) -> Option<String> {
     } else {
         Some(format!("https://github.com/{login}.png?size=48"))
     }
+}
+
+pub(super) fn render_review_author_link(
+    id: String,
+    author: String,
+    text_color: gpui::Rgba,
+) -> impl IntoElement {
+    let profile_url = review_author_profile_url(&author);
+
+    div()
+        .id(id)
+        .font_medium()
+        .text_color(text_color)
+        .cursor_pointer()
+        .hover(|element| element.text_color(color::accent_hover()))
+        .on_click(move |_, _, cx| {
+            cx.open_url(&profile_url);
+        })
+        .child(author)
+}
+
+fn review_author_profile_url(author: &str) -> String {
+    format!("https://github.com/{author}")
 }
 
 fn review_has_inline_comment(review: &PullRequestReview, threads: &[ReviewThread]) -> bool {
@@ -817,6 +844,14 @@ mod tests {
                     tone: Tone::Success,
                 }],
             })
+        );
+    }
+
+    #[test]
+    fn builds_review_author_profile_url() {
+        assert_eq!(
+            review_author_profile_url("octocat"),
+            "https://github.com/octocat"
         );
     }
 
