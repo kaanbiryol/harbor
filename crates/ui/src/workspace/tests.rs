@@ -37,7 +37,7 @@ async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn fullscreen_repository_title_starts_at_left_edge(cx: &mut TestAppContext) {
+async fn fullscreen_repository_title_keeps_left_inset(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
@@ -64,10 +64,9 @@ async fn fullscreen_repository_title_starts_at_left_edge(cx: &mut TestAppContext
     let bounds = cx
         .debug_bounds("repository-switcher-label")
         .expect("repository label should render");
-    assert_eq!(
-        bounds.origin.x,
-        px(0.),
-        "fullscreen repository title should start at the left edge"
+    assert!(
+        bounds.origin.x >= px(8.),
+        "fullscreen repository title should keep a visible left inset"
     );
 }
 

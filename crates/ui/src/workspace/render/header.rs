@@ -12,8 +12,6 @@ use gpui_component::{StyledExt, TitleBar};
 
 use crate::{visual::color, workspace::AppView};
 
-const FULLSCREEN_TITLE_BAR_CONTENT_INSET: f32 = 12.;
-
 impl AppView {
     fn header_repository_label(&self) -> String {
         self.current_repository()
@@ -28,15 +26,7 @@ impl AppView {
     ) -> impl IntoElement {
         let is_fullscreen = window.is_fullscreen();
         let show_repository_switcher = !self.github_auth_gate_visible();
-        let mut left_controls = div()
-            .flex()
-            .h_full()
-            .min_w_0()
-            .items_center()
-            .gap_1()
-            .when(is_fullscreen, |element| {
-                element.ml(px(-FULLSCREEN_TITLE_BAR_CONTENT_INSET))
-            });
+        let mut left_controls = div().flex().h_full().min_w_0().items_center().gap_1();
         if show_repository_switcher {
             left_controls = left_controls.child(self.render_repository_switcher(is_fullscreen, cx));
         } else {
