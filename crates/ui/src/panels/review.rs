@@ -254,7 +254,7 @@ fn compare_review_timeline_items(
 }
 
 fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -> AnyElement {
-    let time_label = format!("commented {}", pull_request_comment_time_label(comment));
+    let time_label = pull_request_comment_time_label(comment);
     let time_tooltip = pull_request_comment_time_tooltip(comment);
 
     div()
@@ -287,7 +287,7 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                 .min_w_0()
                                 .flex_1()
                                 .flex()
-                                .items_start()
+                                .items_center()
                                 .gap_2()
                                 .child(render_review_avatar(
                                     &comment.author,
@@ -299,7 +299,7 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                         .min_w_0()
                                         .flex_1()
                                         .flex()
-                                        .items_baseline()
+                                        .items_center()
                                         .gap_2()
                                         .child(render_review_author_link(
                                             format!(
@@ -341,7 +341,12 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
         .as_deref()
         .map(comment_body_text)
         .unwrap_or_else(|| format!("{} review", state_label));
-    let time_label = format!("{} {}", state_label, review_time_label(review));
+    let review_time_label = review_time_label(review);
+    let time_label = if review.state == PullRequestReviewState::Commented {
+        review_time_label
+    } else {
+        format!("{} {}", state_label, review_time_label)
+    };
     let time_tooltip = review_time_tooltip(review);
 
     div()
@@ -374,7 +379,7 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                 .min_w_0()
                                 .flex_1()
                                 .flex()
-                                .items_start()
+                                .items_center()
                                 .gap_2()
                                 .child(render_review_avatar(&review.author, None, 24.0))
                                 .child(
@@ -382,7 +387,7 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                         .min_w_0()
                                         .flex_1()
                                         .flex()
-                                        .items_baseline()
+                                        .items_center()
                                         .gap_2()
                                         .child(render_review_author_link(
                                             format!(

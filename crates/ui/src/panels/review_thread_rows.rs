@@ -99,10 +99,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
     let header_author =
         latest_comment.map_or(thread.path.as_str(), |comment| comment.author.as_str());
     let header_avatar_url = latest_comment.and_then(|comment| comment.author_avatar_url.as_deref());
-    let header_time_label = latest_comment.map_or_else(
-        || "commented".to_string(),
-        |comment| format!("commented {}", review_comment_time_label(comment)),
-    );
+    let header_time_label = latest_comment.map_or_else(String::new, review_comment_time_label);
     let header_time_tooltip = latest_comment.map(review_comment_time_tooltip);
 
     div()
@@ -148,7 +145,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                         .child(
                                             div()
                                                 .flex()
-                                                .items_baseline()
+                                                .items_center()
                                                 .gap_2()
                                                 .child({
                                                     if latest_comment.is_some() {
@@ -317,7 +314,7 @@ fn render_review_thread_reply(
                 .child(
                     div()
                         .flex()
-                        .items_baseline()
+                        .items_center()
                         .gap_2()
                         .text_xs()
                         .child(render_review_author_link(
