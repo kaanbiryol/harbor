@@ -4,6 +4,11 @@ pub(crate) mod font {
     pub(crate) const UI: &str = ".SystemUIFont";
 }
 
+pub(crate) mod opacity {
+    pub(crate) const DEEMPHASIZED_ITEM: f32 = 0.72;
+    pub(crate) const DEEMPHASIZED_ITEM_HOVER: f32 = 0.9;
+}
+
 pub(crate) mod color {
     use gpui::{Rgba, rgb};
 

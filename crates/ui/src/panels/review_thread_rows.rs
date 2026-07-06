@@ -4,7 +4,7 @@ use gpui_component::{StyledExt, tooltip::Tooltip};
 use harbor_domain::{ReviewComment, ReviewThread};
 
 use crate::{
-    visual::color,
+    visual::{Tone, color, opacity},
     workspace::{AppView, ReviewThreadUiError},
 };
 
@@ -95,6 +95,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
     let action_error = action_error
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
+    let use_resolved_low_emphasis = is_resolved && !ui_state.active_reply && action_error.is_none();
     let thread_id = thread.id.clone();
     let header_author =
         latest_comment.map_or(thread.path.as_str(), |comment| comment.author.as_str());
@@ -117,6 +118,11 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                 .border_1()
                 .border_color(row_border_color)
                 .bg(row_bg_color)
+                .when(use_resolved_low_emphasis, |element| {
+                    element
+                        .opacity(opacity::DEEMPHASIZED_ITEM)
+                        .hover(|element| element.opacity(opacity::DEEMPHASIZED_ITEM_HOVER))
+                })
                 .child(
                     div()
                         .flex()
@@ -181,7 +187,16 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                         ),
                                 ),
                         )
-                        .child(render_status_pill(label, tone)),
+                        .child(
+                            div()
+                                .when(is_resolved, |element| {
+                                    element.opacity(opacity::DEEMPHASIZED_ITEM)
+                                })
+                                .child(render_status_pill(
+                                    label,
+                                    if is_resolved { Tone::Neutral } else { tone },
+                                )),
+                        ),
                 )
                 .when_some(diff_preview, move |element, preview| {
                     element.child(div().px_3().pt_2().child(render_review_diff_preview(

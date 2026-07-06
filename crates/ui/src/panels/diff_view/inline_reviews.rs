@@ -18,7 +18,7 @@ use gpui_component::{
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
-    visual::{color, font},
+    visual::{color, font, opacity},
     workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError},
 };
 
@@ -250,6 +250,7 @@ pub(super) fn render_review_thread_inline(
     let action_error = action_error
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
+    let use_resolved_low_emphasis = is_resolved && !ui_state.active_reply && action_error.is_none();
     let thread_id = thread.id.clone();
     let hidden_comment_count = hidden_inline_review_comment_count(thread.comments.len());
     let visible_reply_start_index = visible_inline_review_reply_start_index(thread.comments.len());
@@ -268,6 +269,11 @@ pub(super) fn render_review_thread_inline(
             .bg(card_bg_color)
             .rounded_xs()
             .overflow_hidden()
+            .when(use_resolved_low_emphasis, |element| {
+                element
+                    .opacity(opacity::DEEMPHASIZED_ITEM)
+                    .hover(|element| element.opacity(opacity::DEEMPHASIZED_ITEM_HOVER))
+            })
             .child(render_review_thread_header(ReviewThreadHeaderState {
                 thread_id: thread_id.clone(),
                 thread_state: thread.state,

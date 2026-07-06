@@ -118,7 +118,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
     let time_label = review_comment_time_label(comment);
     let time_tooltip = review_comment_time_tooltip(comment);
     let author_color = if thread_resolved {
-        color::text_secondary()
+        color::text_muted()
     } else {
         color::text_primary()
     };
@@ -128,7 +128,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
         color::text_muted()
     };
     let body_color = if thread_resolved {
-        color::text_muted()
+        color::text_disabled()
     } else {
         color::text_secondary()
     };

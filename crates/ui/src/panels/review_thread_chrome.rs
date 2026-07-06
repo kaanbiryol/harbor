@@ -150,6 +150,8 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         .disabled(reply_button_disabled);
     let reply_button = if active_reply {
         reply_button.primary()
+    } else if is_resolved {
+        reply_button.ghost()
     } else {
         reply_button.outline()
     };
@@ -218,11 +220,16 @@ pub(crate) fn render_review_thread_status_pill(
 ) -> impl IntoElement {
     let tone = match label {
         "unresolved" => Tone::Warning,
-        "resolved" => Tone::Success,
+        "resolved" => Tone::Neutral,
         "outdated" => Tone::Neutral,
         _ => Tone::Info,
     };
     let colors = tone_colors(tone);
+    let text_color = if label == "resolved" {
+        color::text_disabled().into()
+    } else {
+        text_color
+    };
 
     div()
         .rounded_xs()

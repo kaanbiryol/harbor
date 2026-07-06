@@ -8,7 +8,7 @@ use crate::{
         PullRequestRowRailTone, PullRequestRowSignal, PullRequestRowSignalKind,
         PullRequestRowSignalTone, pull_request_row_rail_tone, visible_pull_request_row_signals,
     },
-    visual::{Tone, color, tone_colors},
+    visual::{Tone, color, opacity, tone_colors},
     workspace::AppView,
 };
 
@@ -140,6 +140,7 @@ pub(crate) fn render_pull_request_row(
     let signals = visible_pull_request_row_signals(pr);
     let primary_signal = signals.first().cloned();
     let secondary_signals = signals.iter().skip(1).cloned().collect::<Vec<_>>();
+    let is_draft = pr.is_draft;
     let rail_color = if selected {
         color::accent()
     } else {
@@ -155,9 +156,18 @@ pub(crate) fn render_pull_request_row(
         .overflow_hidden()
         .border_1()
         .border_color(color::border_subtle())
-        .when(pr.is_draft, |element| element.opacity(0.72))
+        .when(is_draft, |element| {
+            element.opacity(opacity::DEEMPHASIZED_ITEM)
+        })
         .when(selected, |element| element.bg(color::row_selected_active()))
-        .hover(|style| style.bg(color::row_hover()))
+        .hover(move |style| {
+            let style = style.bg(color::row_hover());
+            if is_draft {
+                style.opacity(opacity::DEEMPHASIZED_ITEM_HOVER)
+            } else {
+                style
+            }
+        })
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_pull_request(index, cx);
         }))
