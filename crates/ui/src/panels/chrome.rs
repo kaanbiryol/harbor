@@ -105,7 +105,35 @@ pub(crate) fn render_key_hint(label: impl Into<String>) -> impl IntoElement {
 
 pub(crate) fn sync_virtual_list_item_count(list_state: &ListState, item_count: usize) {
     let current_item_count = list_state.item_count();
-    if current_item_count != item_count {
+    if current_item_count == item_count {
+        return;
+    }
+
+    if current_item_count == 0 {
+        list_state.reset(item_count);
+    } else {
         list_state.splice(0..current_item_count, item_count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{ListAlignment, ListOffset, ListState, px};
+
+    use super::sync_virtual_list_item_count;
+
+    #[test]
+    fn sync_virtual_list_item_count_keeps_empty_list_at_top_when_items_arrive() {
+        let list_state = ListState::new(0, ListAlignment::Top, px(160.0));
+        list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
+
+        sync_virtual_list_item_count(&list_state, 6);
+
+        let scroll_top = list_state.logical_scroll_top();
+        assert_eq!(scroll_top.item_ix, 0);
+        assert_eq!(scroll_top.offset_in_item, px(0.0));
     }
 }
