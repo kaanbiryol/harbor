@@ -20,8 +20,15 @@ build, but they are not tested or supported yet.
 
 - macOS
 - Rust `1.90` or newer
-- A working system toolchain for GPUI
+- A working Xcode toolchain for GPUI
 - GitHub CLI, if you want to authenticate through `gh`
+
+On Xcode versions that ship the Metal compiler as a downloadable component,
+install it once before building Harbor:
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
 
 ## Install
 
