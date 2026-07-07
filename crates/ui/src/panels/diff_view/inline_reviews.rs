@@ -23,7 +23,7 @@ use crate::{
 };
 
 use super::{
-    DIFF_ROW_HEIGHT, REVIEW_COMPOSER_MAX_WIDTH, REVIEW_MARKER_WIDTH,
+    DIFF_ROW_HEIGHT, INLINE_REVIEW_FONT_SIZE, REVIEW_COMPOSER_MAX_WIDTH, REVIEW_MARKER_WIDTH,
     inline_review_layout::review_comment_range_label, render_line_number,
 };
 pub(super) use comments::ReviewCommentListRenderState;
@@ -268,6 +268,7 @@ pub(super) fn render_review_thread_inline(
             .border_color(card_border_color)
             .bg(card_bg_color)
             .rounded_xs()
+            .text_size(px(INLINE_REVIEW_FONT_SIZE))
             .overflow_hidden()
             .when(use_resolved_low_emphasis, |element| {
                 element

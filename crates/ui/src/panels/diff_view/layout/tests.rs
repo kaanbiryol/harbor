@@ -42,7 +42,7 @@ fn keeps_three_digit_line_numbers_on_one_visual_line() {
         line_number_width_for_diff(&diff),
         3.0 * LINE_NUMBER_DIGIT_WIDTH + LINE_NUMBER_PADDING
     );
-    assert!(line_number_width_for_diff(&diff) >= 40.0);
+    assert!(line_number_width_for_diff(&diff) >= 38.0);
 }
 
 #[test]

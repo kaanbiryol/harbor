@@ -32,8 +32,8 @@ fn review_markdown_style() -> TextViewStyle {
     TextViewStyle::default()
         .paragraph_gap(rems(0.5))
         .heading_font_size(|level, _| match level {
-            1 => px(15.0),
-            2 => px(14.0),
+            1 => px(14.0),
+            2 => px(13.5),
             _ => px(13.0),
         })
 }
