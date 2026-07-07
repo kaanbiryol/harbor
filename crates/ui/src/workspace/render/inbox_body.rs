@@ -9,7 +9,6 @@ use crate::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PullRequestInboxBodyState {
     LoadingEmpty,
-    RefreshingRows,
     ErrorEmpty,
     ErrorRows,
     Empty,
@@ -22,7 +21,7 @@ fn pull_request_inbox_body_state(
     has_pull_requests: bool,
 ) -> PullRequestInboxBodyState {
     match (is_loading, has_load_error, has_pull_requests) {
-        (true, _, true) => PullRequestInboxBodyState::RefreshingRows,
+        (true, _, true) => PullRequestInboxBodyState::Rows,
         (true, _, false) => PullRequestInboxBodyState::LoadingEmpty,
         (false, true, true) => PullRequestInboxBodyState::ErrorRows,
         (false, true, false) => PullRequestInboxBodyState::ErrorEmpty,
@@ -45,9 +44,7 @@ impl AppView {
         );
         let show_list = matches!(
             body_state,
-            PullRequestInboxBodyState::RefreshingRows
-                | PullRequestInboxBodyState::ErrorRows
-                | PullRequestInboxBodyState::Rows
+            PullRequestInboxBodyState::ErrorRows | PullRequestInboxBodyState::Rows
         );
         let empty_message = if self.repository_state.has_configured_repo() {
             current_mode.empty_message()
@@ -62,20 +59,6 @@ impl AppView {
         let mut body = Vec::new();
 
         match body_state {
-            PullRequestInboxBodyState::RefreshingRows => {
-                body.push(
-                    div()
-                        .id("pull-request-inbox-refreshing")
-                        .px_3()
-                        .py_2()
-                        .border_b_1()
-                        .border_color(color::border())
-                        .text_xs()
-                        .text_color(color::text_muted())
-                        .child(format!("Refreshing {}...", current_mode.status_label()))
-                        .into_any_element(),
-                );
-            }
             PullRequestInboxBodyState::LoadingEmpty => {
                 body.push(
                     div()
@@ -193,7 +176,7 @@ mod tests {
     fn keeps_existing_pull_request_rows_visible_while_refreshing() {
         assert_eq!(
             pull_request_inbox_body_state(true, false, true),
-            PullRequestInboxBodyState::RefreshingRows
+            PullRequestInboxBodyState::Rows
         );
         assert_eq!(
             pull_request_inbox_body_state(false, true, true),

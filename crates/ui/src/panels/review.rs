@@ -2,7 +2,9 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
 use gpui::{AnyElement, Context, IntoElement, ListState, SharedString, div, list, prelude::*, px};
-use gpui_component::{ActiveTheme, Sizable, StyledExt, avatar::Avatar, tooltip::Tooltip};
+use gpui_component::{
+    ActiveTheme, Sizable, StyledExt, avatar::Avatar, spinner::Spinner, tooltip::Tooltip,
+};
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
     ReviewSide, ReviewThread, ReviewThreadState,
@@ -21,8 +23,8 @@ use crate::{
 use super::review_markdown::{render_review_markdown_body, review_markdown_body};
 use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_metric_pill, render_panel_header,
-    render_status_pill, sync_virtual_list_item_count,
+    render_empty_panel_card, render_error_panel_card, render_metric_pill, render_status_pill,
+    sync_virtual_list_item_count,
 };
 
 pub(crate) struct ReviewPanelRenderInput<'a> {
@@ -61,10 +63,7 @@ pub(crate) fn render_review_panel(
         .flex_1()
         .min_h_0()
         .gap_2()
-        .child(render_panel_header(
-            "Review",
-            Some(format!("{} timeline items", timeline_items.len())),
-        ))
+        .child(render_review_panel_header(timeline_items.len(), is_loading))
         .child(
             div()
                 .flex()
@@ -75,7 +74,7 @@ pub(crate) fn render_review_panel(
                 .child(render_metric_pill("resolved", resolved, Tone::Success))
                 .child(render_metric_pill("outdated", outdated, Tone::Neutral)),
         )
-        .when(is_loading, |element| {
+        .when(is_loading && !has_timeline_items, |element| {
             element.child(render_empty_panel_card("Loading review comments..."))
         })
         .when_some(error.map(str::to_string), |element, error| {
@@ -165,6 +164,42 @@ pub(crate) fn render_review_panel(
                 .min_w_0(),
             )
         })
+}
+
+fn render_review_panel_header(timeline_item_count: usize, is_loading: bool) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .font_medium()
+                .text_color(color::text_primary())
+                .child("Review"),
+        )
+        .child(
+            div()
+                .flex_none()
+                .max_w(px(280.0))
+                .min_w_0()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap_1()
+                .text_xs()
+                .text_color(color::text_muted())
+                .when(is_loading, |element| element.child(Spinner::new().small()))
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .child(format!("{timeline_item_count} timeline items")),
+                ),
+        )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
