@@ -54,7 +54,6 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         view_entity,
     } = state;
     let (label, tone) = review_thread_state_tone(thread.state);
-    let latest_comment = thread.comments.last();
     let location = review_thread_location(thread);
     let ui_state = review_thread_ui_state(
         thread,
@@ -97,12 +96,6 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         .map(|error| error.message.clone());
     let use_resolved_low_emphasis = is_resolved && !ui_state.active_reply && action_error.is_none();
     let thread_id = thread.id.clone();
-    let header_author =
-        latest_comment.map_or(thread.path.as_str(), |comment| comment.author.as_str());
-    let header_avatar_url = latest_comment.and_then(|comment| comment.author_avatar_url.as_deref());
-    let header_time_label = latest_comment.map_or_else(String::new, review_comment_time_label);
-    let header_time_tooltip = latest_comment.map(review_comment_time_tooltip);
-
     div()
         .id(("review-thread-row", index))
         .w_full()
@@ -138,53 +131,19 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                 .min_w_0()
                                 .flex_1()
                                 .flex()
-                                .items_start()
-                                .gap_2()
-                                .child(render_review_avatar(header_author, header_avatar_url, 24.0))
+                                .flex_col()
+                                .gap_1()
                                 .child(
                                     div()
-                                        .min_w_0()
-                                        .flex_1()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_1()
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child({
-                                                    if latest_comment.is_some() {
-                                                        render_review_author_link(
-                                                            format!(
-                                                                "review-thread-author-link-{}",
-                                                                thread.id
-                                                            ),
-                                                            header_author.to_string(),
-                                                            path_color,
-                                                        )
-                                                        .into_any_element()
-                                                    } else {
-                                                        div()
-                                                            .font_medium()
-                                                            .text_color(path_color)
-                                                            .child(header_author.to_string())
-                                                            .into_any_element()
-                                                    }
-                                                })
-                                                .child(render_time_metadata(
-                                                    format!("review-thread-time-{index}"),
-                                                    header_time_label,
-                                                    header_time_tooltip,
-                                                    metadata_color,
-                                                )),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(metadata_color)
-                                                .child(review_thread_metadata(thread, &location)),
-                                        ),
+                                        .font_medium()
+                                        .text_color(path_color)
+                                        .child(thread.path.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(metadata_color)
+                                        .child(review_thread_metadata(thread, &location)),
                                 ),
                         )
                         .child(
@@ -208,6 +167,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                     thread,
                     metadata_color,
                     comment_color,
+                    is_resolved,
                 ))
                 .child(
                     div()
@@ -215,6 +175,8 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                         .items_center()
                         .justify_end()
                         .gap_2()
+                        .border_t_1()
+                        .border_color(color::border_subtle())
                         .px_3()
                         .py_2()
                         .child(render_review_thread_actions(ReviewThreadActionsState {
@@ -266,58 +228,71 @@ fn render_review_thread_comments(
     thread: &ReviewThread,
     metadata_color: gpui::Rgba,
     comment_color: gpui::Rgba,
+    is_resolved: bool,
 ) -> impl IntoElement {
-    let first_comment = thread.comments.first();
+    let thread_rail_color = if is_resolved {
+        color::border_subtle()
+    } else {
+        color::border()
+    };
+    let author_color = if is_resolved {
+        color::text_muted()
+    } else {
+        color::text_primary()
+    };
 
     div()
         .flex()
         .flex_col()
-        .gap_3()
+        .gap_2()
         .px_3()
         .py_3()
-        .when_some(first_comment, |element, comment| {
-            element.child(div().text_sm().text_color(comment_color).child(
-                render_review_markdown_body(
-                    format!("review-thread-comment-body-{}", comment.id),
-                    &comment.body,
-                ),
-            ))
-        })
-        .when(thread.comments.len() > 1, |element| {
-            element.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .pt_3()
-                    .border_t_1()
-                    .border_color(color::border_subtle())
-                    .children(thread.comments.iter().skip(1).map(|comment| {
-                        render_review_thread_reply(comment, metadata_color, comment_color)
-                    })),
+        .children(thread.comments.iter().enumerate().map(|(index, comment)| {
+            render_review_thread_comment(
+                comment,
+                index > 0,
+                index + 1 < thread.comments.len(),
+                thread_rail_color,
+                author_color,
+                metadata_color,
+                comment_color,
             )
-        })
+        }))
 }
 
-fn render_review_thread_reply(
+fn render_review_thread_comment(
     comment: &ReviewComment,
+    is_reply: bool,
+    show_thread_rail: bool,
+    rail_color: gpui::Rgba,
+    author_color: gpui::Rgba,
     metadata_color: gpui::Rgba,
     comment_color: gpui::Rgba,
 ) -> impl IntoElement {
+    let author_id = if is_reply {
+        format!("review-thread-reply-author-link-{}", comment.id)
+    } else {
+        format!("review-thread-comment-author-link-{}", comment.id)
+    };
+    let time_id = if is_reply {
+        format!("review-thread-reply-time-{}", comment.id)
+    } else {
+        format!("review-thread-comment-time-{}", comment.id)
+    };
+    let body_id = if is_reply {
+        format!("review-thread-reply-body-{}", comment.id)
+    } else {
+        format!("review-thread-comment-body-{}", comment.id)
+    };
+
     div()
         .min_w_0()
         .flex()
-        .items_start()
-        .gap_2()
-        .border_1()
-        .border_color(color::border_subtle())
-        .bg(color::content_background())
-        .px_2()
-        .py_2()
-        .child(render_review_avatar(
-            &comment.author,
-            comment.author_avatar_url.as_deref(),
-            20.0,
+        .gap_1()
+        .child(render_review_thread_comment_gutter(
+            comment,
+            show_thread_rail,
+            rail_color,
         ))
         .child(
             div()
@@ -333,24 +308,52 @@ fn render_review_thread_reply(
                         .gap_2()
                         .text_xs()
                         .child(render_review_author_link(
-                            format!("review-thread-reply-author-link-{}", comment.id),
+                            author_id,
                             comment.author.clone(),
-                            color::text_primary(),
+                            author_color,
                         ))
                         .child(render_time_metadata(
-                            format!("review-thread-reply-time-{}", comment.id),
+                            time_id,
                             review_comment_time_label(comment),
                             Some(review_comment_time_tooltip(comment)),
                             metadata_color,
                         )),
                 )
-                .child(div().text_sm().text_color(comment_color).child(
-                    render_review_markdown_body(
-                        format!("review-thread-reply-body-{}", comment.id),
-                        &comment.body,
-                    ),
-                )),
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(comment_color)
+                        .child(render_review_markdown_body(body_id, &comment.body)),
+                ),
         )
+}
+
+fn render_review_thread_comment_gutter(
+    comment: &ReviewComment,
+    show_thread_rail: bool,
+    rail_color: gpui::Rgba,
+) -> impl IntoElement {
+    div()
+        .relative()
+        .min_h(px(28.0))
+        .w(px(20.0))
+        .flex_none()
+        .child(render_review_avatar(
+            &comment.author,
+            comment.author_avatar_url.as_deref(),
+            20.0,
+        ))
+        .when(show_thread_rail, |element| {
+            element.child(
+                div()
+                    .absolute()
+                    .top(px(24.0))
+                    .bottom(px(-12.0))
+                    .left(px(9.5))
+                    .w(px(1.0))
+                    .bg(rail_color),
+            )
+        })
 }
 
 fn render_time_metadata(
@@ -371,13 +374,8 @@ fn render_time_metadata(
 
 fn review_thread_metadata(thread: &ReviewThread, location: &str) -> String {
     if thread.comments.len() > 1 {
-        format!(
-            "{}  {}  {} comments",
-            thread.path,
-            location,
-            thread.comments.len()
-        )
+        format!("{}  {} comments", location, thread.comments.len())
     } else {
-        format!("{}  {}", thread.path, location)
+        location.to_string()
     }
 }
