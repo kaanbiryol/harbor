@@ -281,7 +281,7 @@ pub(crate) fn render_pull_request_row(
                                 .items_center()
                                 .gap_2()
                                 .text_color(color::text_secondary())
-                                .child(div().min_w_0().truncate().child(metadata_label))
+                                .child(div().min_w_0().flex_1().truncate().child(metadata_label))
                                 .when(has_merge_conflict, |element| {
                                     element.child(render_conflict_metadata())
                                 }),
