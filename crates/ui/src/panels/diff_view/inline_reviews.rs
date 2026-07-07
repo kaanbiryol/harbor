@@ -297,6 +297,7 @@ pub(super) fn render_review_thread_inline(
                                 render_review_comment_inline(ReviewCommentRenderState::new(
                                     comment,
                                     index > 0,
+                                    index + 1 < thread.comments.len(),
                                     is_resolved,
                                     &comments,
                                 ))
@@ -318,6 +319,7 @@ pub(super) fn render_review_thread_inline(
                                 render_review_comment_inline(ReviewCommentRenderState::new(
                                     comment,
                                     index > 0,
+                                    index + 1 < thread.comments.len(),
                                     is_resolved,
                                     &comments,
                                 ))
@@ -421,12 +423,6 @@ fn render_hidden_review_comments_notice(
     div()
         .mt_2()
         .ml(px(28.0))
-        .border_l_1()
-        .border_color(if is_resolved {
-            color::border_subtle()
-        } else {
-            color::border()
-        })
         .pl_2()
         .py_1()
         .text_xs()

@@ -87,6 +87,7 @@ fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
 
 fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
     match kind {
+        PullRequestRowSignalKind::MergeConflict => Octicon::Alert,
         PullRequestRowSignalKind::ReviewApproved => Octicon::ThumbsUp,
         PullRequestRowSignalKind::ReviewChangesRequestedThreads => Octicon::CommentDiscussion,
         PullRequestRowSignalKind::ReviewNeeded => Octicon::Eye,
@@ -96,7 +97,10 @@ fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
 
 fn row_signal_tone(kind: PullRequestRowSignalKind) -> PullRequestRowSignalTone {
     match kind {
-        PullRequestRowSignalKind::ReviewChangesRequestedThreads => PullRequestRowSignalTone::Danger,
+        PullRequestRowSignalKind::MergeConflict
+        | PullRequestRowSignalKind::ReviewChangesRequestedThreads => {
+            PullRequestRowSignalTone::Danger
+        }
         PullRequestRowSignalKind::ReviewNeeded | PullRequestRowSignalKind::UnresolvedThreads => {
             PullRequestRowSignalTone::Warning
         }
@@ -161,21 +165,6 @@ fn pull_request_metadata_label(pr: &PullRequest) -> String {
         .unwrap_or_else(|| format!("by {}", pr.author))
 }
 
-fn render_conflict_metadata() -> impl IntoElement {
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap_1()
-        .text_color(color::danger())
-        .child(
-            Icon::new(Octicon::Alert)
-                .xsmall()
-                .text_color(color::danger()),
-        )
-        .child("conflict")
-}
-
 pub(crate) fn render_pull_request_row(
     index: usize,
     pr: &PullRequest,
@@ -188,7 +177,6 @@ pub(crate) fn render_pull_request_row(
     let is_draft = pr.is_draft;
     let check_indicator = pull_request_check_indicator(pr.checks_summary);
     let metadata_label = pull_request_metadata_label(pr);
-    let has_merge_conflict = pr.merge_state == Some(MergeState::Dirty);
     let rail_color = row_rail_color(pull_request_row_rail_tone(pr));
 
     div()
@@ -281,10 +269,7 @@ pub(crate) fn render_pull_request_row(
                                 .items_center()
                                 .gap_2()
                                 .text_color(color::text_secondary())
-                                .child(div().min_w_0().flex_1().truncate().child(metadata_label))
-                                .when(has_merge_conflict, |element| {
-                                    element.child(render_conflict_metadata())
-                                }),
+                                .child(div().min_w_0().flex_1().truncate().child(metadata_label)),
                         )
                         .child(
                             div()

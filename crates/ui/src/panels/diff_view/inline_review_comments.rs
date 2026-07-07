@@ -35,6 +35,7 @@ pub(in crate::panels::diff_view) struct ReviewCommentListRenderState<'a> {
 pub(super) struct ReviewCommentRenderState<'a> {
     comment: &'a ReviewComment,
     is_reply: bool,
+    show_thread_rail: bool,
     thread_resolved: bool,
     ui_state: ReviewCommentUiState,
     review_comment_edit_input: Entity<InputState>,
@@ -60,6 +61,7 @@ impl<'a> ReviewCommentRenderState<'a> {
     pub(super) fn new(
         comment: &'a ReviewComment,
         is_reply: bool,
+        show_thread_rail: bool,
         thread_resolved: bool,
         list_state: &ReviewCommentListRenderState<'a>,
     ) -> Self {
@@ -85,6 +87,7 @@ impl<'a> ReviewCommentRenderState<'a> {
         Self {
             comment,
             is_reply,
+            show_thread_rail,
             thread_resolved,
             ui_state,
             review_comment_edit_input: list_state.review_comment_edit_input.clone(),
@@ -102,6 +105,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
     let ReviewCommentRenderState {
         comment,
         is_reply,
+        show_thread_rail,
         thread_resolved,
         ui_state,
         review_comment_edit_input,
@@ -132,7 +136,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
     } else {
         color::text_secondary()
     };
-    let reply_rail_color = if thread_resolved {
+    let thread_rail_color = if thread_resolved {
         color::border_subtle()
     } else {
         color::border()
@@ -140,18 +144,14 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
 
     div()
         .pt_2()
-        .when(is_reply, |element| {
-            element
-                .mt_1()
-                .ml(px(28.0))
-                .border_l_1()
-                .border_color(reply_rail_color)
-                .pl_2()
-        })
+        .when(is_reply, |element| element.mt_1().ml(px(28.0)))
         .flex()
-        .items_start()
         .gap_2()
-        .child(render_review_comment_avatar(comment))
+        .child(render_review_comment_gutter(
+            comment,
+            show_thread_rail,
+            thread_rail_color,
+        ))
         .child(
             div()
                 .min_w_0()
@@ -262,6 +262,30 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                 }),
         )
         .into_any_element()
+}
+
+fn render_review_comment_gutter(
+    comment: &ReviewComment,
+    show_thread_rail: bool,
+    rail_color: gpui::Rgba,
+) -> impl IntoElement {
+    div()
+        .relative()
+        .min_h(px(28.0))
+        .w(px(20.0))
+        .flex_none()
+        .child(render_review_comment_avatar(comment))
+        .when(show_thread_rail, |element| {
+            element.child(
+                div()
+                    .absolute()
+                    .top(px(24.0))
+                    .bottom(px(-8.0))
+                    .left(px(9.0))
+                    .w(px(2.0))
+                    .bg(rail_color),
+            )
+        })
 }
 
 fn render_review_comment_body(comment_id: &str, body: &str, color: gpui::Rgba) -> impl IntoElement {

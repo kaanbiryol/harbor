@@ -1,4 +1,4 @@
-use harbor_domain::{CheckConclusion, CheckStatus, ReviewDecision};
+use harbor_domain::{CheckConclusion, CheckStatus, MergeState, ReviewDecision};
 
 use super::*;
 use crate::test_fixtures::{check_run, pull_request};
@@ -68,6 +68,22 @@ fn shows_unresolved_threads_without_no_review_noise() {
         vec![(
             PullRequestRowSignalKind::UnresolvedThreads,
             Some("2".to_string())
+        )]
+    );
+}
+
+#[test]
+fn merge_conflict_uses_row_signal_badge() {
+    let mut pr = pull_request();
+    pr.merge_state = Some(MergeState::Dirty);
+
+    let signals = visible_pull_request_row_signals(&pr);
+
+    assert_eq!(
+        signal_summary(&signals),
+        vec![(
+            PullRequestRowSignalKind::MergeConflict,
+            Some("conflict".to_string())
         )]
     );
 }

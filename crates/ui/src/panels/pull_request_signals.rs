@@ -22,6 +22,7 @@ pub(crate) enum PullRequestRowRailTone {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PullRequestRowSignalKind {
+    MergeConflict,
     ReviewApproved,
     ReviewChangesRequestedThreads,
     ReviewNeeded,
@@ -133,6 +134,13 @@ pub(crate) fn visible_pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequ
 
 fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
     let mut signals = Vec::new();
+
+    if pr.merge_state == Some(MergeState::Dirty) {
+        signals.push(PullRequestRowSignal::with_label(
+            PullRequestRowSignalKind::MergeConflict,
+            "conflict",
+        ));
+    }
 
     match pr.review_decision {
         Some(ReviewDecision::ChangesRequested) => signals.push(PullRequestRowSignal::with_label(
