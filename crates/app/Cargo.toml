@@ -21,3 +21,6 @@ rustls.workspace = true
 rust-embed = { version = "8.11", features = ["include-exclude"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa.workspace = true

@@ -2835,6 +2835,7 @@ dependencies = [
 name = "harbor-app"
 version = "0.1.0"
 dependencies = [
+ "cocoa 0.26.0",
  "gpui",
  "gpui-component",
  "gpui-component-assets",

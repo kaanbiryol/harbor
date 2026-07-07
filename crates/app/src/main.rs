@@ -1,3 +1,4 @@
+mod app_icon;
 mod assets;
 
 use assets::Assets;
@@ -14,6 +15,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(Assets)
         .run(move |cx| {
+            app_icon::install();
             let http_client = reqwest_client::ReqwestClient::user_agent("harbor")
                 .expect("failed to initialize GPUI HTTP client");
             cx.set_http_client(Arc::new(http_client));
