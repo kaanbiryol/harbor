@@ -1,5 +1,5 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt};
+use gpui_component::{Icon, Sizable, tooltip::Tooltip};
 use harbor_domain::{ChecksSummary, MergeState, PullRequest, ReviewDecision};
 
 use crate::{
@@ -51,38 +51,41 @@ pub(crate) fn render_merge_state(state: Option<MergeState>) -> impl IntoElement 
 }
 
 fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
-    let has_label = signal.label.is_some();
     let (text_color, border_color, background_color) =
         row_signal_tone_colors(row_signal_tone(signal.kind));
+    let tooltip = row_signal_tooltip(&signal);
 
     div()
+        .id(row_signal_id(signal.kind))
         .flex_none()
         .h(px(24.))
-        .min_w(px(24.))
-        .max_w(px(96.))
+        .w(px(24.))
         .flex()
         .items_center()
         .justify_center()
-        .gap_1()
         .rounded_xs()
-        .px_1()
-        .text_xs()
-        .font_medium()
+        .border_1()
+        .border_color(border_color)
+        .bg(background_color)
         .text_color(text_color)
-        .when(has_label, |element| {
-            element
-                .border_1()
-                .border_color(border_color)
-                .bg(background_color)
-        })
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .child(
             Icon::new(row_signal_icon(signal.kind))
                 .xsmall()
                 .text_color(text_color),
         )
-        .when_some(signal.label, |element, label| {
-            element.child(div().truncate().child(label))
-        })
+}
+
+fn row_signal_id(kind: PullRequestRowSignalKind) -> &'static str {
+    match kind {
+        PullRequestRowSignalKind::MergeConflict => "pr-signal-merge-conflict",
+        PullRequestRowSignalKind::ReviewApproved => "pr-signal-review-approved",
+        PullRequestRowSignalKind::ReviewChangesRequestedThreads => {
+            "pr-signal-review-changes-requested"
+        }
+        PullRequestRowSignalKind::ReviewNeeded => "pr-signal-review-needed",
+        PullRequestRowSignalKind::UnresolvedThreads => "pr-signal-unresolved-threads",
+    }
 }
 
 fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
@@ -92,6 +95,25 @@ fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
         PullRequestRowSignalKind::ReviewChangesRequestedThreads => Octicon::CommentDiscussion,
         PullRequestRowSignalKind::ReviewNeeded => Octicon::Eye,
         PullRequestRowSignalKind::UnresolvedThreads => Octicon::CommentDiscussion,
+    }
+}
+
+fn row_signal_tooltip(signal: &PullRequestRowSignal) -> String {
+    match signal.kind {
+        PullRequestRowSignalKind::MergeConflict => "Merge conflict".to_string(),
+        PullRequestRowSignalKind::ReviewApproved => "Review approved".to_string(),
+        PullRequestRowSignalKind::ReviewChangesRequestedThreads => signal
+            .label
+            .as_deref()
+            .filter(|label| label.chars().all(|character| character.is_ascii_digit()))
+            .map(|count| format!("{count} unresolved review threads with changes requested"))
+            .unwrap_or_else(|| "Changes requested".to_string()),
+        PullRequestRowSignalKind::ReviewNeeded => "Review required".to_string(),
+        PullRequestRowSignalKind::UnresolvedThreads => signal
+            .label
+            .as_deref()
+            .map(|count| format!("{count} unresolved review threads"))
+            .unwrap_or_else(|| "Unresolved review threads".to_string()),
     }
 }
 
