@@ -493,7 +493,7 @@ pub(super) fn repository_pull_requests_query(
     )
 }
 
-pub(super) const REPOSITORY_PAGE_SIZE: usize = 100;
-pub(super) const REPOSITORY_PAGE_SIZE_QUERY: &str = "100";
+pub(super) const REPOSITORY_PAGE_SIZE: usize = 10;
+pub(super) const REPOSITORY_PAGE_SIZE_QUERY: &str = "10";
 pub(super) const REVIEW_COMMENT_PAGE_SIZE: usize = 100;
 pub(super) const REVIEW_COMMENT_PAGE_SIZE_QUERY: &str = "100";

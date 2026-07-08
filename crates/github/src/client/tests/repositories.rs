@@ -31,7 +31,7 @@ fn gets_user_repositories_endpoint() {
                 "affiliation".to_string(),
                 "owner,collaborator,organization_member".to_string()
             ),
-            ("per_page".to_string(), "100".to_string()),
+            ("per_page".to_string(), "10".to_string()),
             ("sort".to_string(), "updated".to_string()),
         ]
     );

@@ -279,7 +279,7 @@ async fn refresh_repository_store(
         Ok(repository_list) => {
             if repository_list.possibly_limited {
                 repository_notice = Some(
-                    "Showing latest 100 GitHub repositories. Type owner/repo to open another repository."
+                    "Showing latest 10 GitHub repositories. Type owner/repo to open another repository."
                         .to_string(),
                 );
             }
