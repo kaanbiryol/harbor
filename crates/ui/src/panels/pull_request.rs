@@ -1,6 +1,6 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{Icon, Sizable, tooltip::Tooltip};
-use harbor_domain::{ChecksSummary, MergeState, PullRequest, ReviewDecision};
+use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState, ReviewDecision};
 
 use crate::{
     date_time::month_day_label,
@@ -187,6 +187,14 @@ fn pull_request_metadata_label(pr: &PullRequest) -> String {
         .unwrap_or_else(|| format!("by {}", pr.author))
 }
 
+fn pull_request_state_pill(state: PullRequestState) -> Option<(&'static str, Tone)> {
+    match state {
+        PullRequestState::Open => None,
+        PullRequestState::Closed => Some(("closed", Tone::Neutral)),
+        PullRequestState::Merged => Some(("merged", Tone::Success)),
+    }
+}
+
 pub(crate) fn render_pull_request_row(
     index: usize,
     pr: &PullRequest,
@@ -291,6 +299,12 @@ pub(crate) fn render_pull_request_row(
                                 .items_center()
                                 .gap_2()
                                 .text_color(color::text_secondary())
+                                .when_some(
+                                    pull_request_state_pill(pr.state),
+                                    |element, (label, tone)| {
+                                        element.child(super::render_status_pill(label, tone))
+                                    },
+                                )
                                 .child(div().min_w_0().flex_1().truncate().child(metadata_label)),
                         )
                         .child(
@@ -304,4 +318,30 @@ pub(crate) fn render_pull_request_row(
                 ),
         )
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_pull_request_rows_do_not_show_state_pill() {
+        assert_eq!(pull_request_state_pill(PullRequestState::Open), None);
+    }
+
+    #[test]
+    fn closed_pull_request_rows_show_closed_state_pill() {
+        assert_eq!(
+            pull_request_state_pill(PullRequestState::Closed),
+            Some(("closed", Tone::Neutral))
+        );
+    }
+
+    #[test]
+    fn merged_pull_request_rows_show_merged_state_pill() {
+        assert_eq!(
+            pull_request_state_pill(PullRequestState::Merged),
+            Some(("merged", Tone::Success))
+        );
+    }
 }
