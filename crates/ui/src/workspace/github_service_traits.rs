@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use harbor_domain::{
     CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
-    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{GitHubRateLimitStatus, RepositoryList, Result, SubmitPullRequestReviewEvent};
 use harbor_sync::PullRequestInboxSource;
@@ -94,6 +94,21 @@ pub(crate) trait GitHubPullRequestDetailApi: Send + Sync {
 
 #[async_trait]
 pub(crate) trait GitHubWorkflowApi: Send + Sync {
+    async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>>;
+
+    async fn list_repository_workflow_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<WorkflowRun>>;
+
+    async fn list_workflow_runs_for_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+    ) -> Result<Vec<WorkflowRun>>;
+
     async fn list_workflow_jobs_for_run(
         &self,
         owner: &str,

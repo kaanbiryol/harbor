@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
-use harbor_domain::{RepoId, ReviewThreadState};
+use harbor_domain::{RepoId, ReviewThreadState, Workflow, WorkflowState};
 use harbor_github::ConditionalFetch;
 
 use crate::{
     actions::PanelTab,
-    test_fixtures::{patched_diff_file, pull_request, review_thread},
+    test_fixtures::{patched_diff_file, pull_request, review_thread, test_time, workflow_run},
     workspace::github_service::test_support::FakeGitHubApi,
 };
 
@@ -122,4 +122,61 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
             "list_review_threads"
         ]
     );
+}
+
+#[gpui::test]
+async fn actions_tab_loads_repository_workflows_and_runs(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let repository = RepoId::new("acme", "app");
+    let workflow = Workflow {
+        id: 9,
+        name: "CI".to_string(),
+        path: ".github/workflows/ci.yml".to_string(),
+        state: WorkflowState::Active,
+        html_url: "https://github.com/acme/app/blob/main/.github/workflows/ci.yml".to_string(),
+        badge_url: None,
+        created_at: test_time(),
+        updated_at: test_time(),
+    };
+    let run = workflow_run();
+    api.push_workflows(Ok(vec![workflow.clone()]));
+    api.push_repository_workflow_runs(Ok(vec![run.clone()]));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state.select_repository(repository.clone());
+        view.select_panel_tab(PanelTab::Actions, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        api.calls(),
+        vec!["list_workflows", "list_repository_workflow_runs"]
+    );
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.repository_actions_state.workflows(), &[workflow]);
+        assert_eq!(view.repository_actions_state.workflow_runs(), &[run]);
+    });
+
+    api.push_workflow_runs_for_workflow(Ok(Vec::new()));
+    view_entity.update(cx, |view, cx| {
+        view.select_repository_actions_workflow(Some(9), cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        api.calls(),
+        vec![
+            "list_workflows",
+            "list_repository_workflow_runs",
+            "list_workflow_runs_for_workflow"
+        ]
+    );
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(
+            view.repository_actions_state.selected_workflow_id(),
+            Some(9)
+        );
+        assert!(view.repository_actions_state.workflow_runs().is_empty());
+    });
 }

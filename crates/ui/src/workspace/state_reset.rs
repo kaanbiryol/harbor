@@ -107,6 +107,10 @@ impl AppView {
             item_ix: 0,
             offset_in_item: px(0.0),
         });
+        self.actions_workflow_list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
         self.actions_list_state.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
@@ -116,7 +120,9 @@ impl AppView {
     pub(super) fn clear_authenticated_github_content(&mut self) {
         self.tasks.clear_pull_request_list_task();
         self.tasks.clear_pull_request_detail_tasks();
+        self.tasks.clear_repository_actions_tasks();
         self.repository_state.clear_visible_repositories();
+        self.repository_actions_state.clear();
         self.repository_state.finish_loading();
         self.pull_request_inbox.reset_load();
         self.pull_request_inbox.clear_page_info();

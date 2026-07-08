@@ -6,6 +6,8 @@ mod inbox;
 mod notification;
 #[path = "state/repository.rs"]
 mod repository;
+#[path = "state/repository_actions.rs"]
+mod repository_actions;
 #[path = "state/review_composer.rs"]
 mod review_composer;
 #[path = "state/review_runtime.rs"]
@@ -23,6 +25,7 @@ pub(crate) use detail::{PullRequestDetailLoadedState, PullRequestDetailUiState};
 pub(crate) use inbox::{PullRequestInboxState, PullRequestRowEnrichmentKey};
 pub(crate) use notification::NotificationState;
 pub(crate) use repository::RepositoryUiState;
+pub(crate) use repository_actions::RepositoryActionsUiState;
 #[cfg(test)]
 pub(crate) use review_composer::ReviewComposerMode;
 pub(crate) use review_composer::ReviewComposerState;

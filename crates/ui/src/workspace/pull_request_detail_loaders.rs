@@ -147,6 +147,10 @@ impl AppView {
     }
 
     pub(super) fn load_active_panel_data_if_needed(&mut self, cx: &mut Context<Self>) {
+        if self.active_tab == PanelTab::Actions {
+            self.load_repository_actions_if_needed(cx);
+        }
+
         let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };

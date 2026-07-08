@@ -103,8 +103,23 @@ impl AppView {
             .current_pull_request_inbox_key()
             .as_ref()
             .is_some_and(|current_key| current_key == &key);
+        let same_repository = self.repository_state.configured_repo() == Some(&repo);
 
         self.cache_current_pull_request_inbox_snapshot();
+        self.repository_actions_state
+            .reset_for_repository(repo.clone());
+        if !same_repository {
+            self.tasks.clear_repository_actions_tasks();
+            self.actions_workflow_list_state
+                .scroll_to(gpui::ListOffset {
+                    item_ix: 0,
+                    offset_in_item: gpui::px(0.0),
+                });
+            self.actions_list_state.scroll_to(gpui::ListOffset {
+                item_ix: 0,
+                offset_in_item: gpui::px(0.0),
+            });
+        }
 
         if !same_inbox {
             self.reset_pull_request_filters();

@@ -343,6 +343,28 @@ pub enum WorkflowConclusion {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum WorkflowState {
+    Active,
+    DisabledManually,
+    DisabledInactivity,
+    DisabledFork,
+    Deleted,
+    Unknown(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Workflow {
+    pub id: u64,
+    pub name: String,
+    pub path: String,
+    pub state: WorkflowState,
+    pub html_url: String,
+    pub badge_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowRun {
     pub id: u64,
     pub workflow_id: Option<u64>,
@@ -357,6 +379,14 @@ pub struct WorkflowRun {
     pub html_url: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub run_number: Option<u64>,
+    #[serde(default)]
+    pub run_attempt: Option<u64>,
+    #[serde(default)]
+    pub actor_login: Option<String>,
+    #[serde(default)]
+    pub run_started_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

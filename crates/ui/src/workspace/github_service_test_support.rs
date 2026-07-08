@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use harbor_domain::{
     CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
-    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, WorkflowJob, WorkflowRun,
+    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
@@ -42,6 +42,9 @@ pub(crate) struct FakeGitHubApi {
     mark_file_viewed_results: FakeQueue<()>,
     unmark_file_viewed_results: FakeQueue<()>,
     check_runs: FakeQueue<Vec<CheckRun>>,
+    workflows: FakeQueue<Vec<Workflow>>,
+    repository_workflow_runs: FakeQueue<Vec<WorkflowRun>>,
+    workflow_runs_for_workflow: FakeQueue<Vec<WorkflowRun>>,
     workflow_runs: FakeQueue<Vec<WorkflowRun>>,
     workflow_jobs: FakeQueue<Vec<WorkflowJob>>,
     workflow_logs: FakeQueue<String>,
@@ -127,6 +130,18 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_workflow_runs(&self, result: Result<Vec<WorkflowRun>>) {
         push_result(&self.workflow_runs, result);
+    }
+
+    pub(crate) fn push_workflows(&self, result: Result<Vec<Workflow>>) {
+        push_result(&self.workflows, result);
+    }
+
+    pub(crate) fn push_repository_workflow_runs(&self, result: Result<Vec<WorkflowRun>>) {
+        push_result(&self.repository_workflow_runs, result);
+    }
+
+    pub(crate) fn push_workflow_runs_for_workflow(&self, result: Result<Vec<WorkflowRun>>) {
+        push_result(&self.workflow_runs_for_workflow, result);
     }
 
     pub(crate) fn push_current_user(&self, result: Result<String>) {
@@ -356,6 +371,36 @@ impl GitHubPullRequestDetailApi for FakeGitHubApi {
 
 #[async_trait]
 impl GitHubWorkflowApi for FakeGitHubApi {
+    async fn list_workflows(&self, _owner: &str, _repo: &str) -> Result<Vec<Workflow>> {
+        self.record_call("list_workflows");
+        pop_result(&self.workflows, "list_workflows")
+    }
+
+    async fn list_repository_workflow_runs(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.record_call("list_repository_workflow_runs");
+        pop_result(
+            &self.repository_workflow_runs,
+            "list_repository_workflow_runs",
+        )
+    }
+
+    async fn list_workflow_runs_for_workflow(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _workflow_id: u64,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.record_call("list_workflow_runs_for_workflow");
+        pop_result(
+            &self.workflow_runs_for_workflow,
+            "list_workflow_runs_for_workflow",
+        )
+    }
+
     async fn list_workflow_jobs_for_run(
         &self,
         _owner: &str,

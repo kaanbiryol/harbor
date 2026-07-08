@@ -14,8 +14,9 @@ use super::{
     notifications::NativeNotificationSink,
     state::{
         NotificationState, PullRequestDetailUiState, PullRequestInboxState,
-        PullRequestSelectionState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
-        SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+        PullRequestSelectionState, RepositoryActionsUiState, RepositoryUiState,
+        ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
+        WorkspaceTasks,
     },
 };
 
@@ -166,6 +167,7 @@ impl AppView {
             auth_switch_status: None,
             tasks: WorkspaceTasks::default(),
             repository_state: RepositoryUiState::new(repository_search_input, start_startup_tasks),
+            repository_actions_state: RepositoryActionsUiState::new(),
             detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
             review_state: ReviewRuntimeState::new(
                 pull_request_reviews,
@@ -196,6 +198,11 @@ impl AppView {
             diff_list_items: Vec::new(),
             review_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             checks_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+            actions_workflow_list_state: ListState::new(
+                0,
+                ListAlignment::Top,
+                px(PANEL_LIST_OVERDRAW),
+            ),
             actions_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             selection_state: PullRequestSelectionState::default(),
             active_tab: PanelTab::Diff,

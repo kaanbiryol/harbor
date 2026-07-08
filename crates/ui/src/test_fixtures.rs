@@ -84,6 +84,10 @@ pub(crate) fn workflow_run() -> WorkflowRun {
         html_url: "https://github.com/acme/app/actions/runs/42".to_string(),
         created_at: test_time(),
         updated_at: test_time(),
+        run_number: Some(7),
+        run_attempt: Some(1),
+        actor_login: Some("octocat".to_string()),
+        run_started_at: Some(test_time()),
     }
 }
 

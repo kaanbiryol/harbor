@@ -1,4 +1,4 @@
-use harbor_domain::{CheckRun, WorkflowJob, WorkflowRun};
+use harbor_domain::{CheckRun, Workflow, WorkflowJob, WorkflowRun};
 use serde_json::json;
 
 use crate::{GitHubTransport, Result, dto};
@@ -9,6 +9,45 @@ impl<T> GitHubClient<T>
 where
     T: GitHubTransport,
 {
+    pub async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>> {
+        let path = format!("/repos/{owner}/{repo}/actions/workflows");
+        let response = self
+            .transport
+            .rest_get(&path, &[("per_page", "100")])
+            .await?;
+
+        dto::workflows_from_value(response)
+    }
+
+    pub async fn list_repository_workflow_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        let path = format!("/repos/{owner}/{repo}/actions/runs");
+        let response = self
+            .transport
+            .rest_get(&path, &[("per_page", "100")])
+            .await?;
+
+        dto::workflow_runs_from_value(response)
+    }
+
+    pub async fn list_workflow_runs_for_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+    ) -> Result<Vec<WorkflowRun>> {
+        let path = format!("/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs");
+        let response = self
+            .transport
+            .rest_get(&path, &[("per_page", "100")])
+            .await?;
+
+        dto::workflow_runs_from_value(response)
+    }
+
     pub async fn list_check_runs(
         &self,
         owner: &str,

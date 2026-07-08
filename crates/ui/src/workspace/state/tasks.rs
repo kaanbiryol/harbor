@@ -4,6 +4,7 @@ use gpui::Task;
 pub(crate) struct WorkspaceTasks {
     pr_list_task: Option<Task<()>>,
     pr_detail_tasks: Vec<Task<()>>,
+    repository_actions_tasks: Vec<Task<()>>,
     repository_task: Option<Task<()>>,
     local_task: Option<Task<()>>,
     external_app_availability_task: Option<Task<()>>,
@@ -16,12 +17,20 @@ impl WorkspaceTasks {
         self.pr_detail_tasks.clear();
     }
 
+    pub(crate) fn clear_repository_actions_tasks(&mut self) {
+        self.repository_actions_tasks.clear();
+    }
+
     pub(crate) fn set_pull_request_list_task(&mut self, task: Task<()>) {
         self.pr_list_task = Some(task);
     }
 
     pub(crate) fn push_pull_request_detail_task(&mut self, task: Task<()>) {
         self.pr_detail_tasks.push(task);
+    }
+
+    pub(crate) fn push_repository_actions_task(&mut self, task: Task<()>) {
+        self.repository_actions_tasks.push(task);
     }
 
     pub(crate) fn clear_pull_request_list_task(&mut self) {

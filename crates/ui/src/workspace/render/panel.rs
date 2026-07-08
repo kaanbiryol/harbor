@@ -5,9 +5,9 @@ use harbor_domain::PullRequest;
 use crate::{
     actions::PanelTab,
     panels::{
-        ActionsPanelRenderInput, DiffPanelRenderInput, ReviewPanelRenderInput,
-        render_actions_panel, render_checks_panel, render_diff_panel, render_logs_panel,
-        render_review_panel,
+        ActionsPanelRenderInput, CheckPanelRenderInput, DiffPanelRenderInput,
+        ReviewPanelRenderInput, render_actions_panel, render_checks_panel, render_diff_panel,
+        render_logs_panel, render_review_panel,
     },
     visual::color,
     workspace::AppView,
@@ -139,25 +139,48 @@ impl AppView {
                         )
                         .into_any_element(),
                         PanelTab::Checks => render_checks_panel(
-                            pr.map(|pr| pr.checks_summary).unwrap_or_default(),
-                            self.detail_state.check_runs(),
-                            self.collapsed_check_groups(),
-                            self.checks_filter(),
-                            self.detail_state.checks_loading(),
-                            self.detail_state.checks_error(),
-                            self.checks_list_state.clone(),
+                            CheckPanelRenderInput {
+                                summary: pr.map(|pr| pr.checks_summary).unwrap_or_default(),
+                                check_runs: self.detail_state.check_runs(),
+                                collapsed_groups: self.collapsed_check_groups(),
+                                active_filter: self.checks_filter(),
+                                is_loading: self.detail_state.checks_loading(),
+                                error: self.detail_state.checks_error(),
+                                list_state: self.checks_list_state.clone(),
+                            },
                             cx,
                         )
                         .into_any_element(),
                         PanelTab::Actions => render_actions_panel(
                             ActionsPanelRenderInput {
+                                repository: self.repository_state.configured_repo(),
                                 pr,
-                                workflow_runs: self.detail_state.workflow_runs(),
-                                is_loading: self.detail_state.workflows_loading(),
-                                error: self.detail_state.workflows_error(),
+                                repository_workflows: self.repository_actions_state.workflows(),
+                                selected_repository_workflow_id: self
+                                    .repository_actions_state
+                                    .selected_workflow_id(),
+                                repository_workflow_runs: self
+                                    .repository_actions_state
+                                    .workflow_runs(),
+                                repository_workflows_loading: self
+                                    .repository_actions_state
+                                    .workflows_loading(),
+                                repository_runs_loading: self
+                                    .repository_actions_state
+                                    .runs_loading(),
+                                repository_workflows_error: self
+                                    .repository_actions_state
+                                    .workflows_error(),
+                                repository_runs_error: self.repository_actions_state.runs_error(),
+                                selected_pr_workflow_runs: self.detail_state.workflow_runs(),
+                                selected_pr_workflows_loading: self
+                                    .detail_state
+                                    .workflows_loading(),
+                                selected_pr_workflows_error: self.detail_state.workflows_error(),
                                 action_error: self.action_runtime.workflow_action_error(),
                                 is_running_action: self.action_runtime.workflow_action_running(),
-                                list_state: self.actions_list_state.clone(),
+                                workflow_list_state: self.actions_workflow_list_state.clone(),
+                                run_list_state: self.actions_list_state.clone(),
                             },
                             cx,
                         )

@@ -3,6 +3,75 @@ use serde_json::json;
 use super::super::{GitHubClient, test_support::RecordingTransport};
 
 #[test]
+fn gets_repository_workflows() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_response
+        .lock()
+        .expect("get response mutex should not be poisoned") = Some(json!({
+        "total_count": 0,
+        "workflows": []
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.list_workflows("acme", "app")).unwrap();
+
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets.len(), 1);
+    assert_eq!(gets[0].0, "/repos/acme/app/actions/workflows");
+    assert_eq!(gets[0].1, vec![("per_page".to_string(), "100".to_string())]);
+}
+
+#[test]
+fn gets_repository_workflow_runs() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_response
+        .lock()
+        .expect("get response mutex should not be poisoned") = Some(json!({
+        "total_count": 0,
+        "workflow_runs": []
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.list_repository_workflow_runs("acme", "app")).unwrap();
+
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets.len(), 1);
+    assert_eq!(gets[0].0, "/repos/acme/app/actions/runs");
+    assert_eq!(gets[0].1, vec![("per_page".to_string(), "100".to_string())]);
+}
+
+#[test]
+fn gets_workflow_runs_for_workflow() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_response
+        .lock()
+        .expect("get response mutex should not be poisoned") = Some(json!({
+        "total_count": 0,
+        "workflow_runs": []
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.list_workflow_runs_for_workflow("acme", "app", 901)).unwrap();
+
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets.len(), 1);
+    assert_eq!(gets[0].0, "/repos/acme/app/actions/workflows/901/runs");
+    assert_eq!(gets[0].1, vec![("per_page".to_string(), "100".to_string())]);
+}
+
+#[test]
 fn posts_rerun_failed_jobs_endpoint() {
     let transport = RecordingTransport::default();
     let client = GitHubClient::new(transport.clone());

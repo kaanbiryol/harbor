@@ -71,16 +71,29 @@ impl CheckRunFilter {
     }
 }
 
+pub(crate) struct CheckPanelRenderInput<'a> {
+    pub(crate) summary: ChecksSummary,
+    pub(crate) check_runs: &'a [CheckRun],
+    pub(crate) collapsed_groups: &'a HashSet<String>,
+    pub(crate) active_filter: CheckRunFilter,
+    pub(crate) is_loading: bool,
+    pub(crate) error: Option<&'a str>,
+    pub(crate) list_state: ListState,
+}
+
 pub(crate) fn render_checks_panel(
-    summary: ChecksSummary,
-    check_runs: &[CheckRun],
-    collapsed_groups: &HashSet<String>,
-    active_filter: CheckRunFilter,
-    is_loading: bool,
-    error: Option<&str>,
-    list_state: ListState,
+    input: CheckPanelRenderInput<'_>,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
+    let CheckPanelRenderInput {
+        summary,
+        check_runs,
+        collapsed_groups,
+        active_filter,
+        is_loading,
+        error,
+        list_state,
+    } = input;
     let rows = check_panel_rows(check_runs, collapsed_groups, active_filter);
     sync_virtual_list_item_count(&list_state, rows.len());
 

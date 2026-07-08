@@ -99,6 +99,10 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.active_tab == PanelTab::Actions {
+            self.refresh_repository_actions(cx);
+        }
+
         if self.selected_pull_request_number().is_some() {
             self.refresh_selected_pull_request(cx);
         } else if let Some(repo) = self.repository_state.configured_repo_cloned() {

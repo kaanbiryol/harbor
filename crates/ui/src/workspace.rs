@@ -24,6 +24,7 @@ mod pull_request_detail_loaders;
 mod pull_request_filters;
 mod pull_request_inbox_refresh;
 mod render;
+mod repository_actions_loaders;
 mod repository_loaders;
 mod review_data_loaders;
 mod review_interactions;
@@ -72,8 +73,9 @@ pub(crate) use reviews::{
 };
 use state::{
     NotificationState, PullRequestDetailUiState, PullRequestInboxState,
-    PullRequestRowEnrichmentKey, PullRequestSelectionState, RepositoryUiState, ReviewComposerState,
-    ReviewRuntimeState, SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    PullRequestRowEnrichmentKey, PullRequestSelectionState, RepositoryActionsUiState,
+    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
+    WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
@@ -148,6 +150,7 @@ pub struct AppView {
     auth_switch_status: Option<AuthSwitchStatus>,
     tasks: WorkspaceTasks,
     repository_state: RepositoryUiState,
+    pub(crate) repository_actions_state: RepositoryActionsUiState,
     pub(crate) detail_state: PullRequestDetailUiState,
     pub(crate) review_state: ReviewRuntimeState,
     notification_state: NotificationState,
@@ -158,6 +161,7 @@ pub struct AppView {
     diff_list_items: Vec<DiffListItem>,
     review_list_state: ListState,
     checks_list_state: ListState,
+    actions_workflow_list_state: ListState,
     actions_list_state: ListState,
     selection_state: PullRequestSelectionState,
     active_tab: PanelTab,
