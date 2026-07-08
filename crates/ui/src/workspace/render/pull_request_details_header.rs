@@ -14,7 +14,7 @@ use crate::{
     },
     icons::Octicon,
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
-    visual::{Tone, color},
+    visual::{Tone, color, layout},
     workspace::{AppView, log_entity_update_error},
 };
 
@@ -44,7 +44,7 @@ impl AppView {
 
         div()
             .px_3()
-            .py_4()
+            .py_3()
             .border_1()
             .border_color(color::border())
             .bg(color::panel_background())
@@ -60,7 +60,7 @@ impl AppView {
                             .min_w_0()
                             .flex_initial()
                             .truncate()
-                            .text_size(px(15.0))
+                            .text_size(px(layout::PULL_REQUEST_TITLE_FONT_SIZE))
                             .font_medium()
                             .text_color(color::accent())
                             .cursor_pointer()
@@ -161,7 +161,7 @@ impl AppView {
             )
             .child(
                 div()
-                    .pt_4()
+                    .pt_3()
                     .flex()
                     .items_center()
                     .justify_between()

@@ -9,6 +9,17 @@ pub(crate) mod opacity {
     pub(crate) const DEEMPHASIZED_ITEM_HOVER: f32 = 0.9;
 }
 
+pub(crate) mod layout {
+    pub(crate) const PULL_REQUEST_INBOX_WIDTH: f32 = 320.0;
+    pub(crate) const PULL_REQUEST_DETAILS_WIDTH: f32 = 380.0;
+    pub(crate) const PULL_REQUEST_ROW_HEIGHT: f32 = 72.0;
+    pub(crate) const PULL_REQUEST_TITLE_FONT_SIZE: f32 = 15.0;
+    pub(crate) const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 36.0;
+    pub(crate) const CHANGED_FILE_TREE_BASE_INDENT: f32 = 12.0;
+    pub(crate) const CHANGED_FILE_TREE_DEPTH_INDENT: f32 = 18.0;
+    pub(crate) const CHANGED_FILE_FILTER_BAR_HEIGHT: f32 = 40.0;
+}
+
 pub(crate) mod color {
     use gpui::{Rgba, rgb};
 

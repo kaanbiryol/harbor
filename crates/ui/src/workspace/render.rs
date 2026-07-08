@@ -95,7 +95,7 @@ impl Render for AppView {
                 .min_h_0()
                 .min_w_0()
                 .overflow_hidden()
-                .gap_2()
+                .gap_3()
                 .p_2()
                 .when(self.pull_request_inbox.is_visible(), |element| {
                     element.child(self.render_inbox(cx))

@@ -8,11 +8,9 @@ use harbor_domain::DiffFile;
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
-    visual::{color, leading_truncated_path},
+    visual::{color, layout, leading_truncated_path},
     workspace::{AppView, ChangedFileFolderRow, ChangedFileRow},
 };
-
-const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 38.;
 
 pub(crate) fn render_changed_folder_row(
     folder: &ChangedFileFolderRow,
@@ -32,7 +30,7 @@ pub(crate) fn render_changed_folder_row(
 
     div()
         .id(format!("folder-row-{}", folder.path))
-        .h(px(CHANGED_FILE_TREE_ROW_HEIGHT))
+        .h(px(layout::CHANGED_FILE_TREE_ROW_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()
@@ -91,7 +89,7 @@ pub(crate) fn render_changed_file_row(
 
     div()
         .id(("file-row", index))
-        .h(px(CHANGED_FILE_TREE_ROW_HEIGHT))
+        .h(px(layout::CHANGED_FILE_TREE_ROW_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()
@@ -99,7 +97,7 @@ pub(crate) fn render_changed_file_row(
         .overflow_hidden()
         .pl(file_tree_padding(row.depth))
         .pr_2()
-        .gap_1()
+        .gap_2()
         .when(selected, |element| {
             element
                 .border_l_1()
@@ -161,7 +159,8 @@ pub(crate) fn render_changed_file_row(
 }
 
 fn file_tree_padding(depth: usize) -> gpui::Pixels {
-    px(10. + depth as f32 * 16.)
+    px(layout::CHANGED_FILE_TREE_BASE_INDENT
+        + depth as f32 * layout::CHANGED_FILE_TREE_DEPTH_INDENT)
 }
 
 fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {

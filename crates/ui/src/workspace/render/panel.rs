@@ -20,6 +20,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let view = cx.entity().clone();
+        let dense_content = matches!(self.active_tab, PanelTab::Diff | PanelTab::Logs);
 
         div()
             .flex_1()
@@ -96,7 +97,8 @@ impl AppView {
                     .flex_col()
                     .min_h_0()
                     .min_w_0()
-                    .p_3()
+                    .when(dense_content, |element| element.p_2())
+                    .when(!dense_content, |element| element.p_3())
                     .text_sm()
                     .child(match self.active_tab {
                         PanelTab::Diff => {

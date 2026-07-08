@@ -5,7 +5,11 @@ use gpui_component::{
     popover::Popover,
 };
 
-use crate::{icons::Octicon, visual::color, workspace::AppView};
+use crate::{
+    icons::Octicon,
+    visual::{color, layout},
+    workspace::AppView,
+};
 
 use super::{
     changed_file_filter_rows::{file_filter_list_height, render_file_filter_row},
@@ -38,7 +42,7 @@ impl AppView {
         };
 
         div()
-            .h(px(40.0))
+            .h(px(layout::CHANGED_FILE_FILTER_BAR_HEIGHT))
             .w_full()
             .px_2()
             .flex()

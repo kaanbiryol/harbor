@@ -9,7 +9,7 @@ use crate::{
         PullRequestRowRailTone, PullRequestRowSignal, PullRequestRowSignalKind,
         PullRequestRowSignalTone, pull_request_row_rail_tone, visible_pull_request_row_signals,
     },
-    visual::{Tone, color, opacity, tone_colors},
+    visual::{Tone, color, layout, opacity, tone_colors},
     workspace::AppView,
 };
 
@@ -203,7 +203,7 @@ pub(crate) fn render_pull_request_row(
 
     div()
         .id(("pr-row", index))
-        .h(px(76.))
+        .h(px(layout::PULL_REQUEST_ROW_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()

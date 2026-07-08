@@ -1,7 +1,10 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 use harbor_domain::PullRequest;
 
-use crate::{visual::color, workspace::AppView};
+use crate::{
+    visual::{color, layout},
+    workspace::AppView,
+};
 
 impl AppView {
     pub(super) fn render_details(
@@ -11,7 +14,7 @@ impl AppView {
     ) -> impl IntoElement {
         let Some(pr) = pr else {
             return div()
-                .w(px(360.))
+                .w(px(layout::PULL_REQUEST_DETAILS_WIDTH))
                 .flex()
                 .flex_col()
                 .min_h_0()
@@ -27,7 +30,7 @@ impl AppView {
         };
 
         div()
-            .w(px(360.))
+            .w(px(layout::PULL_REQUEST_DETAILS_WIDTH))
             .flex()
             .flex_col()
             .min_h_0()

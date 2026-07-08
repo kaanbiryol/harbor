@@ -1,13 +1,16 @@
 use gpui::{Context, IntoElement, div, prelude::*, px};
 
-use crate::{visual::color, workspace::AppView};
+use crate::{
+    visual::{color, layout},
+    workspace::AppView,
+};
 
 impl AppView {
     pub(super) fn render_inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let current_mode = self.pull_request_inbox.mode();
 
         div()
-            .w(px(320.))
+            .w(px(layout::PULL_REQUEST_INBOX_WIDTH))
             .flex()
             .flex_col()
             .min_h_0()
