@@ -116,7 +116,7 @@ impl AppView {
                                         }
                                         (count, None, Some(_)) => {
                                             format!(
-                                                "Loaded {count} repositories. Type owner/repo to open another repository"
+                                                "Loaded {count} cached repositories. Type owner/repo to open another repository"
                                             )
                                         }
                                         (count, None, None) => {
@@ -277,11 +277,11 @@ async fn refresh_repository_store(
     let mut repository_notice = None;
     let repository_error = match github_api.list_repositories().await {
         Ok(repository_list) => {
+            let refreshed_repository_count = repository_list.repositories.len();
             if repository_list.possibly_limited {
-                repository_notice = Some(
-                    "Showing latest 10 GitHub repositories. Type owner/repo to open another repository."
-                        .to_string(),
-                );
+                repository_notice = Some(format!(
+                    "Refreshed latest {refreshed_repository_count} repositories from GitHub. Cached repositories may also appear."
+                ));
             }
             store
                 .sync_repositories(&repository_list.repositories)
