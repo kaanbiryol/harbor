@@ -6,6 +6,7 @@ use std::borrow::Cow;
 #[folder = "../ui/assets"]
 #[include = "icons/**/*.svg"]
 #[include = "fonts/ibm-plex-sans/*"]
+#[include = "fonts/lilex/*"]
 struct HarborUiAssets;
 
 pub(crate) struct Assets;

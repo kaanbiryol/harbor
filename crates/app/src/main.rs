@@ -25,6 +25,7 @@ fn main() {
             Theme::change(ThemeMode::Dark, None, cx);
             let theme = Theme::global_mut(cx);
             theme.font_family = "IBM Plex Sans".into();
+            theme.mono_font_family = "Lilex".into();
             theme.radius = px(0.);
             theme.radius_lg = px(0.);
             bind_keys(cx);

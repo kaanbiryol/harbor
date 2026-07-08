@@ -116,4 +116,5 @@ script/fmt -- --check
 
 Harbor is licensed under the MIT License. See [LICENSE](LICENSE).
 
-Third-party dependencies are distributed under their own licenses.
+Third-party dependencies and bundled fonts are distributed under their own
+licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
