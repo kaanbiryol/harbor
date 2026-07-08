@@ -59,18 +59,7 @@ impl AppView {
         let mut body = Vec::new();
 
         match body_state {
-            PullRequestInboxBodyState::LoadingEmpty => {
-                body.push(
-                    div()
-                        .flex_1()
-                        .px_3()
-                        .py_3()
-                        .text_sm()
-                        .text_color(color::text_muted())
-                        .child(format!("Loading {}...", current_mode.status_label()))
-                        .into_any_element(),
-                );
-            }
+            PullRequestInboxBodyState::LoadingEmpty => {}
             PullRequestInboxBodyState::ErrorRows => {
                 body.push(
                     div()
