@@ -9,15 +9,15 @@ fn queries_repository_pull_request_filters() {
     for (filter, query) in [
         (
             PullRequestListFilter::Open,
-            "repo:acme/app is:pr is:open archived:false sort:updated-desc",
+            "repo:acme/app is:pr is:open archived:false sort:created-desc",
         ),
         (
             PullRequestListFilter::Closed,
-            "repo:acme/app is:pr is:closed archived:false sort:updated-desc",
+            "repo:acme/app is:pr is:closed archived:false sort:created-desc",
         ),
         (
             PullRequestListFilter::NeedsReview,
-            "repo:acme/app is:pr is:open archived:false review-requested:@me sort:updated-desc",
+            "repo:acme/app is:pr is:open archived:false review-requested:@me sort:created-desc",
         ),
     ] {
         let transport = RecordingTransport::default();
@@ -107,7 +107,7 @@ fn paginates_repository_pull_requests() {
     assert_eq!(calls.len(), 2);
     assert_eq!(
         calls[0].1["searchQuery"],
-        "repo:acme/app is:pr is:open archived:false sort:updated-desc"
+        "repo:acme/app is:pr is:open archived:false sort:created-desc"
     );
     assert_eq!(calls[0].1["after"], Value::Null);
     assert_eq!(calls[0].1["first"], 100);
@@ -148,7 +148,7 @@ fn counts_repository_pull_requests() {
     assert_eq!(
         calls[0].1,
         json!({
-            "searchQuery": "repo:acme/app is:pr is:open archived:false review-requested:@me sort:updated-desc",
+            "searchQuery": "repo:acme/app is:pr is:open archived:false review-requested:@me sort:created-desc",
         })
     );
 }
@@ -225,6 +225,16 @@ fn lists_light_pull_requests_with_conditional_validator() {
             .1
             .contains(&("per_page".to_string(), "100".to_string()))
     );
+    assert!(
+        calls[0]
+            .1
+            .contains(&("sort".to_string(), "created".to_string()))
+    );
+    assert!(
+        calls[0]
+            .1
+            .contains(&("direction".to_string(), "desc".to_string()))
+    );
 }
 
 #[test]
@@ -266,6 +276,16 @@ fn lists_light_pull_request_pages_with_twenty_rows() {
         calls[0]
             .1
             .contains(&("per_page".to_string(), "20".to_string()))
+    );
+    assert!(
+        calls[0]
+            .1
+            .contains(&("sort".to_string(), "created".to_string()))
+    );
+    assert!(
+        calls[0]
+            .1
+            .contains(&("direction".to_string(), "desc".to_string()))
     );
     assert!(calls[0].1.contains(&("page".to_string(), "2".to_string())));
 }

@@ -488,7 +488,7 @@ pub(super) fn repository_pull_requests_query(
     };
 
     format!(
-        "repo:{} is:pr {mode} sort:updated-desc",
+        "repo:{} is:pr {mode} sort:created-desc",
         repository.full_name()
     )
 }

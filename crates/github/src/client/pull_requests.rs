@@ -38,7 +38,12 @@ where
             .transport
             .rest_get(
                 &path,
-                &[("state", "open"), ("per_page", "50"), ("sort", "updated")],
+                &[
+                    ("state", "open"),
+                    ("per_page", "50"),
+                    ("sort", "created"),
+                    ("direction", "desc"),
+                ],
             )
             .await?;
 
@@ -163,7 +168,7 @@ where
         let first_page_query = [
             ("state", state),
             ("per_page", "100"),
-            ("sort", "updated"),
+            ("sort", "created"),
             ("direction", "desc"),
         ];
         let first_page = self
@@ -187,7 +192,7 @@ where
             let page_query = [
                 ("state", state),
                 ("per_page", "100"),
-                ("sort", "updated"),
+                ("sort", "created"),
                 ("direction", "desc"),
                 ("page", page_string.as_str()),
             ];
@@ -242,7 +247,7 @@ where
         let mut query = vec![
             ("state", state),
             ("per_page", page_size_string.as_str()),
-            ("sort", "updated"),
+            ("sort", "created"),
             ("direction", "desc"),
         ];
         if page > 1 {
