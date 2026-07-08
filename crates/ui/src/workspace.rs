@@ -40,14 +40,15 @@ mod workflow_log_loaders;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use gpui::{
-    Context, Entity, FocusHandle, ListState, ScrollStrategy, Subscription, UniformListScrollHandle,
+    Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
+    UniformListScrollHandle, px,
 };
 use gpui_component::input::InputState;
 use harbor_domain::{PullRequest, RepoId, WorkflowRun};
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
 use crate::actions::PanelTab;
-use crate::panels::{DiffListItem, workflow_run_failed};
+use crate::panels::{CheckRunFilter, DiffListItem, workflow_run_failed};
 
 pub(crate) use cache::{
     PullRequestDetailCacheKey, PullRequestDetailSnapshot, PullRequestInboxCacheKey,
@@ -154,6 +155,7 @@ pub struct AppView {
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
     owned_file_paths: HashSet<String>,
+    checks_filter: CheckRunFilter,
     action_runtime: ActionRuntimeState,
     status: String,
     _subscriptions: Vec<Subscription>,
@@ -180,6 +182,26 @@ impl AppView {
 
     pub(crate) fn collapsed_check_groups(&self) -> &HashSet<String> {
         &self.collapsed_check_groups
+    }
+
+    pub(crate) fn checks_filter(&self) -> CheckRunFilter {
+        self.checks_filter
+    }
+
+    pub(crate) fn set_checks_filter(&mut self, filter: CheckRunFilter, cx: &mut Context<Self>) {
+        let filter = if filter == CheckRunFilter::All || self.checks_filter == filter {
+            CheckRunFilter::All
+        } else {
+            filter
+        };
+
+        self.checks_filter = filter;
+        self.checks_list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
+        self.status = filter.status_message().to_string();
+        cx.notify();
     }
 
     pub(crate) fn toggle_check_group(&mut self, group_name: String, cx: &mut Context<Self>) {

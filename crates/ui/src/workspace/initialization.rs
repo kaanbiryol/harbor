@@ -4,7 +4,7 @@ use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandl
 use gpui_component::{ActiveTheme, input::InputState};
 use harbor_sync::{ActivityState, SyncPolicy};
 
-use crate::{actions::PanelTab, diff::parse_files_with_syntax};
+use crate::{actions::PanelTab, diff::parse_files_with_syntax, panels::CheckRunFilter};
 
 use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
@@ -216,6 +216,7 @@ impl AppView {
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
+            checks_filter: CheckRunFilter::All,
             action_runtime: ActionRuntimeState::default(),
             status,
             _subscriptions: subscriptions,

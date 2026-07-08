@@ -140,6 +140,7 @@ impl AppView {
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             self.detail_state.check_runs(),
                             self.collapsed_check_groups(),
+                            self.checks_filter(),
                             self.detail_state.checks_loading(),
                             self.detail_state.checks_error(),
                             self.checks_list_state.clone(),
