@@ -1,5 +1,6 @@
 mod app_icon;
 mod assets;
+mod fonts;
 
 use assets::Assets;
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
@@ -20,8 +21,10 @@ fn main() {
                 .expect("failed to initialize GPUI HTTP client");
             cx.set_http_client(Arc::new(http_client));
             gpui_component::init(cx);
+            fonts::install(cx).expect("failed to install bundled fonts");
             Theme::change(ThemeMode::Dark, None, cx);
             let theme = Theme::global_mut(cx);
+            theme.font_family = "IBM Plex Sans".into();
             theme.radius = px(0.);
             theme.radius_lg = px(0.);
             bind_keys(cx);

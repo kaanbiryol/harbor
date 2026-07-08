@@ -1,7 +1,7 @@
 use gpui::{Rgba, rgb};
 
 pub(crate) mod font {
-    pub(crate) const UI: &str = ".SystemUIFont";
+    pub(crate) const UI: &str = "IBM Plex Sans";
 }
 
 pub(crate) mod opacity {

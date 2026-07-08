@@ -5,6 +5,7 @@ use std::borrow::Cow;
 #[derive(RustEmbed)]
 #[folder = "../ui/assets"]
 #[include = "icons/**/*.svg"]
+#[include = "fonts/ibm-plex-sans/*"]
 struct HarborUiAssets;
 
 pub(crate) struct Assets;

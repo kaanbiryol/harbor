@@ -21,15 +21,17 @@ app_dir="$target_dir/Harbor.app"
 contents_dir="$app_dir/Contents"
 macos_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
+licenses_dir="$resources_dir/licenses"
 executable_path="$macos_dir/Harbor"
 zip_path="$target_dir/Harbor-${version}-macos.zip"
 
 cargo build -p harbor-app --bin harbor --release --locked
 
 rm -rf "$app_dir" "$zip_path"
-mkdir -p "$macos_dir" "$resources_dir"
+mkdir -p "$macos_dir" "$resources_dir" "$licenses_dir/ibm-plex-sans"
 cp "$repo_root/target/release/harbor" "$executable_path"
 cp "$repo_root/crates/app/assets/harbor.icns" "$resources_dir/harbor.icns"
+cp "$repo_root/crates/ui/assets/fonts/ibm-plex-sans/license.txt" "$licenses_dir/ibm-plex-sans/license.txt"
 chmod 755 "$executable_path"
 
 cat >"$contents_dir/Info.plist" <<PLIST
