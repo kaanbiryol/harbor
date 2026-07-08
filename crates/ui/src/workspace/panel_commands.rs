@@ -14,6 +14,51 @@ impl AppView {
         self.select_panel_tab(self.active_tab.next(), cx);
     }
 
+    pub(super) fn select_diff_panel(
+        &mut self,
+        _: &SelectDiffPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Diff, cx);
+    }
+
+    pub(super) fn select_review_panel(
+        &mut self,
+        _: &SelectReviewPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Review, cx);
+    }
+
+    pub(super) fn select_checks_panel(
+        &mut self,
+        _: &SelectChecksPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Checks, cx);
+    }
+
+    pub(super) fn select_actions_panel(
+        &mut self,
+        _: &SelectActionsPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Actions, cx);
+    }
+
+    pub(super) fn select_logs_panel(
+        &mut self,
+        _: &SelectLogsPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Logs, cx);
+    }
+
     pub(super) fn toggle_pull_request_inbox(
         &mut self,
         _: &TogglePullRequestInbox,
@@ -78,7 +123,43 @@ impl AppView {
         cx.notify();
     }
 
-    pub(super) fn close_panel(&mut self, _: &ClosePanel, _: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_pull_request_search(
+        &mut self,
+        _: &OpenPullRequestSearch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.current_repository().is_none() {
+            self.status = "Select a repository before searching pull requests".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.pull_request_inbox.set_visible(true);
+        self.pull_request_inbox_search_open = true;
+        self.repository_state.repository_switcher_open = false;
+        self.file_filter_popover_open = false;
+        self.review_action_comment_target = None;
+        self.pull_request_search_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+            input.focus(window, cx);
+        });
+        self.reset_pull_request_switcher_selection(cx);
+        self.status = "Pull request search opened".to_string();
+        cx.notify();
+    }
+
+    pub(super) fn close_panel(
+        &mut self,
+        _: &ClosePanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.settings_open {
+            self.close_settings(&CloseSettings, window, cx);
+            return;
+        }
+
         self.settings_open = false;
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
