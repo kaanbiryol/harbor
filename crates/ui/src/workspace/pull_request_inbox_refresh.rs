@@ -6,13 +6,14 @@ use crate::workspace::PullRequestInboxMode;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PullRequestInboxRefreshIntent {
     PreferCache,
+    SwitchMode,
     LightRefresh,
     ManualRefresh,
 }
 
 impl PullRequestInboxRefreshIntent {
     pub(super) fn uses_cache(self) -> bool {
-        self == Self::PreferCache
+        matches!(self, Self::PreferCache | Self::SwitchMode)
     }
 
     pub(super) fn resets_detail_state(self) -> bool {
@@ -24,11 +25,11 @@ impl PullRequestInboxRefreshIntent {
     }
 
     pub(super) fn prefetches_counts(self) -> bool {
-        self != Self::LightRefresh
+        matches!(self, Self::PreferCache | Self::ManualRefresh)
     }
 
     pub(super) fn refreshes_counts(self) -> bool {
-        self == Self::ManualRefresh
+        matches!(self, Self::PreferCache | Self::ManualRefresh)
     }
 }
 

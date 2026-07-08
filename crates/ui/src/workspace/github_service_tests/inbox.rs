@@ -159,12 +159,20 @@ async fn switching_inbox_mode_without_snapshot_does_not_reuse_visible_rows(
         assert_eq!(view.pull_request_inbox.total_count(), Some(1));
     });
     assert_eq!(api.light_pull_request_requests(), vec![(None, 10, false)]);
+    assert!(
+        !api.calls()
+            .iter()
+            .any(|call| call.as_str() == "count_repository_pull_requests")
+    );
 }
 
 #[gpui::test]
-async fn prefetches_inactive_inbox_counts_without_loading_items(cx: &mut TestAppContext) {
+async fn prefetches_all_inbox_counts_on_repository_load_without_loading_items(
+    cx: &mut TestAppContext,
+) {
     let api = Arc::new(FakeGitHubApi::default());
     let pull_request = pull_request();
+    api.push_pull_request_count(Ok(1));
     api.push_pull_request_count(Ok(4));
     api.push_pull_request_count(Ok(2));
     api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
@@ -181,6 +189,8 @@ async fn prefetches_inactive_inbox_counts_without_loading_items(cx: &mut TestApp
     cx.run_until_parked();
 
     view_entity.read_with(cx, |view, _| {
+        let open_key =
+            PullRequestInboxCacheKey::new(pull_request.repo.clone(), PullRequestInboxMode::Open);
         let closed_key =
             PullRequestInboxCacheKey::new(pull_request.repo.clone(), PullRequestInboxMode::Closed);
         let needs_review_key = PullRequestInboxCacheKey::new(
@@ -188,6 +198,7 @@ async fn prefetches_inactive_inbox_counts_without_loading_items(cx: &mut TestApp
             PullRequestInboxMode::NeedsReview,
         );
 
+        assert_eq!(view.pull_request_inbox.snapshot_count(&open_key), Some(1));
         assert_eq!(view.pull_request_inbox.snapshot_count(&closed_key), Some(4));
         assert_eq!(
             view.pull_request_inbox.snapshot_count(&needs_review_key),
@@ -207,7 +218,7 @@ async fn prefetches_inactive_inbox_counts_without_loading_items(cx: &mut TestApp
             .iter()
             .filter(|call| call.as_str() == "count_repository_pull_requests")
             .count(),
-        2
+        3
     );
     assert!(
         !calls

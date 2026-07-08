@@ -42,6 +42,20 @@ impl AppView {
         );
     }
 
+    pub(super) fn switch_pull_request_inbox_mode(
+        &mut self,
+        repo: RepoId,
+        mode: PullRequestInboxMode,
+        cx: &mut Context<Self>,
+    ) {
+        self.load_repository_pull_requests(
+            repo,
+            mode,
+            PullRequestInboxRefreshIntent::SwitchMode,
+            cx,
+        );
+    }
+
     pub(super) fn refresh_pull_requests(&mut self, repo: RepoId, cx: &mut Context<Self>) {
         self.load_repository_pull_requests(
             repo,

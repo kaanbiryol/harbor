@@ -19,7 +19,7 @@ impl AppView {
 
         let modes = PullRequestInboxMode::ALL
             .into_iter()
-            .filter(|mode| *mode != active_mode)
+            .filter(|mode| force || *mode != active_mode)
             .filter(|mode| {
                 force
                     || self

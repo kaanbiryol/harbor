@@ -251,7 +251,7 @@ impl AppView {
         }
 
         if let Some(repository) = self.repository_state.configured_repo_cloned() {
-            self.load_repository_pull_requests_from_cache(repository, mode, cx);
+            self.switch_pull_request_inbox_mode(repository, mode, cx);
         } else {
             self.pull_request_inbox.set_mode(mode);
             self.pull_requests.clear();
