@@ -82,6 +82,7 @@ impl AppView {
                         view.repository_state.repository_switcher_open = *open;
                         if *open {
                             view.pull_request_inbox_search_open = false;
+                            view.pull_request_filter_popover_open = false;
                             view.file_filter_popover_open = false;
                             view.status = "Repository search opened".to_string();
                             view.repository_state.repository_search_input.update(
@@ -196,6 +197,7 @@ impl AppView {
                                             );
                                             view.repository_state.repository_switcher_open = false;
                                             view.pull_request_inbox_search_open = false;
+                                            view.pull_request_filter_popover_open = false;
                                             cx.notify();
                                         });
                                         popover.update(cx, |popover, cx| {

@@ -393,6 +393,7 @@ impl AppView {
         self.review_action_comment_target = Some(target);
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
         self.file_filter_popover_open = false;
         self.review_action_comment_input.update(cx, |input, cx| {
             input.set_value("", window, cx);

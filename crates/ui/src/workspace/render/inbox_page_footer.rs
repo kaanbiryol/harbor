@@ -12,14 +12,19 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let loaded_count = self.pull_requests.len();
+        let visible_count = self.visible_pull_request_indices().len();
         let total_count = self
             .current_pull_request_inbox_key()
             .as_ref()
             .and_then(|key| self.pull_request_inbox.stored_count(key))
             .or_else(|| self.pull_request_inbox.total_count());
-        let count_label = match total_count {
-            Some(total_count) => format!("Showing {loaded_count} of {total_count}"),
-            None => format!("Showing {loaded_count}"),
+        let count_label = if self.has_active_pull_request_filters() {
+            format!("Showing {visible_count} of {loaded_count} loaded")
+        } else {
+            match total_count {
+                Some(total_count) => format!("Showing {loaded_count} of {total_count}"),
+                None => format!("Showing {loaded_count}"),
+            }
         };
         let load_more_error = self
             .pull_request_inbox

@@ -38,6 +38,11 @@ query HarborRepositoryPullRequests($searchQuery: String!, $first: Int!, $after: 
         updatedAt
         reviewDecision
         mergeStateStatus
+        assignees(first: 20) {
+          nodes {
+            login
+          }
+        }
       }
     }
   }

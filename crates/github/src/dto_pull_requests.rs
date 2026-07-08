@@ -26,6 +26,8 @@ struct ApiPullRequest {
     #[serde(default)]
     labels: Vec<ApiLabel>,
     #[serde(default)]
+    assignees: Vec<ApiUser>,
+    #[serde(default)]
     merged: Option<bool>,
     #[serde(default)]
     mergeable_state: Option<String>,
@@ -185,6 +187,8 @@ struct GraphQlPullRequestSearchNode {
     status_check_rollup: Option<GraphQlStatusCheckRollup>,
     #[serde(default)]
     labels: GraphQlNodes<GraphQlLabel>,
+    #[serde(default)]
+    assignees: GraphQlNodes<ApiUser>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -415,6 +419,11 @@ impl ApiPullRequest {
                     color: label.color,
                 })
                 .collect(),
+            assignees: self
+                .assignees
+                .into_iter()
+                .map(|assignee| assignee.login)
+                .collect(),
             checks_summary: ChecksSummary::default(),
             unresolved_threads: 0,
             created_at: self.created_at,
@@ -466,6 +475,13 @@ impl GraphQlPullRequestSearchNode {
                     name: label.name,
                     color: label.color,
                 })
+                .collect(),
+            assignees: self
+                .assignees
+                .nodes
+                .into_iter()
+                .flatten()
+                .map(|assignee| assignee.login)
                 .collect(),
             checks_summary: self
                 .status_check_rollup
@@ -667,6 +683,7 @@ mod tests {
                 "head": { "ref": "feature/list", "sha": "abc123" },
                 "base": { "ref": "main", "sha": "def456" },
                 "labels": [{ "name": "performance", "color": "34d399" }],
+                "assignees": [{ "login": "mona" }],
                 "mergeable_state": "clean",
                 "created_at": "2026-05-10T10:00:00Z"
             }
@@ -684,6 +701,7 @@ mod tests {
         assert_eq!(pulls[0].state, PullRequestState::Open);
         assert_eq!(pulls[0].merge_state, Some(MergeState::Clean));
         assert_eq!(pulls[0].labels[0].name, "performance");
+        assert_eq!(pulls[0].assignees, vec!["mona".to_string()]);
         assert_eq!(
             pulls[0].created_at.map(|time| time.to_rfc3339()),
             Some("2026-05-10T10:00:00+00:00".to_string())
@@ -747,6 +765,9 @@ mod tests {
                             },
                             "labels": {
                                 "nodes": [{ "name": "performance", "color": "34d399" }]
+                            },
+                            "assignees": {
+                                "nodes": [{ "login": "mona" }]
                             }
                         },
                         {
@@ -817,6 +838,7 @@ mod tests {
         assert_eq!(page.pull_requests[0].checks_summary.failed, 1);
         assert_eq!(page.pull_requests[0].checks_summary.pending, 1);
         assert_eq!(page.pull_requests[0].labels[0].name, "performance");
+        assert_eq!(page.pull_requests[0].assignees, vec!["mona".to_string()]);
         assert_eq!(
             page.pull_requests[0]
                 .created_at

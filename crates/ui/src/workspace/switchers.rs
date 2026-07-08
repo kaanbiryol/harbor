@@ -77,6 +77,9 @@ impl AppView {
                     .iter()
                     .enumerate()
                     .filter(|(_, pull_request)| &pull_request.repo == repository)
+                    .filter(|(_, pull_request)| {
+                        self.pull_request_matches_active_filters(pull_request)
+                    })
                     .filter(|(_, pull_request)| pull_request_matches_query(pull_request, &query))
                     .map(|(index, pull_request)| (index, pull_request.clone()))
                     .collect()
@@ -153,6 +156,7 @@ impl AppView {
         self.select_repository_choice_from_switcher(choice, cx);
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
         cx.notify();
     }
 
@@ -165,13 +169,18 @@ impl AppView {
             )
             .cloned()
         else {
-            self.status = "No pull requests match search".to_string();
+            self.status = if self.has_active_pull_request_filters() {
+                "No pull requests match filters".to_string()
+            } else {
+                "No pull requests match search".to_string()
+            };
             cx.notify();
             return;
         };
 
         self.select_pull_request(index, cx);
         self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
         cx.notify();
     }
 

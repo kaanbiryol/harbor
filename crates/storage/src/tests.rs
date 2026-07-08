@@ -657,6 +657,7 @@ fn pull_request(number: u64) -> PullRequest {
         review_decision: Some(ReviewDecision::ReviewRequired),
         merge_state: Some(MergeState::Clean),
         labels: Vec::new(),
+        assignees: Vec::new(),
         checks_summary: ChecksSummary::default(),
         unresolved_threads: 0,
         created_at: DateTime::from_timestamp(1_777_777_777, 0),

@@ -103,6 +103,8 @@ pub struct PullRequest {
     pub review_decision: Option<ReviewDecision>,
     pub merge_state: Option<MergeState>,
     pub labels: Vec<Label>,
+    #[serde(default)]
+    pub assignees: Vec<String>,
     pub checks_summary: ChecksSummary,
     pub unresolved_threads: usize,
     pub created_at: Option<DateTime<Utc>>,

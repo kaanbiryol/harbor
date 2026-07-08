@@ -21,6 +21,7 @@ mod pull_request_ci_loaders;
 mod pull_request_detail_cache_loader;
 mod pull_request_detail_content_loaders;
 mod pull_request_detail_loaders;
+mod pull_request_filters;
 mod pull_request_inbox_refresh;
 mod render;
 mod repository_loaders;
@@ -60,6 +61,9 @@ pub(crate) use changed_files::{
 };
 use external_apps::ExternalAppAvailability;
 use github_service::GitHubApi;
+pub(crate) use pull_request_filters::{
+    PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections, PullRequestFilters,
+};
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
@@ -160,6 +164,8 @@ pub struct AppView {
     pull_request_inbox: PullRequestInboxState,
     prefetch_inbox_counts: bool,
     pull_request_inbox_search_open: bool,
+    pull_request_filter_popover_open: bool,
+    pull_request_filters: PullRequestFilters,
     file_filter_popover_open: bool,
     review_action_comment_target: Option<ReviewActionCommentTarget>,
     review_action_comment_input: Entity<InputState>,
@@ -277,8 +283,10 @@ impl AppView {
         self.action_runtime.clear_pull_request_action_error();
         self.review_state.clear_submission_errors();
         self.sync_diff_list_items(cx);
-        self.pr_list_scroll
-            .scroll_to_item(index, ScrollStrategy::Center);
+        self.pr_list_scroll.scroll_to_item(
+            self.selected_pull_request_list_position(),
+            ScrollStrategy::Center,
+        );
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.reset_diff_list_scroll();
         self.reset_panel_list_scrolls();
@@ -301,6 +309,7 @@ impl AppView {
         } else {
             self.pull_request_inbox.set_mode(mode);
             self.pull_requests.clear();
+            self.reset_pull_request_filters();
             self.clear_changed_file_state();
             self.clear_workflow_state();
             self.clear_review_data_state();

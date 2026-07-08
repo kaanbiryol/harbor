@@ -58,6 +58,7 @@ impl AppView {
                                 if *open {
                                     view.repository_state.repository_switcher_open = false;
                                     view.pull_request_inbox_search_open = false;
+                                    view.pull_request_filter_popover_open = false;
                                 }
                                 cx.notify();
                             });

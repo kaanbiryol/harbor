@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range};
+use std::collections::HashMap;
 
 use gpui::Context;
 use harbor_domain::{MergeState, PullRequest};
@@ -12,14 +12,15 @@ use crate::workspace::{
 impl AppView {
     pub(crate) fn prefetch_visible_pull_request_row_enrichments(
         &mut self,
-        range: Range<usize>,
+        indices: impl IntoIterator<Item = usize>,
         cx: &mut Context<Self>,
     ) {
         let Some(inbox_key) = self.current_pull_request_inbox_key() else {
             return;
         };
+        let indices = indices.into_iter().collect::<Vec<_>>();
         let row_enrichment_requests =
-            self.visible_pull_request_row_enrichment_requests(inbox_key.clone(), range);
+            self.visible_pull_request_row_enrichment_requests(inbox_key.clone(), &indices);
         if row_enrichment_requests.is_empty() {
             return;
         }
@@ -70,12 +71,12 @@ impl AppView {
     fn visible_pull_request_row_enrichment_requests(
         &mut self,
         inbox_key: PullRequestInboxCacheKey,
-        range: Range<usize>,
+        indices: &[usize],
     ) -> Vec<PullRequestRowEnrichmentKey> {
         let mut keys = Vec::new();
 
-        for index in range {
-            let Some(pull_request) = self.pull_requests.get(index) else {
+        for index in indices {
+            let Some(pull_request) = self.pull_requests.get(*index) else {
                 continue;
             };
             if !should_prefetch_pull_request_row_enrichment(pull_request) {

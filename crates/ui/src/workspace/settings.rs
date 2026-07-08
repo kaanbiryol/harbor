@@ -63,6 +63,10 @@ impl AppView {
         self.settings_open = true;
         self.settings_section = SettingsSection::GitHub;
         self.github_auth_popover_open = false;
+        self.repository_state.repository_switcher_open = false;
+        self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
+        self.file_filter_popover_open = false;
         self.review_action_comment_target = None;
         if self.current_github_auth_source() == Some(GitHubAuthSource::OAuth) {
             self.probe_github_cli_availability(cx);

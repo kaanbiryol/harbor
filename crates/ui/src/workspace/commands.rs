@@ -10,9 +10,17 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.pull_requests.is_empty() {
-            let next = (self.selected_pull_request_index() + 1) % self.pull_requests.len();
+        let visible_indices = self.visible_pull_request_indices();
+        if !visible_indices.is_empty() {
+            let current_position = visible_indices
+                .iter()
+                .position(|index| *index == self.selected_pull_request_index())
+                .unwrap_or(visible_indices.len().saturating_sub(1));
+            let next = visible_indices[(current_position + 1) % visible_indices.len()];
             self.select_pull_request(next, cx);
+        } else if self.has_active_pull_request_filters() {
+            self.status = "No pull requests match filters".to_string();
+            cx.notify();
         } else {
             self.status = "No pull requests to select".to_string();
             cx.notify();
@@ -25,13 +33,21 @@ impl AppView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.pull_requests.is_empty() {
-            let previous = if self.selected_pull_request_index() == 0 {
-                self.pull_requests.len() - 1
+        let visible_indices = self.visible_pull_request_indices();
+        if !visible_indices.is_empty() {
+            let current_position = visible_indices
+                .iter()
+                .position(|index| *index == self.selected_pull_request_index())
+                .unwrap_or(0);
+            let previous_position = if current_position == 0 {
+                visible_indices.len() - 1
             } else {
-                self.selected_pull_request_index() - 1
+                current_position - 1
             };
-            self.select_pull_request(previous, cx);
+            self.select_pull_request(visible_indices[previous_position], cx);
+        } else if self.has_active_pull_request_filters() {
+            self.status = "No pull requests match filters".to_string();
+            cx.notify();
         } else {
             self.status = "No pull requests to select".to_string();
             cx.notify();
@@ -60,6 +76,7 @@ impl AppView {
             OpenSelectedPullRequestBehavior::ShowDetails { number, refresh } => {
                 self.repository_state.repository_switcher_open = false;
                 self.pull_request_inbox_search_open = false;
+                self.pull_request_filter_popover_open = false;
                 self.file_filter_popover_open = false;
                 self.review_action_comment_target = None;
                 self.pull_request_inbox.set_visible(false);

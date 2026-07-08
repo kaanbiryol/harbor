@@ -68,6 +68,7 @@ impl AppView {
         self.pull_request_inbox.toggle_visible();
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
         self.file_filter_popover_open = false;
         self.review_action_comment_target = None;
         self.status = if self.pull_request_inbox.is_visible() {
@@ -105,6 +106,7 @@ impl AppView {
             !self.repository_state.repository_switcher_open;
         if self.repository_state.repository_switcher_open {
             self.pull_request_inbox_search_open = false;
+            self.pull_request_filter_popover_open = false;
             self.file_filter_popover_open = false;
             self.review_action_comment_target = None;
             self.repository_state
@@ -163,6 +165,7 @@ impl AppView {
         self.settings_open = false;
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
         self.file_filter_popover_open = false;
         self.review_action_comment_target = None;
         self.status = "Closed transient UI".to_string();
@@ -211,6 +214,7 @@ impl AppView {
         self.file_filter_popover_open = !self.file_filter_popover_open;
         self.repository_state.repository_switcher_open = false;
         self.pull_request_inbox_search_open = false;
+        self.pull_request_filter_popover_open = false;
         self.review_action_comment_target = None;
         self.status = if self.file_filter_popover_open {
             "Opened changed-file filters".to_string()

@@ -37,6 +37,7 @@ impl AppView {
             .min(pull_requests.len().saturating_sub(1));
         let pull_request_search_input = self.pull_request_search_input.clone();
         let has_pull_request_query = !pull_request_query.is_empty();
+        let has_active_filters = self.has_active_pull_request_filters();
         let has_current_repository = self.current_repository().is_some();
 
         Popover::new("pull-request-inbox-search-popover")
@@ -50,6 +51,7 @@ impl AppView {
                         view.pull_request_inbox_search_open = *open;
                         if *open {
                             view.repository_state.repository_switcher_open = false;
+                            view.pull_request_filter_popover_open = false;
                             view.file_filter_popover_open = false;
                             view.status = "Pull request search opened".to_string();
                             view.pull_request_search_input.update(cx, |input, cx| {
@@ -88,6 +90,8 @@ impl AppView {
                 } else if pull_requests.is_empty() {
                     let label = if has_pull_request_query {
                         "no pull requests match search"
+                    } else if has_active_filters {
+                        "no pull requests match filters"
                     } else {
                         "no pull requests in this list"
                     };

@@ -60,6 +60,7 @@ impl AppView {
                             .flex()
                             .items_center()
                             .gap_1()
+                            .child(self.render_pull_request_filters(cx))
                             .child(self.render_pull_request_inbox_search(cx))
                             .child(
                                 Button::new("refresh-pull-request-inbox")
@@ -84,6 +85,9 @@ impl AppView {
                     render_pull_request_inbox_mode_tab(mode, active, count, cx)
                 }),
             ))
+            .when(self.has_active_pull_request_filters(), |element| {
+                element.child(self.render_pull_request_filter_chips(cx))
+            })
     }
 }
 

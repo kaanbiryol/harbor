@@ -106,6 +106,10 @@ impl AppView {
 
         self.cache_current_pull_request_inbox_snapshot();
 
+        if !same_inbox {
+            self.reset_pull_request_filters();
+        }
+
         if refresh_intent.prefetches_counts() {
             self.prefetch_pull_request_inbox_counts(
                 repo.clone(),
@@ -321,8 +325,7 @@ impl AppView {
             self.clear_selected_pull_request_detail_state();
         }
 
-        self.pr_list_scroll
-            .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
+        self.scroll_selected_pull_request_into_view(ScrollStrategy::Center);
 
         if load_selected_detail && (!same_inbox || !selected_head_unchanged) {
             self.load_selected_pull_request(cx);

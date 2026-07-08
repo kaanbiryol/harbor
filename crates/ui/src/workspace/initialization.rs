@@ -8,7 +8,7 @@ use crate::{actions::PanelTab, diff::parse_files_with_syntax, panels::CheckRunFi
 
 use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
-    PANEL_LIST_OVERDRAW, SettingsSection,
+    PANEL_LIST_OVERDRAW, PullRequestFilters, SettingsSection,
     external_apps::ExternalAppAvailability,
     github_service::{GitHubApi, RealGitHubApi},
     notifications::NativeNotificationSink,
@@ -202,6 +202,8 @@ impl AppView {
             pull_request_inbox: PullRequestInboxState::visible_by_default(),
             prefetch_inbox_counts: start_startup_tasks,
             pull_request_inbox_search_open: false,
+            pull_request_filter_popover_open: false,
+            pull_request_filters: PullRequestFilters::default(),
             file_filter_popover_open: false,
             review_action_comment_target: None,
             review_action_comment_input,

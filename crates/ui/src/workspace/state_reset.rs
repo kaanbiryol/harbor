@@ -121,6 +121,7 @@ impl AppView {
         self.pull_request_inbox.reset_load();
         self.pull_request_inbox.clear_page_info();
         self.pull_requests.clear();
+        self.reset_pull_request_filters();
         self.selection_state.reset_pull_request_index();
         self.reset_diff_selection();
         self.clear_changed_file_state();

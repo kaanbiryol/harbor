@@ -262,8 +262,7 @@ impl AppView {
         self.active_tab = snapshot.active_tab;
         self.sync_diff_list_items(cx);
 
-        self.pr_list_scroll
-            .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
+        self.scroll_selected_pull_request_into_view(ScrollStrategy::Center);
         self.reset_detail_scrolls();
         self.status = format!("Showing cached PR #{} details", key.number);
         self.load_active_panel_data_if_needed(cx);
@@ -365,8 +364,7 @@ impl AppView {
         self.active_tab = snapshot.active_tab;
         self.sync_diff_list_items(cx);
 
-        self.pr_list_scroll
-            .scroll_to_item(self.selected_pull_request_index(), ScrollStrategy::Center);
+        self.scroll_selected_pull_request_into_view(ScrollStrategy::Center);
         self.reset_detail_scrolls();
         self.status = format!(
             "Showing cached {} from {}",

@@ -37,25 +37,31 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let load_error = self.pull_request_inbox.load_error().map(str::to_string);
+        let visible_pull_request_indices = self.visible_pull_request_indices();
+        let has_active_filters = self.has_active_pull_request_filters();
         let body_state = pull_request_inbox_body_state(
             self.pull_request_inbox.is_loading(),
             load_error.is_some(),
             !self.pull_requests.is_empty(),
         );
-        let show_list = matches!(
+        let rows_available = matches!(
             body_state,
             PullRequestInboxBodyState::ErrorRows | PullRequestInboxBodyState::Rows
         );
+        let show_filtered_empty =
+            rows_available && has_active_filters && visible_pull_request_indices.is_empty();
         let empty_message = if self.repository_state.has_configured_repo() {
             current_mode.empty_message()
         } else {
             "Choose a repository from the header"
         };
-        let show_page_footer = show_list
+        let show_page_footer = rows_available
             && (self.pull_request_inbox.has_next_page()
                 || self.pull_request_inbox.is_loading_more()
                 || self.pull_request_inbox.load_more_error().is_some());
-        let pull_request_list_item_count = self.pull_requests.len() + usize::from(show_page_footer);
+        let pull_request_list_item_count =
+            visible_pull_request_indices.len() + usize::from(show_page_footer);
+        let show_list = rows_available && pull_request_list_item_count > 0;
         let mut body = Vec::new();
 
         match body_state {
@@ -104,6 +110,19 @@ impl AppView {
             PullRequestInboxBodyState::Rows => {}
         }
 
+        if show_filtered_empty {
+            body.push(
+                div()
+                    .flex_1()
+                    .px_3()
+                    .py_3()
+                    .text_sm()
+                    .text_color(color::text_muted())
+                    .child("No loaded pull requests match filters")
+                    .into_any_element(),
+            );
+        }
+
         if show_list {
             body.push(
                 div()
@@ -118,18 +137,28 @@ impl AppView {
                             "pull-request-inbox-rows",
                             pull_request_list_item_count,
                             cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
+                                let visible_indices = view.visible_pull_request_indices();
+                                let visible_count = visible_indices.len();
+                                let prefetch_indices = range
+                                    .clone()
+                                    .filter_map(|row_index| visible_indices.get(row_index).copied())
+                                    .collect::<Vec<_>>();
                                 view.prefetch_visible_pull_request_row_enrichments(
-                                    range.clone(),
+                                    prefetch_indices,
                                     cx,
                                 );
                                 let mut rows = Vec::with_capacity(range.len());
 
-                                for index in range {
-                                    if index == view.pull_requests.len() {
+                                for row_index in range {
+                                    if row_index == visible_count {
                                         rows.push(view.render_pull_request_inbox_page_footer(cx));
                                         continue;
                                     }
 
+                                    let Some(index) = visible_indices.get(row_index).copied()
+                                    else {
+                                        continue;
+                                    };
                                     let Some(pr) = view.pull_requests.get(index) else {
                                         continue;
                                     };

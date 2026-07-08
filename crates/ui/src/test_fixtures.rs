@@ -23,6 +23,7 @@ pub(crate) fn pull_request() -> PullRequest {
         review_decision: None,
         merge_state: Some(MergeState::Clean),
         labels: Vec::new(),
+        assignees: Vec::new(),
         checks_summary: ChecksSummary {
             total: 1,
             passed: 1,

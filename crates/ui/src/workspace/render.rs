@@ -25,6 +25,8 @@ pub(crate) mod header;
 mod inbox;
 #[path = "render/inbox_body.rs"]
 mod inbox_body;
+#[path = "render/inbox_filters.rs"]
+mod inbox_filters;
 #[path = "render/inbox_header.rs"]
 mod inbox_header;
 #[path = "render/inbox_page_footer.rs"]

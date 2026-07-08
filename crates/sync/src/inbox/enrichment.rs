@@ -167,6 +167,7 @@ mod tests {
             review_decision: None,
             merge_state: Some(MergeState::Clean),
             labels: Vec::new(),
+            assignees: Vec::new(),
             checks_summary: ChecksSummary {
                 total: 1,
                 passed: 0,
