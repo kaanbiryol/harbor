@@ -84,6 +84,22 @@ fn paginates_pull_request_comments_endpoint() {
 }
 
 #[test]
+fn posts_pull_request_comment_body() {
+    let transport = RecordingTransport::default();
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.create_pull_request_comment("acme", "app", 7, "Looks ready to me."))
+        .unwrap();
+
+    let posts = transport
+        .posts
+        .lock()
+        .expect("posts mutex should not be poisoned");
+    assert_eq!(posts[0].0, "/repos/acme/app/issues/7/comments");
+    assert_eq!(posts[0].1, json!({ "body": "Looks ready to me." }));
+}
+
+#[test]
 fn counts_pull_request_review_comments_endpoint() {
     let transport = RecordingTransport::default();
     *transport

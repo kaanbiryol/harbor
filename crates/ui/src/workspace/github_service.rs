@@ -382,6 +382,18 @@ impl GitHubReviewMutationApi for RealGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestActionApi for RealGitHubApi {
+    async fn create_pull_request_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()> {
+        self.client()?
+            .create_pull_request_comment(owner, repo, number, body)
+            .await
+    }
+
     async fn approve_pull_request(
         &self,
         owner: &str,

@@ -9,8 +9,10 @@ use harbor_domain::{MergeMethod, PullRequest};
 use crate::{
     actions::{
         MergePullRequest, MergePullRequestWithMergeCommit, OpenApproveCommentDialog,
-        OpenRequestChangesCommentDialog, PullRequestAction, RebasePullRequest,
+        OpenPullRequestCommentDialog, OpenRequestChangesCommentDialog, PullRequestAction,
+        RebasePullRequest,
     },
+    icons::Octicon,
     panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
     visual::{Tone, color},
     workspace::{AppView, log_entity_update_error},
@@ -164,46 +166,72 @@ impl AppView {
                     .items_center()
                     .justify_between()
                     .gap_3()
-                    .child(div().flex().items_center().gap_2().child({
-                        let dropdown = DropdownButton::new("review-pr")
-                            .button(
-                                Button::new("approve-pr-primary")
-                                    .label("approve")
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Button::new("comment-pr")
+                                    .icon(Octicon::CommentDiscussion)
+                                    .label("comment")
                                     .small()
+                                    .outline()
+                                    .tooltip("Comment on pull request")
                                     .loading(pull_request_action_running)
-                                    .disabled(review_action_disabled)
+                                    .disabled(pull_request_action_running)
                                     .on_click(cx.listener(|view, _, window, cx| {
-                                        view.run_pull_request_action(
-                                            PullRequestAction::Approve { body: None },
+                                        view.open_pull_request_comment_dialog(
+                                            &OpenPullRequestCommentDialog,
                                             window,
                                             cx,
                                         );
                                     })),
                             )
-                            .small()
-                            .compact()
-                            .tooltip(approve_tooltip.clone())
-                            .loading(pull_request_action_running)
-                            .disabled(review_action_disabled)
-                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
-                                menu.menu_with_disabled(
-                                    "Approve with comment...",
-                                    Box::new(OpenApproveCommentDialog),
-                                    review_action_disabled,
-                                )
-                                .menu_with_disabled(
-                                    "Request changes...",
-                                    Box::new(OpenRequestChangesCommentDialog),
-                                    review_action_disabled,
-                                )
-                            });
+                            .child({
+                                let dropdown = DropdownButton::new("review-pr")
+                                    .button(
+                                        Button::new("approve-pr-primary")
+                                            .label("approve")
+                                            .small()
+                                            .loading(pull_request_action_running)
+                                            .disabled(review_action_disabled)
+                                            .on_click(cx.listener(|view, _, window, cx| {
+                                                view.run_pull_request_action(
+                                                    PullRequestAction::Approve { body: None },
+                                                    window,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .small()
+                                    .compact()
+                                    .tooltip(approve_tooltip.clone())
+                                    .loading(pull_request_action_running)
+                                    .disabled(review_action_disabled)
+                                    .dropdown_menu_with_anchor(
+                                        Anchor::TopLeft,
+                                        move |menu, _, _| {
+                                            menu.menu_with_disabled(
+                                                "Approve with comment...",
+                                                Box::new(OpenApproveCommentDialog),
+                                                review_action_disabled,
+                                            )
+                                            .menu_with_disabled(
+                                                "Request changes...",
+                                                Box::new(OpenRequestChangesCommentDialog),
+                                                review_action_disabled,
+                                            )
+                                        },
+                                    );
 
-                        if review_action_disabled {
-                            dropdown.outline().opacity(0.58)
-                        } else {
-                            dropdown.success().outline()
-                        }
-                    }))
+                                if review_action_disabled {
+                                    dropdown.outline().opacity(0.58)
+                                } else {
+                                    dropdown.success().outline()
+                                }
+                            }),
+                    )
                     .child({
                         let button = Button::new("merge-pr-primary")
                             .label(merge_method_button_label(MergeMethod::Squash))

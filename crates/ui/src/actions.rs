@@ -42,6 +42,8 @@ actions!(
         CheckoutPullRequest,
         /// Opens the selected pull request in the browser.
         OpenPullRequestInBrowser,
+        /// Opens the pull request comment dialog.
+        OpenPullRequestCommentDialog,
         /// Approves the selected pull request.
         ApprovePullRequest,
         /// Requests changes on the selected pull request.
@@ -185,6 +187,7 @@ pub(crate) enum WorkflowAction {
 
 #[derive(Clone, Debug)]
 pub(crate) enum PullRequestAction {
+    Comment { body: String },
     Approve { body: Option<String> },
     RequestChanges { body: Option<String> },
     Merge(MergeMethod),
@@ -244,6 +247,12 @@ impl WorkflowActionRequest {
 
 #[derive(Clone, Debug)]
 pub(crate) enum PullRequestActionRequest {
+    Comment {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: String,
+    },
     Approve {
         owner: String,
         repo: String,
@@ -268,7 +277,8 @@ pub(crate) enum PullRequestActionRequest {
 impl PullRequestActionRequest {
     pub(crate) fn number(&self) -> u64 {
         match self {
-            Self::Approve { number, .. }
+            Self::Comment { number, .. }
+            | Self::Approve { number, .. }
             | Self::RequestChanges { number, .. }
             | Self::Merge { number, .. } => *number,
         }
@@ -276,6 +286,7 @@ impl PullRequestActionRequest {
 
     pub(crate) fn start_status(&self) -> String {
         match self {
+            Self::Comment { .. } => format!("Posting comment on PR #{}", self.number()),
             Self::Approve { .. } => format!("Approving PR #{}", self.number()),
             Self::RequestChanges { .. } => {
                 format!("Requesting changes on PR #{}", self.number())
@@ -286,6 +297,7 @@ impl PullRequestActionRequest {
 
     pub(crate) fn success_status(&self) -> String {
         match self {
+            Self::Comment { .. } => format!("Posted comment on PR #{}", self.number()),
             Self::Approve { .. } => format!("Approved PR #{}", self.number()),
             Self::RequestChanges { .. } => {
                 format!("Requested changes on PR #{}", self.number())
@@ -296,6 +308,7 @@ impl PullRequestActionRequest {
 
     pub(crate) fn failure_label(&self) -> &'static str {
         match self {
+            Self::Comment { .. } => "post pull request comment",
             Self::Approve { .. } => "approve pull request",
             Self::RequestChanges { .. } => "request changes",
             Self::Merge { .. } => "merge pull request",

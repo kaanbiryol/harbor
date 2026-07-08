@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
+use harbor_domain::PullRequestComment;
 
 use crate::{
     actions::{PullRequestAction, WorkflowAction},
@@ -58,6 +59,47 @@ async fn workflow_action_reports_success_and_failure_from_service(cx: &mut TestA
         );
         assert!(view.status.contains("dispatch failed"));
     });
+}
+
+#[gpui::test]
+async fn pull_request_comment_action_posts_and_refreshes_review_data(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    api.push_create_pull_request_comment(Ok(()));
+    api.push_current_user(Ok("octocat".to_string()));
+    api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::<PullRequestComment>::new()));
+    api.push_review_threads(Ok(Vec::new()));
+    let (view, cx) = init_workspace_service_test(cx, api.clone());
+
+    view.update_in(cx, |view, window, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        view.run_pull_request_action(
+            PullRequestAction::Comment {
+                body: "Looks ready to me.".to_string(),
+            },
+            window,
+            cx,
+        );
+        assert!(view.action_runtime.pull_request_action_running());
+        assert_eq!(view.status, "Posting comment on PR #7");
+    });
+    cx.run_until_parked();
+
+    view.read_with(cx, |view, _| {
+        assert!(!view.action_runtime.pull_request_action_running());
+        assert_eq!(view.action_runtime.pull_request_action_error(), None);
+    });
+    assert_eq!(
+        api.calls(),
+        vec![
+            "create_pull_request_comment",
+            "current_user",
+            "list_pull_request_reviews",
+            "list_pull_request_comments",
+            "list_review_threads",
+        ]
+    );
 }
 
 #[gpui::test]

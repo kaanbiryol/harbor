@@ -79,6 +79,7 @@ pub(crate) use settings::{AuthSwitchStatus, SettingsSection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ReviewActionCommentTarget {
+    Comment,
     Approve,
     RequestChanges,
 }
@@ -86,6 +87,7 @@ pub(crate) enum ReviewActionCommentTarget {
 impl ReviewActionCommentTarget {
     pub(crate) fn title(self) -> &'static str {
         match self {
+            Self::Comment => "Comment on pull request",
             Self::Approve => "Approve with comment",
             Self::RequestChanges => "Request changes",
         }
@@ -93,6 +95,7 @@ impl ReviewActionCommentTarget {
 
     pub(crate) fn placeholder(self) -> &'static str {
         match self {
+            Self::Comment => "Leave a PR comment",
             Self::Approve => "Leave an approval comment",
             Self::RequestChanges => "Describe the requested changes",
         }
@@ -100,8 +103,24 @@ impl ReviewActionCommentTarget {
 
     pub(crate) fn submit_label(self) -> &'static str {
         match self {
+            Self::Comment => "Comment",
             Self::Approve => "Approve",
             Self::RequestChanges => "Request changes",
+        }
+    }
+
+    pub(crate) fn requires_body(self) -> bool {
+        match self {
+            Self::Comment | Self::Approve => true,
+            Self::RequestChanges => false,
+        }
+    }
+
+    pub(crate) fn empty_body_status(self) -> &'static str {
+        match self {
+            Self::Comment => "Enter a comment before posting",
+            Self::Approve => "Add a comment before approving with comment",
+            Self::RequestChanges => "Describe the requested changes before submitting",
         }
     }
 }

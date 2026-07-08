@@ -5,11 +5,7 @@ use gpui_component::{
     input::Input,
 };
 
-use crate::{
-    icons::Octicon,
-    visual::color,
-    workspace::{AppView, ReviewActionCommentTarget},
-};
+use crate::{icons::Octicon, visual::color, workspace::AppView};
 
 impl AppView {
     pub(super) fn render_review_action_comment_dialog(
@@ -27,7 +23,7 @@ impl AppView {
             .trim()
             .is_empty();
         let submit_disabled = self.action_runtime.pull_request_action_running()
-            || (target == ReviewActionCommentTarget::Approve && body_empty);
+            || (target.requires_body() && body_empty);
         let input = self.review_action_comment_input.clone();
 
         div()

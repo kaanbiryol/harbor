@@ -52,6 +52,7 @@ pub(crate) struct FakeGitHubApi {
     review_threads: FakeQueue<Vec<ReviewThread>>,
     dispatch_workflow_results: FakeQueue<()>,
     rerun_failed_jobs_results: FakeQueue<()>,
+    create_pull_request_comment_results: FakeQueue<()>,
     approve_results: FakeQueue<()>,
     request_changes_results: FakeQueue<()>,
     merge_results: FakeQueue<()>,
@@ -150,6 +151,10 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_approve_pull_request(&self, result: Result<()>) {
         push_result(&self.approve_results, result);
+    }
+
+    pub(crate) fn push_create_pull_request_comment(&self, result: Result<()>) {
+        push_result(&self.create_pull_request_comment_results, result);
     }
 
     pub(crate) fn calls(&self) -> Vec<String> {
@@ -440,6 +445,20 @@ impl GitHubWorkflowActionApi for FakeGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestActionApi for FakeGitHubApi {
+    async fn create_pull_request_comment(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("create_pull_request_comment");
+        pop_result(
+            &self.create_pull_request_comment_results,
+            "create_pull_request_comment",
+        )
+    }
+
     async fn approve_pull_request(
         &self,
         _owner: &str,

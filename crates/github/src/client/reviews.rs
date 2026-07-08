@@ -122,6 +122,21 @@ where
         Ok(comments)
     }
 
+    pub async fn create_pull_request_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()> {
+        let path = format!("/repos/{owner}/{repo}/issues/{number}/comments");
+        self.transport
+            .rest_post(&path, json!({ "body": body }))
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn list_review_threads(
         &self,
         owner: &str,

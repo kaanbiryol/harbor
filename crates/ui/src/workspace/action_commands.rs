@@ -5,9 +5,10 @@ use harbor_github::SubmitPullRequestReviewEvent;
 use crate::{
     actions::{
         ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest,
-        MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenRequestChangesCommentDialog,
-        PanelTab, PullRequestAction, PullRequestActionRequest, RebasePullRequest, RequestChanges,
-        RerunFailedJobs, TriggerBuild, WorkflowAction, WorkflowActionRequest,
+        MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenPullRequestCommentDialog,
+        OpenRequestChangesCommentDialog, PanelTab, PullRequestAction, PullRequestActionRequest,
+        RebasePullRequest, RequestChanges, RerunFailedJobs, TriggerBuild, WorkflowAction,
+        WorkflowActionRequest,
     },
     panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
     workspace::{AppView, ReviewActionCommentTarget, async_updates::AppViewAsyncUpdateExt},
@@ -153,6 +154,19 @@ impl AppView {
         let repo = pr.repo.clone();
 
         match action {
+            PullRequestAction::Comment { body } => {
+                let body = body.trim().to_string();
+                if body.is_empty() {
+                    return Err("Enter a comment before posting".into());
+                }
+
+                Ok(PullRequestActionRequest::Comment {
+                    owner: repo.owner,
+                    repo: repo.name,
+                    number: pr.number,
+                    body,
+                })
+            }
             PullRequestAction::Approve { body } => {
                 if let Some(blocker) = review_action_blocker(pr) {
                     return Err(blocker);
@@ -217,6 +231,7 @@ impl AppView {
                     );
                     return;
                 }
+                PullRequestAction::Comment { .. } => {}
                 PullRequestAction::Merge(_) => {}
             }
         }
@@ -245,6 +260,16 @@ impl AppView {
 
         cx.spawn(async move |this, cx| {
             let result = match &request {
+                PullRequestActionRequest::Comment {
+                    owner,
+                    repo,
+                    number,
+                    body,
+                } => {
+                    github_api
+                        .create_pull_request_comment(owner, repo, *number, body)
+                        .await
+                }
                 PullRequestActionRequest::Approve {
                     owner,
                     repo,
@@ -286,7 +311,13 @@ impl AppView {
                         Ok(()) => {
                             let status = request.success_status();
                             view.action_runtime.finish_pull_request_action();
-                            view.reload_pull_request_inbox(cx);
+                            if matches!(&request, PullRequestActionRequest::Comment { .. })
+                                && view.selected_pull_request_number() == Some(request.number())
+                            {
+                                view.load_selected_review_data(cx);
+                            } else {
+                                view.reload_pull_request_inbox(cx);
+                            }
                             view.status = status;
                         }
                         Err(error) => {
@@ -320,6 +351,15 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.run_pull_request_action(PullRequestAction::RequestChanges { body: None }, window, cx);
+    }
+
+    pub(super) fn open_pull_request_comment_dialog(
+        &mut self,
+        _: &OpenPullRequestCommentDialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_review_action_comment_dialog(ReviewActionCommentTarget::Comment, window, cx);
     }
 
     pub(super) fn open_approve_comment_dialog(
@@ -365,7 +405,7 @@ impl AppView {
 
     pub(crate) fn close_review_action_comment_dialog(&mut self, cx: &mut Context<Self>) {
         self.review_action_comment_target = None;
-        self.status = "Closed review comment".to_string();
+        self.status = "Closed comment dialog".to_string();
         cx.notify();
     }
 
@@ -386,14 +426,17 @@ impl AppView {
             .value()
             .trim()
             .to_string();
-        if target == ReviewActionCommentTarget::Approve && body.is_empty() {
-            self.status = "Add a comment before approving with comment".to_string();
+        if target.requires_body() && body.is_empty() {
+            self.status = target.empty_body_status().to_string();
             cx.notify();
             return;
         }
 
         let body = (!body.is_empty()).then_some(body);
         let action = match target {
+            ReviewActionCommentTarget::Comment => PullRequestAction::Comment {
+                body: body.unwrap_or_default(),
+            },
             ReviewActionCommentTarget::Approve => PullRequestAction::Approve { body },
             ReviewActionCommentTarget::RequestChanges => PullRequestAction::RequestChanges { body },
         };
