@@ -147,6 +147,7 @@ pub struct AppView {
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,
     collapsed_file_tree_folders: HashSet<String>,
+    collapsed_check_groups: HashSet<String>,
     expanded_diff_file_paths: HashSet<String>,
     collapsed_diff_file_paths: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
@@ -170,6 +171,20 @@ impl AppView {
 
     pub(crate) fn selected_pull_request_index(&self) -> usize {
         self.selection_state.pull_request_index()
+    }
+
+    pub(crate) fn collapsed_check_groups(&self) -> &HashSet<String> {
+        &self.collapsed_check_groups
+    }
+
+    pub(crate) fn toggle_check_group(&mut self, group_name: String, cx: &mut Context<Self>) {
+        self.status = if self.collapsed_check_groups.remove(&group_name) {
+            format!("Expanded {group_name} checks")
+        } else {
+            self.collapsed_check_groups.insert(group_name.clone());
+            format!("Collapsed {group_name} checks")
+        };
+        cx.notify();
     }
 
     fn selected_pr_label(&self) -> String {

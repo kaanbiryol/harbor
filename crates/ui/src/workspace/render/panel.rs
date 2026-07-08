@@ -139,6 +139,7 @@ impl AppView {
                         PanelTab::Checks => render_checks_panel(
                             pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                             self.detail_state.check_runs(),
+                            self.collapsed_check_groups(),
                             self.detail_state.checks_loading(),
                             self.detail_state.checks_error(),
                             self.checks_list_state.clone(),

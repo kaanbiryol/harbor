@@ -209,6 +209,7 @@ impl AppView {
             pull_request_search_input,
             external_app_availability: ExternalAppAvailability::default(),
             collapsed_file_tree_folders: HashSet::new(),
+            collapsed_check_groups: HashSet::new(),
             expanded_diff_file_paths: HashSet::new(),
             collapsed_diff_file_paths: HashSet::new(),
             reviewed_file_paths: HashSet::new(),
