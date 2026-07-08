@@ -227,16 +227,13 @@ fn push_changed_file_tree_rows(
     rows: &mut Vec<ChangedFileTreeRow>,
 ) {
     for (folder_name, child_node) in &node.folders {
-        let folder_path = if parent_path.is_empty() {
-            folder_name.clone()
-        } else {
-            format!("{parent_path}/{folder_name}")
-        };
+        let (folder_path, folder_name, child_node) =
+            compact_folder_chain(parent_path, folder_name, child_node);
         let expanded = force_expanded || !collapsed_folders.contains(&folder_path);
 
         rows.push(ChangedFileTreeRow::Folder(ChangedFileFolderRow {
             path: folder_path.clone(),
-            name: folder_name.clone(),
+            name: folder_name,
             depth,
             file_count: child_node.file_count,
             reviewed_file_count: child_node.reviewed_file_count,
@@ -281,6 +278,34 @@ fn push_changed_file_tree_rows(
             depth,
         }));
     }
+}
+
+fn compact_folder_chain<'a>(
+    parent_path: &str,
+    folder_name: &str,
+    child_node: &'a ChangedFileTreeNode,
+) -> (String, String, &'a ChangedFileTreeNode) {
+    let mut path = if parent_path.is_empty() {
+        folder_name.to_string()
+    } else {
+        format!("{parent_path}/{folder_name}")
+    };
+    let mut name = folder_name.to_string();
+    let mut node = child_node;
+
+    while node.files.is_empty() && node.folders.len() == 1 {
+        let Some((next_name, next_node)) = node.folders.iter().next() else {
+            break;
+        };
+
+        path.push('/');
+        path.push_str(next_name);
+        name.push('/');
+        name.push_str(next_name);
+        node = next_node;
+    }
+
+    (path, name, node)
 }
 
 fn changed_file_name(path: &str) -> &str {

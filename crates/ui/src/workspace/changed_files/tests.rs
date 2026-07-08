@@ -24,11 +24,10 @@ fn builds_changed_file_tree_rows_with_folders() {
     assert_eq!(
         changed_file_tree_labels(&rows),
         vec![
-            "dir:crates:0:1/2:open",
-            "dir:ui:1:1/2:open",
-            "dir:src:2:1/1:open",
-            "file:workspace.rs:3:0",
-            "file:Cargo.toml:2:1",
+            "dir:crates/ui:0:1/2:open",
+            "dir:src:1:1/1:open",
+            "file:workspace.rs:2:0",
+            "file:Cargo.toml:1:1",
             "file:README.md:0:2",
         ]
     );
@@ -52,11 +51,7 @@ fn collapses_changed_file_tree_folders() {
 
     assert_eq!(
         changed_file_tree_labels(&rows),
-        vec![
-            "dir:crates:0:0/2:open",
-            "dir:ui:1:0/2:closed",
-            "file:README.md:0:2",
-        ]
+        vec!["dir:crates/ui:0:0/2:closed", "file:README.md:0:2"]
     );
 }
 
@@ -81,11 +76,36 @@ fn filters_changed_file_tree_and_expands_matches() {
 
     assert_eq!(
         changed_file_tree_labels(&rows),
+        vec!["dir:crates/ui/src:0:0/1:open", "file:workspace.rs:1:0"]
+    );
+}
+
+#[test]
+fn groups_deep_single_child_folder_chains() {
+    let files = vec![
+        diff_file(
+            "android/libraries/services/src/main/kotlin/com/acme/android/Service.kt",
+            FileStatus::Modified,
+        ),
+        diff_file(
+            "android/libraries/services/src/main/kotlin/com/acme/android/Repository.kt",
+            FileStatus::Modified,
+        ),
+    ];
+
+    let rows = changed_file_tree_rows(
+        &files,
+        &HashSet::new(),
+        &HashSet::new(),
+        &ChangedFileFilters::default(),
+    );
+
+    assert_eq!(
+        changed_file_tree_labels(&rows),
         vec![
-            "dir:crates:0:0/1:open",
-            "dir:ui:1:0/1:open",
-            "dir:src:2:0/1:open",
-            "file:workspace.rs:3:0",
+            "dir:android/libraries/services/src/main/kotlin/com/acme/android:0:0/2:open",
+            "file:Repository.kt:1:1",
+            "file:Service.kt:1:0",
         ]
     );
 }
