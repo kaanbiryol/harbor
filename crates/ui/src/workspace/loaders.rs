@@ -112,6 +112,9 @@ impl AppView {
         self.pull_request_inbox.set_mode(mode);
         if !same_inbox {
             self.pull_request_inbox.clear_page_info();
+            self.pull_requests.clear();
+            self.selection_state.reset_pull_request_index();
+            self.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         }
         self.ensure_sync_loop(cx);
         if refresh_intent != PullRequestInboxRefreshIntent::LightRefresh {

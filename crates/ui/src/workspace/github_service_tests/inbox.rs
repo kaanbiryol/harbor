@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
-use harbor_domain::{MergeState, PullRequest};
+use harbor_domain::{MergeState, PullRequest, PullRequestState};
 use harbor_github::{
     ConditionalFetch, PullRequestEnrichment, PullRequestPage, PullRequestPageCursor,
 };
@@ -102,6 +102,63 @@ async fn load_more_pull_requests_appends_next_page(cx: &mut TestAppContext) {
         assert!(!view.pull_request_inbox.has_next_page());
         assert_eq!(view.pull_request_inbox.load_more_error(), None);
     });
+}
+
+#[gpui::test]
+async fn switching_inbox_mode_without_snapshot_does_not_reuse_visible_rows(
+    cx: &mut TestAppContext,
+) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let open_pull_request = pull_request();
+    let mut second_open_pull_request = pull_request();
+    second_open_pull_request.number = 8;
+    second_open_pull_request.node_id = "pr-node-8".to_string();
+    second_open_pull_request.title = "Another open pull request".to_string();
+    let mut closed_pull_request = pull_request();
+    closed_pull_request.number = 9;
+    closed_pull_request.node_id = "pr-node-9".to_string();
+    closed_pull_request.title = "Closed pull request".to_string();
+    closed_pull_request.state = PullRequestState::Closed;
+
+    api.push_light_pull_request_page(Ok(ConditionalFetch::Modified {
+        value: PullRequestPage {
+            pull_requests: vec![closed_pull_request.clone()],
+            total_count: Some(1),
+            next_cursor: None,
+        },
+        validator: None,
+    }));
+    enqueue_successful_detail_load(&api, &closed_pull_request);
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state
+            .select_repository(open_pull_request.repo.clone());
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = vec![open_pull_request.clone(), second_open_pull_request.clone()];
+        view.pull_request_inbox.insert_count(
+            PullRequestInboxCacheKey::new(
+                open_pull_request.repo.clone(),
+                PullRequestInboxMode::Closed,
+            ),
+            2,
+        );
+
+        view.select_pull_request_inbox_mode(PullRequestInboxMode::Closed, cx);
+
+        assert_eq!(view.pull_request_inbox.mode(), PullRequestInboxMode::Closed);
+        assert!(view.pull_requests.is_empty());
+        assert!(view.pull_request_inbox.is_loading());
+    });
+    cx.run_until_parked();
+
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.pull_request_inbox.mode(), PullRequestInboxMode::Closed);
+        assert_eq!(view.pull_requests, vec![closed_pull_request.clone()]);
+        assert_eq!(view.pull_requests[0].state, PullRequestState::Closed);
+        assert_eq!(view.pull_request_inbox.total_count(), Some(1));
+    });
+    assert_eq!(api.light_pull_request_requests(), vec![(None, 10, false)]);
 }
 
 #[gpui::test]
