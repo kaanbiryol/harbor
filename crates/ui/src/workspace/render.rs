@@ -41,6 +41,8 @@ mod panel;
 mod pending_review;
 #[path = "render/pull_request_details_header.rs"]
 mod pull_request_details_header;
+#[path = "render/pull_request_overview.rs"]
+mod pull_request_overview;
 #[path = "render/rate_limits.rs"]
 mod rate_limits;
 #[path = "render/review_action_comment_dialog.rs"]

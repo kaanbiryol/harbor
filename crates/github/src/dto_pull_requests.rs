@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use harbor_domain::{
     CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, FileViewedState, Label,
-    MergeState, PullRequest, PullRequestState, RepoId, ReviewDecision,
+    MergeState, PullRequest, PullRequestPerson, PullRequestState, PullRequestTeam, RepoId,
+    ReviewDecision,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -28,6 +29,10 @@ struct ApiPullRequest {
     #[serde(default)]
     assignees: Vec<ApiUser>,
     #[serde(default)]
+    requested_reviewers: Vec<ApiUser>,
+    #[serde(default)]
+    requested_teams: Vec<ApiTeam>,
+    #[serde(default)]
     merged: Option<bool>,
     #[serde(default)]
     mergeable_state: Option<String>,
@@ -40,6 +45,8 @@ struct ApiPullRequest {
 #[derive(Debug, Deserialize)]
 struct ApiUser {
     login: String,
+    #[serde(default, alias = "avatarUrl")]
+    avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +61,14 @@ struct ApiRef {
 struct ApiLabel {
     name: String,
     color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiTeam {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    slug: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -422,7 +437,17 @@ impl ApiPullRequest {
             assignees: self
                 .assignees
                 .into_iter()
-                .map(|assignee| assignee.login)
+                .map(ApiUser::into_domain)
+                .collect(),
+            requested_reviewers: self
+                .requested_reviewers
+                .into_iter()
+                .map(ApiUser::into_domain)
+                .collect(),
+            requested_teams: self
+                .requested_teams
+                .into_iter()
+                .filter_map(ApiTeam::into_domain)
                 .collect(),
             checks_summary: ChecksSummary::default(),
             unresolved_threads: 0,
@@ -481,8 +506,10 @@ impl GraphQlPullRequestSearchNode {
                 .nodes
                 .into_iter()
                 .flatten()
-                .map(|assignee| assignee.login)
+                .map(ApiUser::into_domain)
                 .collect(),
+            requested_reviewers: Vec::new(),
+            requested_teams: Vec::new(),
             checks_summary: self
                 .status_check_rollup
                 .map(checks_summary_from_graphql_rollup)
@@ -512,6 +539,30 @@ impl GraphQlPullRequestEnrichmentNode {
                 .map(checks_summary_from_graphql_rollup)
                 .unwrap_or_default(),
         })
+    }
+}
+
+impl ApiUser {
+    fn into_domain(self) -> PullRequestPerson {
+        PullRequestPerson {
+            login: self.login,
+            avatar_url: self.avatar_url,
+        }
+    }
+}
+
+impl ApiTeam {
+    fn into_domain(self) -> Option<PullRequestTeam> {
+        let slug = self.slug.trim().to_string();
+        let name = self.name.unwrap_or_else(|| slug.clone()).trim().to_string();
+        if name.is_empty() && slug.is_empty() {
+            None
+        } else {
+            Some(PullRequestTeam {
+                name: if name.is_empty() { slug.clone() } else { name },
+                slug,
+            })
+        }
     }
 }
 
@@ -683,7 +734,24 @@ mod tests {
                 "head": { "ref": "feature/list", "sha": "abc123" },
                 "base": { "ref": "main", "sha": "def456" },
                 "labels": [{ "name": "performance", "color": "34d399" }],
-                "assignees": [{ "login": "mona" }],
+                "assignees": [
+                    {
+                        "login": "mona",
+                        "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4"
+                    }
+                ],
+                "requested_reviewers": [
+                    {
+                        "login": "hubot",
+                        "avatar_url": null
+                    }
+                ],
+                "requested_teams": [
+                    {
+                        "name": "Platform Reviewers",
+                        "slug": "platform-reviewers"
+                    }
+                ],
                 "mergeable_state": "clean",
                 "created_at": "2026-05-10T10:00:00Z"
             }
@@ -701,7 +769,14 @@ mod tests {
         assert_eq!(pulls[0].state, PullRequestState::Open);
         assert_eq!(pulls[0].merge_state, Some(MergeState::Clean));
         assert_eq!(pulls[0].labels[0].name, "performance");
-        assert_eq!(pulls[0].assignees, vec!["mona".to_string()]);
+        assert_eq!(pulls[0].assignees[0].login, "mona");
+        assert_eq!(
+            pulls[0].assignees[0].avatar_url.as_deref(),
+            Some("https://avatars.githubusercontent.com/u/2?v=4")
+        );
+        assert_eq!(pulls[0].requested_reviewers[0].login, "hubot");
+        assert_eq!(pulls[0].requested_teams[0].name, "Platform Reviewers");
+        assert_eq!(pulls[0].requested_teams[0].slug, "platform-reviewers");
         assert_eq!(
             pulls[0].created_at.map(|time| time.to_rfc3339()),
             Some("2026-05-10T10:00:00+00:00".to_string())
@@ -838,7 +913,7 @@ mod tests {
         assert_eq!(page.pull_requests[0].checks_summary.failed, 1);
         assert_eq!(page.pull_requests[0].checks_summary.pending, 1);
         assert_eq!(page.pull_requests[0].labels[0].name, "performance");
-        assert_eq!(page.pull_requests[0].assignees, vec!["mona".to_string()]);
+        assert_eq!(page.pull_requests[0].assignees[0].login, "mona");
         assert_eq!(
             page.pull_requests[0]
                 .created_at

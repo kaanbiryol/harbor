@@ -39,6 +39,7 @@ impl AppView {
             .bg(color::panel_background())
             .overflow_hidden()
             .child(self.render_pull_request_details_header(pr, cx))
+            .child(self.render_pull_request_overview(pr))
             .child(self.render_changed_files_header(cx))
             .child(self.render_changed_files_body(cx))
             .into_any_element()

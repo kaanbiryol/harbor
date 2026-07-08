@@ -24,6 +24,8 @@ pub(crate) fn pull_request() -> PullRequest {
         merge_state: Some(MergeState::Clean),
         labels: Vec::new(),
         assignees: Vec::new(),
+        requested_reviewers: Vec::new(),
+        requested_teams: Vec::new(),
         checks_summary: ChecksSummary {
             total: 1,
             passed: 1,

@@ -156,7 +156,7 @@ impl PullRequestFilters {
             || pull_request
                 .assignees
                 .iter()
-                .any(|assignee| self.assignees.contains(assignee))
+                .any(|assignee| self.assignees.contains(&assignee.login))
     }
 }
 
@@ -195,7 +195,7 @@ impl AppView {
                 self.pull_requests
                     .iter()
                     .flat_map(|pull_request| pull_request.assignees.iter())
-                    .map(String::as_str),
+                    .map(|assignee| assignee.login.as_str()),
                 &self.pull_request_filters,
             ),
         }
@@ -339,7 +339,7 @@ fn count_filter_values<'a>(values: impl Iterator<Item = &'a str>) -> Vec<(String
 
 #[cfg(test)]
 mod tests {
-    use harbor_domain::Label;
+    use harbor_domain::{Label, PullRequestPerson};
 
     use super::*;
     use crate::test_fixtures::pull_request;
@@ -356,7 +356,7 @@ mod tests {
             name: "bug".to_string(),
             color: None,
         }];
-        pull_request.assignees = vec!["mona".to_string()];
+        pull_request.assignees = vec![pull_request_person("mona")];
         assert!(filters.matches(&pull_request));
 
         pull_request.author = "hubot".to_string();
@@ -376,7 +376,7 @@ mod tests {
             name: "docs".to_string(),
             color: None,
         }];
-        pull_request.assignees = vec!["hubot".to_string()];
+        pull_request.assignees = vec![pull_request_person("hubot")];
 
         assert!(filters.matches(&pull_request));
     }
@@ -397,5 +397,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![("mona".to_string(), 2), ("octocat".to_string(), 1)]
         );
+    }
+
+    fn pull_request_person(login: &str) -> PullRequestPerson {
+        PullRequestPerson {
+            login: login.to_string(),
+            avatar_url: None,
+        }
     }
 }

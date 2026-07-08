@@ -37,6 +37,18 @@ pub struct Label {
     pub color: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestPerson {
+    pub login: String,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestTeam {
+    pub name: String,
+    pub slug: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PullRequestState {
     Open,
@@ -104,7 +116,11 @@ pub struct PullRequest {
     pub merge_state: Option<MergeState>,
     pub labels: Vec<Label>,
     #[serde(default)]
-    pub assignees: Vec<String>,
+    pub assignees: Vec<PullRequestPerson>,
+    #[serde(default)]
+    pub requested_reviewers: Vec<PullRequestPerson>,
+    #[serde(default)]
+    pub requested_teams: Vec<PullRequestTeam>,
     pub checks_summary: ChecksSummary,
     pub unresolved_threads: usize,
     pub created_at: Option<DateTime<Utc>>,
