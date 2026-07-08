@@ -8,7 +8,7 @@ use harbor_domain::DiffFile;
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
-    visual::{Tone, color, font},
+    visual::{Tone, color, font, leading_truncated_path},
     workspace::AppView,
 };
 
@@ -56,6 +56,7 @@ pub(super) fn render_diff_file_section_header(
         }
     });
     let path = file.path.clone();
+    let display_path = leading_truncated_path(&path, 72);
     let toggle_section_view_entity = view_entity.clone();
     let chevron = if expanded {
         Octicon::ChevronDown
@@ -117,7 +118,7 @@ pub(super) fn render_diff_file_section_header(
                         } else {
                             color::text_primary()
                         })
-                        .child(path),
+                        .child(display_path),
                 ),
         )
         .child(

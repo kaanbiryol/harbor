@@ -4,7 +4,7 @@ use gpui_component::{StyledExt, tooltip::Tooltip};
 use harbor_domain::{ReviewComment, ReviewThread};
 
 use crate::{
-    visual::{Tone, color, opacity},
+    visual::{Tone, color, leading_truncated_path, opacity},
     workspace::{AppView, ReviewThreadUiError},
 };
 
@@ -135,9 +135,11 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                 .gap_1()
                                 .child(
                                     div()
+                                        .min_w_0()
+                                        .truncate()
                                         .font_medium()
                                         .text_color(path_color)
-                                        .child(thread.path.clone()),
+                                        .child(leading_truncated_path(&thread.path, 56)),
                                 )
                                 .child(
                                     div()

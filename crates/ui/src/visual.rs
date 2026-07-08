@@ -158,3 +158,78 @@ pub(crate) fn tone_colors(tone: Tone) -> ToneColors {
 pub(crate) fn tone_text(tone: Tone) -> Rgba {
     tone_colors(tone).text
 }
+
+pub(crate) fn leading_truncated_path(path: &str, max_chars: usize) -> String {
+    let path_char_count = path.chars().count();
+    if path_char_count <= max_chars || max_chars == 0 {
+        return path.to_string();
+    }
+
+    let marker = "...";
+    if max_chars <= marker.len() {
+        return trailing_chars(path, max_chars);
+    }
+
+    let segments = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let Some(file_name) = segments.last().copied() else {
+        return format!("{marker}{}", trailing_chars(path, max_chars - marker.len()));
+    };
+
+    let slash_marker = ".../";
+    if file_name.chars().count() + slash_marker.len() > max_chars {
+        return format!(
+            "{marker}{}",
+            trailing_chars(file_name, max_chars - marker.len())
+        );
+    }
+
+    let mut suffix = file_name.to_string();
+    for segment in segments[..segments.len().saturating_sub(1)].iter().rev() {
+        let candidate = format!("{segment}/{suffix}");
+        if candidate.chars().count() + slash_marker.len() > max_chars {
+            break;
+        }
+        suffix = candidate;
+    }
+
+    format!("{slash_marker}{suffix}")
+}
+
+fn trailing_chars(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    text.chars()
+        .skip(char_count.saturating_sub(max_chars))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::leading_truncated_path;
+
+    #[test]
+    fn leaves_short_paths_unchanged() {
+        assert_eq!(leading_truncated_path("src/lib.rs", 16), "src/lib.rs");
+    }
+
+    #[test]
+    fn truncates_paths_from_the_front() {
+        assert_eq!(
+            leading_truncated_path(
+                "android/libraries/services/src/main/kotlin/com/acme/android/Service.kt",
+                48,
+            ),
+            ".../src/main/kotlin/com/acme/android/Service.kt"
+        );
+    }
+
+    #[test]
+    fn preserves_the_end_of_very_long_file_names() {
+        assert_eq!(
+            leading_truncated_path("src/generated/really_long_generated_file_name.rs", 24),
+            "...enerated_file_name.rs"
+        );
+    }
+}

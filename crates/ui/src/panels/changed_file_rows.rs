@@ -8,7 +8,7 @@ use harbor_domain::DiffFile;
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
-    visual::color,
+    visual::{color, leading_truncated_path},
     workspace::{AppView, ChangedFileFolderRow, ChangedFileRow},
 };
 
@@ -60,7 +60,7 @@ pub(crate) fn render_changed_folder_row(
                 .truncate()
                 .font_medium()
                 .text_color(color::text_secondary())
-                .child(folder.name.clone()),
+                .child(leading_truncated_path(&folder.name, 48)),
         )
         .into_any_element()
 }

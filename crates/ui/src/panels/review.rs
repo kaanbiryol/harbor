@@ -16,7 +16,7 @@ use crate::{
         natural_time_label_with_edit,
     },
     diff::{DiffLineKind, ParsedDiff},
-    visual::{Tone, color, tone_colors, tone_text},
+    visual::{Tone, color, leading_truncated_path, tone_colors, tone_text},
     workspace::AppView,
 };
 
@@ -489,7 +489,7 @@ pub(super) fn render_review_diff_preview(
                 .text_color(color::text_secondary())
                 .bg(color::content_background())
                 .truncate()
-                .child(preview.path),
+                .child(leading_truncated_path(&preview.path, 64)),
         )
         .children(
             preview
