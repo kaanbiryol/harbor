@@ -2,6 +2,7 @@ use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    clipboard::Clipboard,
 };
 use harbor_domain::DiffFile;
 
@@ -57,6 +58,22 @@ pub(super) fn render_diff_file_section_header(
     });
     let path = file.path.clone();
     let display_path = leading_truncated_path(&path, 72);
+    let copy_path = path.clone();
+    let copied_status_path = path.clone();
+    let copy_button = Clipboard::new(format!(
+        "{}-diff-file-path-copy-{file_index}",
+        if sticky { "sticky" } else { "row" }
+    ))
+    .tooltip("Copy file path")
+    .value(copy_path)
+    .on_copied({
+        let view_entity = view_entity.clone();
+        move |_, _, cx| {
+            view_entity.update(cx, |view, cx| {
+                view.set_status(format!("Copied {copied_status_path}"), cx);
+            });
+        }
+    });
     let toggle_section_view_entity = view_entity.clone();
     let chevron = if expanded {
         Octicon::ChevronDown
@@ -110,6 +127,7 @@ pub(super) fn render_diff_file_section_header(
                 .child(
                     div()
                         .min_w_0()
+                        .flex_1()
                         .truncate()
                         .text_sm()
                         .font_medium()
@@ -119,7 +137,8 @@ pub(super) fn render_diff_file_section_header(
                             color::text_primary()
                         })
                         .child(display_path),
-                ),
+                )
+                .child(div().flex_none().child(copy_button)),
         )
         .child(
             div()

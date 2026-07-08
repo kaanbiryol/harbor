@@ -160,6 +160,11 @@ pub struct AppView {
 }
 
 impl AppView {
+    pub(crate) fn set_status(&mut self, status: impl Into<String>, cx: &mut Context<Self>) {
+        self.status = status.into();
+        cx.notify();
+    }
+
     fn selected_pull_request(&self) -> Option<&PullRequest> {
         self.pull_requests
             .get(self.selection_state.pull_request_index())
