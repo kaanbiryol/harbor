@@ -50,10 +50,11 @@ pub(crate) fn render_review_panel(
     } = input;
     let (unresolved, resolved, outdated) = review_thread_counts(threads);
     let view_entity = cx.entity().clone();
-    let timeline_items = review_timeline_items(reviews, threads, comments);
-    let has_timeline_items = !timeline_items.is_empty();
-    sync_virtual_list_item_count(&review_list_state, timeline_items.len());
-    let timeline_items_for_render = timeline_items.clone();
+    let review_items = review_panel_items(reviews, threads, comments);
+    let review_item_count = review_content_item_count(&review_items);
+    let has_review_items = !review_items.is_empty();
+    sync_virtual_list_item_count(&review_list_state, review_items.len());
+    let review_items_for_render = review_items.clone();
 
     div()
         .image_cache(gpui::retain_all("review-timeline-avatar-cache"))
@@ -63,7 +64,7 @@ pub(crate) fn render_review_panel(
         .flex_1()
         .min_h_0()
         .gap_2()
-        .child(render_review_panel_header(timeline_items.len(), is_loading))
+        .child(render_review_panel_header(review_item_count, is_loading))
         .child(
             div()
                 .flex()
@@ -74,31 +75,39 @@ pub(crate) fn render_review_panel(
                 .child(render_metric_pill("resolved", resolved, Tone::Success))
                 .child(render_metric_pill("outdated", outdated, Tone::Neutral)),
         )
-        .when(is_loading && !has_timeline_items, |element| {
+        .when(is_loading && !has_review_items, |element| {
             element.child(render_empty_panel_card("Loading review comments..."))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))
         })
         .when(
-            !is_loading && error.is_none() && !has_timeline_items,
+            !is_loading && error.is_none() && !has_review_items,
             |element| {
                 element.child(render_empty_panel_card(
                     "No review comments found for this pull request",
                 ))
             },
         )
-        .when(has_timeline_items, |element| {
+        .when(has_review_items, |element| {
             element.child(
                 list(
                     review_list_state,
                     cx.processor(move |view, index: usize, _window, cx| {
-                        let Some(item) = timeline_items_for_render.get(index) else {
+                        let Some(item) = review_items_for_render.get(index) else {
                             return div().into_any_element();
                         };
 
-                        match &item.kind {
-                            ReviewTimelineItemKind::Thread { thread_id } => {
+                        match item {
+                            ReviewPanelItem::Section {
+                                section,
+                                item_count,
+                            } => render_review_section_header(*section, *item_count)
+                                .into_any_element(),
+                            ReviewPanelItem::FileHeader { path, thread_count } => {
+                                render_review_file_header(path, *thread_count).into_any_element()
+                            }
+                            ReviewPanelItem::Thread { thread_id } => {
                                 let Some(thread) = view
                                     .review_state
                                     .review_threads
@@ -142,14 +151,14 @@ pub(crate) fn render_review_panel(
                                     view_entity: view_entity.clone(),
                                 })
                             }
-                            ReviewTimelineItemKind::Review { review_id } => view
+                            ReviewPanelItem::Review { review_id } => view
                                 .review_state
                                 .pull_request_reviews
                                 .iter()
                                 .find(|review| review.id == *review_id)
                                 .map(|review| render_pull_request_review_row(review, index))
                                 .unwrap_or_else(|| div().into_any_element()),
-                            ReviewTimelineItemKind::Comment { comment_id } => view
+                            ReviewPanelItem::Comment { comment_id } => view
                                 .review_state
                                 .pull_request_comments
                                 .iter()
@@ -166,7 +175,13 @@ pub(crate) fn render_review_panel(
         })
 }
 
-fn render_review_panel_header(timeline_item_count: usize, is_loading: bool) -> impl IntoElement {
+fn render_review_panel_header(review_item_count: usize, is_loading: bool) -> impl IntoElement {
+    let item_label = if review_item_count == 1 {
+        "1 review item".to_string()
+    } else {
+        format!("{review_item_count} review items")
+    };
+
     div()
         .flex()
         .items_center()
@@ -193,34 +208,205 @@ fn render_review_panel_header(timeline_item_count: usize, is_loading: bool) -> i
                 .text_xs()
                 .text_color(color::text_muted())
                 .when(is_loading, |element| element.child(Spinner::new().small()))
-                .child(
-                    div()
-                        .min_w_0()
-                        .truncate()
-                        .child(format!("{timeline_item_count} timeline items")),
-                ),
+                .child(div().min_w_0().truncate().child(item_label)),
         )
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReviewPanelSection {
+    NeedsAttention,
+    Conversation,
+    Resolved,
+}
+
+impl ReviewPanelSection {
+    fn id(self) -> &'static str {
+        match self {
+            Self::NeedsAttention => "review-section-needs-attention",
+            Self::Conversation => "review-section-conversation",
+            Self::Resolved => "review-section-resolved",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::NeedsAttention => "Needs attention",
+            Self::Conversation => "Conversation & activity",
+            Self::Resolved => "Resolved & outdated",
+        }
+    }
+
+    fn tone(self) -> Tone {
+        match self {
+            Self::NeedsAttention => Tone::Warning,
+            Self::Conversation => Tone::Info,
+            Self::Resolved => Tone::Neutral,
+        }
+    }
+
+    fn count_label(self, item_count: usize) -> String {
+        let noun = match self {
+            Self::NeedsAttention | Self::Resolved if item_count == 1 => "thread",
+            Self::NeedsAttention | Self::Resolved => "threads",
+            Self::Conversation if item_count == 1 => "item",
+            Self::Conversation => "items",
+        };
+
+        format!("{item_count} {noun}")
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ReviewTimelineItem {
-    kind: ReviewTimelineItemKind,
+enum ReviewPanelItem {
+    Section {
+        section: ReviewPanelSection,
+        item_count: usize,
+    },
+    FileHeader {
+        path: String,
+        thread_count: usize,
+    },
+    Thread {
+        thread_id: String,
+    },
+    Review {
+        review_id: String,
+    },
+    Comment {
+        comment_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ReviewConversationItem {
+    kind: ReviewConversationItemKind,
     sort_time: Option<DateTime<Utc>>,
     sequence: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum ReviewTimelineItemKind {
-    Thread { thread_id: String },
+enum ReviewConversationItemKind {
     Review { review_id: String },
     Comment { comment_id: String },
 }
 
-fn review_timeline_items(
+fn review_panel_items(
     reviews: &[PullRequestReview],
     threads: &[ReviewThread],
     comments: &[PullRequestComment],
-) -> Vec<ReviewTimelineItem> {
+) -> Vec<ReviewPanelItem> {
+    let mut items = Vec::new();
+    append_review_thread_section(
+        &mut items,
+        ReviewPanelSection::NeedsAttention,
+        threads
+            .iter()
+            .filter(|thread| thread.state == ReviewThreadState::Unresolved),
+    );
+
+    let conversation_items = review_conversation_items(reviews, threads, comments);
+    if !conversation_items.is_empty() {
+        items.push(ReviewPanelItem::Section {
+            section: ReviewPanelSection::Conversation,
+            item_count: conversation_items.len(),
+        });
+        items.extend(conversation_items.into_iter().map(|item| match item.kind {
+            ReviewConversationItemKind::Review { review_id } => {
+                ReviewPanelItem::Review { review_id }
+            }
+            ReviewConversationItemKind::Comment { comment_id } => {
+                ReviewPanelItem::Comment { comment_id }
+            }
+        }));
+    }
+
+    append_review_thread_section(
+        &mut items,
+        ReviewPanelSection::Resolved,
+        threads
+            .iter()
+            .filter(|thread| thread.state != ReviewThreadState::Unresolved),
+    );
+
+    items
+}
+
+fn append_review_thread_section<'a>(
+    items: &mut Vec<ReviewPanelItem>,
+    section: ReviewPanelSection,
+    threads: impl Iterator<Item = &'a ReviewThread>,
+) {
+    let mut threads = threads.collect::<Vec<_>>();
+    if threads.is_empty() {
+        return;
+    }
+    threads.sort_by(compare_review_threads);
+
+    items.push(ReviewPanelItem::Section {
+        section,
+        item_count: threads.len(),
+    });
+
+    let mut start = 0;
+    while start < threads.len() {
+        let path = &threads[start].path;
+        let end = threads[start..]
+            .iter()
+            .position(|thread| thread.path != *path)
+            .map_or(threads.len(), |offset| start + offset);
+        items.push(ReviewPanelItem::FileHeader {
+            path: path.clone(),
+            thread_count: end - start,
+        });
+        items.extend(
+            threads[start..end]
+                .iter()
+                .map(|thread| ReviewPanelItem::Thread {
+                    thread_id: thread.id.clone(),
+                }),
+        );
+        start = end;
+    }
+}
+
+fn compare_review_threads(left: &&ReviewThread, right: &&ReviewThread) -> Ordering {
+    left.path
+        .cmp(&right.path)
+        .then_with(|| {
+            compare_review_thread_lines(review_thread_line(left), review_thread_line(right))
+        })
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+fn compare_review_thread_lines(left: Option<u32>, right: Option<u32>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
+}
+
+fn review_thread_line(thread: &ReviewThread) -> Option<u32> {
+    thread
+        .range
+        .as_ref()
+        .map(|range| range.start_line.unwrap_or(range.line))
+        .or_else(|| {
+            thread.comments.iter().find_map(|comment| {
+                comment
+                    .position
+                    .as_ref()
+                    .and_then(|position| position.line.or(position.original_line))
+            })
+        })
+}
+
+fn review_conversation_items(
+    reviews: &[PullRequestReview],
+    threads: &[ReviewThread],
+    comments: &[PullRequestComment],
+) -> Vec<ReviewConversationItem> {
     let mut items = Vec::new();
     let mut sequence = 0;
 
@@ -234,8 +420,8 @@ fn review_timeline_items(
             continue;
         }
 
-        items.push(ReviewTimelineItem {
-            kind: ReviewTimelineItemKind::Review {
+        items.push(ReviewConversationItem {
+            kind: ReviewConversationItemKind::Review {
                 review_id: review.id.clone(),
             },
             sort_time: review.submitted_at,
@@ -244,20 +430,9 @@ fn review_timeline_items(
         sequence += 1;
     }
 
-    for thread in threads {
-        items.push(ReviewTimelineItem {
-            kind: ReviewTimelineItemKind::Thread {
-                thread_id: thread.id.clone(),
-            },
-            sort_time: review_thread_sort_time(thread),
-            sequence,
-        });
-        sequence += 1;
-    }
-
     for comment in comments {
-        items.push(ReviewTimelineItem {
-            kind: ReviewTimelineItemKind::Comment {
+        items.push(ReviewConversationItem {
+            kind: ReviewConversationItemKind::Comment {
                 comment_id: comment.id.clone(),
             },
             sort_time: Some(comment.created_at),
@@ -266,18 +441,14 @@ fn review_timeline_items(
         sequence += 1;
     }
 
-    items.sort_by(compare_review_timeline_items);
+    items.sort_by(compare_review_conversation_items);
 
     items
 }
 
-fn review_thread_sort_time(thread: &ReviewThread) -> Option<DateTime<Utc>> {
-    thread.comments.last().map(|comment| comment.created_at)
-}
-
-fn compare_review_timeline_items(
-    left: &ReviewTimelineItem,
-    right: &ReviewTimelineItem,
+fn compare_review_conversation_items(
+    left: &ReviewConversationItem,
+    right: &ReviewConversationItem,
 ) -> Ordering {
     match (left.sort_time.as_ref(), right.sort_time.as_ref()) {
         (Some(left_time), Some(right_time)) => left_time.cmp(right_time),
@@ -286,6 +457,86 @@ fn compare_review_timeline_items(
         (None, None) => Ordering::Equal,
     }
     .then_with(|| left.sequence.cmp(&right.sequence))
+}
+
+fn review_content_item_count(items: &[ReviewPanelItem]) -> usize {
+    items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item,
+                ReviewPanelItem::Thread { .. }
+                    | ReviewPanelItem::Review { .. }
+                    | ReviewPanelItem::Comment { .. }
+            )
+        })
+        .count()
+}
+
+fn render_review_section_header(
+    section: ReviewPanelSection,
+    item_count: usize,
+) -> impl IntoElement {
+    div()
+        .id(section.id())
+        .w_full()
+        .min_w_0()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .pt_3()
+        .pb_1()
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .font_medium()
+                .text_color(color::text_primary())
+                .child(section.title()),
+        )
+        .child(render_status_pill(
+            section.count_label(item_count),
+            section.tone(),
+        ))
+}
+
+fn render_review_file_header(path: &str, thread_count: usize) -> impl IntoElement {
+    let thread_label = if thread_count == 1 {
+        "1 thread".to_string()
+    } else {
+        format!("{thread_count} threads")
+    };
+
+    div()
+        .w_full()
+        .min_w_0()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .px_2()
+        .py_1()
+        .border_b_1()
+        .border_color(color::border_subtle())
+        .bg(color::panel_background())
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .text_xs()
+                .font_medium()
+                .text_color(color::text_secondary())
+                .child(leading_truncated_path(path, 72)),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(thread_label),
+        )
 }
 
 fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -> AnyElement {
@@ -962,49 +1213,109 @@ mod tests {
     }
 
     #[test]
-    fn timeline_includes_review_threads() {
-        let thread = review_thread();
+    fn panel_prioritizes_unresolved_threads_grouped_by_file_and_line() {
+        let mut later_thread = review_thread();
+        later_thread.id = "thread-later".to_string();
+        set_thread_location(&mut later_thread, "src/app.rs", 30);
+        let mut earlier_thread = review_thread();
+        earlier_thread.id = "thread-earlier".to_string();
+        set_thread_location(&mut earlier_thread, "src/app.rs", 10);
+        let mut other_file_thread = review_thread();
+        other_file_thread.id = "thread-other-file".to_string();
+        set_thread_location(&mut other_file_thread, "src/z.rs", 5);
+        let mut resolved_thread = review_thread_with_state(ReviewThreadState::Resolved);
+        resolved_thread.id = "thread-resolved".to_string();
+        set_thread_location(&mut resolved_thread, "src/app.rs", 2);
+        let pull_request_comment = pull_request_comment("comment-1", "Can we do this?");
 
-        let items = review_timeline_items(&[], &[thread], &[]);
+        let items = review_panel_items(
+            &[],
+            &[
+                later_thread,
+                resolved_thread,
+                other_file_thread,
+                earlier_thread,
+            ],
+            &[pull_request_comment],
+        );
 
-        assert_eq!(items.len(), 1);
-        assert!(matches!(
-            &items[0].kind,
-            ReviewTimelineItemKind::Thread { thread_id } if thread_id == "thread-1"
-        ));
+        assert_eq!(
+            items,
+            vec![
+                ReviewPanelItem::Section {
+                    section: ReviewPanelSection::NeedsAttention,
+                    item_count: 3,
+                },
+                ReviewPanelItem::FileHeader {
+                    path: "src/app.rs".to_string(),
+                    thread_count: 2,
+                },
+                ReviewPanelItem::Thread {
+                    thread_id: "thread-earlier".to_string(),
+                },
+                ReviewPanelItem::Thread {
+                    thread_id: "thread-later".to_string(),
+                },
+                ReviewPanelItem::FileHeader {
+                    path: "src/z.rs".to_string(),
+                    thread_count: 1,
+                },
+                ReviewPanelItem::Thread {
+                    thread_id: "thread-other-file".to_string(),
+                },
+                ReviewPanelItem::Section {
+                    section: ReviewPanelSection::Conversation,
+                    item_count: 1,
+                },
+                ReviewPanelItem::Comment {
+                    comment_id: "comment-1".to_string(),
+                },
+                ReviewPanelItem::Section {
+                    section: ReviewPanelSection::Resolved,
+                    item_count: 1,
+                },
+                ReviewPanelItem::FileHeader {
+                    path: "src/app.rs".to_string(),
+                    thread_count: 1,
+                },
+                ReviewPanelItem::Thread {
+                    thread_id: "thread-resolved".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]
-    fn timeline_includes_review_summaries() {
+    fn conversation_includes_review_summaries() {
         let mut review = pull_request_review("401", None, Some("Overall direction looks right."));
         review.submitted_at = Some(test_time());
 
-        let items = review_timeline_items(&[review], &[], &[]);
+        let items = review_conversation_items(&[review], &[], &[]);
 
         assert_eq!(items.len(), 1);
         assert!(matches!(
             &items[0].kind,
-            ReviewTimelineItemKind::Review { review_id } if review_id == "401"
+            ReviewConversationItemKind::Review { review_id } if review_id == "401"
         ));
     }
 
     #[test]
-    fn timeline_includes_review_state_without_summary_when_not_carried_by_inline_comments() {
+    fn conversation_includes_review_state_without_inline_comments() {
         let mut review = pull_request_review("401", Some("review-node-401"), None);
         review.state = PullRequestReviewState::Approved;
         review.submitted_at = Some(test_time());
 
-        let items = review_timeline_items(&[review], &[], &[]);
+        let items = review_conversation_items(&[review], &[], &[]);
 
         assert_eq!(items.len(), 1);
         assert!(matches!(
             &items[0].kind,
-            ReviewTimelineItemKind::Review { review_id } if review_id == "401"
+            ReviewConversationItemKind::Review { review_id } if review_id == "401"
         ));
     }
 
     #[test]
-    fn timeline_skips_empty_review_when_inline_thread_represents_it() {
+    fn conversation_skips_empty_review_when_inline_thread_represents_it() {
         let mut review = pull_request_review("401", Some("review-node-401"), None);
         review.state = PullRequestReviewState::ChangesRequested;
         review.submitted_at = Some(test_time());
@@ -1012,41 +1323,37 @@ mod tests {
         thread.comments[0].pull_request_review_id = Some("401".to_string());
         thread.comments[0].pull_request_review_node_id = Some("review-node-401".to_string());
 
-        let items = review_timeline_items(&[review], &[thread], &[]);
+        let items = review_conversation_items(&[review], &[thread], &[]);
 
-        assert_eq!(items.len(), 1);
-        assert!(matches!(
-            &items[0].kind,
-            ReviewTimelineItemKind::Thread { thread_id } if thread_id == "thread-1"
-        ));
+        assert!(items.is_empty());
     }
 
     #[test]
-    fn timeline_includes_pull_request_comments() {
+    fn conversation_includes_pull_request_comments() {
         let comment = pull_request_comment("comment-1", "Can we do this?");
 
-        let items = review_timeline_items(&[], &[], &[comment]);
+        let items = review_conversation_items(&[], &[], &[comment]);
 
         assert_eq!(items.len(), 1);
         assert!(matches!(
             &items[0].kind,
-            ReviewTimelineItemKind::Comment { comment_id } if comment_id == "comment-1"
+            ReviewConversationItemKind::Comment { comment_id } if comment_id == "comment-1"
         ));
     }
 
     #[test]
-    fn timeline_orders_older_summaries_before_recent_threads() {
+    fn conversation_orders_older_summaries_before_recent_comments() {
         let mut review = pull_request_review("401", None, Some("Older summary."));
         review.submitted_at = Some(test_time());
-        let mut thread = review_thread();
-        thread.comments[0].created_at = test_time() + chrono::Duration::minutes(5);
+        let mut comment = pull_request_comment("comment-1", "Newer comment.");
+        comment.created_at = test_time() + chrono::Duration::minutes(5);
 
-        let items = review_timeline_items(&[review], &[thread], &[]);
+        let items = review_conversation_items(&[review], &[], &[comment]);
 
         assert_eq!(items.len(), 2);
         assert!(matches!(
             &items[0].kind,
-            ReviewTimelineItemKind::Review { review_id } if review_id == "401"
+            ReviewConversationItemKind::Review { review_id } if review_id == "401"
         ));
     }
 
@@ -1212,6 +1519,18 @@ mod tests {
 
     fn review_thread_with_state(state: ReviewThreadState) -> ReviewThread {
         test_review_thread(state)
+    }
+
+    fn set_thread_location(thread: &mut ReviewThread, path: &str, line: u32) {
+        thread.path = path.to_string();
+        let position = thread
+            .comments
+            .first_mut()
+            .and_then(|comment| comment.position.as_mut())
+            .expect("test thread should have a positioned comment");
+        position.path = path.to_string();
+        position.line = Some(line);
+        position.original_line = None;
     }
 
     fn review_diff_fixture() -> (Vec<DiffFile>, Vec<Option<ParsedDiff>>) {
