@@ -93,6 +93,10 @@ impl AppView {
             .count()
     }
 
+    pub(crate) fn has_active_changed_file_filters(&self) -> bool {
+        !self.excluded_file_type_filters.is_empty() || self.show_files_owned_by_current_user
+    }
+
     pub(crate) fn has_owned_file_filter_data(&self) -> bool {
         !self.owned_file_paths.is_empty()
     }

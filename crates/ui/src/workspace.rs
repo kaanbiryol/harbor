@@ -171,6 +171,7 @@ pub struct AppView {
     pull_request_filter_popover_open: bool,
     pull_request_filters: PullRequestFilters,
     file_filter_popover_open: bool,
+    pull_request_overview_expanded: bool,
     review_action_comment_target: Option<ReviewActionCommentTarget>,
     review_action_comment_input: Entity<InputState>,
     pull_request_switcher_selection: usize,
@@ -243,6 +244,17 @@ impl AppView {
         cx.notify();
     }
 
+    pub(crate) fn toggle_pull_request_overview(&mut self, cx: &mut Context<Self>) {
+        self.pull_request_overview_expanded = !self.pull_request_overview_expanded;
+        self.status = if self.pull_request_overview_expanded {
+            "Expanded pull request description"
+        } else {
+            "Collapsed pull request description"
+        }
+        .to_string();
+        cx.notify();
+    }
+
     fn selected_pr_label(&self) -> String {
         self.selected_pull_request()
             .map(|pr| format!("PR #{}", pr.number))
@@ -265,6 +277,7 @@ impl AppView {
         }
 
         self.cache_current_pull_request_detail_snapshot();
+        self.pull_request_overview_expanded = false;
         self.selection_state.set_pull_request_index(index);
 
         if self.restore_selected_pull_request_detail_snapshot(cx) {

@@ -1,6 +1,12 @@
+use std::sync::Arc;
+
 use super::*;
-use crate::actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher};
-use gpui::{AppContext, TestAppContext, px};
+use crate::{
+    actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher},
+    test_fixtures::pull_request,
+    workspace::github_service::test_support::FakeGitHubApi,
+};
+use gpui::{AppContext, Modifiers, TestAppContext, px};
 use gpui_component::{Root, Theme, ThemeMode};
 
 #[test]
@@ -33,6 +39,44 @@ async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
         .expect("test AppView should be created")
         .read_with(cx, |view, _| {
             assert!(!view.repository_state.repository_switcher_open);
+        });
+}
+
+#[gpui::test]
+async fn pull_request_description_defaults_collapsed_and_toggles(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            let mut pull_request = pull_request();
+            pull_request.body = Some("## summary\n\n- Adds a focused fixture".to_string());
+            view.pull_requests = vec![pull_request];
+            cx.notify();
+        });
+        view_entity = Some(view.clone());
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    assert!(cx.debug_bounds("pull-request-overview-content").is_none());
+
+    let toggle_bounds = cx
+        .debug_bounds("pull-request-overview-toggle")
+        .expect("description toggle should render");
+    cx.simulate_click(toggle_bounds.center(), Modifiers::none());
+    cx.refresh().expect("test window should refresh");
+
+    assert!(cx.debug_bounds("pull-request-overview-content").is_some());
+    view_entity
+        .expect("test AppView should be created")
+        .read_with(cx, |view, _| {
+            assert!(view.pull_request_overview_expanded);
         });
 }
 

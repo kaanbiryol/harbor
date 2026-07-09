@@ -1,10 +1,12 @@
-use gpui::{AnyElement, Context, IntoElement, Rgba, SharedString, div, prelude::*, uniform_list};
+use gpui::{
+    AnyElement, Context, IntoElement, Rgba, SharedString, div, prelude::*, px, uniform_list,
+};
 use gpui_component::{Icon, Sizable, StyledExt};
 
 use crate::{
     icons::Octicon,
     panels::{render_changed_file_row, render_changed_folder_row, render_status_pill},
-    visual::{Tone, color},
+    visual::{Tone, color, layout},
     workspace::{AppView, ChangedFileTreeRow},
 };
 
@@ -93,21 +95,26 @@ impl AppView {
         } else {
             Tone::Neutral
         };
+        let visible_count = self.visible_file_indices(cx).len();
+        let has_active_filter = self.has_active_changed_file_filters();
+        let visible_count_label = if has_active_filter {
+            format!("{visible_count}/{total_count}")
+        } else {
+            total_count.to_string()
+        };
 
         div()
-            .border_1()
+            .border_b_1()
             .border_color(color::border())
             .bg(color::content_background())
             .child(
                 div()
+                    .h(px(layout::CHANGED_FILE_TOOLBAR_HEIGHT))
                     .px_3()
-                    .py_2()
                     .flex()
                     .items_center()
                     .justify_between()
                     .gap_2()
-                    .border_b_1()
-                    .border_color(color::border_subtle())
                     .child(
                         div()
                             .min_w_0()
@@ -128,15 +135,31 @@ impl AppView {
                                     .font_medium()
                                     .text_color(color::text_primary())
                                     .child("Changed files"),
+                            )
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .text_xs()
+                                    .text_color(if has_active_filter {
+                                        color::accent()
+                                    } else {
+                                        color::text_muted()
+                                    })
+                                    .child(visible_count_label),
                             ),
                     )
-                    .child(div().flex_none().flex().items_center().gap_2().child(
-                        render_status_pill(
-                            format!("{reviewed_count}/{total_count} reviewed"),
-                            reviewed_tone,
-                        ),
-                    )),
+                    .child(
+                        div()
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(render_status_pill(
+                                format!("{reviewed_count}/{total_count} reviewed"),
+                                reviewed_tone,
+                            ))
+                            .child(self.render_changed_files_filter_control(cx)),
+                    ),
             )
-            .child(self.render_changed_files_filter_bar(cx))
     }
 }

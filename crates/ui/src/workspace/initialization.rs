@@ -212,6 +212,7 @@ impl AppView {
             pull_request_filter_popover_open: false,
             pull_request_filters: PullRequestFilters::default(),
             file_filter_popover_open: false,
+            pull_request_overview_expanded: false,
             review_action_comment_target: None,
             review_action_comment_input,
             pull_request_switcher_selection: 0,

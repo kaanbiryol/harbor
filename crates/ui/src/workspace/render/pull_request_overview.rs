@@ -1,49 +1,140 @@
-use gpui::{AnyElement, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
-use gpui_component::{Sizable, StyledExt, avatar::Avatar, scroll::ScrollableElement};
+use gpui::{AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
+use gpui_component::{Icon, Sizable, StyledExt, avatar::Avatar, scroll::ScrollableElement};
 use harbor_domain::{Label, PullRequest, PullRequestPerson, PullRequestTeam};
 
 use crate::{
+    icons::Octicon,
     panels::render_review_markdown_body,
     visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
 
+const PULL_REQUEST_OVERVIEW_ROW_HEIGHT: f32 = 44.0;
+const PULL_REQUEST_OVERVIEW_MAX_HEIGHT: f32 = 220.0;
+
 impl AppView {
-    pub(super) fn render_pull_request_overview(&self, pr: &PullRequest) -> impl IntoElement {
+    pub(super) fn render_pull_request_overview(
+        &self,
+        pr: &PullRequest,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let chevron = if self.pull_request_overview_expanded {
+            Octicon::ChevronDown
+        } else {
+            Octicon::ChevronRight
+        };
+
         div()
             .image_cache(gpui::retain_all("pull-request-overview-avatar-cache"))
             .flex_none()
-            .border_1()
+            .border_b_1()
             .border_color(color::border())
             .bg(color::content_background())
-            .flex()
-            .flex_col()
-            .gap_3()
-            .px_3()
-            .py_3()
-            .child(render_overview_section(
-                "Description",
-                render_pull_request_description(pr),
-            ))
-            .when(!pr.assignees.is_empty(), |element| {
-                element.child(render_overview_section(
-                    "Assignees",
-                    render_people_row(&pr.assignees),
-                ))
-            })
-            .when(has_review_requests(pr), |element| {
-                element.child(render_overview_section(
-                    "Reviewers",
-                    render_review_requests_row(&pr.requested_reviewers, &pr.requested_teams),
-                ))
-            })
-            .when(!pr.labels.is_empty(), |element| {
-                element.child(render_overview_section(
-                    "Labels",
-                    render_labels_row(&pr.labels),
-                ))
+            .child(
+                div()
+                    .id("pull-request-overview-toggle")
+                    .debug_selector(|| "pull-request-overview-toggle".to_string())
+                    .h(px(PULL_REQUEST_OVERVIEW_ROW_HEIGHT))
+                    .w_full()
+                    .min_w_0()
+                    .px_3()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .cursor_pointer()
+                    .hover(|element| element.bg(color::row_hover()))
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.toggle_pull_request_overview(cx);
+                    }))
+                    .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_sm()
+                            .font_medium()
+                            .text_color(color::text_primary())
+                            .child("Description"),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .truncate()
+                            .text_xs()
+                            .text_color(color::text_muted())
+                            .child(pull_request_description_preview(pr)),
+                    ),
+            )
+            .when(self.pull_request_overview_expanded, |element| {
+                element.child(
+                    div()
+                        .debug_selector(|| "pull-request-overview-content".to_string())
+                        .max_h(px(PULL_REQUEST_OVERVIEW_MAX_HEIGHT))
+                        .overflow_y_scrollbar()
+                        .px_3()
+                        .pb_3()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(render_pull_request_description(pr))
+                        .when(!pr.assignees.is_empty(), |element| {
+                            element.child(render_overview_section(
+                                "Assignees",
+                                render_people_row(&pr.assignees),
+                            ))
+                        })
+                        .when(has_review_requests(pr), |element| {
+                            element.child(render_overview_section(
+                                "Reviewers",
+                                render_review_requests_row(
+                                    &pr.requested_reviewers,
+                                    &pr.requested_teams,
+                                ),
+                            ))
+                        })
+                        .when(!pr.labels.is_empty(), |element| {
+                            element.child(render_overview_section(
+                                "Labels",
+                                render_labels_row(&pr.labels),
+                            ))
+                        }),
+                )
             })
     }
+}
+
+fn pull_request_description_preview(pr: &PullRequest) -> String {
+    pr.body
+        .as_deref()
+        .and_then(description_preview)
+        .unwrap_or_else(|| "No description".to_string())
+}
+
+fn description_preview(body: &str) -> Option<String> {
+    body.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') || line == "---" {
+                return None;
+            }
+
+            let line = line
+                .strip_prefix("- ")
+                .or_else(|| line.strip_prefix("* "))
+                .or_else(|| line.strip_prefix("+ "))
+                .or_else(|| line.strip_prefix("> "))
+                .unwrap_or(line)
+                .trim();
+            let line = line
+                .strip_prefix("[ ] ")
+                .or_else(|| line.strip_prefix("[x] "))
+                .or_else(|| line.strip_prefix("[X] "))
+                .unwrap_or(line)
+                .trim_matches(&['*', '_', '`'][..]);
+
+            (!line.is_empty()).then(|| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        })
+        .next()
 }
 
 fn render_overview_section(title: &'static str, body: AnyElement) -> impl IntoElement {
@@ -76,9 +167,7 @@ fn render_pull_request_description(pr: &PullRequest) -> AnyElement {
     };
 
     div()
-        .max_h(px(220.0))
         .min_w_0()
-        .overflow_y_scrollbar()
         .pr_1()
         .text_sm()
         .text_color(color::text_secondary())
@@ -247,7 +336,26 @@ fn parse_label_color(color: &str) -> Option<Rgba> {
 
 #[cfg(test)]
 mod tests {
-    use super::{avatar_initial, parse_label_color};
+    use super::{avatar_initial, description_preview, parse_label_color};
+
+    #[test]
+    fn description_preview_prefers_content_over_headings() {
+        assert_eq!(
+            description_preview(
+                "## summary\n\n- adds a large review inbox fixture\n- includes review threads"
+            )
+            .as_deref(),
+            Some("adds a large review inbox fixture")
+        );
+    }
+
+    #[test]
+    fn description_preview_normalizes_task_list_markdown() {
+        assert_eq!(
+            description_preview("# validation\n\n- [x]   cargo test --workspace").as_deref(),
+            Some("cargo test --workspace")
+        );
+    }
 
     #[test]
     fn parses_github_label_colors() {

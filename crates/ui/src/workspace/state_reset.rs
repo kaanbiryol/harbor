@@ -69,6 +69,7 @@ impl AppView {
     }
 
     pub(super) fn clear_selected_pull_request_detail_state(&mut self) {
+        self.pull_request_overview_expanded = false;
         self.clear_changed_file_state();
         self.clear_workflow_state();
         self.clear_review_data_state();

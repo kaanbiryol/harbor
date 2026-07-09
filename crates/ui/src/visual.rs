@@ -17,7 +17,7 @@ pub(crate) mod layout {
     pub(crate) const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 36.0;
     pub(crate) const CHANGED_FILE_TREE_BASE_INDENT: f32 = 12.0;
     pub(crate) const CHANGED_FILE_TREE_DEPTH_INDENT: f32 = 18.0;
-    pub(crate) const CHANGED_FILE_FILTER_BAR_HEIGHT: f32 = 40.0;
+    pub(crate) const CHANGED_FILE_TOOLBAR_HEIGHT: f32 = 40.0;
 }
 
 pub(crate) mod color {
