@@ -4,7 +4,7 @@ use gpui_component::{
     button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
 };
-use harbor_domain::{MergeMethod, PullRequest};
+use harbor_domain::{MergeMethod, PullRequest, PullRequestState};
 
 use crate::{
     actions::{
@@ -41,105 +41,247 @@ impl AppView {
         let branch_name = pr.head_ref.clone();
         let head_sha = pr.head_sha.clone();
         let short_head_sha = short_commit_sha(&head_sha);
+        let header_actions = div()
+            .flex_none()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .justify_end()
+            .gap_2()
+            .child(
+                Button::new("comment-pr")
+                    .icon(Octicon::CommentDiscussion)
+                    .label("comment")
+                    .small()
+                    .outline()
+                    .tooltip("Comment on pull request")
+                    .loading(pull_request_action_running)
+                    .disabled(pull_request_action_running)
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        view.open_pull_request_comment_dialog(
+                            &OpenPullRequestCommentDialog,
+                            window,
+                            cx,
+                        );
+                    })),
+            )
+            .child({
+                let dropdown = DropdownButton::new("review-pr")
+                    .button(
+                        Button::new("approve-pr-primary")
+                            .label("approve")
+                            .small()
+                            .loading(pull_request_action_running)
+                            .disabled(review_action_disabled)
+                            .on_click(cx.listener(|view, _, window, cx| {
+                                view.run_pull_request_action(
+                                    PullRequestAction::Approve { body: None },
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
+                    .small()
+                    .compact()
+                    .tooltip(approve_tooltip)
+                    .loading(pull_request_action_running)
+                    .disabled(review_action_disabled)
+                    .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
+                        menu.menu_with_disabled(
+                            "Approve with comment...",
+                            Box::new(OpenApproveCommentDialog),
+                            review_action_disabled,
+                        )
+                        .menu_with_disabled(
+                            "Request changes...",
+                            Box::new(OpenRequestChangesCommentDialog),
+                            review_action_disabled,
+                        )
+                    });
 
-        div()
+                if review_action_disabled {
+                    dropdown.outline().opacity(0.58)
+                } else {
+                    dropdown.success().outline()
+                }
+            })
+            .child({
+                let button = Button::new("merge-pr-primary")
+                    .label(merge_method_button_label(MergeMethod::Squash))
+                    .small()
+                    .loading(pull_request_action_running)
+                    .disabled(merge_action_disabled)
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        view.run_pull_request_action(
+                            PullRequestAction::Merge(MergeMethod::Squash),
+                            window,
+                            cx,
+                        );
+                    }));
+                let dropdown = DropdownButton::new("merge-pr")
+                    .button(button)
+                    .small()
+                    .compact()
+                    .tooltip(merge_tooltip)
+                    .loading(pull_request_action_running)
+                    .disabled(merge_action_disabled)
+                    .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                        menu.menu_with_check_and_disabled(
+                            MergeMethod::Merge.label(),
+                            false,
+                            Box::new(MergePullRequestWithMergeCommit),
+                            merge_action_disabled,
+                        )
+                        .menu_with_check_and_disabled(
+                            MergeMethod::Squash.label(),
+                            true,
+                            Box::new(MergePullRequest),
+                            merge_action_disabled,
+                        )
+                        .menu_with_check_and_disabled(
+                            MergeMethod::Rebase.label(),
+                            false,
+                            Box::new(RebasePullRequest),
+                            merge_action_disabled,
+                        )
+                    });
+
+                if merge_action_disabled {
+                    dropdown.outline().opacity(0.58)
+                } else {
+                    dropdown.success()
+                }
+            });
+
+        let header_content = div()
             .px_3()
             .py_3()
-            .border_1()
-            .border_color(color::border())
-            .bg(color::panel_background())
             .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .id(("pull-request-title-link", pr.number))
-                            .min_w_0()
-                            .flex_initial()
-                            .truncate()
-                            .text_size(px(layout::PULL_REQUEST_TITLE_FONT_SIZE))
-                            .font_medium()
-                            .text_color(color::accent())
-                            .cursor_pointer()
-                            .hover(|element| element.text_color(color::accent_hover()))
-                            .on_click(cx.listener(move |view, _, _, cx| {
-                                cx.open_url(&pull_request_url);
-                                view.status =
-                                    format!("Opened PR #{pull_request_number} in browser");
-                                cx.notify();
-                            }))
-                            .child(format!("#{} {}", pr.number, pr.title)),
-                    )
-                    .child(div().flex_none().child(render_copy_button(
-                        format!("copy-pr-link-{}", pr.number),
-                        "Copy pull request link",
-                        pull_request_link,
-                        "Copied PR link".to_string(),
-                        cx,
-                    ))),
-            )
-            .child(
-                div()
-                    .pt_2()
                     .flex()
                     .flex_wrap()
-                    .items_center()
-                    .gap_1()
-                    .min_w_0()
-                    .text_xs()
-                    .text_color(color::text_muted())
+                    .items_start()
+                    .justify_between()
+                    .gap_3()
                     .child(
                         div()
+                            .flex_1()
                             .min_w_0()
-                            .max_w(px(220.))
-                            .truncate()
-                            .child(branch_name.clone()),
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .id(("pull-request-title-link", pr.number))
+                                            .min_w_0()
+                                            .flex_initial()
+                                            .truncate()
+                                            .text_size(px(layout::PULL_REQUEST_TITLE_FONT_SIZE))
+                                            .font_medium()
+                                            .text_color(color::accent())
+                                            .cursor_pointer()
+                                            .hover(|element| {
+                                                element.text_color(color::accent_hover())
+                                            })
+                                            .on_click(cx.listener(move |view, _, _, cx| {
+                                                cx.open_url(&pull_request_url);
+                                                view.status = format!(
+                                                    "Opened PR #{pull_request_number} in browser"
+                                                );
+                                                cx.notify();
+                                            }))
+                                            .child(format!("#{} {}", pr.number, pr.title)),
+                                    )
+                                    .child(div().flex_none().child(render_copy_button(
+                                        format!("copy-pr-link-{}", pr.number),
+                                        "Copy pull request link",
+                                        pull_request_link,
+                                        "Copied PR link".to_string(),
+                                        cx,
+                                    )))
+                                    .child(render_pull_request_state(pr.state, pr.is_draft)),
+                            )
+                            .child(
+                                div()
+                                    .pt_2()
+                                    .flex()
+                                    .flex_wrap()
+                                    .items_center()
+                                    .gap_1()
+                                    .min_w_0()
+                                    .text_xs()
+                                    .text_color(color::text_muted())
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .font_medium()
+                                            .text_color(color::text_secondary())
+                                            .child(pr.author.clone()),
+                                    )
+                                    .child("wants to merge into")
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .text_color(color::accent())
+                                            .child(pr.base_ref.clone()),
+                                    )
+                                    .child("from")
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .max_w(px(260.))
+                                            .truncate()
+                                            .text_color(color::accent())
+                                            .child(branch_name.clone()),
+                                    )
+                                    .child(render_copy_button(
+                                        format!("copy-pr-branch-{}", pr.number),
+                                        "Copy branch name",
+                                        branch_name.clone(),
+                                        format!("Copied branch {branch_name}"),
+                                        cx,
+                                    ))
+                                    .child(div().flex_none().child("/"))
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .font_family(cx.theme().mono_font_family.clone())
+                                            .child(short_head_sha.clone()),
+                                    )
+                                    .child(render_copy_button(
+                                        format!("copy-pr-sha-{}", pr.number),
+                                        "Copy commit SHA",
+                                        head_sha,
+                                        format!("Copied commit {short_head_sha}"),
+                                        cx,
+                                    )),
+                            )
+                            .when(self.detail_state.details_loading(), |element| {
+                                element.child(
+                                    div()
+                                        .pt_2()
+                                        .text_xs()
+                                        .text_color(color::text_muted())
+                                        .child("Loading latest PR details..."),
+                                )
+                            })
+                            .when_some(
+                                self.detail_state.details_error().map(str::to_string),
+                                |element, error| {
+                                    element.child(
+                                        div()
+                                            .pt_2()
+                                            .text_xs()
+                                            .text_color(color::danger())
+                                            .child(error),
+                                    )
+                                },
+                            ),
                     )
-                    .child(render_copy_button(
-                        format!("copy-pr-branch-{}", pr.number),
-                        "Copy branch name",
-                        branch_name.clone(),
-                        format!("Copied branch {branch_name}"),
-                        cx,
-                    ))
-                    .child(div().flex_none().child("/"))
-                    .child(
-                        div()
-                            .flex_none()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .child(short_head_sha.clone()),
-                    )
-                    .child(render_copy_button(
-                        format!("copy-pr-sha-{}", pr.number),
-                        "Copy commit SHA",
-                        head_sha,
-                        format!("Copied commit {short_head_sha}"),
-                        cx,
-                    )),
-            )
-            .when(self.detail_state.details_loading(), |element| {
-                element.child(
-                    div()
-                        .pt_2()
-                        .text_xs()
-                        .text_color(color::text_muted())
-                        .child("Loading latest PR details..."),
-                )
-            })
-            .when_some(
-                self.detail_state.details_error().map(str::to_string),
-                |element, error| {
-                    element.child(
-                        div()
-                            .pt_2()
-                            .text_xs()
-                            .text_color(color::danger())
-                            .child(error),
-                    )
-                },
+                    .child(header_actions),
             )
             .child(
                 div()
@@ -158,127 +300,6 @@ impl AppView {
                             Tone::Warning
                         },
                     )),
-            )
-            .child(
-                div()
-                    .pt_3()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                Button::new("comment-pr")
-                                    .icon(Octicon::CommentDiscussion)
-                                    .label("comment")
-                                    .small()
-                                    .outline()
-                                    .tooltip("Comment on pull request")
-                                    .loading(pull_request_action_running)
-                                    .disabled(pull_request_action_running)
-                                    .on_click(cx.listener(|view, _, window, cx| {
-                                        view.open_pull_request_comment_dialog(
-                                            &OpenPullRequestCommentDialog,
-                                            window,
-                                            cx,
-                                        );
-                                    })),
-                            )
-                            .child({
-                                let dropdown = DropdownButton::new("review-pr")
-                                    .button(
-                                        Button::new("approve-pr-primary")
-                                            .label("approve")
-                                            .small()
-                                            .loading(pull_request_action_running)
-                                            .disabled(review_action_disabled)
-                                            .on_click(cx.listener(|view, _, window, cx| {
-                                                view.run_pull_request_action(
-                                                    PullRequestAction::Approve { body: None },
-                                                    window,
-                                                    cx,
-                                                );
-                                            })),
-                                    )
-                                    .small()
-                                    .compact()
-                                    .tooltip(approve_tooltip.clone())
-                                    .loading(pull_request_action_running)
-                                    .disabled(review_action_disabled)
-                                    .dropdown_menu_with_anchor(
-                                        Anchor::TopLeft,
-                                        move |menu, _, _| {
-                                            menu.menu_with_disabled(
-                                                "Approve with comment...",
-                                                Box::new(OpenApproveCommentDialog),
-                                                review_action_disabled,
-                                            )
-                                            .menu_with_disabled(
-                                                "Request changes...",
-                                                Box::new(OpenRequestChangesCommentDialog),
-                                                review_action_disabled,
-                                            )
-                                        },
-                                    );
-
-                                if review_action_disabled {
-                                    dropdown.outline().opacity(0.58)
-                                } else {
-                                    dropdown.success().outline()
-                                }
-                            }),
-                    )
-                    .child({
-                        let button = Button::new("merge-pr-primary")
-                            .label(merge_method_button_label(MergeMethod::Squash))
-                            .small()
-                            .loading(pull_request_action_running)
-                            .disabled(merge_action_disabled)
-                            .on_click(cx.listener(|view, _, window, cx| {
-                                view.run_pull_request_action(
-                                    PullRequestAction::Merge(MergeMethod::Squash),
-                                    window,
-                                    cx,
-                                );
-                            }));
-                        let dropdown = DropdownButton::new("merge-pr")
-                            .button(button)
-                            .small()
-                            .compact()
-                            .tooltip(merge_tooltip.clone())
-                            .loading(pull_request_action_running)
-                            .disabled(merge_action_disabled)
-                            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                                menu.menu_with_check_and_disabled(
-                                    MergeMethod::Merge.label(),
-                                    false,
-                                    Box::new(MergePullRequestWithMergeCommit),
-                                    merge_action_disabled,
-                                )
-                                .menu_with_check_and_disabled(
-                                    MergeMethod::Squash.label(),
-                                    true,
-                                    Box::new(MergePullRequest),
-                                    merge_action_disabled,
-                                )
-                                .menu_with_check_and_disabled(
-                                    MergeMethod::Rebase.label(),
-                                    false,
-                                    Box::new(RebasePullRequest),
-                                    merge_action_disabled,
-                                )
-                            });
-
-                        if merge_action_disabled {
-                            dropdown.outline().opacity(0.58)
-                        } else {
-                            dropdown.success()
-                        }
-                    }),
             )
             .when_some(
                 self.review_state.pending_review_cloned(),
@@ -299,8 +320,31 @@ impl AppView {
                             .child(error),
                     )
                 },
-            )
+            );
+
+        div()
+            .debug_selector(|| "pull-request-workspace-header".to_string())
+            .flex_none()
+            .border_1()
+            .border_color(color::border())
+            .bg(color::panel_background())
+            .child(header_content)
+            .child(self.render_panel_tabs(cx))
     }
+}
+
+fn render_pull_request_state(state: PullRequestState, is_draft: bool) -> impl IntoElement {
+    let (label, tone) = if is_draft {
+        ("draft", Tone::Neutral)
+    } else {
+        match state {
+            PullRequestState::Open => ("open", Tone::Success),
+            PullRequestState::Closed => ("closed", Tone::Neutral),
+            PullRequestState::Merged => ("merged", Tone::Info),
+        }
+    };
+
+    crate::panels::render_status_pill(label, tone)
 }
 
 fn merge_method_button_label(method: MergeMethod) -> &'static str {

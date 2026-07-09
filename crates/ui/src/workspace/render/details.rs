@@ -30,6 +30,7 @@ impl AppView {
         };
 
         div()
+            .debug_selector(|| "pull-request-details".to_string())
             .w(px(layout::PULL_REQUEST_DETAILS_WIDTH))
             .flex()
             .flex_col()
@@ -38,7 +39,6 @@ impl AppView {
             .border_color(color::border())
             .bg(color::panel_background())
             .overflow_hidden()
-            .child(self.render_pull_request_details_header(pr, cx))
             .child(self.render_pull_request_overview(pr, cx))
             .child(self.render_changed_files_header(cx))
             .child(self.render_changed_files_body(cx))

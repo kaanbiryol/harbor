@@ -14,15 +14,77 @@ use crate::{
 };
 
 impl AppView {
+    pub(super) fn render_panel_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().clone();
+
+        div()
+            .debug_selector(|| "pull-request-panel-tabs".to_string())
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .pt_2()
+            .border_b_1()
+            .border_color(color::border())
+            .children(
+                PanelTab::ALL
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(|(index, tab)| {
+                        let active = tab == self.active_tab;
+                        let tab_color = if active {
+                            color::accent()
+                        } else {
+                            color::text_secondary()
+                        };
+                        let view = view.clone();
+
+                        div()
+                            .id(("panel-tab", index))
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .px_3()
+                            .pb_2()
+                            .pt_1()
+                            .text_sm()
+                            .text_color(tab_color)
+                            .cursor_pointer()
+                            .when(active, |element| {
+                                element
+                                    .border_b_1()
+                                    .border_color(color::accent())
+                                    .font_medium()
+                            })
+                            .hover(move |element| {
+                                if active {
+                                    element
+                                } else {
+                                    element.bg(color::row_hover())
+                                }
+                            })
+                            .on_click(move |_, _, cx| {
+                                view.update(cx, |view, cx| {
+                                    view.select_panel_tab(tab, cx);
+                                });
+                            })
+                            .child(Icon::new(tab.icon()).xsmall().text_color(tab_color))
+                            .child(tab.label())
+                    }),
+            )
+    }
+
     pub(super) fn render_panel(
         &self,
         pr: Option<&PullRequest>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let view = cx.entity().clone();
         let dense_content = matches!(self.active_tab, PanelTab::Diff | PanelTab::Logs);
 
         div()
+            .debug_selector(|| "pull-request-panel".to_string())
             .flex_1()
             .flex()
             .flex_col()
@@ -32,63 +94,6 @@ impl AppView {
             .border_color(color::border())
             .bg(color::panel_background())
             .overflow_hidden()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px_2()
-                    .pt_2()
-                    .border_b_1()
-                    .border_color(color::border())
-                    .children(
-                        PanelTab::ALL
-                            .iter()
-                            .copied()
-                            .enumerate()
-                            .map(|(index, tab)| {
-                                let active = tab == self.active_tab;
-                                let tab_color = if active {
-                                    color::accent()
-                                } else {
-                                    color::text_secondary()
-                                };
-                                let view = view.clone();
-
-                                div()
-                                    .id(("panel-tab", index))
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .px_3()
-                                    .pb_2()
-                                    .pt_1()
-                                    .text_sm()
-                                    .text_color(tab_color)
-                                    .cursor_pointer()
-                                    .when(active, |element| {
-                                        element
-                                            .border_b_1()
-                                            .border_color(color::accent())
-                                            .font_medium()
-                                    })
-                                    .hover(move |element| {
-                                        if active {
-                                            element
-                                        } else {
-                                            element.bg(color::row_hover())
-                                        }
-                                    })
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |view, cx| {
-                                            view.select_panel_tab(tab, cx);
-                                        });
-                                    })
-                                    .child(Icon::new(tab.icon()).xsmall().text_color(tab_color))
-                                    .child(tab.label())
-                            }),
-                    ),
-            )
             .child(
                 div()
                     .id("panel-content-scroll")

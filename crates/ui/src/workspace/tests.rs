@@ -81,6 +81,50 @@ async fn pull_request_description_defaults_collapsed_and_toggles(cx: &mut TestAp
 }
 
 #[gpui::test]
+async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+
+    let header = cx
+        .debug_bounds("pull-request-workspace-header")
+        .expect("pull request header should render");
+    let details = cx
+        .debug_bounds("pull-request-details")
+        .expect("pull request details should render");
+    let panel = cx
+        .debug_bounds("pull-request-panel")
+        .expect("pull request panel should render");
+    let tabs = cx
+        .debug_bounds("pull-request-panel-tabs")
+        .expect("pull request tabs should render");
+
+    assert_eq!(header.origin.x, details.origin.x);
+    assert!(header.size.width > details.size.width);
+    assert!(
+        header.origin.x + header.size.width >= panel.origin.x + panel.size.width,
+        "header should reach across the active panel"
+    );
+    assert!(
+        tabs.origin.y + tabs.size.height <= panel.origin.y,
+        "tabs should render in the header above the active panel"
+    );
+}
+
+#[gpui::test]
 async fn fullscreen_repository_title_keeps_left_inset(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);

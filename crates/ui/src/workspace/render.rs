@@ -91,6 +91,25 @@ impl Render for AppView {
         let content = if show_auth_gate {
             self.render_github_auth_gate(cx).into_any_element()
         } else {
+            let mut pull_request_workspace =
+                div().flex_1().flex().flex_col().min_h_0().min_w_0().gap_3();
+
+            if let Some(pr) = selected_pr.as_ref() {
+                pull_request_workspace =
+                    pull_request_workspace.child(self.render_pull_request_details_header(pr, cx));
+            }
+
+            pull_request_workspace = pull_request_workspace.child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .gap_3()
+                    .child(self.render_details(selected_pr.as_ref(), cx))
+                    .child(self.render_panel(selected_pr.as_ref(), cx)),
+            );
+
             div()
                 .flex()
                 .flex_1()
@@ -102,8 +121,7 @@ impl Render for AppView {
                 .when(self.pull_request_inbox.is_visible(), |element| {
                     element.child(self.render_inbox(cx))
                 })
-                .child(self.render_details(selected_pr.as_ref(), cx))
-                .child(self.render_panel(selected_pr.as_ref(), cx))
+                .child(pull_request_workspace)
                 .into_any_element()
         };
 
