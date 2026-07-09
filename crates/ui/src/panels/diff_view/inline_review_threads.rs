@@ -6,8 +6,8 @@ use crate::{
     panels::{
         review::review_thread_state_label,
         review_thread_chrome::{
-            ReviewThreadActionIds, ReviewThreadActionsState, ReviewThreadReplyComposerChrome,
-            ReviewThreadReplyComposerIds,
+            ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
+            ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
             ReviewThreadReplyComposerState as SharedReviewThreadReplyComposerState,
             render_review_thread_actions,
             render_review_thread_reply_composer as render_shared_review_thread_reply_composer,
@@ -90,6 +90,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
             action_running,
             can_toggle_resolution,
             show_toggle_icon: true,
+            chrome: ReviewThreadActionsChrome::Inline,
             view_entity,
         }))
 }

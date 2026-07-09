@@ -45,6 +45,12 @@ pub(crate) enum ReviewThreadReplyComposerChrome {
     Panel,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ReviewThreadActionsChrome {
+    Inline,
+    Panel,
+}
+
 pub(crate) struct ReviewThreadActionsState {
     pub(crate) ids: ReviewThreadActionIds,
     pub(crate) thread_id: String,
@@ -54,6 +60,7 @@ pub(crate) struct ReviewThreadActionsState {
     pub(crate) action_running: bool,
     pub(crate) can_toggle_resolution: bool,
     pub(crate) show_toggle_icon: bool,
+    pub(crate) chrome: ReviewThreadActionsChrome,
     pub(crate) view_entity: Entity<AppView>,
 }
 
@@ -140,6 +147,7 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         action_running,
         can_toggle_resolution,
         show_toggle_icon,
+        chrome,
         view_entity,
     } = state;
     let toggle_label = if is_resolved { "Reopen" } else { "Resolve" };
@@ -148,9 +156,14 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         .label(if active_reply { "Replying" } else { "Reply" })
         .xsmall()
         .disabled(reply_button_disabled);
+    let reply_button = if matches!(chrome, ReviewThreadActionsChrome::Panel) {
+        reply_button.compact()
+    } else {
+        reply_button
+    };
     let reply_button = if active_reply {
         reply_button.primary()
-    } else if is_resolved {
+    } else if matches!(chrome, ReviewThreadActionsChrome::Panel) || is_resolved {
         reply_button.ghost()
     } else {
         reply_button.outline()
@@ -182,7 +195,12 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
                 .xsmall()
                 .loading(action_running)
                 .disabled(!can_toggle_resolution || action_running);
-            let button = if is_resolved {
+            let button = if matches!(chrome, ReviewThreadActionsChrome::Panel) {
+                button.compact()
+            } else {
+                button
+            };
+            let button = if matches!(chrome, ReviewThreadActionsChrome::Panel) || is_resolved {
                 button.ghost()
             } else {
                 button.outline()

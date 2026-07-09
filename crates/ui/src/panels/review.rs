@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use chrono::{DateTime, Utc};
 use gpui::{AnyElement, Context, IntoElement, ListState, SharedString, div, list, prelude::*, px};
 use gpui_component::{
-    ActiveTheme, Sizable, StyledExt, avatar::Avatar, spinner::Spinner, tooltip::Tooltip,
+    ActiveTheme, Icon, Sizable, StyledExt, avatar::Avatar, spinner::Spinner, tooltip::Tooltip,
 };
 use harbor_domain::{
     DiffFile, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment,
@@ -16,6 +16,7 @@ use crate::{
         natural_time_label_with_edit,
     },
     diff::{DiffLineKind, ParsedDiff},
+    icons::Octicon,
     visual::{Tone, color, leading_truncated_path, tone_colors, tone_text},
     workspace::AppView,
 };
@@ -490,6 +491,7 @@ fn render_review_section_header(
         .child(
             div()
                 .min_w_0()
+                .flex_1()
                 .truncate()
                 .font_medium()
                 .text_color(color::text_primary())
@@ -515,20 +517,31 @@ fn render_review_file_header(path: &str, thread_count: usize) -> impl IntoElemen
         .items_center()
         .justify_between()
         .gap_3()
-        .px_2()
-        .py_1()
-        .border_b_1()
-        .border_color(color::border_subtle())
-        .bg(color::panel_background())
+        .px_1()
+        .pt_2()
+        .pb_1()
         .child(
             div()
                 .min_w_0()
                 .flex_1()
-                .truncate()
-                .text_xs()
-                .font_medium()
-                .text_color(color::text_secondary())
-                .child(leading_truncated_path(path, 72)),
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Icon::new(Octicon::File)
+                        .xsmall()
+                        .text_color(color::text_muted()),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .text_xs()
+                        .font_medium()
+                        .text_color(color::text_secondary())
+                        .child(leading_truncated_path(path, 72)),
+                ),
         )
         .child(
             div()
@@ -710,7 +723,6 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ReviewDiffPreview {
-    path: String,
     lines: Vec<ReviewDiffPreviewLine>,
 }
 
@@ -729,19 +741,9 @@ pub(super) fn render_review_diff_preview(
     div()
         .min_w_0()
         .overflow_hidden()
+        .rounded_xs()
         .border_1()
         .border_color(color::border_subtle())
-        .child(
-            div()
-                .px_2()
-                .py_1()
-                .text_xs()
-                .font_medium()
-                .text_color(color::text_secondary())
-                .bg(color::content_background())
-                .truncate()
-                .child(leading_truncated_path(&preview.path, 64)),
-        )
         .children(
             preview
                 .lines
@@ -902,7 +904,6 @@ fn review_comment_diff_preview(
 ) -> Option<ReviewDiffPreview> {
     let target = review_comment_diff_target(comment, thread)?;
     let fallback = || ReviewDiffPreview {
-        path: target.path.clone(),
         lines: vec![ReviewDiffPreviewLine {
             line: Some(target.end_line),
             marker: "",
@@ -948,10 +949,7 @@ fn review_comment_diff_preview(
         return Some(fallback());
     }
 
-    Some(ReviewDiffPreview {
-        path: target.path,
-        lines,
-    })
+    Some(ReviewDiffPreview { lines })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1159,7 +1157,6 @@ mod tests {
         assert_eq!(
             review_thread_diff_preview(&thread, &files, &diffs),
             Some(ReviewDiffPreview {
-                path: "src/lib.rs".to_string(),
                 lines: vec![ReviewDiffPreviewLine {
                     line: Some(11),
                     marker: "+",
@@ -1193,7 +1190,6 @@ mod tests {
         assert_eq!(
             review_thread_diff_preview(&thread, &files, &diffs),
             Some(ReviewDiffPreview {
-                path: "src/lib.rs".to_string(),
                 lines: vec![
                     ReviewDiffPreviewLine {
                         line: Some(11),
