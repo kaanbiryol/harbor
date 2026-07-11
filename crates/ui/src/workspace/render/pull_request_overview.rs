@@ -563,19 +563,19 @@ impl AppView {
         } else if pr.checks_summary.pending > 0 {
             format!("{} pending", pr.checks_summary.pending)
         } else {
-            format!("{} successful", pr.checks_summary.passed)
+            format!("{} passed", pr.checks_summary.passed)
         };
         let checks_summary_title = if pr.checks_summary.failed > 0 {
-            "Status checks need attention"
+            "Checks need attention"
         } else if pr.checks_summary.pending > 0 {
-            "Status checks are running"
+            "Checks running"
         } else {
-            "All status checks passed"
+            "Checks passed"
         };
         let (conflicts_label, conflicts_tone) = if pr.merge_state == Some(MergeState::Dirty) {
-            ("Merge conflicts", Tone::Danger)
+            ("Conflicts", Tone::Danger)
         } else {
-            ("No merge conflicts", Tone::Success)
+            ("No conflicts", Tone::Success)
         };
         let pull_request_url = pr.url.clone();
         let close_pull_request_url = pr.url.clone();
@@ -614,8 +614,8 @@ impl AppView {
                         render_readiness_row(
                             "pull-request-unresolved-conversations-row",
                             "Conversations",
-                            "Address open threads",
-                            format!("{} unresolved", pr.unresolved_threads),
+                            "Resolve open threads",
+                            format!("{} open", pr.unresolved_threads),
                             Octicon::CommentDiscussion,
                             unresolved_tone,
                             true,
@@ -636,9 +636,9 @@ impl AppView {
                 "pull-request-conflicts-summary-row",
                 conflicts_label,
                 if conflicts_tone == Tone::Success {
-                    "Branch is up to date"
+                    "Up to date"
                 } else {
-                    "Resolve before merging"
+                    "Resolve to merge"
                 },
                 conflicts_tone,
             ))
@@ -2151,61 +2151,41 @@ fn render_summary_row(
 
 fn pull_request_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
     if pr.merge_state == Some(MergeState::Dirty) {
-        (
-            "Conflicts",
-            "Resolve merge conflicts before merging.",
-            Tone::Danger,
-        )
+        ("Conflicts", "Resolve conflicts to merge.", Tone::Danger)
     } else if pr.checks_summary.failed > 0 {
-        (
-            "Checks failed",
-            "One or more status checks need attention.",
-            Tone::Danger,
-        )
+        ("Checks failed", "Fix failing checks.", Tone::Danger)
     } else if pr.checks_summary.pending > 0 {
-        (
-            "Checks pending",
-            "Status checks are still running.",
-            Tone::Warning,
-        )
+        ("Checks pending", "Waiting for checks.", Tone::Warning)
     } else if pr.is_draft {
-        (
-            "Draft",
-            "Mark ready when this pull request can be reviewed.",
-            Tone::Neutral,
-        )
+        ("Draft", "Not ready for review.", Tone::Neutral)
     } else if pr.review_decision == Some(ReviewDecision::ChangesRequested) {
         (
             "Changes requested",
-            "Address requested changes before merging.",
+            "Address review feedback.",
             Tone::Danger,
         )
     } else if pr.review_decision != Some(ReviewDecision::Approved) {
         (
             "Review required",
-            "At least 1 approval is required.",
+            "Approval needed to merge.",
             Tone::Warning,
         )
     } else if pr.unresolved_threads > 0 {
         (
             "Conversations open",
-            "Resolve open conversations before merging.",
+            "Resolve threads to merge.",
             Tone::Warning,
         )
     } else {
-        (
-            "Ready",
-            "All checks have passed. Ready for review.",
-            Tone::Success,
-        )
+        ("Ready", "Ready to merge.", Tone::Success)
     }
 }
 
 fn review_readiness_description(decision: Option<ReviewDecision>) -> &'static str {
     match decision {
-        Some(ReviewDecision::Approved) => "Required approvals received",
+        Some(ReviewDecision::Approved) => "Approvals received",
         Some(ReviewDecision::ChangesRequested) => "Changes were requested",
-        Some(ReviewDecision::ReviewRequired) | None => "At least 1 approval is required",
+        Some(ReviewDecision::ReviewRequired) | None => "1 approval required",
     }
 }
 
@@ -2213,39 +2193,28 @@ fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
     match decision {
         Some(ReviewDecision::Approved) => ("Approved", Tone::Success),
         Some(ReviewDecision::ChangesRequested) => ("Changes requested", Tone::Danger),
-        Some(ReviewDecision::ReviewRequired) => ("Review required", Tone::Warning),
-        None => ("Not reviewed", Tone::Info),
+        Some(ReviewDecision::ReviewRequired) | None => ("Pending", Tone::Warning),
     }
 }
 
 fn merge_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
     match pr.merge_state {
         Some(MergeState::Dirty) => ("Conflicts", "Resolve merge conflicts", Tone::Danger),
-        Some(MergeState::Blocked) => ("Blocked", "Merge requirements are not met", Tone::Danger),
-        Some(MergeState::Behind) => ("Behind", "Update the branch before merging", Tone::Warning),
-        Some(MergeState::Unknown) | None => {
-            ("Unknown", "Merge status is unavailable", Tone::Neutral)
+        Some(MergeState::Blocked) => ("Blocked", "Requirements not met", Tone::Danger),
+        Some(MergeState::Behind) => ("Behind", "Update branch", Tone::Warning),
+        Some(MergeState::Unknown) | None => ("Unknown", "Status unavailable", Tone::Neutral),
+        Some(MergeState::Clean) if pr.review_decision != Some(ReviewDecision::Approved) => {
+            ("Blocked", "Waiting for approval", Tone::Warning)
         }
-        Some(MergeState::Clean) if pr.review_decision != Some(ReviewDecision::Approved) => (
-            "Blocked",
-            "Required approval has not been received",
-            Tone::Warning,
-        ),
-        Some(MergeState::Clean) if pr.unresolved_threads > 0 => (
-            "Blocked",
-            "Resolve open conversations before merging",
-            Tone::Warning,
-        ),
+        Some(MergeState::Clean) if pr.unresolved_threads > 0 => {
+            ("Blocked", "Resolve open threads", Tone::Warning)
+        }
         Some(MergeState::Clean)
             if pr.checks_summary.failed > 0 || pr.checks_summary.pending > 0 =>
         {
-            (
-                "Blocked",
-                "Status checks must pass before merging",
-                Tone::Warning,
-            )
+            ("Blocked", "Waiting for checks", Tone::Warning)
         }
-        Some(MergeState::Clean) => ("Ready", "All merge requirements are met", Tone::Success),
+        Some(MergeState::Clean) => ("Ready", "Requirements met", Tone::Success),
     }
 }
 
@@ -2494,7 +2463,7 @@ mod tests {
             pull_request_readiness(&pull_request),
             (
                 "Conversations open",
-                "Resolve open conversations before merging.",
+                "Resolve threads to merge.",
                 Tone::Warning,
             )
         );
