@@ -255,6 +255,17 @@ mutation HarborUnmarkFileAsViewed($input: UnmarkFileAsViewedInput!) {
 }
 "#;
 
+pub(super) const UPDATE_PULL_REQUEST_MUTATION: &str = r#"
+mutation HarborUpdatePullRequest($input: UpdatePullRequestInput!) {
+  updatePullRequest(input: $input) {
+    pullRequest {
+      id
+      body
+    }
+  }
+}
+"#;
+
 pub(super) const ADD_PULL_REQUEST_REVIEW_MUTATION: &str = r#"
 mutation HarborAddPullRequestReview($input: AddPullRequestReviewInput!) {
   addPullRequestReview(input: $input) {

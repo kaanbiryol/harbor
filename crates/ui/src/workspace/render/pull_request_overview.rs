@@ -1,140 +1,411 @@
 use gpui::{AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
-use gpui_component::{Icon, Sizable, StyledExt, avatar::Avatar, scroll::ScrollableElement};
-use harbor_domain::{Label, PullRequest, PullRequestPerson, PullRequestTeam};
+use gpui_component::{
+    Disableable, Icon, Sizable, StyledExt, avatar::Avatar, button::Button, input::Input,
+    scroll::ScrollableElement,
+};
+use harbor_domain::{
+    Label, MergeState, PullRequest, PullRequestPerson, PullRequestTeam, ReviewDecision,
+};
 
 use crate::{
+    actions::{PanelTab, PullRequestMetadataField},
     icons::Octicon,
     panels::render_review_markdown_body,
     visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
 
-const PULL_REQUEST_OVERVIEW_ROW_HEIGHT: f32 = 44.0;
-const PULL_REQUEST_OVERVIEW_MAX_HEIGHT: f32 = 220.0;
+const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
 
 impl AppView {
-    pub(super) fn render_pull_request_overview(
+    pub(super) fn render_pull_request_overview_panel(
         &self,
-        pr: &PullRequest,
+        pr: Option<&PullRequest>,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let chevron = if self.pull_request_overview_expanded {
-            Octicon::ChevronDown
-        } else {
-            Octicon::ChevronRight
+    ) -> AnyElement {
+        let Some(pr) = pr else {
+            return div()
+                .text_sm()
+                .text_color(color::text_muted())
+                .child("Select a pull request to see its overview")
+                .into_any_element();
         };
 
         div()
+            .debug_selector(|| "pull-request-overview-panel".to_string())
             .image_cache(gpui::retain_all("pull-request-overview-avatar-cache"))
-            .flex_none()
-            .border_b_1()
-            .border_color(color::border())
-            .bg(color::content_background())
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .overflow_y_scrollbar()
             .child(
                 div()
-                    .id("pull-request-overview-toggle")
-                    .debug_selector(|| "pull-request-overview-toggle".to_string())
-                    .h(px(PULL_REQUEST_OVERVIEW_ROW_HEIGHT))
+                    .flex()
+                    .items_start()
+                    .gap_3()
                     .w_full()
                     .min_w_0()
-                    .px_3()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .cursor_pointer()
-                    .hover(|element| element.bg(color::row_hover()))
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.toggle_pull_request_overview(cx);
-                    }))
-                    .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
+                    .child(self.render_description_card(pr, cx))
                     .child(
                         div()
+                            .debug_selector(|| "pull-request-overview-sidebar".to_string())
+                            .w(px(OVERVIEW_SIDEBAR_WIDTH))
                             .flex_none()
-                            .text_sm()
-                            .font_medium()
-                            .text_color(color::text_primary())
-                            .child("Description"),
-                    )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .truncate()
-                            .text_xs()
-                            .text_color(color::text_muted())
-                            .child(pull_request_description_preview(pr)),
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .child(self.render_merge_readiness_card(pr, cx))
+                            .child(self.render_people_card(pr, cx))
+                            .child(self.render_labels_card(pr, cx)),
                     ),
             )
-            .when(self.pull_request_overview_expanded, |element| {
-                element.child(
-                    div()
-                        .debug_selector(|| "pull-request-overview-content".to_string())
-                        .max_h(px(PULL_REQUEST_OVERVIEW_MAX_HEIGHT))
-                        .overflow_y_scrollbar()
-                        .px_3()
-                        .pb_3()
-                        .flex()
-                        .flex_col()
-                        .gap_3()
-                        .child(render_pull_request_description(pr))
-                        .when(!pr.assignees.is_empty(), |element| {
-                            element.child(render_overview_section(
-                                "Assignees",
-                                render_people_row(&pr.assignees),
-                            ))
-                        })
-                        .when(has_review_requests(pr), |element| {
-                            element.child(render_overview_section(
-                                "Reviewers",
-                                render_review_requests_row(
-                                    &pr.requested_reviewers,
-                                    &pr.requested_teams,
-                                ),
-                            ))
-                        })
-                        .when(!pr.labels.is_empty(), |element| {
-                            element.child(render_overview_section(
-                                "Labels",
-                                render_labels_row(&pr.labels),
-                            ))
-                        }),
-                )
-            })
+            .into_any_element()
     }
 }
 
-fn pull_request_description_preview(pr: &PullRequest) -> String {
-    pr.body
-        .as_deref()
-        .and_then(description_preview)
-        .unwrap_or_else(|| "No description".to_string())
+impl AppView {
+    fn render_merge_readiness_card(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
+        let (review_label, review_tone) = review_readiness(pr.review_decision);
+        let (merge_label, merge_tone) = merge_readiness(pr.merge_state);
+        let unresolved_tone = if pr.unresolved_threads == 0 {
+            Tone::Success
+        } else {
+            Tone::Warning
+        };
+
+        render_overview_card("Merge readiness")
+            .debug_selector(|| "pull-request-merge-readiness".to_string())
+            .gap_0()
+            .child(render_readiness_row(
+                "Review",
+                review_label,
+                Octicon::Eye,
+                review_tone,
+                false,
+            ))
+            .child(render_readiness_row(
+                "Merge",
+                merge_label,
+                Octicon::CheckCircle,
+                merge_tone,
+                true,
+            ))
+            .child(
+                render_readiness_row(
+                    "Conversations",
+                    format!("{} unresolved", pr.unresolved_threads),
+                    Octicon::CommentDiscussion,
+                    unresolved_tone,
+                    true,
+                )
+                .debug_selector(|| "pull-request-unresolved-conversations".to_string())
+                .id("pull-request-unresolved-conversations-row")
+                .cursor_pointer()
+                .hover(|element| element.bg(color::row_hover()))
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.select_panel_tab(PanelTab::Review, cx);
+                }))
+                .child(
+                    Icon::new(Octicon::ChevronRight)
+                        .xsmall()
+                        .text_color(color::text_muted()),
+                ),
+            )
+            .into_any_element()
+    }
+
+    fn render_description_card(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
+        let editing = self.pull_request_description_editing;
+        let saving = self
+            .action_runtime
+            .pull_request_description_action_running();
+        let error = self
+            .action_runtime
+            .pull_request_description_action_error()
+            .map(str::to_string);
+        let description_input = self.pull_request_description_input.clone();
+
+        div()
+            .debug_selector(|| "pull-request-overview-description".to_string())
+            .flex_1()
+            .min_w_0()
+            .rounded_sm()
+            .border_1()
+            .border_color(color::border())
+            .bg(color::content_background())
+            .p_4()
+            .child(
+                div()
+                    .pb_3()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .text_color(color::text_primary())
+                            .child("Description"),
+                    )
+                    .when(!editing, |element| {
+                        element.child(
+                            Button::new("edit-pull-request-description")
+                                .icon(Octicon::Pencil)
+                                .label("Edit")
+                                .small()
+                                .outline()
+                                .tooltip("Edit description if your GitHub permissions allow it")
+                                .on_click(cx.listener(|view, _, window, cx| {
+                                    view.start_pull_request_description_edit(window, cx);
+                                })),
+                        )
+                    }),
+            )
+            .when(!editing, |element| {
+                element.child(render_pull_request_description(pr))
+            })
+            .when(editing, |element| {
+                element
+                    .child(Input::new(&description_input))
+                    .when_some(error, |element, error| {
+                        element.child(
+                            div()
+                                .pt_2()
+                                .text_xs()
+                                .text_color(color::danger())
+                                .child(error),
+                        )
+                    })
+                    .child(
+                        div()
+                            .pt_3()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                Button::new("cancel-pull-request-description")
+                                    .label("Cancel")
+                                    .small()
+                                    .outline()
+                                    .disabled(saving)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.cancel_pull_request_description_edit(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("save-pull-request-description")
+                                    .label("Save")
+                                    .small()
+                                    .loading(saving)
+                                    .disabled(saving)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.save_pull_request_description(window, cx);
+                                    })),
+                            ),
+                    )
+            })
+            .into_any_element()
+    }
+
+    fn render_people_card(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
+        let author = PullRequestPerson {
+            login: pr.author.clone(),
+            avatar_url: None,
+        };
+
+        render_overview_card("People")
+            .child(render_overview_section(
+                "Author",
+                div()
+                    .debug_selector(|| "pull-request-author".to_string())
+                    .child(render_people_row(std::slice::from_ref(&author)))
+                    .into_any_element(),
+            ))
+            .child(render_overview_section(
+                "Reviewers",
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(if has_review_requests(pr) {
+                        render_review_requests_row(&pr.requested_reviewers, &pr.requested_teams)
+                    } else {
+                        render_empty_value("No reviewers requested")
+                    })
+                    .child(self.render_metadata_add_control(PullRequestMetadataField::Reviewer, cx))
+                    .into_any_element(),
+            ))
+            .child(render_overview_section(
+                "Assignees",
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(if pr.assignees.is_empty() {
+                        render_empty_value("No assignees")
+                    } else {
+                        render_people_row(&pr.assignees)
+                    })
+                    .child(self.render_metadata_add_control(PullRequestMetadataField::Assignee, cx))
+                    .into_any_element(),
+            ))
+            .into_any_element()
+    }
+
+    fn render_labels_card(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
+        render_overview_card("Labels")
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(if pr.labels.is_empty() {
+                        render_empty_value("No labels")
+                    } else {
+                        render_labels_row(&pr.labels)
+                    })
+                    .child(self.render_metadata_add_control(PullRequestMetadataField::Label, cx)),
+            )
+            .into_any_element()
+    }
+
+    fn render_metadata_add_control(
+        &self,
+        field: PullRequestMetadataField,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let input = self.pull_request_metadata_input(field);
+        let input_is_empty = input.read(cx).value().trim().is_empty();
+        let action_running = self.action_runtime.pull_request_metadata_action_running();
+        let action_field = self.action_runtime.pull_request_metadata_field();
+        let field_running = action_running && action_field == Some(field);
+        let error = (action_field == Some(field))
+            .then(|| {
+                self.action_runtime
+                    .pull_request_metadata_action_error()
+                    .map(str::to_string)
+            })
+            .flatten();
+
+        div()
+            .debug_selector(move || format!("add-{}-control", field.name()))
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(Input::new(&input).small().cleanable(true)),
+                    )
+                    .child(
+                        Button::new(format!("add-pull-request-{}", field.name()))
+                            .icon(Octicon::Plus)
+                            .label("Add")
+                            .small()
+                            .outline()
+                            .loading(field_running)
+                            .disabled(action_running || input_is_empty)
+                            .on_click(cx.listener(move |view, _, window, cx| {
+                                view.add_pull_request_metadata(field, window, cx);
+                            })),
+                    ),
+            )
+            .when_some(error, |element, error| {
+                element.child(div().text_xs().text_color(color::danger()).child(error))
+            })
+            .into_any_element()
+    }
 }
 
-fn description_preview(body: &str) -> Option<String> {
-    body.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line == "---" {
-                return None;
-            }
+fn render_overview_card(title: &'static str) -> Div {
+    div()
+        .rounded_sm()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::content_background())
+        .p_3()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .child(
+            div()
+                .text_sm()
+                .font_semibold()
+                .text_color(color::text_primary())
+                .child(title),
+        )
+}
 
-            let line = line
-                .strip_prefix("- ")
-                .or_else(|| line.strip_prefix("* "))
-                .or_else(|| line.strip_prefix("+ "))
-                .or_else(|| line.strip_prefix("> "))
-                .unwrap_or(line)
-                .trim();
-            let line = line
-                .strip_prefix("[ ] ")
-                .or_else(|| line.strip_prefix("[x] "))
-                .or_else(|| line.strip_prefix("[X] "))
-                .unwrap_or(line)
-                .trim_matches(&['*', '_', '`'][..]);
+fn render_readiness_row(
+    label: &'static str,
+    value: impl Into<String>,
+    icon: Octicon,
+    tone: Tone,
+    divided: bool,
+) -> Div {
+    let colors = tone_colors(tone);
 
-            (!line.is_empty()).then(|| line.split_whitespace().collect::<Vec<_>>().join(" "))
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap_2()
+        .py_2()
+        .when(divided, |element| {
+            element.border_t_1().border_color(color::border_subtle())
         })
-        .next()
+        .child(Icon::new(icon).xsmall().text_color(colors.text))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .text_color(color::text_secondary())
+                .child(label),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_xs()
+                .font_medium()
+                .text_color(colors.text)
+                .child(value.into()),
+        )
+}
+
+fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
+    match decision {
+        Some(ReviewDecision::Approved) => ("Approved", Tone::Success),
+        Some(ReviewDecision::ChangesRequested) => ("Changes requested", Tone::Danger),
+        Some(ReviewDecision::ReviewRequired) => ("Review required", Tone::Warning),
+        None => ("Not reviewed", Tone::Info),
+    }
+}
+
+fn merge_readiness(state: Option<MergeState>) -> (&'static str, Tone) {
+    match state {
+        Some(MergeState::Clean) => ("Ready", Tone::Success),
+        Some(MergeState::Dirty) => ("Conflicts", Tone::Danger),
+        Some(MergeState::Blocked) => ("Blocked", Tone::Danger),
+        Some(MergeState::Behind) => ("Behind", Tone::Warning),
+        Some(MergeState::Unknown) | None => ("Unknown", Tone::Neutral),
+    }
+}
+
+fn render_empty_value(label: &'static str) -> AnyElement {
+    div()
+        .text_xs()
+        .text_color(color::text_muted())
+        .child(label)
+        .into_any_element()
 }
 
 fn render_overview_section(title: &'static str, body: AnyElement) -> impl IntoElement {
@@ -210,9 +481,11 @@ fn render_wrapping_row(children: Vec<AnyElement>) -> AnyElement {
 
 fn render_person_chip(person: &PullRequestPerson) -> AnyElement {
     let login = person.login.clone();
+    let selector = format!("pull-request-person-{login}");
     render_chip()
+        .debug_selector(move || selector.clone())
         .child(render_person_avatar(person))
-        .child(div().min_w_0().truncate().child(login))
+        .child(render_chip_label(login))
         .into_any_element()
 }
 
@@ -225,11 +498,12 @@ fn render_team_chip(team: &PullRequestTeam) -> AnyElement {
 
     render_chip()
         .child(render_team_avatar(&label))
-        .child(div().min_w_0().truncate().child(label))
+        .child(render_chip_label(label))
         .into_any_element()
 }
 
 fn render_label_chip(label: &Label) -> AnyElement {
+    let selector = format!("pull-request-label-{}", label.name);
     let swatch = label
         .color
         .as_deref()
@@ -237,15 +511,20 @@ fn render_label_chip(label: &Label) -> AnyElement {
         .unwrap_or_else(|| tone_colors(Tone::Neutral).text);
 
     render_chip()
+        .debug_selector(move || selector.clone())
         .child(div().size(px(8.0)).flex_none().rounded_full().bg(swatch))
-        .child(div().min_w_0().truncate().child(label.name.clone()))
+        .child(render_chip_label(label.name.clone()))
         .into_any_element()
+}
+
+fn render_chip_label(label: String) -> impl IntoElement {
+    div().flex_none().max_w(px(188.0)).truncate().child(label)
 }
 
 fn render_chip() -> Div {
     div()
+        .flex_none()
         .max_w(px(220.0))
-        .min_w_0()
         .flex()
         .items_center()
         .gap_1()
@@ -336,26 +615,7 @@ fn parse_label_color(color: &str) -> Option<Rgba> {
 
 #[cfg(test)]
 mod tests {
-    use super::{avatar_initial, description_preview, parse_label_color};
-
-    #[test]
-    fn description_preview_prefers_content_over_headings() {
-        assert_eq!(
-            description_preview(
-                "## summary\n\n- adds a large review inbox fixture\n- includes review threads"
-            )
-            .as_deref(),
-            Some("adds a large review inbox fixture")
-        );
-    }
-
-    #[test]
-    fn description_preview_normalizes_task_list_markdown() {
-        assert_eq!(
-            description_preview("# validation\n\n- [x]   cargo test --workspace").as_deref(),
-            Some("cargo test --workspace")
-        );
-    }
+    use super::{avatar_initial, parse_label_color};
 
     #[test]
     fn parses_github_label_colors() {

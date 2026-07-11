@@ -407,6 +407,48 @@ impl GitHubReviewMutationApi for RealGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestActionApi for RealGitHubApi {
+    async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()> {
+        self.client()?
+            .update_pull_request_body(pull_request_node_id, body)
+            .await
+    }
+
+    async fn request_pull_request_reviewer(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        reviewer: &str,
+    ) -> Result<()> {
+        self.client()?
+            .request_pull_request_reviewer(owner, repo, number, reviewer)
+            .await
+    }
+
+    async fn add_pull_request_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        assignee: &str,
+    ) -> Result<()> {
+        self.client()?
+            .add_pull_request_assignee(owner, repo, number, assignee)
+            .await
+    }
+
+    async fn add_pull_request_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        label: &str,
+    ) -> Result<()> {
+        self.client()?
+            .add_pull_request_label(owner, repo, number, label)
+            .await
+    }
+
     async fn create_pull_request_comment(
         &self,
         owner: &str,

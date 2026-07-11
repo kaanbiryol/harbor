@@ -1,6 +1,6 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{Icon, Sizable, tooltip::Tooltip};
-use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState, ReviewDecision};
+use harbor_domain::{ChecksSummary, PullRequest, PullRequestState};
 
 use crate::{
     date_time::month_day_label,
@@ -12,43 +12,6 @@ use crate::{
     visual::{Tone, color, layout, opacity, tone_colors},
     workspace::AppView,
 };
-
-pub(crate) fn render_review_decision(decision: Option<ReviewDecision>) -> impl IntoElement {
-    let label = match decision {
-        Some(ReviewDecision::Approved) => "approved",
-        Some(ReviewDecision::ChangesRequested) => "changes requested",
-        Some(ReviewDecision::ReviewRequired) => "review required",
-        None => "no review",
-    };
-
-    let tone = match decision {
-        Some(ReviewDecision::Approved) => Tone::Success,
-        Some(ReviewDecision::ChangesRequested) => Tone::Danger,
-        Some(ReviewDecision::ReviewRequired) => Tone::Warning,
-        None => Tone::Info,
-    };
-
-    super::render_status_pill(label, tone)
-}
-
-pub(crate) fn render_merge_state(state: Option<MergeState>) -> impl IntoElement {
-    let label = match state {
-        Some(MergeState::Clean) => "mergeable",
-        Some(MergeState::Dirty) => "dirty",
-        Some(MergeState::Blocked) => "blocked",
-        Some(MergeState::Behind) => "behind",
-        Some(MergeState::Unknown) | None => "unknown",
-    };
-
-    let tone = match state {
-        Some(MergeState::Clean) => Tone::Success,
-        Some(MergeState::Dirty) | Some(MergeState::Blocked) => Tone::Danger,
-        Some(MergeState::Behind) => Tone::Warning,
-        Some(MergeState::Unknown) | None => Tone::Neutral,
-    };
-
-    super::render_status_pill(label, tone)
-}
 
 fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
     let (text_color, border_color, background_color) =

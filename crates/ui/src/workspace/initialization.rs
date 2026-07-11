@@ -4,7 +4,11 @@ use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandl
 use gpui_component::{ActiveTheme, input::InputState};
 use harbor_sync::{ActivityState, SyncPolicy};
 
-use crate::{actions::PanelTab, diff::parse_files_with_syntax, panels::CheckRunFilter};
+use crate::{
+    actions::{PanelTab, PullRequestMetadataField},
+    diff::parse_files_with_syntax,
+    panels::CheckRunFilter,
+};
 
 use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
@@ -92,6 +96,27 @@ impl AppView {
                 .placeholder("Review comment")
                 .clean_on_escape()
         });
+        let pull_request_description_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(8, 24)
+                .placeholder("Pull request description")
+                .clean_on_escape()
+        });
+        let pull_request_reviewer_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(PullRequestMetadataField::Reviewer.input_placeholder())
+                .clean_on_escape()
+        });
+        let pull_request_assignee_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(PullRequestMetadataField::Assignee.input_placeholder())
+                .clean_on_escape()
+        });
+        let pull_request_label_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(PullRequestMetadataField::Label.input_placeholder())
+                .clean_on_escape()
+        });
         let repository_search_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Search repositories...")
@@ -133,6 +158,26 @@ impl AppView {
                 &review_action_comment_input,
                 window,
                 Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
+                &pull_request_description_input,
+                window,
+                Self::on_review_input_event,
+            ),
+            cx.subscribe_in(
+                &pull_request_reviewer_input,
+                window,
+                Self::on_pull_request_metadata_input_event,
+            ),
+            cx.subscribe_in(
+                &pull_request_assignee_input,
+                window,
+                Self::on_pull_request_metadata_input_event,
+            ),
+            cx.subscribe_in(
+                &pull_request_label_input,
+                window,
+                Self::on_pull_request_metadata_input_event,
             ),
         ];
         subscriptions.push(cx.observe_window_activation(window, |view, window, cx| {
@@ -212,9 +257,13 @@ impl AppView {
             pull_request_filter_popover_open: false,
             pull_request_filters: PullRequestFilters::default(),
             file_filter_popover_open: false,
-            pull_request_overview_expanded: false,
             review_action_comment_target: None,
             review_action_comment_input,
+            pull_request_description_editing: false,
+            pull_request_description_input,
+            pull_request_reviewer_input,
+            pull_request_assignee_input,
+            pull_request_label_input,
             pull_request_switcher_selection: 0,
             pull_request_search_input,
             external_app_availability: ExternalAppAvailability::default(),

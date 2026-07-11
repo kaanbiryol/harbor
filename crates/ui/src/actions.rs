@@ -18,6 +18,8 @@ actions!(
         OpenSelectedPullRequest,
         /// Advances to the next workspace panel tab.
         CyclePanelTab,
+        /// Selects the overview panel tab.
+        SelectOverviewPanel,
         /// Selects the diff panel tab.
         SelectDiffPanel,
         /// Selects the review panel tab.
@@ -120,6 +122,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-r", RefreshSelectedPullRequest, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-shift-[", TogglePullRequestInbox, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-p", OpenPullRequestSearch, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-0", SelectOverviewPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-1", SelectDiffPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-2", SelectReviewPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-3", SelectChecksPanel, Some(KEY_CONTEXT)),
@@ -134,6 +137,7 @@ pub fn bind_keys(cx: &mut App) {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PanelTab {
+    Overview,
     Diff,
     Review,
     Checks,
@@ -142,7 +146,8 @@ pub(crate) enum PanelTab {
 }
 
 impl PanelTab {
-    pub(crate) const ALL: [Self; 5] = [
+    pub(crate) const ALL: [Self; 6] = [
+        Self::Overview,
         Self::Diff,
         Self::Review,
         Self::Checks,
@@ -152,6 +157,7 @@ impl PanelTab {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::Overview => "Overview",
             Self::Diff => "Diff",
             Self::Review => "Review",
             Self::Checks => "Checks",
@@ -162,6 +168,7 @@ impl PanelTab {
 
     pub(crate) fn icon(self) -> Octicon {
         match self {
+            Self::Overview => Octicon::Eye,
             Self::Diff => Octicon::CodeSquare,
             Self::Review => Octicon::CommentDiscussion,
             Self::Checks => Octicon::CheckCircle,
@@ -191,6 +198,53 @@ pub(crate) enum PullRequestAction {
     Approve { body: Option<String> },
     RequestChanges { body: Option<String> },
     Merge(MergeMethod),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PullRequestMetadataField {
+    Reviewer,
+    Assignee,
+    Label,
+}
+
+impl PullRequestMetadataField {
+    pub(crate) fn input_placeholder(self) -> &'static str {
+        match self {
+            Self::Reviewer | Self::Assignee => "GitHub username",
+            Self::Label => "Label name",
+        }
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Reviewer => "reviewer",
+            Self::Assignee => "assignee",
+            Self::Label => "label",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PullRequestMetadataRequest {
+    pub(crate) field: PullRequestMetadataField,
+    pub(crate) owner: String,
+    pub(crate) repo: String,
+    pub(crate) number: u64,
+    pub(crate) value: String,
+}
+
+impl PullRequestMetadataRequest {
+    pub(crate) fn start_status(&self) -> String {
+        format!("Adding {} {}", self.field.name(), self.value)
+    }
+
+    pub(crate) fn success_status(&self) -> String {
+        format!("Added {} {}", self.field.name(), self.value)
+    }
+
+    pub(crate) fn failure_label(&self) -> String {
+        format!("add {} {}", self.field.name(), self.value)
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -7,15 +7,19 @@ use crate::{
     panels::{
         ActionsPanelRenderInput, CheckPanelRenderInput, DiffPanelRenderInput,
         ReviewPanelRenderInput, render_actions_panel, render_checks_panel, render_diff_panel,
-        render_logs_panel, render_review_panel,
+        render_logs_panel, render_review_panel, render_status_pill,
     },
-    visual::color,
+    visual::{Tone, color},
     workspace::AppView,
 };
 
 impl AppView {
     pub(super) fn render_panel_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
+        let unresolved_threads = self
+            .selected_pull_request()
+            .map(|pull_request| pull_request.unresolved_threads)
+            .unwrap_or_default();
 
         div()
             .debug_selector(|| "pull-request-panel-tabs".to_string())
@@ -24,7 +28,7 @@ impl AppView {
             .items_center()
             .gap_1()
             .px_2()
-            .pt_2()
+            .pt_1()
             .border_b_1()
             .border_color(color::border())
             .children(
@@ -47,7 +51,7 @@ impl AppView {
                             .items_center()
                             .gap_1()
                             .px_3()
-                            .pb_2()
+                            .pb_1()
                             .pt_1()
                             .text_sm()
                             .text_color(tab_color)
@@ -72,6 +76,21 @@ impl AppView {
                             })
                             .child(Icon::new(tab.icon()).xsmall().text_color(tab_color))
                             .child(tab.label())
+                            .when(
+                                tab == PanelTab::Review && unresolved_threads > 0,
+                                |element| {
+                                    element.child(
+                                        div()
+                                            .debug_selector(|| {
+                                                "review-tab-unresolved-count".to_string()
+                                            })
+                                            .child(render_status_pill(
+                                                unresolved_threads.to_string(),
+                                                Tone::Warning,
+                                            )),
+                                    )
+                                },
+                            )
                     }),
             )
     }
@@ -106,6 +125,9 @@ impl AppView {
                     .when(!dense_content, |element| element.p_3())
                     .text_sm()
                     .child(match self.active_tab {
+                        PanelTab::Overview => self
+                            .render_pull_request_overview_panel(pr, cx)
+                            .into_any_element(),
                         PanelTab::Diff => {
                             let visible_file_indices = self.visible_file_indices(cx);
                             render_diff_panel(

@@ -55,6 +55,10 @@ pub(crate) struct FakeGitHubApi {
     review_threads: FakeQueue<Vec<ReviewThread>>,
     dispatch_workflow_results: FakeQueue<()>,
     rerun_failed_jobs_results: FakeQueue<()>,
+    update_pull_request_body_results: FakeQueue<()>,
+    request_reviewer_results: FakeQueue<()>,
+    add_assignee_results: FakeQueue<()>,
+    add_label_results: FakeQueue<()>,
     create_pull_request_comment_results: FakeQueue<()>,
     approve_results: FakeQueue<()>,
     request_changes_results: FakeQueue<()>,
@@ -166,6 +170,22 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_approve_pull_request(&self, result: Result<()>) {
         push_result(&self.approve_results, result);
+    }
+
+    pub(crate) fn push_request_pull_request_reviewer(&self, result: Result<()>) {
+        push_result(&self.request_reviewer_results, result);
+    }
+
+    pub(crate) fn push_update_pull_request_body(&self, result: Result<()>) {
+        push_result(&self.update_pull_request_body_results, result);
+    }
+
+    pub(crate) fn push_add_pull_request_assignee(&self, result: Result<()>) {
+        push_result(&self.add_assignee_results, result);
+    }
+
+    pub(crate) fn push_add_pull_request_label(&self, result: Result<()>) {
+        push_result(&self.add_label_results, result);
     }
 
     pub(crate) fn push_create_pull_request_comment(&self, result: Result<()>) {
@@ -490,6 +510,54 @@ impl GitHubWorkflowActionApi for FakeGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestActionApi for FakeGitHubApi {
+    async fn update_pull_request_body(
+        &self,
+        _pull_request_node_id: &str,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("update_pull_request_body");
+        pop_result(
+            &self.update_pull_request_body_results,
+            "update_pull_request_body",
+        )
+    }
+
+    async fn request_pull_request_reviewer(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _reviewer: &str,
+    ) -> Result<()> {
+        self.record_call("request_pull_request_reviewer");
+        pop_result(
+            &self.request_reviewer_results,
+            "request_pull_request_reviewer",
+        )
+    }
+
+    async fn add_pull_request_assignee(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _assignee: &str,
+    ) -> Result<()> {
+        self.record_call("add_pull_request_assignee");
+        pop_result(&self.add_assignee_results, "add_pull_request_assignee")
+    }
+
+    async fn add_pull_request_label(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _label: &str,
+    ) -> Result<()> {
+        self.record_call("add_pull_request_label");
+        pop_result(&self.add_label_results, "add_pull_request_label")
+    }
+
     async fn create_pull_request_comment(
         &self,
         _owner: &str,

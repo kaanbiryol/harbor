@@ -230,6 +230,32 @@ pub(crate) trait GitHubReviewMutationApi: Send + Sync {
 
 #[async_trait]
 pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
+    async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()>;
+
+    async fn request_pull_request_reviewer(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        reviewer: &str,
+    ) -> Result<()>;
+
+    async fn add_pull_request_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        assignee: &str,
+    ) -> Result<()>;
+
+    async fn add_pull_request_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        label: &str,
+    ) -> Result<()>;
+
     async fn create_pull_request_comment(
         &self,
         owner: &str,

@@ -13,7 +13,7 @@ use crate::{
         RebasePullRequest,
     },
     icons::Octicon,
-    panels::{merge_blocker, render_merge_state, render_review_decision, review_action_blocker},
+    panels::{merge_blocker, review_action_blocker},
     visual::{Tone, color, layout},
     workspace::{AppView, log_entity_update_error},
 };
@@ -155,7 +155,7 @@ impl AppView {
 
         let header_content = div()
             .px_3()
-            .py_3()
+            .py_2()
             .child(
                 div()
                     .flex()
@@ -206,11 +206,12 @@ impl AppView {
                             )
                             .child(
                                 div()
-                                    .pt_2()
+                                    .debug_selector(|| "pull-request-header-metadata".to_string())
+                                    .pt_1()
                                     .flex()
                                     .flex_wrap()
                                     .items_center()
-                                    .gap_1()
+                                    .gap_2()
                                     .min_w_0()
                                     .text_xs()
                                     .text_color(color::text_muted())
@@ -221,14 +222,7 @@ impl AppView {
                                             .text_color(color::text_secondary())
                                             .child(pr.author.clone()),
                                     )
-                                    .child("wants to merge into")
-                                    .child(
-                                        div()
-                                            .flex_none()
-                                            .text_color(color::accent())
-                                            .child(pr.base_ref.clone()),
-                                    )
-                                    .child("from")
+                                    .child(div().flex_none().child("·"))
                                     .child(
                                         div()
                                             .min_w_0()
@@ -237,14 +231,21 @@ impl AppView {
                                             .text_color(color::accent())
                                             .child(branch_name.clone()),
                                     )
+                                    .child(div().flex_none().child("→"))
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .text_color(color::accent())
+                                            .child(pr.base_ref.clone()),
+                                    )
                                     .child(render_copy_button(
-                                        format!("copy-pr-branch-{}", pr.number),
-                                        "Copy branch name",
-                                        branch_name.clone(),
-                                        format!("Copied branch {branch_name}"),
+                                        format!("copy-pr-base-branch-{}", pr.number),
+                                        "Copy base branch name",
+                                        pr.base_ref.clone(),
+                                        format!("Copied branch {}", pr.base_ref),
                                         cx,
                                     ))
-                                    .child(div().flex_none().child("/"))
+                                    .child(div().flex_none().child("·"))
                                     .child(
                                         div()
                                             .flex_none()
@@ -282,24 +283,6 @@ impl AppView {
                             ),
                     )
                     .child(header_actions),
-            )
-            .child(
-                div()
-                    .pt_3()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_2()
-                    .child(render_review_decision(pr.review_decision))
-                    .child(render_merge_state(pr.merge_state))
-                    .child(crate::panels::render_status_pill(
-                        format!("{} unresolved", pr.unresolved_threads),
-                        if pr.unresolved_threads == 0 {
-                            Tone::Neutral
-                        } else {
-                            Tone::Warning
-                        },
-                    )),
             )
             .when_some(
                 self.review_state.pending_review_cloned(),

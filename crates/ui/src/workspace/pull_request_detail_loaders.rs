@@ -164,6 +164,7 @@ impl AppView {
         }
 
         match self.active_tab {
+            PanelTab::Overview => {}
             PanelTab::Diff | PanelTab::Review => {
                 if self.review_state.should_load_reviews() {
                     self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
@@ -263,7 +264,12 @@ mod tests {
             PanelTab::Diff
         ));
 
-        for tab in [PanelTab::Checks, PanelTab::Actions, PanelTab::Logs] {
+        for tab in [
+            PanelTab::Overview,
+            PanelTab::Checks,
+            PanelTab::Actions,
+            PanelTab::Logs,
+        ] {
             assert!(!should_defer_review_load_until_cache(
                 PullRequestDetailFetchPolicy::PreferCache,
                 true,

@@ -129,8 +129,9 @@ impl AppView {
                             )
                             .child(
                                 div()
-                                    .min_w_0()
-                                    .truncate()
+                                    .debug_selector(|| "changed-files-title".to_string())
+                                    .flex_none()
+                                    .whitespace_nowrap()
                                     .text_sm()
                                     .font_medium()
                                     .text_color(color::text_primary())

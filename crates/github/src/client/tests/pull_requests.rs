@@ -5,6 +5,75 @@ use crate::{ConditionalFetch, HttpCacheValidator, PullRequestPageCursor};
 use harbor_domain::{FileViewedState, MergeMethod, RepoId};
 
 #[test]
+fn updates_pull_request_body() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "updatePullRequest": {
+                "pullRequest": {
+                    "id": "pr-node",
+                    "body": "Updated description"
+                }
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.update_pull_request_body("pr-node", "Updated description")).unwrap();
+
+    let calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].0.contains("HarborUpdatePullRequest"));
+    assert_eq!(
+        calls[0].1,
+        json!({
+            "input": {
+                "pullRequestId": "pr-node",
+                "body": "Updated description",
+            }
+        })
+    );
+}
+
+#[test]
+fn adds_pull_request_people_and_labels() {
+    let transport = RecordingTransport::default();
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.request_pull_request_reviewer("acme", "app", 7, "reviewer")).unwrap();
+    smol::block_on(client.add_pull_request_assignee("acme", "app", 7, "assignee")).unwrap();
+    smol::block_on(client.add_pull_request_label("acme", "app", 7, "needs-review")).unwrap();
+
+    let posts = transport
+        .posts
+        .lock()
+        .expect("posts mutex should not be poisoned");
+    assert_eq!(
+        posts.as_slice(),
+        [
+            (
+                "/repos/acme/app/pulls/7/requested_reviewers".to_string(),
+                json!({ "reviewers": ["reviewer"] }),
+            ),
+            (
+                "/repos/acme/app/issues/7/assignees".to_string(),
+                json!({ "assignees": ["assignee"] }),
+            ),
+            (
+                "/repos/acme/app/issues/7/labels".to_string(),
+                json!({ "labels": ["needs-review"] }),
+            ),
+        ]
+    );
+}
+
+#[test]
 fn queries_repository_pull_request_filters() {
     for (filter, query) in [
         (

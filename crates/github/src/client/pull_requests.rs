@@ -14,7 +14,7 @@ use super::{
         MARK_FILE_AS_VIEWED_MUTATION, PULL_REQUEST_ENRICHMENT_QUERY,
         PULL_REQUEST_FILE_VIEWED_STATES_QUERY, REPOSITORY_PULL_REQUEST_COUNT_QUERY,
         REPOSITORY_PULL_REQUESTS_QUERY, UNMARK_FILE_AS_VIEWED_MUTATION,
-        repository_pull_requests_query,
+        UPDATE_PULL_REQUEST_MUTATION, repository_pull_requests_query,
     },
 };
 
@@ -456,6 +456,71 @@ where
                     },
                 }),
             )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_pull_request_body(
+        &self,
+        pull_request_node_id: &str,
+        body: &str,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                UPDATE_PULL_REQUEST_MUTATION,
+                json!({
+                    "input": {
+                        "pullRequestId": pull_request_node_id,
+                        "body": body,
+                    },
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn request_pull_request_reviewer(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        reviewer: &str,
+    ) -> Result<()> {
+        let path = format!("/repos/{owner}/{repo}/pulls/{number}/requested_reviewers");
+        self.transport
+            .rest_post(&path, json!({ "reviewers": [reviewer] }))
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn add_pull_request_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        assignee: &str,
+    ) -> Result<()> {
+        let path = format!("/repos/{owner}/{repo}/issues/{number}/assignees");
+        self.transport
+            .rest_post(&path, json!({ "assignees": [assignee] }))
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn add_pull_request_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        label: &str,
+    ) -> Result<()> {
+        let path = format!("/repos/{owner}/{repo}/issues/{number}/labels");
+        self.transport
+            .rest_post(&path, json!({ "labels": [label] }))
             .await?;
 
         Ok(())

@@ -99,16 +99,12 @@ impl Render for AppView {
                     pull_request_workspace.child(self.render_pull_request_details_header(pr, cx));
             }
 
-            pull_request_workspace = pull_request_workspace.child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .gap_3()
-                    .child(self.render_details(selected_pr.as_ref(), cx))
-                    .child(self.render_panel(selected_pr.as_ref(), cx)),
-            );
+            let mut panel_workspace = div().flex().flex_1().min_h_0().min_w_0().gap_3();
+            if self.active_tab == PanelTab::Diff && selected_pr.is_some() {
+                panel_workspace = panel_workspace.child(self.render_changed_files_sidebar(cx));
+            }
+            panel_workspace = panel_workspace.child(self.render_panel(selected_pr.as_ref(), cx));
+            pull_request_workspace = pull_request_workspace.child(panel_workspace);
 
             div()
                 .flex()
@@ -132,6 +128,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::select_previous))
             .on_action(cx.listener(Self::open_selected))
             .on_action(cx.listener(Self::cycle_panel_tab))
+            .on_action(cx.listener(Self::select_overview_panel))
             .on_action(cx.listener(Self::select_diff_panel))
             .on_action(cx.listener(Self::select_review_panel))
             .on_action(cx.listener(Self::select_checks_panel))

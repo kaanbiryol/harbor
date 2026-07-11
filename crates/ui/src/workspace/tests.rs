@@ -6,8 +6,9 @@ use crate::{
     test_fixtures::pull_request,
     workspace::github_service::test_support::FakeGitHubApi,
 };
-use gpui::{AppContext, Modifiers, TestAppContext, px};
+use gpui::{AppContext, TestAppContext, px};
 use gpui_component::{Root, Theme, ThemeMode};
+use harbor_domain::Label;
 
 #[test]
 fn defaults_pull_request_inbox_to_open_mode() {
@@ -43,41 +44,55 @@ async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn pull_request_description_defaults_collapsed_and_toggles(cx: &mut TestAppContext) {
+async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
-    let mut view_entity = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
         let view = cx
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
         view.update(cx, |view, cx| {
             let mut pull_request = pull_request();
             pull_request.body = Some("## summary\n\n- Adds a focused fixture".to_string());
+            pull_request.unresolved_threads = 5;
+            pull_request.labels = vec![Label {
+                name: "needs-review".to_string(),
+                color: Some("34d399".to_string()),
+            }];
             view.pull_requests = vec![pull_request];
+            view.active_tab = PanelTab::Overview;
             cx.notify();
         });
-        view_entity = Some(view.clone());
         Root::new(view, window, cx)
     });
 
     cx.refresh().expect("test window should refresh");
-    assert!(cx.debug_bounds("pull-request-overview-content").is_none());
-
-    let toggle_bounds = cx
-        .debug_bounds("pull-request-overview-toggle")
-        .expect("description toggle should render");
-    cx.simulate_click(toggle_bounds.center(), Modifiers::none());
-    cx.refresh().expect("test window should refresh");
-
-    assert!(cx.debug_bounds("pull-request-overview-content").is_some());
-    view_entity
-        .expect("test AppView should be created")
-        .read_with(cx, |view, _| {
-            assert!(view.pull_request_overview_expanded);
-        });
+    assert!(cx.debug_bounds("pull-request-overview-panel").is_some());
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_some()
+    );
+    assert!(cx.debug_bounds("pull-request-overview-sidebar").is_some());
+    assert!(cx.debug_bounds("pull-request-merge-readiness").is_some());
+    assert!(
+        cx.debug_bounds("pull-request-unresolved-conversations")
+            .is_some()
+    );
+    assert!(cx.debug_bounds("review-tab-unresolved-count").is_some());
+    let author_chip = cx
+        .debug_bounds("pull-request-person-octocat")
+        .expect("pull request author chip should render");
+    assert!(author_chip.size.width > px(40.));
+    let label_chip = cx
+        .debug_bounds("pull-request-label-needs-review")
+        .expect("pull request label chip should render");
+    assert!(label_chip.size.width > px(40.));
+    assert!(cx.debug_bounds("add-reviewer-control").is_some());
+    assert!(cx.debug_bounds("add-assignee-control").is_some());
+    assert!(cx.debug_bounds("add-label-control").is_some());
+    assert!(cx.debug_bounds("changed-files-sidebar").is_none());
 }
 
 #[gpui::test]
@@ -103,8 +118,11 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
         .debug_bounds("pull-request-workspace-header")
         .expect("pull request header should render");
     let details = cx
-        .debug_bounds("pull-request-details")
-        .expect("pull request details should render");
+        .debug_bounds("changed-files-sidebar")
+        .expect("changed files should render on the diff tab");
+    let changed_files_title = cx
+        .debug_bounds("changed-files-title")
+        .expect("changed files title should render");
     let panel = cx
         .debug_bounds("pull-request-panel")
         .expect("pull request panel should render");
@@ -114,14 +132,56 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
 
     assert_eq!(header.origin.x, details.origin.x);
     assert!(header.size.width > details.size.width);
+    assert!(changed_files_title.size.width > px(80.));
     assert!(
         header.origin.x + header.size.width >= panel.origin.x + panel.size.width,
         "header should reach across the active panel"
     );
     assert!(
+        header.size.height < px(130.),
+        "pull request header should stay compact, got {:?}",
+        header.size.height
+    );
+    assert!(
+        cx.debug_bounds("pull-request-header-metadata").is_some(),
+        "metadata and statuses should share the compact secondary row"
+    );
+    assert!(
         tabs.origin.y + tabs.size.height <= panel.origin.y,
         "tabs should render in the header above the active panel"
     );
+}
+
+#[gpui::test]
+async fn non_diff_panel_uses_full_workspace_width(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.active_tab = PanelTab::Review;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+
+    let header = cx
+        .debug_bounds("pull-request-workspace-header")
+        .expect("pull request header should render");
+    let panel = cx
+        .debug_bounds("pull-request-panel")
+        .expect("pull request panel should render");
+
+    assert!(cx.debug_bounds("changed-files-sidebar").is_none());
+    assert_eq!(header.origin.x, panel.origin.x);
+    assert_eq!(header.size.width, panel.size.width);
 }
 
 #[gpui::test]

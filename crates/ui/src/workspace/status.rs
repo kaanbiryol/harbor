@@ -1,3 +1,5 @@
+use crate::actions::PullRequestMetadataField;
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) enum LoadStatus {
     #[default]
@@ -93,6 +95,9 @@ impl ActionStatus {
 pub(crate) struct ActionRuntimeState {
     workflow_action: ActionStatus,
     pull_request_action: ActionStatus,
+    pull_request_description_action: ActionStatus,
+    pull_request_metadata_action: ActionStatus,
+    pull_request_metadata_field: Option<PullRequestMetadataField>,
 }
 
 impl ActionRuntimeState {
@@ -144,9 +149,65 @@ impl ActionRuntimeState {
         self.pull_request_action.fail(error);
     }
 
+    pub(crate) fn pull_request_description_action_running(&self) -> bool {
+        self.pull_request_description_action.is_running()
+    }
+
+    pub(crate) fn pull_request_description_action_error(&self) -> Option<&str> {
+        self.pull_request_description_action.error()
+    }
+
+    pub(crate) fn start_pull_request_description_action(&mut self) {
+        self.pull_request_description_action.start();
+    }
+
+    pub(crate) fn finish_pull_request_description_action(&mut self) {
+        self.pull_request_description_action.succeed();
+    }
+
+    pub(crate) fn finish_pull_request_description_action_failure(
+        &mut self,
+        error: impl Into<String>,
+    ) {
+        self.pull_request_description_action.fail(error);
+    }
+
+    pub(crate) fn clear_pull_request_description_action_error(&mut self) {
+        self.pull_request_description_action.clear_error();
+    }
+
+    pub(crate) fn pull_request_metadata_action_running(&self) -> bool {
+        self.pull_request_metadata_action.is_running()
+    }
+
+    pub(crate) fn pull_request_metadata_action_error(&self) -> Option<&str> {
+        self.pull_request_metadata_action.error()
+    }
+
+    pub(crate) fn pull_request_metadata_field(&self) -> Option<PullRequestMetadataField> {
+        self.pull_request_metadata_field
+    }
+
+    pub(crate) fn start_pull_request_metadata_action(&mut self, field: PullRequestMetadataField) {
+        self.pull_request_metadata_field = Some(field);
+        self.pull_request_metadata_action.start();
+    }
+
+    pub(crate) fn finish_pull_request_metadata_action(&mut self) {
+        self.pull_request_metadata_action.succeed();
+        self.pull_request_metadata_field = None;
+    }
+
+    pub(crate) fn finish_pull_request_metadata_action_failure(&mut self, error: impl Into<String>) {
+        self.pull_request_metadata_action.fail(error);
+    }
+
     pub(crate) fn clear_errors(&mut self) {
         self.workflow_action.clear_error();
         self.pull_request_action.clear_error();
+        self.pull_request_description_action.clear_error();
+        self.pull_request_metadata_action.clear_error();
+        self.pull_request_metadata_field = None;
     }
 
     pub(crate) fn clear_pull_request_action_error(&mut self) {
@@ -189,6 +250,10 @@ mod tests {
         assert_eq!(state.workflow_action_error(), None);
         assert!(!state.pull_request_action_running());
         assert_eq!(state.pull_request_action_error(), None);
+        assert!(!state.pull_request_metadata_action_running());
+        assert_eq!(state.pull_request_metadata_action_error(), None);
+        assert!(!state.pull_request_description_action_running());
+        assert_eq!(state.pull_request_description_action_error(), None);
 
         state.set_workflow_action_error("missing workflow");
         assert!(!state.workflow_action_running());
@@ -210,8 +275,31 @@ mod tests {
         assert!(!state.pull_request_action_running());
         assert_eq!(state.pull_request_action_error(), None);
 
+        state.start_pull_request_description_action();
+        assert!(state.pull_request_description_action_running());
+        state.finish_pull_request_description_action_failure("description failed");
+        assert_eq!(
+            state.pull_request_description_action_error(),
+            Some("description failed")
+        );
+
+        state.start_pull_request_metadata_action(PullRequestMetadataField::Reviewer);
+        assert!(state.pull_request_metadata_action_running());
+        assert_eq!(
+            state.pull_request_metadata_field(),
+            Some(PullRequestMetadataField::Reviewer)
+        );
+        state.finish_pull_request_metadata_action_failure("reviewer failed");
+        assert_eq!(
+            state.pull_request_metadata_action_error(),
+            Some("reviewer failed")
+        );
+
         state.clear_errors();
         assert_eq!(state.workflow_action_error(), None);
         assert_eq!(state.pull_request_action_error(), None);
+        assert_eq!(state.pull_request_description_action_error(), None);
+        assert_eq!(state.pull_request_metadata_action_error(), None);
+        assert_eq!(state.pull_request_metadata_field(), None);
     }
 }

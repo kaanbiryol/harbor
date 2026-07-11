@@ -161,7 +161,7 @@ impl AppView {
             PanelTab::Review => Some(SyncTarget::SelectedPullRequestReviews),
             PanelTab::Checks => Some(SyncTarget::SelectedPullRequestChecks),
             PanelTab::Actions | PanelTab::Logs => Some(SyncTarget::SelectedPullRequestWorkflows),
-            PanelTab::Diff => None,
+            PanelTab::Overview | PanelTab::Diff => None,
         };
 
         let Some(target) = target else {
@@ -203,7 +203,7 @@ impl AppView {
             PanelTab::Review => Some(SyncTarget::SelectedPullRequestReviews),
             PanelTab::Checks => Some(SyncTarget::SelectedPullRequestChecks),
             PanelTab::Actions | PanelTab::Logs => Some(SyncTarget::SelectedPullRequestWorkflows),
-            PanelTab::Diff => None,
+            PanelTab::Overview | PanelTab::Diff => None,
         };
 
         if let Some(target) = active_panel_target {

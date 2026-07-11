@@ -14,6 +14,15 @@ impl AppView {
         self.select_panel_tab(self.active_tab.next(), cx);
     }
 
+    pub(super) fn select_overview_panel(
+        &mut self,
+        _: &SelectOverviewPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Overview, cx);
+    }
+
     pub(super) fn select_diff_panel(
         &mut self,
         _: &SelectDiffPanel,
