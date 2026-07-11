@@ -265,7 +265,7 @@ impl AppView {
             ),
             actions_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             selection_state: PullRequestSelectionState::default(),
-            active_tab: PanelTab::Diff,
+            active_tab: PanelTab::Overview,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),
             prefetch_inbox_counts: start_startup_tasks,
             pull_request_inbox_search_open: false,

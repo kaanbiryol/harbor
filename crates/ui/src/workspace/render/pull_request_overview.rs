@@ -33,10 +33,9 @@ use crate::{
         render_review_markdown_state, render_review_reactions, render_status_pill,
         review_markdown_body,
         review_thread_chrome::{
-            ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
             ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
-            ReviewThreadReplyComposerState, render_review_thread_actions,
-            render_review_thread_reply_composer, review_thread_ui_state,
+            ReviewThreadReplyComposerState, render_review_thread_reply_composer,
+            review_thread_ui_state,
         },
         review_thread_diff_preview,
     },
@@ -1385,10 +1384,11 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
     let toggle_selector = format!("overview-thread-toggle-{}", thread.id);
     let reply_field_thread_id = thread_id.clone();
     let reply_field_view = view_entity.clone();
-    let actions_view = view_entity.clone();
     let composer_view = view_entity.clone();
     let toggle_view = view_entity.clone();
     let toggle_thread_id = thread_id.clone();
+    let resolution_view = view_entity.clone();
+    let resolution_thread_id = thread_id.clone();
 
     render_timeline_row_with_node_offset(
         div()
@@ -1442,7 +1442,42 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
                                     .flex()
                                     .items_center()
                                     .gap_2()
-                                    .child(render_status_pill(status, tone))
+                                    .when(ui_state.can_toggle_resolution, |element| {
+                                        let button = Button::new(format!(
+                                            "overview-toggle-thread-{resolution_thread_id}"
+                                        ))
+                                        .label(if ui_state.is_resolved {
+                                            "Reopen"
+                                        } else {
+                                            "Resolve"
+                                        })
+                                        .xsmall()
+                                        .loading(ui_state.action_running)
+                                        .disabled(ui_state.action_running);
+                                        let button = if ui_state.is_resolved {
+                                            button.success()
+                                        } else {
+                                            button.warning()
+                                        };
+
+                                        element.child(button.on_click({
+                                            let resolution_view = resolution_view.clone();
+                                            let resolution_thread_id = resolution_thread_id.clone();
+                                            move |_, _, cx| {
+                                                cx.stop_propagation();
+                                                resolution_view.update(cx, |view, cx| {
+                                                    view.set_review_thread_resolved(
+                                                        resolution_thread_id.clone(),
+                                                        !ui_state.is_resolved,
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        }))
+                                    })
+                                    .when(!ui_state.can_toggle_resolution, |element| {
+                                        element.child(render_status_pill(status, tone))
+                                    })
                                     .child(
                                         Icon::new(if expanded {
                                             Octicon::ChevronDown
@@ -1522,22 +1557,7 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
                                         );
                                     });
                                 }),
-                        )
-                        .child(div().flex_none().child(render_review_thread_actions(
-                            ReviewThreadActionsState {
-                                ids: ReviewThreadActionIds::overview(&thread.id),
-                                thread_id: thread.id.clone(),
-                                active_reply: ui_state.active_reply,
-                                reply_button_disabled: ui_state.reply_button_disabled,
-                                is_resolved: ui_state.is_resolved,
-                                action_running: ui_state.action_running,
-                                can_toggle_resolution: ui_state.can_toggle_resolution,
-                                show_reply_button: false,
-                                show_toggle_icon: false,
-                                chrome: ReviewThreadActionsChrome::Inline,
-                                view_entity: actions_view.clone(),
-                            },
-                        ))),
+                        ),
                 )
             })
             .when(expanded && ui_state.active_reply, |element| {
@@ -1561,22 +1581,7 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
                                 chrome: ReviewThreadReplyComposerChrome::Panel,
                                 view_entity: composer_view.clone(),
                             },
-                        ))
-                        .child(div().pt_2().child(render_review_thread_actions(
-                            ReviewThreadActionsState {
-                                ids: ReviewThreadActionIds::overview(&thread.id),
-                                thread_id: thread.id.clone(),
-                                active_reply: ui_state.active_reply,
-                                reply_button_disabled: ui_state.reply_button_disabled,
-                                is_resolved: ui_state.is_resolved,
-                                action_running: ui_state.action_running,
-                                can_toggle_resolution: ui_state.can_toggle_resolution,
-                                show_reply_button: false,
-                                show_toggle_icon: false,
-                                chrome: ReviewThreadActionsChrome::Inline,
-                                view_entity: actions_view.clone(),
-                            },
-                        ))),
+                        )),
                 )
             })
             .when_some(action_error, |element, error| {

@@ -286,6 +286,7 @@ impl AppView {
         self.cache_current_pull_request_detail_snapshot();
         self.pull_request_description_editing = false;
         self.selection_state.set_pull_request_index(index);
+        self.active_tab = PanelTab::Overview;
 
         if self.restore_selected_pull_request_detail_snapshot(cx) {
             return;

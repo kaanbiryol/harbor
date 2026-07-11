@@ -159,7 +159,7 @@ impl AppView {
         self.set_log_loading(false);
         self.review_state.current_user_login = None;
         self.diff_list_items.clear();
-        self.active_tab = PanelTab::Diff;
+        self.active_tab = PanelTab::Overview;
         self.pull_request_switcher_selection = 0;
         self.pr_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.reset_detail_scrolls();

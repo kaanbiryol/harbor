@@ -80,7 +80,7 @@ impl AppView {
                 self.file_filter_popover_open = false;
                 self.review_action_comment_target = None;
                 self.pull_request_inbox.set_visible(false);
-                self.active_tab = PanelTab::Diff;
+                self.active_tab = PanelTab::Overview;
                 self.status = format!("Opened PR #{number} details");
 
                 if refresh {

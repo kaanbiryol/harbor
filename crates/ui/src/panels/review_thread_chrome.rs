@@ -95,15 +95,6 @@ impl ReviewThreadActionIds {
             toggle_debug_selector: format!("review-panel-toggle-thread-{thread_id}"),
         }
     }
-
-    pub(crate) fn overview(thread_id: &str) -> Self {
-        Self {
-            reply_button: format!("overview-reply-thread-{thread_id}"),
-            reply_debug_selector: format!("overview-reply-thread-{thread_id}"),
-            toggle_button: format!("overview-toggle-thread-{thread_id}"),
-            toggle_debug_selector: format!("overview-toggle-thread-{thread_id}"),
-        }
-    }
 }
 
 impl ReviewThreadReplyComposerIds {
