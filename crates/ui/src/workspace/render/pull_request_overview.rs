@@ -29,9 +29,10 @@ use crate::{
     },
     icons::Octicon,
     panels::{
-        ReviewDiffPreview, overview_markdown_body, render_review_diff_preview,
-        render_review_markdown_state, render_review_reactions, render_status_pill,
-        review_markdown_body,
+        ReviewCommentActionsMenuState, ReviewDiffPreview, overview_markdown_body,
+        render_review_comment_actions_menu, render_review_comment_edit_composer,
+        render_review_diff_preview, render_review_markdown_state, render_review_reactions,
+        render_status_pill, review_comment_ui_state, review_markdown_body,
         review_thread_chrome::{
             ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
             ReviewThreadReplyComposerState, render_review_thread_reply_composer,
@@ -390,6 +391,24 @@ impl AppView {
 
         let reaction_action = self.review_state.review_reaction_action().cloned();
         let reaction_error = self.review_state.review_reaction_error().cloned();
+        let active_comment_edit = self
+            .review_state
+            .review_composer_state
+            .active_comment_edit()
+            .map(str::to_string);
+        let comment_edit_input = self
+            .review_state
+            .review_composer_state
+            .comment_edit_input
+            .clone();
+        let edit_body_empty = comment_edit_input.read(cx).value().trim().is_empty();
+        let is_submitting_edit = self.review_state.is_submitting_review_comment_edit();
+        let edit_error = self.review_state.review_comment_edit_error().cloned();
+        let action_comment_id = self
+            .review_state
+            .review_comment_action_comment_id()
+            .map(str::to_string);
+        let action_error = self.review_state.review_comment_action_error().cloned();
         let view_entity = cx.entity().clone();
         let comments = thread
             .comments
@@ -408,6 +427,13 @@ impl AppView {
                     markdown,
                     reaction_action.as_ref(),
                     reaction_error.as_ref(),
+                    active_comment_edit.as_deref(),
+                    comment_edit_input.clone(),
+                    edit_body_empty,
+                    is_submitting_edit,
+                    edit_error.as_ref(),
+                    action_comment_id.as_deref(),
+                    action_error.as_ref(),
                     view_entity.clone(),
                 )
             })
@@ -1607,6 +1633,13 @@ fn render_overview_thread_comment(
     markdown: AnyElement,
     reaction_action: Option<&ReviewReactionAction>,
     reaction_error: Option<&ReviewCommentUiError>,
+    active_comment_edit: Option<&str>,
+    comment_edit_input: Entity<InputState>,
+    edit_body_empty: bool,
+    is_submitting_edit: bool,
+    edit_error: Option<&ReviewCommentUiError>,
+    action_comment_id: Option<&str>,
+    action_error: Option<&ReviewCommentUiError>,
     view_entity: Entity<AppView>,
 ) -> AnyElement {
     let person = PullRequestPerson {
@@ -1619,6 +1652,18 @@ fn render_overview_thread_comment(
     let reaction_error = reaction_error
         .filter(|error| error.comment_id == comment.id)
         .map(|error| error.message.clone());
+    let edit_error = edit_error
+        .filter(|error| error.comment_id == comment.id)
+        .map(|error| error.message.clone());
+    let action_error = action_error
+        .filter(|error| error.comment_id == comment.id)
+        .map(|error| error.message.clone());
+    let ui_state = review_comment_ui_state(
+        comment,
+        active_comment_edit,
+        is_submitting_edit,
+        action_comment_id,
+    );
 
     div()
         .debug_selector(move || selector.clone())
@@ -1641,27 +1686,70 @@ fn render_overview_thread_comment(
                     div()
                         .flex()
                         .items_center()
+                        .justify_between()
                         .gap_1()
                         .text_xs()
                         .child(
                             div()
-                                .font_semibold()
-                                .text_color(color::text_primary())
-                                .child(comment.author.clone()),
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .font_semibold()
+                                        .text_color(color::text_primary())
+                                        .child(comment.author.clone()),
+                                )
+                                .child(render_timeline_time(
+                                    format!("overview-thread-comment-time-{}", comment.id),
+                                    time_label,
+                                    time_tooltip,
+                                )),
                         )
-                        .child(render_timeline_time(
-                            format!("overview-thread-comment-time-{}", comment.id),
-                            time_label,
-                            time_tooltip,
+                        .child(render_review_comment_actions_menu(
+                            ReviewCommentActionsMenuState {
+                                comment_id: comment.id.clone(),
+                                thread_id: thread_id.to_string(),
+                                comment_body: comment.body.clone(),
+                                comment_url: comment.url.clone(),
+                                can_update: ui_state.can_update,
+                                can_delete: ui_state.can_delete,
+                                active_edit: ui_state.active_edit,
+                                edit_submitting: ui_state.edit_submitting,
+                                action_running: ui_state.action_running,
+                                view_entity: view_entity.clone(),
+                            },
                         )),
                 )
-                .child(
-                    div()
-                        .pt_2()
-                        .text_sm()
-                        .text_color(color::text_secondary())
-                        .child(markdown),
-                )
+                .when(!ui_state.active_edit, |element| {
+                    element.child(
+                        div()
+                            .pt_2()
+                            .text_sm()
+                            .text_color(color::text_secondary())
+                            .child(markdown),
+                    )
+                })
+                .when(ui_state.active_edit, |element| {
+                    element.child(render_review_comment_edit_composer(
+                        comment.id.clone(),
+                        comment_edit_input,
+                        edit_body_empty,
+                        ui_state.edit_submitting,
+                        edit_error,
+                        view_entity.clone(),
+                    ))
+                })
+                .when_some(action_error, |element, error| {
+                    element.child(
+                        div()
+                            .pt_1()
+                            .text_xs()
+                            .text_color(color::danger())
+                            .child(error),
+                    )
+                })
                 .child(render_review_reactions(
                     comment,
                     reaction_action,

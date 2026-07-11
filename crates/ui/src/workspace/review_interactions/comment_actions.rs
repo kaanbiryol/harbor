@@ -13,7 +13,7 @@ impl AppView {
     ) {
         self.review_state
             .review_composer_state
-            .open_comment_edit(comment_id);
+            .open_comment_edit(comment_id.clone());
         self.review_state.clear_review_comment_edit_error();
         self.review_state
             .review_composer_state
@@ -24,6 +24,7 @@ impl AppView {
                 input.set_cursor_position(cursor_position, window, cx);
             });
         self.sync_diff_list_items(cx);
+        self.remeasure_overview_thread_item_for_comment(&comment_id);
         self.status = "Opened review comment editor".to_string();
         cx.notify();
     }
@@ -33,6 +34,11 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let active_comment_id = self
+            .review_state
+            .review_composer_state
+            .active_comment_edit()
+            .map(str::to_string);
         self.review_state.review_composer_state.clear();
         self.review_state.clear_review_comment_edit_error();
         self.review_state
@@ -42,6 +48,9 @@ impl AppView {
                 input.set_value("", window, cx);
             });
         self.sync_diff_list_items(cx);
+        if let Some(comment_id) = active_comment_id {
+            self.remeasure_overview_thread_item_for_comment(&comment_id);
+        }
         self.status = "Cancelled review comment edit".to_string();
         cx.notify();
     }

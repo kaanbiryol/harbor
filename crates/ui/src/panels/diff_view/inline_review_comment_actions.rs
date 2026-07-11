@@ -10,20 +10,20 @@ use harbor_domain::ReviewComment;
 
 use crate::{icons::Octicon, visual::color, workspace::AppView};
 
-pub(super) struct ReviewCommentActionsMenuState {
-    pub(super) comment_id: String,
-    pub(super) thread_id: String,
-    pub(super) comment_body: String,
-    pub(super) comment_url: Option<String>,
-    pub(super) can_update: bool,
-    pub(super) can_delete: bool,
-    pub(super) active_edit: bool,
-    pub(super) edit_submitting: bool,
-    pub(super) action_running: bool,
-    pub(super) view_entity: Entity<AppView>,
+pub(crate) struct ReviewCommentActionsMenuState {
+    pub(crate) comment_id: String,
+    pub(crate) thread_id: String,
+    pub(crate) comment_body: String,
+    pub(crate) comment_url: Option<String>,
+    pub(crate) can_update: bool,
+    pub(crate) can_delete: bool,
+    pub(crate) active_edit: bool,
+    pub(crate) edit_submitting: bool,
+    pub(crate) action_running: bool,
+    pub(crate) view_entity: Entity<AppView>,
 }
 
-pub(super) fn render_review_comment_actions_menu(
+pub(crate) fn render_review_comment_actions_menu(
     state: ReviewCommentActionsMenuState,
 ) -> impl IntoElement {
     let ReviewCommentActionsMenuState {
@@ -250,7 +250,7 @@ fn render_review_comment_action_menu_item(
         .child(div().min_w_0().flex_1().text_left().child(label))
 }
 
-pub(super) fn render_review_comment_edit_composer(
+pub(crate) fn render_review_comment_edit_composer(
     comment_id: String,
     review_comment_edit_input: Entity<InputState>,
     edit_body_empty: bool,

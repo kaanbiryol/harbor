@@ -13,7 +13,10 @@ mod row_render;
 #[path = "diff_view/row_state.rs"]
 mod row_state;
 
-pub(crate) use inline_reviews::render_review_reactions;
+pub(crate) use inline_reviews::{
+    ReviewCommentActionsMenuState, render_review_comment_actions_menu,
+    render_review_comment_edit_composer, render_review_reactions, review_comment_ui_state,
+};
 
 use std::collections::HashSet;
 

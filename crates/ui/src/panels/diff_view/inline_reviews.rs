@@ -9,6 +9,11 @@ mod reactions;
 #[path = "inline_review_threads.rs"]
 mod threads;
 
+pub(crate) use comment_actions::{
+    ReviewCommentActionsMenuState, render_review_comment_actions_menu,
+    render_review_comment_edit_composer,
+};
+pub(crate) use comments::review_comment_ui_state;
 pub(crate) use reactions::render_review_reactions;
 
 use gpui::{Entity, IntoElement, div, prelude::*, px};
