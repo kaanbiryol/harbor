@@ -1,6 +1,9 @@
 use gpui::{AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
 use gpui_component::{
-    Disableable, Icon, Sizable, StyledExt, avatar::Avatar, button::Button, input::Input,
+    Disableable, Icon, Sizable, StyledExt,
+    avatar::Avatar,
+    button::{Button, ButtonVariants},
+    input::Input,
     scroll::ScrollableElement,
 };
 use harbor_domain::{
@@ -10,7 +13,7 @@ use harbor_domain::{
 use crate::{
     actions::{PanelTab, PullRequestMetadataField},
     icons::Octicon,
-    panels::render_review_markdown_body,
+    panels::{overview_markdown_body, render_review_markdown_body},
     visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
@@ -91,25 +94,32 @@ impl AppView {
                 true,
             ))
             .child(
-                render_readiness_row(
-                    "Conversations",
-                    format!("{} unresolved", pr.unresolved_threads),
-                    Octicon::CommentDiscussion,
-                    unresolved_tone,
-                    true,
-                )
-                .debug_selector(|| "pull-request-unresolved-conversations".to_string())
-                .id("pull-request-unresolved-conversations-row")
-                .cursor_pointer()
-                .hover(|element| element.bg(color::row_hover()))
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.select_panel_tab(PanelTab::Review, cx);
-                }))
-                .child(
-                    Icon::new(Octicon::ChevronRight)
-                        .xsmall()
-                        .text_color(color::text_muted()),
-                ),
+                div()
+                    .border_t_1()
+                    .border_color(color::border_subtle())
+                    .pt_3()
+                    .child(
+                        render_readiness_row(
+                            "Conversations",
+                            format!("{} unresolved", pr.unresolved_threads),
+                            Octicon::CommentDiscussion,
+                            unresolved_tone,
+                            false,
+                        )
+                        .debug_selector(|| "pull-request-unresolved-conversations".to_string())
+                        .id("pull-request-unresolved-conversations-row")
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|element| element.bg(color::row_hover()))
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.select_panel_tab(PanelTab::Review, cx);
+                        }))
+                        .child(
+                            Icon::new(Octicon::ChevronRight)
+                                .xsmall()
+                                .text_color(color::text_muted()),
+                        ),
+                    ),
             )
             .into_any_element()
     }
@@ -152,9 +162,8 @@ impl AppView {
                         element.child(
                             Button::new("edit-pull-request-description")
                                 .icon(Octicon::Pencil)
-                                .label("Edit")
-                                .small()
-                                .outline()
+                                .xsmall()
+                                .ghost()
                                 .tooltip("Edit description if your GitHub permissions allow it")
                                 .on_click(cx.listener(|view, _, window, cx| {
                                     view.start_pull_request_description_edit(window, cx);
@@ -444,7 +453,7 @@ fn render_pull_request_description(pr: &PullRequest) -> AnyElement {
         .text_color(color::text_secondary())
         .child(render_review_markdown_body(
             format!("pull-request-description-{}", pr.number),
-            body,
+            &overview_markdown_body(body),
         ))
         .into_any_element()
 }

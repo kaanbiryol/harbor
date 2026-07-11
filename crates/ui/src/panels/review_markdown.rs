@@ -28,6 +28,33 @@ pub(crate) fn review_markdown_body(body: &str) -> String {
     }
 }
 
+pub(crate) fn overview_markdown_body(body: &str) -> String {
+    let body = review_markdown_body(body);
+    let mut normalized = String::with_capacity(body.len());
+    let mut fence = None;
+
+    for line in body.split_inclusive('\n') {
+        let (line, newline) = line
+            .strip_suffix('\n')
+            .map_or((line, ""), |line| (line, "\n"));
+
+        if let Some(active_fence) = fence {
+            if closes_markdown_fence(line, active_fence) {
+                fence = None;
+            }
+            normalized.push_str(line);
+        } else if let Some((marker, length, _)) = markdown_fence_opening(line) {
+            fence = Some(MarkdownFence { marker, length });
+            normalized.push_str(line);
+        } else {
+            normalized.extend(line.chars().filter(|character| *character != '`'));
+        }
+        normalized.push_str(newline);
+    }
+
+    normalized
+}
+
 fn review_markdown_style() -> TextViewStyle {
     TextViewStyle::default()
         .paragraph_gap(rems(0.5))
@@ -250,6 +277,14 @@ mod tests {
             "**bold**\n\n- list item"
         );
         assert_eq!(review_markdown_body(" \n\t "), "empty comment");
+    }
+
+    #[test]
+    fn removes_inline_code_decoration_from_overview_markdown() {
+        assert_eq!(
+            overview_markdown_body("- `cargo fmt --all`\n\n```rust\nlet value = 1;\n```"),
+            "- cargo fmt --all\n\n```rust\nlet value = 1;\n```"
+        );
     }
 
     #[test]
