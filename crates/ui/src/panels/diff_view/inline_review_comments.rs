@@ -148,7 +148,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
 
     div()
         .pt_2()
-        .when(is_reply, |element| element.mt_1().ml(px(28.0)))
+        .when(is_reply, |element| element.mt_1())
         .flex()
         .gap_2()
         .child(render_review_comment_gutter(
