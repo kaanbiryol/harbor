@@ -1,9 +1,11 @@
-use gpui::{AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
+use gpui::{Anchor, AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
 use gpui_component::{
     Disableable, Icon, Sizable, StyledExt,
     avatar::Avatar,
     button::{Button, ButtonVariants},
     input::Input,
+    list::ListItem,
+    popover::Popover,
     scroll::ScrollableElement,
 };
 use harbor_domain::{
@@ -80,45 +82,39 @@ impl AppView {
             .debug_selector(|| "pull-request-merge-readiness".to_string())
             .gap_0()
             .child(render_readiness_row(
+                "pull-request-review-readiness-row",
                 "Review",
                 review_label,
                 Octicon::Eye,
                 review_tone,
                 false,
+                false,
             ))
             .child(render_readiness_row(
+                "pull-request-merge-readiness-row",
                 "Merge",
                 merge_label,
                 Octicon::CheckCircle,
                 merge_tone,
                 true,
+                false,
             ))
             .child(
                 div()
-                    .border_t_1()
-                    .border_color(color::border_subtle())
-                    .pt_3()
+                    .debug_selector(|| "pull-request-unresolved-conversations".to_string())
                     .child(
                         render_readiness_row(
+                            "pull-request-unresolved-conversations-row",
                             "Conversations",
                             format!("{} unresolved", pr.unresolved_threads),
                             Octicon::CommentDiscussion,
                             unresolved_tone,
-                            false,
+                            true,
+                            true,
                         )
-                        .debug_selector(|| "pull-request-unresolved-conversations".to_string())
-                        .id("pull-request-unresolved-conversations-row")
-                        .rounded_sm()
-                        .cursor_pointer()
-                        .hover(|element| element.bg(color::row_hover()))
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.select_panel_tab(PanelTab::Review, cx);
-                        }))
-                        .child(
-                            Icon::new(Octicon::ChevronRight)
-                                .xsmall()
-                                .text_color(color::text_muted()),
-                        ),
+                        })),
                     ),
             )
             .into_any_element()
@@ -163,7 +159,7 @@ impl AppView {
                             Button::new("edit-pull-request-description")
                                 .icon(Octicon::Pencil)
                                 .xsmall()
-                                .ghost()
+                                .secondary()
                                 .tooltip("Edit description if your GitHub permissions allow it")
                                 .on_click(cx.listener(|view, _, window, cx| {
                                     view.start_pull_request_description_edit(window, cx);
@@ -236,8 +232,10 @@ impl AppView {
                 "Reviewers",
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_2()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .min_h(px(28.0))
                     .child(if has_review_requests(pr) {
                         render_review_requests_row(&pr.requested_reviewers, &pr.requested_teams)
                     } else {
@@ -250,8 +248,10 @@ impl AppView {
                 "Assignees",
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_2()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .min_h(px(28.0))
                     .child(if pr.assignees.is_empty() {
                         render_empty_value("No assignees")
                     } else {
@@ -268,8 +268,10 @@ impl AppView {
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_2()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .min_h(px(28.0))
                     .child(if pr.labels.is_empty() {
                         render_empty_value("No labels")
                     } else {
@@ -297,39 +299,69 @@ impl AppView {
                     .map(str::to_string)
             })
             .flatten();
-
+        let view = cx.entity().clone();
+        let field_name = field.name();
         div()
-            .debug_selector(move || format!("add-{}-control", field.name()))
-            .flex()
-            .flex_col()
-            .gap_1()
+            .debug_selector(move || format!("add-{field_name}-control"))
+            .flex_none()
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .child(Input::new(&input).small().cleanable(true)),
-                    )
-                    .child(
-                        Button::new(format!("add-pull-request-{}", field.name()))
+                Popover::new(format!("add-{field_name}-popover"))
+                    .appearance(false)
+                    .anchor(Anchor::TopRight)
+                    .on_open_change({
+                        let input = input.clone();
+                        move |open, window, cx| {
+                            if *open {
+                                input.update(cx, |input, cx| input.focus(window, cx));
+                            }
+                        }
+                    })
+                    .trigger(
+                        Button::new(format!("open-add-{field_name}"))
                             .icon(Octicon::Plus)
-                            .label("Add")
                             .small()
+                            .compact()
                             .outline()
-                            .loading(field_running)
-                            .disabled(action_running || input_is_empty)
-                            .on_click(cx.listener(move |view, _, window, cx| {
-                                view.add_pull_request_metadata(field, window, cx);
-                            })),
-                    ),
+                            .tooltip(format!("Add {field_name}")),
+                    )
+                    .content(move |_, _window, _popover_cx| {
+                        div()
+                            .w(px(280.0))
+                            .border_1()
+                            .border_color(color::border_strong())
+                            .bg(color::elevated_background())
+                            .shadow_lg()
+                            .p_2()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(Input::new(&input).small().cleanable(true))
+                            .when_some(error.clone(), |element, error| {
+                                element
+                                    .child(div().text_xs().text_color(color::danger()).child(error))
+                            })
+                            .child(
+                                div().flex().justify_end().child(
+                                    Button::new(format!("add-pull-request-{field_name}"))
+                                        .icon(Octicon::Plus)
+                                        .label("Add")
+                                        .small()
+                                        .loading(field_running)
+                                        .disabled(action_running || input_is_empty)
+                                        .on_click({
+                                            let view = view.clone();
+                                            move |_, window, cx| {
+                                                view.update(cx, |view, cx| {
+                                                    view.add_pull_request_metadata(
+                                                        field, window, cx,
+                                                    );
+                                                });
+                                            }
+                                        }),
+                                ),
+                            )
+                    }),
             )
-            .when_some(error, |element, error| {
-                element.child(div().text_xs().text_color(color::danger()).child(error))
-            })
             .into_any_element()
     }
 }
@@ -354,40 +386,60 @@ fn render_overview_card(title: &'static str) -> Div {
 }
 
 fn render_readiness_row(
+    id: &'static str,
     label: &'static str,
     value: impl Into<String>,
     icon: Octicon,
     tone: Tone,
     divided: bool,
-) -> Div {
+    navigable: bool,
+) -> ListItem {
     let colors = tone_colors(tone);
+    let value = value.into();
 
-    div()
+    ListItem::new(id)
         .w_full()
-        .flex()
-        .items_center()
-        .gap_2()
-        .py_2()
+        .h(px(40.0))
+        .px_0()
+        .py_0()
+        .rounded_none()
+        .disabled(!navigable)
         .when(divided, |element| {
             element.border_t_1().border_color(color::border_subtle())
         })
-        .child(Icon::new(icon).xsmall().text_color(colors.text))
         .child(
             div()
-                .flex_1()
-                .min_w_0()
-                .text_xs()
-                .text_color(color::text_secondary())
-                .child(label),
+                .w_full()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(icon).xsmall().text_color(colors.text))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_xs()
+                        .text_color(color::text_secondary())
+                        .child(label),
+                ),
         )
-        .child(
+        .suffix(move |_, _| {
             div()
-                .flex_none()
+                .flex()
+                .items_center()
+                .gap_2()
                 .text_xs()
                 .font_medium()
                 .text_color(colors.text)
-                .child(value.into()),
-        )
+                .child(value.clone())
+                .when(navigable, |element| {
+                    element.child(
+                        Icon::new(Octicon::ChevronRight)
+                            .xsmall()
+                            .text_color(color::text_muted()),
+                    )
+                })
+        })
 }
 
 fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
@@ -421,6 +473,9 @@ fn render_overview_section(title: &'static str, body: AnyElement) -> impl IntoEl
     div()
         .w_full()
         .min_w_0()
+        .pt_3()
+        .border_t_1()
+        .border_color(color::border_subtle())
         .child(
             div()
                 .pb_1()
