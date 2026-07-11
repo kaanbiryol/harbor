@@ -16,6 +16,7 @@ use crate::{
         natural_time_label_with_edit,
     },
     diff::{DiffLineKind, ParsedDiff},
+    github::{avatar_initial, avatar_url as github_avatar_url, profile_url},
     icons::Octicon,
     visual::{Tone, color, leading_truncated_path, tone_colors, tone_text},
     workspace::AppView,
@@ -795,7 +796,7 @@ pub(super) fn render_review_avatar(
 ) -> AnyElement {
     if let Some(avatar_url) = avatar_url
         .map(str::to_string)
-        .or_else(|| github_avatar_url_for_login(author))
+        .or_else(|| github_avatar_url(author))
     {
         return Avatar::new()
             .src(avatar_url)
@@ -818,31 +819,8 @@ pub(super) fn render_review_avatar(
         .line_height(px(size))
         .font_semibold()
         .text_color(color::accent())
-        .child(review_avatar_initial(author))
+        .child(avatar_initial(author))
         .into_any_element()
-}
-
-fn review_avatar_initial(author: &str) -> String {
-    author
-        .trim()
-        .chars()
-        .find(|character| character.is_alphanumeric())
-        .map(|character| character.to_uppercase().collect())
-        .unwrap_or_else(|| "?".to_string())
-}
-
-fn github_avatar_url_for_login(login: &str) -> Option<String> {
-    let login = login.trim();
-
-    if login.is_empty()
-        || login.eq_ignore_ascii_case("ghost")
-        || login.eq_ignore_ascii_case("you")
-        || login.chars().any(char::is_whitespace)
-    {
-        None
-    } else {
-        Some(format!("https://github.com/{login}.png?size=48"))
-    }
 }
 
 pub(super) fn render_review_author_link(
@@ -850,7 +828,7 @@ pub(super) fn render_review_author_link(
     author: String,
     text_color: gpui::Rgba,
 ) -> impl IntoElement {
-    let profile_url = review_author_profile_url(&author);
+    let profile_url = profile_url(&author);
 
     div()
         .id(id)
@@ -862,10 +840,6 @@ pub(super) fn render_review_author_link(
             cx.open_url(&profile_url);
         })
         .child(author)
-}
-
-fn review_author_profile_url(author: &str) -> String {
-    format!("https://github.com/{author}")
 }
 
 fn review_has_inline_comment(review: &PullRequestReview, threads: &[ReviewThread]) -> bool {
@@ -1164,14 +1138,6 @@ mod tests {
                     tone: Tone::Success,
                 }],
             })
-        );
-    }
-
-    #[test]
-    fn builds_review_author_profile_url() {
-        assert_eq!(
-            review_author_profile_url("octocat"),
-            "https://github.com/octocat"
         );
     }
 

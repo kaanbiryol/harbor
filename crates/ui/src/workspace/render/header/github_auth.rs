@@ -8,6 +8,7 @@ use gpui_component::{
 
 use crate::{
     actions::SignOutOfGitHub,
+    github::avatar_url,
     icons::Octicon,
     visual::color,
     workspace::{AppView, GitHubAuthSource, GitHubAuthStatus},
@@ -287,7 +288,7 @@ fn render_github_account_menu_row(
 }
 
 fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {
-    match login.and_then(github_avatar_url_for_login) {
+    match login.and_then(avatar_url) {
         Some(avatar_url) => Avatar::new()
             .src(avatar_url)
             .name(login.unwrap_or("GitHub").to_string())
@@ -297,19 +298,5 @@ fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {
             .placeholder(Octicon::MarkGithub)
             .with_size(px(size))
             .into_any_element(),
-    }
-}
-
-fn github_avatar_url_for_login(login: &str) -> Option<String> {
-    let login = login.trim();
-
-    if login.is_empty()
-        || login.eq_ignore_ascii_case("ghost")
-        || login.eq_ignore_ascii_case("you")
-        || login.chars().any(char::is_whitespace)
-    {
-        None
-    } else {
-        Some(format!("https://github.com/{login}.png?size=48"))
     }
 }

@@ -4,6 +4,7 @@ use harbor_domain::ReviewComment;
 
 use crate::{
     date_time::{full_time_label_with_edit, natural_time_label_with_edit},
+    github::profile_url,
     panels::review_markdown::render_review_markdown_body,
     visual::color,
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync},
@@ -310,7 +311,7 @@ fn render_review_comment_author_link(
     author: String,
     color: gpui::Rgba,
 ) -> impl IntoElement {
-    let profile_url = review_comment_author_profile_url(&author);
+    let profile_url = profile_url(&author);
 
     div()
         .id(format!("review-comment-author-link-{comment_id}"))
@@ -322,10 +323,6 @@ fn render_review_comment_author_link(
             cx.open_url(&profile_url);
         })
         .child(author)
-}
-
-fn review_comment_author_profile_url(author: &str) -> String {
-    format!("https://github.com/{author}")
 }
 
 pub(crate) fn review_comment_ui_state(
@@ -397,14 +394,6 @@ mod tests {
         assert_eq!(
             review_markdown_body("```suggestion\nlet value = 1;\n```"),
             "```text\nlet value = 1;\n```"
-        );
-    }
-
-    #[test]
-    fn builds_review_comment_author_profile_url() {
-        assert_eq!(
-            review_comment_author_profile_url("octocat"),
-            "https://github.com/octocat"
         );
     }
 

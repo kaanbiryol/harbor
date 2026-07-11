@@ -2,7 +2,10 @@ use gpui::{IntoElement, div, prelude::*, px};
 use gpui_component::{Sizable, StyledExt, avatar::Avatar};
 use harbor_domain::ReviewComment;
 
-use crate::visual::color;
+use crate::{
+    github::{avatar_initial, avatar_url},
+    visual::color,
+};
 
 pub(super) fn render_review_comment_avatar(comment: &ReviewComment) -> impl IntoElement {
     let avatar = if let Some(avatar_url) = review_comment_avatar_url(comment) {
@@ -32,37 +35,14 @@ fn render_review_comment_fallback_avatar(comment: &ReviewComment) -> impl IntoEl
         .line_height(px(20.0))
         .font_semibold()
         .text_color(color::accent())
-        .child(review_comment_avatar_initial(&comment.author))
+        .child(avatar_initial(&comment.author))
 }
 
 pub(crate) fn review_comment_avatar_url(comment: &ReviewComment) -> Option<String> {
     comment
         .author_avatar_url
         .clone()
-        .or_else(|| github_avatar_url_for_login(&comment.author))
-}
-
-pub(crate) fn review_comment_avatar_initial(author: &str) -> String {
-    author
-        .trim()
-        .chars()
-        .find(|character| character.is_alphanumeric())
-        .map(|character| character.to_uppercase().collect())
-        .unwrap_or_else(|| "?".to_string())
-}
-
-pub(crate) fn github_avatar_url_for_login(login: &str) -> Option<String> {
-    let login = login.trim();
-
-    if login.is_empty()
-        || login.eq_ignore_ascii_case("ghost")
-        || login.eq_ignore_ascii_case("you")
-        || login.chars().any(char::is_whitespace)
-    {
-        None
-    } else {
-        Some(format!("https://github.com/{login}.png?size=48"))
-    }
+        .or_else(|| avatar_url(&comment.author))
 }
 
 #[cfg(test)]
@@ -86,15 +66,5 @@ mod tests {
             review_comment_avatar_url(&comment).as_deref(),
             Some("https://avatars.githubusercontent.com/u/1?v=4")
         );
-
-        assert_eq!(github_avatar_url_for_login("ghost"), None);
-        assert_eq!(github_avatar_url_for_login("bad login"), None);
-    }
-
-    #[test]
-    fn uses_single_centered_fallback_initial() {
-        assert_eq!(review_comment_avatar_initial("you"), "Y");
-        assert_eq!(review_comment_avatar_initial(" octocat"), "O");
-        assert_eq!(review_comment_avatar_initial(""), "?");
     }
 }

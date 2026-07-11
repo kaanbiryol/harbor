@@ -27,6 +27,7 @@ use crate::{
         full_time_label, full_time_label_with_edit, natural_time_label,
         natural_time_label_with_edit,
     },
+    github::{avatar_initial, avatar_url},
     icons::Octicon,
     panels::{
         ReviewCommentActionsMenuState, ReviewDiffPreview, overview_markdown_body,
@@ -422,22 +423,22 @@ impl AppView {
                     &comment.body,
                     cx,
                 );
-                render_overview_thread_comment(
+                render_overview_thread_comment(OverviewThreadCommentRenderState {
                     comment,
-                    comment_index,
-                    &thread.id,
+                    index: comment_index,
+                    thread_id: &thread.id,
                     markdown,
-                    reaction_action.as_ref(),
-                    reaction_error.as_ref(),
-                    active_comment_edit.as_deref(),
-                    comment_edit_input.clone(),
+                    reaction_action: reaction_action.as_ref(),
+                    reaction_error: reaction_error.as_ref(),
+                    active_comment_edit: active_comment_edit.as_deref(),
+                    comment_edit_input: comment_edit_input.clone(),
                     edit_body_empty,
                     is_submitting_edit,
-                    edit_error.as_ref(),
-                    action_comment_id.as_deref(),
-                    action_error.as_ref(),
-                    view_entity.clone(),
-                )
+                    edit_error: edit_error.as_ref(),
+                    action_comment_id: action_comment_id.as_deref(),
+                    action_error: action_error.as_ref(),
+                    view_entity: view_entity.clone(),
+                })
             })
             .collect();
 
@@ -1705,22 +1706,40 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
     )
 }
 
-fn render_overview_thread_comment(
-    comment: &harbor_domain::ReviewComment,
+struct OverviewThreadCommentRenderState<'a> {
+    comment: &'a harbor_domain::ReviewComment,
     index: usize,
-    thread_id: &str,
+    thread_id: &'a str,
     markdown: AnyElement,
-    reaction_action: Option<&ReviewReactionAction>,
-    reaction_error: Option<&ReviewCommentUiError>,
-    active_comment_edit: Option<&str>,
+    reaction_action: Option<&'a ReviewReactionAction>,
+    reaction_error: Option<&'a ReviewCommentUiError>,
+    active_comment_edit: Option<&'a str>,
     comment_edit_input: Entity<InputState>,
     edit_body_empty: bool,
     is_submitting_edit: bool,
-    edit_error: Option<&ReviewCommentUiError>,
-    action_comment_id: Option<&str>,
-    action_error: Option<&ReviewCommentUiError>,
+    edit_error: Option<&'a ReviewCommentUiError>,
+    action_comment_id: Option<&'a str>,
+    action_error: Option<&'a ReviewCommentUiError>,
     view_entity: Entity<AppView>,
-) -> AnyElement {
+}
+
+fn render_overview_thread_comment(state: OverviewThreadCommentRenderState<'_>) -> AnyElement {
+    let OverviewThreadCommentRenderState {
+        comment,
+        index,
+        thread_id,
+        markdown,
+        reaction_action,
+        reaction_error,
+        active_comment_edit,
+        comment_edit_input,
+        edit_body_empty,
+        is_submitting_edit,
+        edit_error,
+        action_comment_id,
+        action_error,
+        view_entity,
+    } = state;
     let person = PullRequestPerson {
         login: comment.author.clone(),
         avatar_url: comment.author_avatar_url.clone(),
@@ -2341,7 +2360,7 @@ fn render_person_avatar_with_size(person: &PullRequestPerson, size: f32) -> AnyE
     let avatar_url = person
         .avatar_url
         .clone()
-        .or_else(|| github_avatar_url_for_login(&person.login));
+        .or_else(|| avatar_url(&person.login));
 
     if let Some(avatar_url) = avatar_url {
         return Avatar::new()
@@ -2376,29 +2395,6 @@ fn render_fallback_avatar(label: &str, size: f32) -> impl IntoElement {
         .child(avatar_initial(label))
 }
 
-fn avatar_initial(label: &str) -> String {
-    label
-        .trim()
-        .chars()
-        .find(|character| character.is_alphanumeric())
-        .map(|character| character.to_uppercase().collect())
-        .unwrap_or_else(|| "?".to_string())
-}
-
-fn github_avatar_url_for_login(login: &str) -> Option<String> {
-    let login = login.trim();
-
-    if login.is_empty()
-        || login.eq_ignore_ascii_case("ghost")
-        || login.eq_ignore_ascii_case("you")
-        || login.chars().any(char::is_whitespace)
-    {
-        None
-    } else {
-        Some(format!("https://github.com/{login}.png?size=48"))
-    }
-}
-
 fn has_review_requests(pr: &PullRequest) -> bool {
     !pr.requested_reviewers.is_empty() || !pr.requested_teams.is_empty()
 }
@@ -2423,10 +2419,9 @@ mod tests {
     };
 
     use super::{
-        OverviewTimelineItem, avatar_initial, merge_readiness, overview_panel_items,
-        overview_review_visible, overview_thread_expanded, overview_thread_item_index,
-        overview_timeline_items, parse_label_color, pull_request_readiness,
-        sync_overview_list_items,
+        OverviewTimelineItem, merge_readiness, overview_panel_items, overview_review_visible,
+        overview_thread_expanded, overview_thread_item_index, overview_timeline_items,
+        parse_label_color, pull_request_readiness, sync_overview_list_items,
     };
     use crate::test_fixtures::{pull_request, review_thread, test_time};
     use crate::visual::Tone;
@@ -2438,13 +2433,6 @@ mod tests {
         assert!(parse_label_color("#34d399").is_some());
         assert!(parse_label_color("bad").is_none());
         assert!(parse_label_color("zzzzzz").is_none());
-    }
-
-    #[test]
-    fn derives_avatar_initials() {
-        assert_eq!(avatar_initial("octocat"), "O");
-        assert_eq!(avatar_initial(" team-reviewers"), "T");
-        assert_eq!(avatar_initial(""), "?");
     }
 
     #[test]
