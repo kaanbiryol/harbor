@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use gpui::Context;
-use harbor_domain::{MergeState, PullRequest};
+use harbor_domain::PullRequest;
 use harbor_github::PullRequestEnrichment;
 
 use crate::workspace::{
@@ -133,6 +133,10 @@ impl AppView {
                 pull_request.merge_state = Some(merge_state);
                 changed = true;
             }
+            if pull_request.checks_summary != enrichment.checks_summary {
+                pull_request.checks_summary = enrichment.checks_summary;
+                changed = true;
+            }
         }
 
         changed
@@ -140,7 +144,5 @@ impl AppView {
 }
 
 fn should_prefetch_pull_request_row_enrichment(pull_request: &PullRequest) -> bool {
-    pull_request.review_decision.is_none()
-        || pull_request.merge_state.is_none()
-        || pull_request.merge_state == Some(MergeState::Unknown)
+    !pull_request.node_id.is_empty()
 }

@@ -110,3 +110,34 @@ fn gets_repository_by_full_name() {
     assert_eq!(gets[0].0, "/repos/acme/app");
     assert!(gets[0].1.is_empty());
 }
+
+#[test]
+fn lists_pull_request_metadata_options() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_responses
+        .lock()
+        .expect("get responses mutex should not be poisoned") = vec![
+        json!([
+            { "login": "reviewer", "avatar_url": "reviewer.png", "permissions": { "push": true } },
+            { "login": "reader", "permissions": { "push": false } }
+        ]),
+        json!([{ "login": "assignee", "avatar_url": "assignee.png" }]),
+        json!([{ "name": "bug", "color": "d73a4a" }]),
+    ];
+    let client = GitHubClient::new(transport.clone());
+
+    let options = smol::block_on(client.list_pull_request_metadata_options("acme", "app")).unwrap();
+
+    assert_eq!(options.reviewers.len(), 1);
+    assert_eq!(options.reviewers[0].login, "reviewer");
+    assert_eq!(options.assignees[0].login, "assignee");
+    assert_eq!(options.labels[0].name, "bug");
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets[0].0, "/repos/acme/app/collaborators");
+    assert_eq!(gets[1].0, "/repos/acme/app/assignees");
+    assert_eq!(gets[2].0, "/repos/acme/app/labels");
+}

@@ -1,4 +1,4 @@
-use gpui::{Anchor, Entity, IntoElement, div, prelude::*, px};
+use gpui::{Anchor, ClipboardItem, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Disableable, Icon, Sizable,
     button::{Button, ButtonVariants},
@@ -12,7 +12,9 @@ use crate::{icons::Octicon, visual::color, workspace::AppView};
 
 pub(super) struct ReviewCommentActionsMenuState {
     pub(super) comment_id: String,
+    pub(super) thread_id: String,
     pub(super) comment_body: String,
+    pub(super) comment_url: Option<String>,
     pub(super) can_update: bool,
     pub(super) can_delete: bool,
     pub(super) active_edit: bool,
@@ -26,7 +28,9 @@ pub(super) fn render_review_comment_actions_menu(
 ) -> impl IntoElement {
     let ReviewCommentActionsMenuState {
         comment_id,
+        thread_id,
         comment_body,
+        comment_url,
         can_update,
         can_delete,
         active_edit,
@@ -52,9 +56,10 @@ pub(super) fn render_review_comment_actions_menu(
         )
         .content(move |_, _window, popover_cx| {
             let popover: Entity<PopoverState> = popover_cx.entity().clone();
+            let comment_url = comment_url.clone();
 
             div()
-                .w(px(160.0))
+                .w(px(176.0))
                 .rounded_xs()
                 .border_1()
                 .border_color(color::border_strong())
@@ -65,10 +70,85 @@ pub(super) fn render_review_comment_actions_menu(
                     div()
                         .flex()
                         .flex_col()
+                        .when_some(comment_url, {
+                            let view_entity = view_entity.clone();
+                            let comment_id = comment_id.clone();
+                            let popover = popover.clone();
+                            move |element, comment_url| {
+                                element.child(
+                                    Button::new(format!("copy-comment-link-{comment_id}"))
+                                        .small()
+                                        .ghost()
+                                        .w_full()
+                                        .justify_start()
+                                        .child(render_review_comment_action_menu_item(
+                                            Octicon::Copy,
+                                            "Copy link",
+                                            false,
+                                        ))
+                                        .debug_selector({
+                                            let selector = format!(
+                                                "inline-review-comment-copy-link-{comment_id}"
+                                            );
+                                            move || selector.clone()
+                                        })
+                                        .on_click(move |_, window, cx| {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                                comment_url.clone(),
+                                            ));
+                                            view_entity.update(cx, |view, cx| {
+                                                view.set_status("Copied comment link", cx);
+                                            });
+                                            popover.update(cx, |popover, cx| {
+                                                popover.dismiss(window, cx);
+                                            });
+                                        }),
+                                )
+                            }
+                        })
+                        .child({
+                            let view_entity = view_entity.clone();
+                            let thread_id = thread_id.clone();
+                            let comment_id = comment_id.clone();
+                            let comment_body = comment_body.clone();
+                            let popover = popover.clone();
+                            Button::new(format!("quote-reply-comment-{comment_id}"))
+                                .small()
+                                .ghost()
+                                .w_full()
+                                .justify_start()
+                                .child(render_review_comment_action_menu_item(
+                                    Octicon::CommentDiscussion,
+                                    "Quote reply",
+                                    false,
+                                ))
+                                .debug_selector({
+                                    let selector =
+                                        format!("inline-review-comment-quote-reply-{comment_id}");
+                                    move || selector.clone()
+                                })
+                                .on_click(move |_, window, cx| {
+                                    view_entity.update(cx, |view, cx| {
+                                        view.open_review_thread_quote_reply(
+                                            thread_id.clone(),
+                                            comment_body.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                    popover.update(cx, |popover, cx| {
+                                        popover.dismiss(window, cx);
+                                    });
+                                })
+                        })
+                        .when(can_update || can_delete, |element| {
+                            element.child(div().my_0p5().border_t_1().border_color(color::border()))
+                        })
                         .when(can_update, {
                             let view_entity = view_entity.clone();
                             let comment_id = comment_id.clone();
                             let comment_body = comment_body.clone();
+                            let popover = popover.clone();
                             move |element| {
                                 element.child(
                                     Button::new(format!("edit-comment-{comment_id}"))
@@ -112,6 +192,7 @@ pub(super) fn render_review_comment_actions_menu(
                         .when(can_delete, {
                             let view_entity = view_entity.clone();
                             let comment_id = comment_id.clone();
+                            let popover = popover.clone();
                             move |element| {
                                 element.child(
                                     Button::new(format!("delete-comment-{comment_id}"))
@@ -129,12 +210,16 @@ pub(super) fn render_review_comment_actions_menu(
                                         .on_click({
                                             let view_entity = view_entity.clone();
                                             let comment_id = comment_id.clone();
-                                            move |_, _, cx| {
+                                            let popover = popover.clone();
+                                            move |_, window, cx| {
                                                 view_entity.update(cx, |view, cx| {
                                                     view.delete_review_comment(
                                                         comment_id.clone(),
                                                         cx,
                                                     );
+                                                });
+                                                popover.update(cx, |popover, cx| {
+                                                    popover.dismiss(window, cx);
                                                 });
                                             }
                                         }),

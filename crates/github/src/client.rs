@@ -9,7 +9,9 @@ mod reviews;
 #[path = "client/workflows.rs"]
 mod workflows;
 
-use harbor_domain::{ChecksSummary, MergeState, PullRequest, RepoId, ReviewDecision};
+use harbor_domain::{
+    ChecksSummary, Label, MergeState, PullRequest, PullRequestPerson, RepoId, ReviewDecision,
+};
 
 use crate::{GitHubRateLimitStatus, GitHubRequestAttribution, GitHubTransport};
 
@@ -49,6 +51,13 @@ pub struct PullRequestPage {
 pub struct RepositoryList {
     pub repositories: Vec<RepoId>,
     pub possibly_limited: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PullRequestMetadataOptions {
+    pub reviewers: Vec<PullRequestPerson>,
+    pub assignees: Vec<PullRequestPerson>,
+    pub labels: Vec<Label>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

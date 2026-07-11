@@ -34,6 +34,7 @@ pub(in crate::panels::diff_view) struct ReviewCommentListRenderState<'a> {
 
 pub(super) struct ReviewCommentRenderState<'a> {
     comment: &'a ReviewComment,
+    thread_id: &'a str,
     is_reply: bool,
     show_thread_rail: bool,
     thread_resolved: bool,
@@ -60,6 +61,7 @@ pub(crate) struct ReviewCommentUiState {
 impl<'a> ReviewCommentRenderState<'a> {
     pub(super) fn new(
         comment: &'a ReviewComment,
+        thread_id: &'a str,
         is_reply: bool,
         show_thread_rail: bool,
         thread_resolved: bool,
@@ -86,6 +88,7 @@ impl<'a> ReviewCommentRenderState<'a> {
 
         Self {
             comment,
+            thread_id,
             is_reply,
             show_thread_rail,
             thread_resolved,
@@ -104,6 +107,7 @@ impl<'a> ReviewCommentRenderState<'a> {
 pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) -> AnyElement {
     let ReviewCommentRenderState {
         comment,
+        thread_id,
         is_reply,
         show_thread_rail,
         thread_resolved,
@@ -204,7 +208,9 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                                 element.child(render_review_comment_actions_menu(
                                     ReviewCommentActionsMenuState {
                                         comment_id: comment_id.clone(),
+                                        thread_id: thread_id.to_string(),
                                         comment_body: comment_body.clone(),
+                                        comment_url: comment.url.clone(),
                                         can_update: ui_state.can_update,
                                         can_delete: ui_state.can_delete,
                                         active_edit: ui_state.active_edit,
@@ -334,7 +340,7 @@ pub(crate) fn review_comment_ui_state(
     ReviewCommentUiState {
         can_update,
         can_delete,
-        show_actions: can_update || can_delete,
+        show_actions: true,
         active_edit,
         edit_submitting: active_edit && is_submitting_edit,
         action_running: action_comment_id == Some(comment.id.as_str()),

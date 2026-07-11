@@ -4,17 +4,15 @@ use gpui_component::{
     button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
 };
-use harbor_domain::{MergeMethod, PullRequest, PullRequestState};
+use harbor_domain::{MergeMethod, PullRequest};
 
 use crate::{
     actions::{
         MergePullRequest, MergePullRequestWithMergeCommit, OpenApproveCommentDialog,
-        OpenPullRequestCommentDialog, OpenRequestChangesCommentDialog, PullRequestAction,
-        RebasePullRequest,
+        OpenRequestChangesCommentDialog, PullRequestAction, RebasePullRequest,
     },
-    icons::Octicon,
     panels::{merge_blocker, review_action_blocker},
-    visual::{Tone, color, layout},
+    visual::{color, layout},
     workspace::{AppView, log_entity_update_error},
 };
 
@@ -48,23 +46,6 @@ impl AppView {
             .items_center()
             .justify_end()
             .gap_2()
-            .child(
-                Button::new("comment-pr")
-                    .icon(Octicon::CommentDiscussion)
-                    .label("comment")
-                    .small()
-                    .outline()
-                    .tooltip("Comment on pull request")
-                    .loading(pull_request_action_running)
-                    .disabled(pull_request_action_running)
-                    .on_click(cx.listener(|view, _, window, cx| {
-                        view.open_pull_request_comment_dialog(
-                            &OpenPullRequestCommentDialog,
-                            window,
-                            cx,
-                        );
-                    })),
-            )
             .child({
                 let dropdown = DropdownButton::new("review-pr")
                     .button(
@@ -201,8 +182,7 @@ impl AppView {
                                         pull_request_link,
                                         "Copied PR link".to_string(),
                                         cx,
-                                    )))
-                                    .child(render_pull_request_state(pr.state, pr.is_draft)),
+                                    ))),
                             )
                             .child(
                                 div()
@@ -314,20 +294,6 @@ impl AppView {
             .child(header_content)
             .child(self.render_panel_tabs(cx))
     }
-}
-
-fn render_pull_request_state(state: PullRequestState, is_draft: bool) -> impl IntoElement {
-    let (label, tone) = if is_draft {
-        ("draft", Tone::Neutral)
-    } else {
-        match state {
-            PullRequestState::Open => ("open", Tone::Success),
-            PullRequestState::Closed => ("closed", Tone::Neutral),
-            PullRequestState::Merged => ("merged", Tone::Info),
-        }
-    };
-
-    crate::panels::render_status_pill(label, tone)
 }
 
 fn merge_method_button_label(method: MergeMethod) -> &'static str {

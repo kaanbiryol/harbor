@@ -141,7 +141,6 @@ impl Render for AppView {
             .on_action(cx.listener(Self::refresh_selected))
             .on_action(cx.listener(Self::checkout_pr))
             .on_action(cx.listener(Self::open_in_browser))
-            .on_action(cx.listener(Self::open_pull_request_comment_dialog))
             .on_action(cx.listener(Self::approve_pr))
             .on_action(cx.listener(Self::request_changes))
             .on_action(cx.listener(Self::open_approve_comment_dialog))

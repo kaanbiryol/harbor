@@ -126,6 +126,16 @@ impl GitHubRepositoryApi for RealGitHubApi {
     async fn get_repository(&self, repository: &RepoId) -> Result<RepoId> {
         self.client()?.get_repository(repository).await
     }
+
+    async fn list_pull_request_metadata_options(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<harbor_github::PullRequestMetadataOptions> {
+        self.client()?
+            .list_pull_request_metadata_options(owner, repo)
+            .await
+    }
 }
 
 #[async_trait]

@@ -38,6 +38,20 @@ query HarborRepositoryPullRequests($searchQuery: String!, $first: Int!, $after: 
         updatedAt
         reviewDecision
         mergeStateStatus
+        statusCheckRollup {
+          contexts(first: 100) {
+            nodes {
+              __typename
+              ... on CheckRun {
+                status
+                conclusion
+              }
+              ... on StatusContext {
+                state
+              }
+            }
+          }
+        }
         assignees(first: 20) {
           nodes {
             login
@@ -98,6 +112,7 @@ query HarborPullRequestReviewThreads(
           comments(first: $commentPageSize) {
             nodes {
               id
+              url
               pullRequestReview {
                 id
                 databaseId
@@ -147,6 +162,20 @@ query HarborPullRequestEnrichment($ids: [ID!]!) {
       id
       reviewDecision
       mergeStateStatus
+      statusCheckRollup {
+        contexts(first: 100) {
+          nodes {
+            __typename
+            ... on CheckRun {
+              status
+              conclusion
+            }
+            ... on StatusContext {
+              state
+            }
+          }
+        }
+      }
     }
   }
   rateLimit {
@@ -200,6 +229,7 @@ query HarborPullRequestReviewThreadComments($threadId: ID!, $after: String, $com
         }
         nodes {
           id
+          url
           pullRequestReview {
             id
             databaseId

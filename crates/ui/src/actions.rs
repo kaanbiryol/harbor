@@ -44,8 +44,6 @@ actions!(
         CheckoutPullRequest,
         /// Opens the selected pull request in the browser.
         OpenPullRequestInBrowser,
-        /// Opens the pull request comment dialog.
-        OpenPullRequestCommentDialog,
         /// Approves the selected pull request.
         ApprovePullRequest,
         /// Requests changes on the selected pull request.
@@ -120,14 +118,14 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("escape", ClosePanel, Some(KEY_CONTEXT)),
         KeyBinding::new("escape", ClosePanel, Some(POPOVER_INPUT_CONTEXT)),
         KeyBinding::new("cmd-r", RefreshSelectedPullRequest, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-shift-[", TogglePullRequestInbox, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-[", TogglePullRequestInbox, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-p", OpenPullRequestSearch, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-0", SelectOverviewPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-1", SelectDiffPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-2", SelectReviewPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-3", SelectChecksPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-4", SelectActionsPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-5", SelectLogsPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-1", SelectOverviewPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-2", SelectDiffPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-3", SelectReviewPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-4", SelectChecksPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-5", SelectActionsPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-6", SelectLogsPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-o", OpenPullRequestInBrowser, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
         KeyBinding::new("down", SelectNextPullRequest, Some(KEY_BINDING_CONTEXT)),

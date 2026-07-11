@@ -10,8 +10,8 @@ use harbor_domain::{
 };
 use harbor_github::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
-    PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
-    SubmitPullRequestReviewEvent,
+    PullRequestListFilter, PullRequestMetadataOptions, PullRequestPage, PullRequestPageCursor,
+    RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 
 use harbor_sync::PullRequestInboxSource;
@@ -33,6 +33,7 @@ pub(crate) struct FakeGitHubApi {
     light_pull_request_requests: FakeLightPullRequestRequests,
     repositories: FakeQueue<RepositoryList>,
     repository_lookups: FakeQueue<RepoId>,
+    metadata_options: FakeQueue<PullRequestMetadataOptions>,
     pull_request_pages: FakeQueue<PullRequestPage>,
     pull_request_counts: FakeQueue<usize>,
     light_pull_request_pages: FakeQueue<ConditionalFetch<PullRequestPage>>,
@@ -319,6 +320,15 @@ impl GitHubRepositoryApi for FakeGitHubApi {
     async fn get_repository(&self, _repository: &RepoId) -> Result<RepoId> {
         self.record_call("get_repository");
         pop_result(&self.repository_lookups, "get_repository")
+    }
+
+    async fn list_pull_request_metadata_options(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<PullRequestMetadataOptions> {
+        self.record_call("list_pull_request_metadata_options");
+        pop_result(&self.metadata_options, "list_pull_request_metadata_options")
     }
 }
 

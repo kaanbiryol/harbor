@@ -116,7 +116,7 @@ fn queries_repository_pull_request_filters() {
         assert_eq!(calls.len(), 1);
         assert!(calls[0].0.contains("HarborRepositoryPullRequests"));
         assert!(calls[0].0.contains("first: $first"));
-        assert!(!calls[0].0.contains("statusCheckRollup"));
+        assert!(calls[0].0.contains("statusCheckRollup"));
         assert!(!calls[0].0.contains("labels(first:"));
         assert_eq!(
             calls[0].1,
@@ -371,7 +371,16 @@ fn enriches_pull_requests_by_node_ids() {
                 "__typename": "PullRequest",
                 "id": "pr-node",
                 "reviewDecision": "APPROVED",
-                "mergeStateStatus": "CLEAN"
+                "mergeStateStatus": "CLEAN",
+                "statusCheckRollup": {
+                    "contexts": {
+                        "nodes": [{
+                            "__typename": "CheckRun",
+                            "status": "COMPLETED",
+                            "conclusion": "FAILURE"
+                        }]
+                    }
+                }
             }]
         }
     }));
@@ -382,7 +391,8 @@ fn enriches_pull_requests_by_node_ids() {
 
     assert_eq!(enrichments.len(), 1);
     assert_eq!(enrichments[0].node_id, "pr-node");
-    assert_eq!(enrichments[0].checks_summary.total, 0);
+    assert_eq!(enrichments[0].checks_summary.total, 1);
+    assert_eq!(enrichments[0].checks_summary.failed, 1);
 
     let calls = transport
         .graphql_calls

@@ -17,19 +17,9 @@ fn compacts_large_inline_review_threads() {
 }
 
 #[gpui::test]
-async fn renders_comment_actions_only_when_available(cx: &mut TestAppContext) {
-    let (_, harness_entity, cx) = init_visual_review_test(cx);
+async fn renders_comment_actions_for_every_comment(cx: &mut TestAppContext) {
+    let (_, _, cx) = init_visual_review_test(cx);
 
-    render_inline_review_harness(cx);
-    assert!(
-        cx.debug_bounds("inline-review-comment-actions-comment-1")
-            .is_none()
-    );
-
-    harness_entity.update(cx, |harness, cx| {
-        harness.thread.comments[0].viewer_can_update = true;
-        cx.notify();
-    });
     render_inline_review_harness(cx);
     assert!(
         cx.debug_bounds("inline-review-comment-actions-comment-1")

@@ -527,6 +527,7 @@ impl AppView {
         render_overview_card("Merge readiness")
             .debug_selector(|| "pull-request-merge-readiness".to_string())
             .gap_0()
+            .pb_0()
             .child(render_readiness_row(
                 "pull-request-review-readiness-row",
                 "Review",
@@ -771,7 +772,63 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let input = self.pull_request_metadata_input(field);
-        let input_is_empty = input.read(cx).value().trim().is_empty();
+        let query = input.read(cx).value().trim().to_lowercase();
+        let input_is_empty = query.is_empty();
+        let selected_pull_request = self.selected_pull_request();
+        let mut choices: Vec<(String, Option<String>, Option<String>)> = match field {
+            PullRequestMetadataField::Reviewer => {
+                self.pull_request_metadata_options
+                    .options
+                    .reviewers
+                    .iter()
+                    .filter(|person| {
+                        selected_pull_request.is_none_or(|pull_request| {
+                            !person.login.eq_ignore_ascii_case(&pull_request.author)
+                                && !pull_request.requested_reviewers.iter().any(|reviewer| {
+                                    reviewer.login.eq_ignore_ascii_case(&person.login)
+                                })
+                        })
+                    })
+                    .map(|person| (person.login.clone(), person.avatar_url.clone(), None))
+                    .collect()
+            }
+            PullRequestMetadataField::Assignee => self
+                .pull_request_metadata_options
+                .options
+                .assignees
+                .iter()
+                .filter(|person| {
+                    selected_pull_request.is_none_or(|pull_request| {
+                        !pull_request
+                            .assignees
+                            .iter()
+                            .any(|assignee| assignee.login.eq_ignore_ascii_case(&person.login))
+                    })
+                })
+                .map(|person| (person.login.clone(), person.avatar_url.clone(), None))
+                .collect(),
+            PullRequestMetadataField::Label => self
+                .pull_request_metadata_options
+                .options
+                .labels
+                .iter()
+                .filter(|label| {
+                    selected_pull_request.is_none_or(|pull_request| {
+                        !pull_request
+                            .labels
+                            .iter()
+                            .any(|existing| existing.name.eq_ignore_ascii_case(&label.name))
+                    })
+                })
+                .map(|label| (label.name.clone(), None, label.color.clone()))
+                .collect(),
+        };
+        if !query.is_empty() {
+            choices.retain(|(name, _, _)| name.to_lowercase().contains(&query));
+        }
+        choices.truncate(20);
+        let choices_loading = self.pull_request_metadata_options.loading;
+        let choices_error = self.pull_request_metadata_options.error.clone();
         let action_running = self.action_runtime.pull_request_metadata_action_running();
         let action_field = self.action_runtime.pull_request_metadata_field();
         let field_running = action_running && action_field == Some(field);
@@ -793,9 +850,13 @@ impl AppView {
                     .anchor(Anchor::TopRight)
                     .on_open_change({
                         let input = input.clone();
+                        let view = view.clone();
                         move |open, window, cx| {
                             if *open {
                                 input.update(cx, |input, cx| input.focus(window, cx));
+                                view.update(cx, |view, cx| {
+                                    view.load_pull_request_metadata_options(window, cx);
+                                });
                             }
                         }
                     })
@@ -808,7 +869,7 @@ impl AppView {
                             .tooltip(format!("Add {field_name}")),
                     )
                     .content(move |_, _window, _popover_cx| {
-                        div()
+                        let mut content = div()
                             .w(px(280.0))
                             .border_1()
                             .border_color(color::border_strong())
@@ -818,7 +879,98 @@ impl AppView {
                             .flex()
                             .flex_col()
                             .gap_2()
-                            .child(Input::new(&input).small().cleanable(true))
+                            .child(Input::new(&input).small().cleanable(true));
+                        if choices_loading {
+                            content = content.child(
+                                div()
+                                    .px_2()
+                                    .py_2()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_xs()
+                                    .text_color(color::text_muted())
+                                    .child(Spinner::new().small())
+                                    .child("Loading choices..."),
+                            );
+                        } else if let Some(choices_error) = choices_error.clone() {
+                            content = content.child(
+                                div()
+                                    .px_2()
+                                    .text_xs()
+                                    .text_color(color::danger())
+                                    .child(choices_error),
+                            );
+                        } else if choices.is_empty() {
+                            content = content.child(
+                                div()
+                                    .px_2()
+                                    .py_2()
+                                    .text_xs()
+                                    .text_color(color::text_muted())
+                                    .child(if input_is_empty {
+                                        "No available choices"
+                                    } else {
+                                        "No matching choices"
+                                    }),
+                            );
+                        } else {
+                            content = content.child(
+                                div().max_h(px(240.0)).overflow_y_scrollbar().children(
+                                    choices.iter().enumerate().map(
+                                        |(index, (name, avatar_url, label_color))| {
+                                            let name = name.clone();
+                                            let selected_name = name.clone();
+                                            let input = input.clone();
+                                            let view = view.clone();
+                                            div()
+                                                .id(format!("metadata-{field_name}-choice-{index}"))
+                                                .px_2()
+                                                .py_1()
+                                                .flex()
+                                                .items_center()
+                                                .gap_2()
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .hover(|element| element.bg(color::row_hover()))
+                                                .when_some(avatar_url.clone(), |element, url| {
+                                                    element.child(
+                                                        Avatar::new().src(url).size(px(20.0)),
+                                                    )
+                                                })
+                                                .when_some(
+                                                    label_color
+                                                        .as_deref()
+                                                        .and_then(parse_label_color),
+                                                    |element, color| {
+                                                        element.child(
+                                                            div().size_3().rounded_full().bg(color),
+                                                        )
+                                                    },
+                                                )
+                                                .child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .truncate()
+                                                        .text_sm()
+                                                        .child(name),
+                                                )
+                                                .on_click(move |_, window, cx| {
+                                                    input.update(cx, |input, cx| {
+                                                        input.set_value(&selected_name, window, cx);
+                                                    });
+                                                    view.update(cx, |view, cx| {
+                                                        view.add_pull_request_metadata(
+                                                            field, window, cx,
+                                                        );
+                                                    });
+                                                })
+                                        },
+                                    ),
+                                ),
+                            );
+                        }
+                        content
                             .when_some(error.clone(), |element, error| {
                                 element
                                     .child(div().text_xs().text_color(color::danger()).child(error))
@@ -1212,10 +1364,6 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
         ReviewThreadState::Resolved => ("resolved", Tone::Success, Octicon::CheckCircle),
         ReviewThreadState::Outdated => ("outdated", Tone::Neutral, Octicon::Clock),
     };
-    let comment_label = match thread.comments.len() {
-        1 => "1 comment".to_string(),
-        count => format!("{count} comments"),
-    };
     let ui_state = review_thread_ui_state(
         thread,
         active_review_thread_reply,
@@ -1294,12 +1442,6 @@ fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> AnyElement {
                                     .flex()
                                     .items_center()
                                     .gap_2()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(color::text_muted())
-                                            .child(comment_label.clone()),
-                                    )
                                     .child(render_status_pill(status, tone))
                                     .child(
                                         Icon::new(if expanded {
@@ -1723,18 +1865,10 @@ fn render_readiness_row(
             div()
                 .flex()
                 .items_center()
-                .gap_2()
                 .text_xs()
                 .font_medium()
                 .text_color(colors.text)
                 .child(value.clone())
-                .when(navigable, |element| {
-                    element.child(
-                        Icon::new(Octicon::ChevronRight)
-                            .xsmall()
-                            .text_color(color::text_muted()),
-                    )
-                })
         })
 }
 

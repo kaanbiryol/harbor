@@ -171,6 +171,8 @@ struct GraphQlReviewThreadCommentsNode {
 #[derive(Debug, Deserialize)]
 struct GraphQlReviewComment {
     id: String,
+    #[serde(default)]
+    url: Option<String>,
     #[serde(default, rename = "pullRequestReview")]
     pull_request_review: Option<GraphQlPullRequestReview>,
     body: String,
@@ -450,6 +452,7 @@ impl GraphQlReviewComment {
 
         ReviewComment {
             id: self.id,
+            url: self.url,
             pull_request_review_id: self
                 .pull_request_review
                 .as_ref()
@@ -662,6 +665,7 @@ mod tests {
                             "nodes": [
                               {
                                 "id": "comment-1",
+                                "url": "https://github.com/octo/harbor/pull/7#discussion_r1",
                                 "pullRequestReview": {
                                   "id": "review-node-401",
                                   "databaseId": 401
@@ -748,6 +752,10 @@ mod tests {
         assert_eq!(threads[0].state, ReviewThreadState::Unresolved);
         assert_eq!(threads[0].comments.len(), 2);
         assert_eq!(threads[0].comments[0].author, "reviewer");
+        assert_eq!(
+            threads[0].comments[0].url.as_deref(),
+            Some("https://github.com/octo/harbor/pull/7#discussion_r1")
+        );
         assert_eq!(
             threads[0].comments[0].pull_request_review_id.as_deref(),
             Some("401")

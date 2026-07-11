@@ -66,6 +66,7 @@ pub(super) fn apply_pull_request_enrichments(
 
         pull_request.review_decision = enrichment.review_decision;
         pull_request.merge_state = enrichment.merge_state;
+        pull_request.checks_summary = enrichment.checks_summary;
     }
 }
 
@@ -135,7 +136,13 @@ mod tests {
             node_id: "node-8".to_string(),
             review_decision: Some(ReviewDecision::ChangesRequested),
             merge_state: Some(MergeState::Blocked),
-            checks_summary: ChecksSummary::default(),
+            checks_summary: ChecksSummary {
+                total: 1,
+                passed: 0,
+                failed: 1,
+                pending: 0,
+                skipped: 0,
+            },
         }];
 
         apply_pull_request_enrichments(&mut pull_requests, enrichments);
@@ -148,6 +155,7 @@ mod tests {
             Some(ReviewDecision::ChangesRequested)
         );
         assert_eq!(pull_requests[1].merge_state, Some(MergeState::Blocked));
+        assert_eq!(pull_requests[1].checks_summary.failed, 1);
     }
 
     fn pull_request(number: u64) -> PullRequest {

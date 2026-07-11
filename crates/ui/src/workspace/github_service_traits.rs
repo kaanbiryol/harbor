@@ -3,7 +3,10 @@ use harbor_domain::{
     CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
     ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
 };
-use harbor_github::{GitHubRateLimitStatus, RepositoryList, Result, SubmitPullRequestReviewEvent};
+use harbor_github::{
+    GitHubRateLimitStatus, PullRequestMetadataOptions, RepositoryList, Result,
+    SubmitPullRequestReviewEvent,
+};
 use harbor_sync::PullRequestInboxSource;
 
 use crate::workspace::GitHubAuthSource;
@@ -52,6 +55,12 @@ pub(crate) trait GitHubRepositoryApi: Send + Sync {
     async fn list_repositories(&self) -> Result<RepositoryList>;
 
     async fn get_repository(&self, repository: &RepoId) -> Result<RepoId>;
+
+    async fn list_pull_request_metadata_options(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<PullRequestMetadataOptions>;
 }
 
 #[async_trait]

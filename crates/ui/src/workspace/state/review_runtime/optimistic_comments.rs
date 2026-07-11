@@ -73,6 +73,7 @@ impl ReviewRuntimeState {
     ) -> ReviewComment {
         ReviewComment {
             id,
+            url: None,
             pull_request_review_id: None,
             pull_request_review_node_id: None,
             author: self

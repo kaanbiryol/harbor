@@ -30,6 +30,26 @@ impl AppView {
         cx.notify();
     }
 
+    pub(crate) fn open_review_thread_quote_reply(
+        &mut self,
+        thread_id: String,
+        comment_body: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_review_thread_reply(thread_id, window, cx);
+        let quoted_body = quote_review_comment_body(&comment_body);
+        self.review_state
+            .review_composer_state
+            .thread_reply_input
+            .update(cx, |input, cx| {
+                input.set_value(quoted_body, window, cx);
+                input.focus(window, cx);
+            });
+        self.status = "Opened quoted review reply".to_string();
+        cx.notify();
+    }
+
     pub(crate) fn cancel_review_thread_reply(
         &mut self,
         window: &mut Window,
@@ -196,5 +216,34 @@ impl AppView {
             );
         })
         .detach();
+    }
+}
+
+fn quote_review_comment_body(body: &str) -> String {
+    let mut quoted = body
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                ">".to_string()
+            } else {
+                format!("> {line}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    quoted.push_str("\n\n");
+    quoted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quote_review_comment_body;
+
+    #[test]
+    fn quotes_each_review_comment_line_for_a_reply() {
+        assert_eq!(
+            quote_review_comment_body("First line\n\nSecond line"),
+            "> First line\n>\n> Second line\n\n"
+        );
     }
 }

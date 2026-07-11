@@ -267,6 +267,8 @@ pub struct ReviewReaction {
 pub struct ReviewComment {
     pub id: String,
     #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
     pub pull_request_review_id: Option<String>,
     #[serde(default)]
     pub pull_request_review_node_id: Option<String>,

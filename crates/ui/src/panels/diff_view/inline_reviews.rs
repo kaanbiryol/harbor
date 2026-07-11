@@ -299,6 +299,7 @@ pub(super) fn render_review_thread_inline(
                             .map(|(index, comment)| {
                                 render_review_comment_inline(ReviewCommentRenderState::new(
                                     comment,
+                                    &thread_id,
                                     index > 0,
                                     index + 1 < thread.comments.len(),
                                     is_resolved,
@@ -321,6 +322,7 @@ pub(super) fn render_review_thread_inline(
                             .map(|(index, comment)| {
                                 render_review_comment_inline(ReviewCommentRenderState::new(
                                     comment,
+                                    &thread_id,
                                     index > 0,
                                     index + 1 < thread.comments.len(),
                                     is_resolved,

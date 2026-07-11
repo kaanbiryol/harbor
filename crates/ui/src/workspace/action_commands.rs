@@ -5,10 +5,9 @@ use harbor_github::SubmitPullRequestReviewEvent;
 use crate::{
     actions::{
         ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest,
-        MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenPullRequestCommentDialog,
-        OpenRequestChangesCommentDialog, PanelTab, PullRequestAction, PullRequestActionRequest,
-        RebasePullRequest, RequestChanges, RerunFailedJobs, TriggerBuild, WorkflowAction,
-        WorkflowActionRequest,
+        MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenRequestChangesCommentDialog,
+        PanelTab, PullRequestAction, PullRequestActionRequest, RebasePullRequest, RequestChanges,
+        RerunFailedJobs, TriggerBuild, WorkflowAction, WorkflowActionRequest,
     },
     panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
     workspace::{AppView, ReviewActionCommentTarget, async_updates::AppViewAsyncUpdateExt},
@@ -353,15 +352,6 @@ impl AppView {
         self.run_pull_request_action(PullRequestAction::RequestChanges { body: None }, window, cx);
     }
 
-    pub(super) fn open_pull_request_comment_dialog(
-        &mut self,
-        _: &OpenPullRequestCommentDialog,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_review_action_comment_dialog(ReviewActionCommentTarget::Comment, window, cx);
-    }
-
     pub(super) fn open_approve_comment_dialog(
         &mut self,
         _: &OpenApproveCommentDialog,
@@ -435,9 +425,6 @@ impl AppView {
 
         let body = (!body.is_empty()).then_some(body);
         let action = match target {
-            ReviewActionCommentTarget::Comment => PullRequestAction::Comment {
-                body: body.unwrap_or_default(),
-            },
             ReviewActionCommentTarget::Approve => PullRequestAction::Approve { body },
             ReviewActionCommentTarget::RequestChanges => PullRequestAction::RequestChanges { body },
         };

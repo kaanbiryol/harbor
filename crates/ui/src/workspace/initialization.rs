@@ -280,6 +280,7 @@ impl AppView {
             pull_request_reviewer_input,
             pull_request_assignee_input,
             pull_request_label_input,
+            pull_request_metadata_options: Default::default(),
             pull_request_switcher_selection: 0,
             pull_request_search_input,
             external_app_availability: ExternalAppAvailability::default(),

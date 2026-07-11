@@ -512,6 +512,7 @@ mod tests {
     fn review_comment(comment_id: &str, range: ReviewCommentRange, body: &str) -> ReviewComment {
         ReviewComment {
             id: comment_id.to_string(),
+            url: None,
             pull_request_review_id: None,
             pull_request_review_node_id: None,
             author: "alex".to_string(),

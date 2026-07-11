@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
-use harbor_domain::{MergeState, PullRequest, PullRequestState};
+use harbor_domain::{ChecksSummary, MergeState, PullRequest, PullRequestState};
 use harbor_github::{
     ConditionalFetch, PullRequestEnrichment, PullRequestPage, PullRequestPageCursor,
 };
@@ -325,7 +325,13 @@ async fn visible_pull_request_rows_prefetch_merge_state_without_selection(cx: &m
         node_id: pull_request.node_id.clone(),
         review_decision: pull_request.review_decision,
         merge_state: Some(MergeState::Dirty),
-        checks_summary: Default::default(),
+        checks_summary: ChecksSummary {
+            total: 1,
+            passed: 0,
+            failed: 1,
+            pending: 0,
+            skipped: 0,
+        },
     }]));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -340,6 +346,7 @@ async fn visible_pull_request_rows_prefetch_merge_state_without_selection(cx: &m
 
     view_entity.read_with(cx, |view, _| {
         assert_eq!(view.pull_requests[0].merge_state, Some(MergeState::Dirty));
+        assert_eq!(view.pull_requests[0].checks_summary.failed, 1);
         assert!(view.detail_state.files().is_empty());
     });
     assert_eq!(api.calls(), vec!["enrich_pull_requests_by_node_ids"]);

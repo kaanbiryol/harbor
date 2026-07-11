@@ -1,13 +1,80 @@
 use gpui::{Context, Entity, Window};
 use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{Label, PullRequestPerson};
+use harbor_github::PullRequestMetadataOptions;
 
 use crate::{
     actions::{PullRequestMetadataField, PullRequestMetadataRequest},
     workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
 };
 
+#[derive(Default)]
+pub(crate) struct PullRequestMetadataOptionsState {
+    repository: Option<(String, String)>,
+    pub(crate) options: PullRequestMetadataOptions,
+    pub(crate) loading: bool,
+    pub(crate) error: Option<String>,
+}
+
 impl AppView {
+    pub(super) fn load_pull_request_metadata_options(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pull_request) = self.selected_pull_request() else {
+            return;
+        };
+        let repository = (
+            pull_request.repo.owner.clone(),
+            pull_request.repo.name.clone(),
+        );
+        if (self.pull_request_metadata_options.loading
+            && self.pull_request_metadata_options.repository.as_ref() == Some(&repository))
+            || (self.pull_request_metadata_options.repository.as_ref() == Some(&repository)
+                && self.pull_request_metadata_options.error.is_none())
+        {
+            return;
+        }
+
+        if self.pull_request_metadata_options.repository.as_ref() != Some(&repository) {
+            self.pull_request_metadata_options.options = Default::default();
+        }
+        self.pull_request_metadata_options.loading = true;
+        self.pull_request_metadata_options.error = None;
+        self.pull_request_metadata_options.repository = Some(repository.clone());
+        cx.notify();
+        let github_api = self.github_api.clone();
+
+        cx.spawn_in(window, async move |this, cx| {
+            let result = github_api
+                .list_pull_request_metadata_options(&repository.0, &repository.1)
+                .await;
+            this.update_in_or_log(
+                cx,
+                "failed to update pull request metadata options",
+                move |view, _, cx| {
+                    if view.pull_request_metadata_options.repository.as_ref() != Some(&repository) {
+                        return;
+                    }
+                    view.pull_request_metadata_options.loading = false;
+                    match result {
+                        Ok(options) => {
+                            view.pull_request_metadata_options.options = options;
+                            view.pull_request_metadata_options.error = None;
+                        }
+                        Err(error) => {
+                            view.pull_request_metadata_options.error =
+                                Some(format!("Failed to load choices: {error}"));
+                        }
+                    }
+                    cx.notify();
+                },
+            );
+        })
+        .detach();
+    }
+
     pub(crate) fn on_pull_request_metadata_input_event(
         &mut self,
         input: &Entity<InputState>,
