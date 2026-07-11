@@ -41,13 +41,17 @@ mod switchers;
 mod sync_loop;
 mod workflow_log_loaders;
 
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use gpui::{
     Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
     UniformListScrollHandle, px,
 };
-use gpui_component::input::InputState;
+use gpui_component::{input::InputState, text::TextViewState};
 use harbor_domain::{PullRequest, RepoId, WorkflowRun};
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
@@ -139,6 +143,12 @@ pub(super) fn log_entity_update_error(context: &'static str, error: impl std::fm
 
 const DIFF_LIST_OVERDRAW: f32 = 240.0;
 const PANEL_LIST_OVERDRAW: f32 = 160.0;
+const OVERVIEW_LIST_OVERDRAW: f32 = 64.0;
+
+struct OverviewMarkdownState {
+    source: String,
+    state: Entity<TextViewState>,
+}
 
 pub struct AppView {
     focus_handle: FocusHandle,
@@ -161,6 +171,10 @@ pub struct AppView {
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
     diff_list_items: Vec<DiffListItem>,
+    overview_list_state: ListState,
+    overview_list_item_keys: Vec<String>,
+    overview_markdown_states: HashMap<String, OverviewMarkdownState>,
+    overview_thread_expansion_overrides: HashMap<String, bool>,
     review_list_state: ListState,
     checks_list_state: ListState,
     actions_workflow_list_state: ListState,
@@ -175,6 +189,7 @@ pub struct AppView {
     file_filter_popover_open: bool,
     review_action_comment_target: Option<ReviewActionCommentTarget>,
     review_action_comment_input: Entity<InputState>,
+    overview_comment_input: Entity<InputState>,
     pull_request_description_editing: bool,
     pull_request_description_input: Entity<InputState>,
     pull_request_reviewer_input: Entity<InputState>,

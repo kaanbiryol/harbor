@@ -89,6 +89,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
             is_resolved,
             action_running,
             can_toggle_resolution,
+            show_reply_button: true,
             show_toggle_icon: true,
             chrome: ReviewThreadActionsChrome::Inline,
             view_entity,

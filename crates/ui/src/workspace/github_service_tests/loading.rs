@@ -87,6 +87,42 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
 }
 
 #[gpui::test]
+async fn overview_loads_review_activity_for_its_timeline(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let pull_request = pull_request();
+    let thread = review_thread(ReviewThreadState::Unresolved);
+    api.push_pull_request_detail(Ok(pull_request.clone()));
+    api.push_files(Ok(vec![patched_diff_file()]));
+    api.push_current_user(Ok("octocat".to_string()));
+    api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::new()));
+    api.push_review_threads(Ok(vec![thread.clone()]));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request];
+        view.active_tab = PanelTab::Overview;
+        view.load_selected_pull_request(cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        api.calls(),
+        vec![
+            "get_pull_request",
+            "list_pull_request_files",
+            "current_user",
+            "list_pull_request_reviews",
+            "list_pull_request_comments",
+            "list_review_threads"
+        ]
+    );
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.review_state.review_threads, vec![thread]);
+    });
+}
+
+#[gpui::test]
 async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
     let repository = RepoId::new("acme", "app");

@@ -188,15 +188,13 @@ async fn pull_request_comment_action_posts_and_refreshes_review_data(cx: &mut Te
     view.update_in(cx, |view, window, cx| {
         view.pull_requests = vec![pull_request()];
         view.selection_state.reset_pull_request_index();
-        view.run_pull_request_action(
-            PullRequestAction::Comment {
-                body: "Looks ready to me.".to_string(),
-            },
-            window,
-            cx,
-        );
+        view.overview_comment_input.update(cx, |input, cx| {
+            input.set_value("Looks ready to me.", window, cx);
+        });
+        view.submit_overview_comment(window, cx);
         assert!(view.action_runtime.pull_request_action_running());
         assert_eq!(view.status, "Posting comment on PR #7");
+        assert!(view.overview_comment_input.read(cx).value().is_empty());
     });
     cx.run_until_parked();
 

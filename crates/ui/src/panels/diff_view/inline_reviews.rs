@@ -9,6 +9,8 @@ mod reactions;
 #[path = "inline_review_threads.rs"]
 mod threads;
 
+pub(crate) use reactions::render_review_reactions;
+
 use gpui::{Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Disableable, Sizable, StyledExt,

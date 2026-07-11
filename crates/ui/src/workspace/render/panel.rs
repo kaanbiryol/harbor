@@ -96,7 +96,7 @@ impl AppView {
     }
 
     pub(super) fn render_panel(
-        &self,
+        &mut self,
         pr: Option<&PullRequest>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {

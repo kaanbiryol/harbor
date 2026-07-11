@@ -449,6 +449,23 @@ impl AppView {
         self.run_pull_request_action(action, window, cx);
     }
 
+    pub(crate) fn submit_overview_comment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let body = self
+            .overview_comment_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        if body.is_empty() {
+            self.status = "Enter a comment before posting".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.clear_overview_comment_input(window, cx);
+        self.run_pull_request_action(PullRequestAction::Comment { body }, window, cx);
+    }
+
     pub(super) fn merge_pr(
         &mut self,
         _: &MergePullRequest,

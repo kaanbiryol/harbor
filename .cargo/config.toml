@@ -1,2 +1,0 @@
-[env]
-TOOLCHAINS = { value = "Metal", force = false }

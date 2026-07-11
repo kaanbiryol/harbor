@@ -59,6 +59,7 @@ pub(crate) struct ReviewThreadActionsState {
     pub(crate) is_resolved: bool,
     pub(crate) action_running: bool,
     pub(crate) can_toggle_resolution: bool,
+    pub(crate) show_reply_button: bool,
     pub(crate) show_toggle_icon: bool,
     pub(crate) chrome: ReviewThreadActionsChrome,
     pub(crate) view_entity: Entity<AppView>,
@@ -94,6 +95,15 @@ impl ReviewThreadActionIds {
             toggle_debug_selector: format!("review-panel-toggle-thread-{thread_id}"),
         }
     }
+
+    pub(crate) fn overview(thread_id: &str) -> Self {
+        Self {
+            reply_button: format!("overview-reply-thread-{thread_id}"),
+            reply_debug_selector: format!("overview-reply-thread-{thread_id}"),
+            toggle_button: format!("overview-toggle-thread-{thread_id}"),
+            toggle_debug_selector: format!("overview-toggle-thread-{thread_id}"),
+        }
+    }
 }
 
 impl ReviewThreadReplyComposerIds {
@@ -112,6 +122,15 @@ impl ReviewThreadReplyComposerIds {
             cancel_debug_selector: format!("review-panel-cancel-thread-reply-{thread_id}"),
             submit_button: format!("review-panel-submit-thread-reply-{thread_id}"),
             submit_debug_selector: format!("review-panel-submit-thread-reply-{thread_id}"),
+        }
+    }
+
+    pub(crate) fn overview(thread_id: &str) -> Self {
+        Self {
+            cancel_button: format!("overview-cancel-thread-reply-{thread_id}"),
+            cancel_debug_selector: format!("overview-cancel-thread-reply-{thread_id}"),
+            submit_button: format!("overview-submit-thread-reply-{thread_id}"),
+            submit_debug_selector: format!("overview-submit-thread-reply-{thread_id}"),
         }
     }
 }
@@ -146,6 +165,7 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         is_resolved,
         action_running,
         can_toggle_resolution,
+        show_reply_button,
         show_toggle_icon,
         chrome,
         view_entity,
@@ -173,22 +193,24 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         .flex()
         .items_center()
         .gap_2()
-        .child(
-            reply_button
-                .debug_selector({
-                    let selector = ids.reply_debug_selector.clone();
-                    move || selector.clone()
-                })
-                .on_click({
-                    let view_entity = view_entity.clone();
-                    let thread_id = thread_id.clone();
-                    move |_, window, cx| {
-                        view_entity.update(cx, |view, cx| {
-                            view.open_review_thread_reply(thread_id.clone(), window, cx);
-                        });
-                    }
-                }),
-        )
+        .when(show_reply_button, |element| {
+            element.child(
+                reply_button
+                    .debug_selector({
+                        let selector = ids.reply_debug_selector.clone();
+                        move || selector.clone()
+                    })
+                    .on_click({
+                        let view_entity = view_entity.clone();
+                        let thread_id = thread_id.clone();
+                        move |_, window, cx| {
+                            view_entity.update(cx, |view, cx| {
+                                view.open_review_thread_reply(thread_id.clone(), window, cx);
+                            });
+                        }
+                    }),
+            )
+        })
         .child({
             let button = Button::new(ids.toggle_button)
                 .label(toggle_label)

@@ -13,6 +13,8 @@ mod row_render;
 #[path = "diff_view/row_state.rs"]
 mod row_state;
 
+pub(crate) use inline_reviews::render_review_reactions;
+
 use std::collections::HashSet;
 
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};

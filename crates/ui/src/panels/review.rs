@@ -722,7 +722,7 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ReviewDiffPreview {
+pub(crate) struct ReviewDiffPreview {
     lines: Vec<ReviewDiffPreviewLine>,
 }
 
@@ -734,7 +734,7 @@ pub(super) struct ReviewDiffPreviewLine {
     tone: Tone,
 }
 
-pub(super) fn render_review_diff_preview(
+pub(crate) fn render_review_diff_preview(
     preview: ReviewDiffPreview,
     mono_font_family: SharedString,
 ) -> impl IntoElement {
@@ -886,7 +886,7 @@ fn review_matches_comment(review: &PullRequestReview, comment: &ReviewComment) -
             .is_some_and(|node_id| comment.pull_request_review_node_id.as_deref() == Some(node_id))
 }
 
-pub(super) fn review_thread_diff_preview(
+pub(crate) fn review_thread_diff_preview(
     thread: &ReviewThread,
     files: &[DiffFile],
     diffs: &[Option<ParsedDiff>],

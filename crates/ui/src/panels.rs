@@ -33,5 +33,7 @@ pub(crate) use pull_request_signals::{
     checks_summary_from_runs, merge_blocker, review_action_blocker,
 };
 pub(crate) use review::*;
-pub(crate) use review_markdown::{overview_markdown_body, render_review_markdown_body};
+pub(crate) use review_markdown::{
+    overview_markdown_body, render_review_markdown_state, review_markdown_body,
+};
 pub(crate) use workflows::*;

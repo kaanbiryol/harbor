@@ -43,6 +43,7 @@ impl AppView {
         self.sync_unresolved_thread_count();
         self.review_state
             .start_review_thread_action(thread_id.clone());
+        self.remeasure_overview_thread_item(&thread_id);
         self.status = if resolved {
             format!("Resolving review thread on PR #{}", pr.number)
         } else {
@@ -50,6 +51,7 @@ impl AppView {
         };
         cx.notify();
         let github_api = self.github_api.clone();
+        let overview_thread_id = thread_id.clone();
 
         cx.spawn(async move |this, cx| {
             let result = if resolved {
@@ -94,6 +96,7 @@ impl AppView {
                         }
                     }
 
+                    view.remeasure_overview_thread_item(&overview_thread_id);
                     cx.notify();
                 },
             );

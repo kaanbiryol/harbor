@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
 use gpui_component::{ActiveTheme, input::InputState};
@@ -12,7 +15,7 @@ use crate::{
 
 use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
-    PANEL_LIST_OVERDRAW, PullRequestFilters, SettingsSection,
+    OVERVIEW_LIST_OVERDRAW, PANEL_LIST_OVERDRAW, PullRequestFilters, SettingsSection,
     external_apps::ExternalAppAvailability,
     github_service::{GitHubApi, RealGitHubApi},
     notifications::NativeNotificationSink,
@@ -96,6 +99,13 @@ impl AppView {
                 .placeholder("Review comment")
                 .clean_on_escape()
         });
+        let overview_comment_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .rows(4)
+                .placeholder("Add your comment here...")
+                .clean_on_escape()
+        });
         let pull_request_description_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .auto_grow(8, 24)
@@ -159,6 +169,7 @@ impl AppView {
                 window,
                 Self::on_review_input_event,
             ),
+            cx.subscribe_in(&overview_comment_input, window, Self::on_review_input_event),
             cx.subscribe_in(
                 &pull_request_description_input,
                 window,
@@ -241,6 +252,10 @@ impl AppView {
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
             diff_list_items: Vec::new(),
+            overview_list_state: ListState::new(0, ListAlignment::Top, px(OVERVIEW_LIST_OVERDRAW)),
+            overview_list_item_keys: Vec::new(),
+            overview_markdown_states: HashMap::new(),
+            overview_thread_expansion_overrides: HashMap::new(),
             review_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             checks_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             actions_workflow_list_state: ListState::new(
@@ -259,6 +274,7 @@ impl AppView {
             file_filter_popover_open: false,
             review_action_comment_target: None,
             review_action_comment_input,
+            overview_comment_input,
             pull_request_description_editing: false,
             pull_request_description_input,
             pull_request_reviewer_input,

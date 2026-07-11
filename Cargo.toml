@@ -48,3 +48,4 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 gpui = { opt-level = 3 }
 gpui-component = { opt-level = 3 }
 gpui_platform = { opt-level = 3 }
+taffy = { opt-level = 3 }

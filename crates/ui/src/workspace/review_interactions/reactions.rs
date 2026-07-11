@@ -58,9 +58,11 @@ impl AppView {
                 comment_id: comment_id.clone(),
                 content,
             });
+        self.remeasure_overview_thread_item_for_comment(&comment_id);
         self.status = format!("Updating reaction on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
+        let overview_comment_id = comment_id.clone();
 
         cx.spawn(async move |this, cx| {
             let result = if had_reacted {
@@ -96,6 +98,7 @@ impl AppView {
                         }
                     }
 
+                    view.remeasure_overview_thread_item_for_comment(&overview_comment_id);
                     cx.notify();
                 },
             );

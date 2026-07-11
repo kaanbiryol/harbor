@@ -168,6 +168,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                                 is_resolved,
                                 action_running: ui_state.action_running,
                                 can_toggle_resolution: ui_state.can_toggle_resolution,
+                                show_reply_button: true,
                                 show_toggle_icon: true,
                                 chrome: ReviewThreadActionsChrome::Panel,
                                 view_entity: view_entity.clone(),

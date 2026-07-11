@@ -12,6 +12,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let overview_thread_id = thread_id.clone();
         self.review_state
             .review_composer_state
             .open_thread_reply(thread_id);
@@ -24,6 +25,7 @@ impl AppView {
                 input.focus(window, cx);
             });
         self.sync_diff_list_items(cx);
+        self.remeasure_overview_thread_item(&overview_thread_id);
         self.status = "Opened review thread reply".to_string();
         cx.notify();
     }
@@ -33,6 +35,11 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let overview_thread_id = self
+            .review_state
+            .review_composer_state
+            .active_thread_reply()
+            .map(str::to_string);
         self.review_state.review_composer_state.clear();
         self.review_state.clear_review_thread_reply_error();
         self.review_state
@@ -42,6 +49,9 @@ impl AppView {
                 input.set_value("", window, cx);
             });
         self.sync_diff_list_items(cx);
+        if let Some(thread_id) = overview_thread_id.as_deref() {
+            self.remeasure_overview_thread_item(thread_id);
+        }
         self.status = "Cancelled review thread reply".to_string();
         cx.notify();
     }
@@ -124,9 +134,11 @@ impl AppView {
         self.review_state.finish_review_thread_reply_submission();
         self.review_state.review_composer_state.clear();
         self.review_state.clear_review_thread_reply_error();
+        self.remeasure_overview_thread_item(&thread_id);
         self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();
+        let overview_thread_id = thread_id.clone();
 
         cx.spawn(async move |this, cx| {
             let result = github_api
@@ -178,6 +190,7 @@ impl AppView {
                         }
                     }
 
+                    view.remeasure_overview_thread_item(&overview_thread_id);
                     cx.notify();
                 },
             );

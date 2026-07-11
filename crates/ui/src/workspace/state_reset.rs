@@ -1,4 +1,4 @@
-use gpui::{ListOffset, ScrollStrategy, px};
+use gpui::{Context, ListOffset, ScrollStrategy, Window, px};
 
 use crate::{actions::PanelTab, workspace::AppView};
 
@@ -44,6 +44,9 @@ impl AppView {
 
     pub(super) fn clear_review_data_state(&mut self) {
         self.review_state.clear_review_data();
+        self.overview_list_item_keys.clear();
+        self.overview_markdown_states.clear();
+        self.overview_thread_expansion_overrides.clear();
     }
 
     pub(super) fn clear_changed_file_state(&mut self) {
@@ -81,6 +84,15 @@ impl AppView {
         self.reset_detail_scrolls();
     }
 
+    pub(super) fn clear_overview_comment_input(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.overview_comment_input
+            .update(cx, |input, cx| input.set_value("", window, cx));
+    }
+
     pub(super) fn clear_log_error(&mut self) {
         self.detail_state.log_state.clear_error();
     }
@@ -100,6 +112,10 @@ impl AppView {
     }
 
     pub(super) fn reset_panel_list_scrolls(&mut self) {
+        self.overview_list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
         self.review_list_state.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),

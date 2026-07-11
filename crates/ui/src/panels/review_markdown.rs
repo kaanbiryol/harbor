@@ -1,7 +1,7 @@
-use gpui::{IntoElement, prelude::*, px, rems};
+use gpui::{Entity, IntoElement, prelude::*, px, rems};
 use gpui_component::{
     highlighter::LanguageRegistry,
-    text::{TextView, TextViewStyle},
+    text::{TextView, TextViewState, TextViewStyle},
 };
 
 #[derive(Clone, Copy)]
@@ -12,6 +12,14 @@ struct MarkdownFence {
 
 pub(crate) fn render_review_markdown_body(id: impl Into<String>, body: &str) -> impl IntoElement {
     TextView::markdown(id.into(), review_markdown_body(body))
+        .style(review_markdown_style())
+        .selectable(true)
+        .min_w_0()
+        .flex_none()
+}
+
+pub(crate) fn render_review_markdown_state(state: &Entity<TextViewState>) -> impl IntoElement {
+    TextView::new(state)
         .style(review_markdown_style())
         .selectable(true)
         .min_w_0()

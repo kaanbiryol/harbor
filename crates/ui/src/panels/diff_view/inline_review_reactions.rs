@@ -12,7 +12,7 @@ use crate::{
     workspace::{AppView, ReviewReactionAction, review_reaction},
 };
 
-pub(super) fn render_review_reactions(
+pub(crate) fn render_review_reactions(
     comment: &ReviewComment,
     reaction_action: Option<&ReviewReactionAction>,
     view_entity: Entity<AppView>,
@@ -127,6 +127,10 @@ fn render_add_reaction_popover(
         .anchor(Anchor::TopRight)
         .trigger(
             Button::new(format!("add-reaction-trigger-{comment_id}"))
+                .debug_selector({
+                    let selector = format!("add-reaction-trigger-{comment_id}");
+                    move || selector.clone()
+                })
                 .icon(Octicon::Plus)
                 .xsmall()
                 .compact()

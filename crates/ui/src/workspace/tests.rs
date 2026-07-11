@@ -3,12 +3,14 @@ use std::sync::Arc;
 use super::*;
 use crate::{
     actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher},
-    test_fixtures::pull_request,
+    test_fixtures::{pull_request, review_thread, test_time},
     workspace::github_service::test_support::FakeGitHubApi,
 };
-use gpui::{AppContext, TestAppContext, px};
+use gpui::{AppContext, Modifiers, TestAppContext, px};
 use gpui_component::{Root, Theme, ThemeMode};
-use harbor_domain::Label;
+use harbor_domain::{
+    Label, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThreadState,
+};
 
 #[test]
 fn defaults_pull_request_inbox_to_open_mode() {
@@ -50,9 +52,11 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
+    let mut view_entity = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
         let view = cx
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view_entity = Some(view.clone());
         view.update(cx, |view, cx| {
             let mut pull_request = pull_request();
             pull_request.body = Some("## summary\n\n- Adds a focused fixture".to_string());
@@ -62,6 +66,42 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
                 color: Some("34d399".to_string()),
             }];
             view.pull_requests = vec![pull_request];
+            let unresolved_thread = review_thread(ReviewThreadState::Unresolved);
+            let mut resolved_thread = review_thread(ReviewThreadState::Resolved);
+            resolved_thread.id = "thread-resolved".to_string();
+            resolved_thread.path = "src/resolved.rs".to_string();
+            resolved_thread.comments[0].id = "comment-resolved".to_string();
+            view.review_state.apply_loaded_review_data(
+                vec![
+                    PullRequestReview {
+                        id: "review-1".to_string(),
+                        node_id: Some("review-node-1".to_string()),
+                        author: "reviewer".to_string(),
+                        state: PullRequestReviewState::Approved,
+                        body: None,
+                        submitted_at: Some(test_time()),
+                    },
+                    PullRequestReview {
+                        id: "review-empty".to_string(),
+                        node_id: Some("review-node-empty".to_string()),
+                        author: "reviewer".to_string(),
+                        state: PullRequestReviewState::Commented,
+                        body: None,
+                        submitted_at: Some(test_time()),
+                    },
+                ],
+                vec![PullRequestComment {
+                    id: "comment-1".to_string(),
+                    author: "reviewer".to_string(),
+                    author_avatar_url: None,
+                    body: "Looks good".to_string(),
+                    created_at: test_time(),
+                    updated_at: None,
+                }],
+                vec![unresolved_thread, resolved_thread],
+                Some("octocat".to_string()),
+                None,
+            );
             view.active_tab = PanelTab::Overview;
             cx.notify();
         });
@@ -70,11 +110,105 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
 
     cx.refresh().expect("test window should refresh");
     assert!(cx.debug_bounds("pull-request-overview-panel").is_some());
+    let description = cx
+        .debug_bounds("pull-request-overview-description")
+        .expect("overview description should render");
+    assert!(cx.debug_bounds("pull-request-overview-sidebar").is_some());
+    assert!(cx.debug_bounds("pull-request-overview-timeline").is_some());
+    assert!(cx.debug_bounds("overview-review-review-1").is_some());
+    assert!(cx.debug_bounds("overview-review-review-empty").is_none());
     assert!(
-        cx.debug_bounds("pull-request-overview-description")
+        cx.debug_bounds("overview-thread-comment-thread-1-0")
             .is_some()
     );
-    assert!(cx.debug_bounds("pull-request-overview-sidebar").is_some());
+    assert!(
+        cx.debug_bounds("overview-thread-comment-thread-resolved-0")
+            .is_none()
+    );
+    let unresolved_thread = cx
+        .debug_bounds("overview-thread-card-thread-1")
+        .expect("unresolved thread should render");
+    assert!(
+        unresolved_thread.origin.x + unresolved_thread.size.width
+            >= description.origin.x + description.size.width - px(1.0),
+        "timeline thread should fill the available content width"
+    );
+    assert!(cx.debug_bounds("overview-thread-diff-thread-1").is_some());
+    let reply_field = cx
+        .debug_bounds("overview-reply-field-thread-1")
+        .expect("overview reply field should render");
+    let toggle_thread = cx
+        .debug_bounds("overview-toggle-thread-thread-1")
+        .expect("overview resolve action should render");
+    assert!(
+        reply_field.origin.x + reply_field.size.width <= toggle_thread.origin.x,
+        "reply field should leave room for the resolve action"
+    );
+    assert!(
+        toggle_thread.origin.x + toggle_thread.size.width
+            <= unresolved_thread.origin.x + unresolved_thread.size.width,
+        "resolve action should stay inside the thread card"
+    );
+    let thread_node = cx
+        .debug_bounds("overview-thread-node-thread-1")
+        .expect("overview thread timeline node should render");
+    let thread_header = cx
+        .debug_bounds("overview-thread-toggle-thread-1")
+        .expect("overview thread header should render");
+    assert!(
+        (thread_node.center().y - thread_header.center().y).abs() <= px(1.0),
+        "timeline node should be vertically centered with the file header"
+    );
+    assert!(cx.debug_bounds("add-reaction-trigger-comment-1").is_some());
+    cx.simulate_click(reply_field.center(), Modifiers::none());
+    cx.refresh()
+        .expect("test window should refresh after opening reply");
+    assert!(
+        cx.debug_bounds("overview-submit-thread-reply-thread-1")
+            .is_some()
+    );
+    let cancel_reply = cx
+        .debug_bounds("overview-cancel-thread-reply-thread-1")
+        .expect("overview reply cancel button should render");
+    cx.simulate_click(cancel_reply.center(), Modifiers::none());
+    cx.refresh()
+        .expect("test window should refresh after cancelling reply");
+    assert!(cx.debug_bounds("overview-reply-field-thread-1").is_some());
+    let unresolved_thread = cx
+        .debug_bounds("overview-thread-toggle-thread-1")
+        .expect("unresolved thread should remain visible");
+    cx.simulate_click(unresolved_thread.center(), Modifiers::none());
+    cx.refresh()
+        .expect("test window should refresh after collapsing");
+    assert!(
+        cx.debug_bounds("overview-thread-comment-thread-1-0")
+            .is_none()
+    );
+    let resolved_thread = cx
+        .debug_bounds("overview-thread-toggle-thread-resolved")
+        .expect("resolved thread summary should render");
+    cx.simulate_click(resolved_thread.center(), Modifiers::none());
+    cx.refresh()
+        .expect("test window should refresh after toggle");
+    assert!(
+        cx.debug_bounds("overview-thread-comment-thread-resolved-0")
+            .is_some()
+    );
+    view_entity
+        .as_ref()
+        .expect("test AppView should be created")
+        .read_with(cx, |view, _| {
+            assert_eq!(view.active_tab, PanelTab::Overview);
+        });
+    assert!(
+        cx.debug_bounds("pull-request-overview-comment-composer")
+            .is_some()
+    );
+    let comment_input = cx
+        .debug_bounds("pull-request-overview-comment-input")
+        .expect("overview comment input should render");
+    assert!(comment_input.size.height > px(60.));
+    assert!(comment_input.size.height < px(160.));
     assert!(cx.debug_bounds("pull-request-merge-readiness").is_some());
     assert!(
         cx.debug_bounds("pull-request-unresolved-conversations")
