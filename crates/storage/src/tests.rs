@@ -12,7 +12,7 @@ use sqlx::Row;
 use super::*;
 
 #[test]
-fn syncs_repositories_without_marking_them_recent() {
+fn persists_only_pinned_repositories_for_the_switcher() {
     smol::block_on(async {
         let database_path = test_database_path("syncs-repositories");
         let store = SqliteStore::connect(StorageConfig {
@@ -21,34 +21,27 @@ fn syncs_repositories_without_marking_them_recent() {
         .await
         .expect("connect sqlite store");
         let repository = RepoId::new("acme", "app");
-        let old_repository = RepoId::new("acme", "old");
-
         store
-            .sync_repositories(&[repository.clone(), old_repository.clone()])
+            .set_repository_pinned(&repository, true)
             .await
-            .expect("sync repositories");
-        store
-            .record_repository(&repository)
-            .await
-            .expect("record repository");
+            .expect("pin repository");
 
         let repositories = store
-            .recent_repositories()
+            .pinned_repositories()
             .await
-            .expect("load recent repositories");
+            .expect("load pinned repositories");
 
-        assert_eq!(repositories.len(), 2);
+        assert_eq!(repositories.len(), 1);
         assert_eq!(repositories[0].id, repository);
-        assert!(!repositories[0].pinned);
+        assert!(repositories[0].pinned);
         assert_eq!(repositories[0].local_path, None);
-        assert_eq!(repositories[1].id, old_repository);
 
         cleanup_database(database_path);
     });
 }
 
 #[test]
-fn limits_recent_repository_results() {
+fn unpins_repository_without_retaining_it_in_the_switcher() {
     smol::block_on(async {
         let database_path = test_database_path("limits-repositories");
         let store = SqliteStore::connect(StorageConfig {
@@ -57,57 +50,22 @@ fn limits_recent_repository_results() {
         .await
         .expect("connect sqlite store");
 
+        let repository = RepoId::new("acme", "one");
         store
-            .sync_repositories(&[
-                RepoId::new("acme", "one"),
-                RepoId::new("acme", "two"),
-                RepoId::new("acme", "three"),
-            ])
+            .set_repository_pinned(&repository, true)
             .await
-            .expect("sync repositories");
+            .expect("pin repository");
+        store
+            .set_repository_pinned(&repository, false)
+            .await
+            .expect("unpin repository");
 
         let repositories = store
-            .recent_repositories_limited(2)
+            .pinned_repositories()
             .await
-            .expect("load limited repositories");
+            .expect("load pinned repositories");
 
-        assert_eq!(repositories.len(), 2);
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
-fn latest_repository_sync_takes_priority_over_stale_synced_rows() {
-    smol::block_on(async {
-        let database_path = test_database_path("latest-sync-priority");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-        let stale_repository = RepoId::new("aaa", "stale");
-        let latest_repository = RepoId::new("zzz", "latest");
-
-        store
-            .sync_repositories(std::slice::from_ref(&stale_repository))
-            .await
-            .expect("sync stale repository");
-        sqlx::query("UPDATE recent_repositories SET last_seen_at = 1")
-            .execute(&store.pool)
-            .await
-            .expect("age synced repositories");
-        store
-            .sync_repositories(std::slice::from_ref(&latest_repository))
-            .await
-            .expect("sync latest repository");
-
-        let repositories = store
-            .recent_repositories_limited(1)
-            .await
-            .expect("load limited repositories");
-
-        assert_eq!(repositories[0].id, latest_repository);
+        assert!(repositories.is_empty());
 
         cleanup_database(database_path);
     });
@@ -162,39 +120,6 @@ fn records_last_selected_repository_when_repository_is_opened() {
 }
 
 #[test]
-fn syncing_repositories_does_not_replace_last_selected_repository() {
-    smol::block_on(async {
-        let database_path = test_database_path("sync-keeps-last-selected-repository");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-        let selected_repository = RepoId::new("acme", "app");
-        let synced_repository = RepoId::new("zed", "editor");
-
-        store
-            .record_repository(&selected_repository)
-            .await
-            .expect("record selected repository");
-        store
-            .sync_repositories(std::slice::from_ref(&synced_repository))
-            .await
-            .expect("sync repositories");
-
-        assert_eq!(
-            store
-                .last_selected_repository()
-                .await
-                .expect("load last selected repository"),
-            Some(selected_repository)
-        );
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
 fn saves_repository_local_path() {
     smol::block_on(async {
         let database_path = test_database_path("saves-local-path");
@@ -212,9 +137,9 @@ fn saves_repository_local_path() {
             .expect("save local path");
 
         let repositories = store
-            .recent_repositories()
+            .repositories_with_local_paths()
             .await
-            .expect("load recent repositories");
+            .expect("load repositories with local paths");
 
         assert_eq!(repositories.len(), 1);
         assert_eq!(repositories[0].id, repository);
@@ -256,7 +181,7 @@ fn migrates_existing_repository_table_for_local_path() {
         .expect("create old table");
         sqlx::query(
             "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at)
-             VALUES ('acme', 'app', 0, 0)",
+             VALUES ('acme', 'app', 1, 0)",
         )
         .execute(&pool)
         .await
@@ -269,9 +194,9 @@ fn migrates_existing_repository_table_for_local_path() {
         .await
         .expect("migrate sqlite store");
         let repositories = store
-            .recent_repositories()
+            .pinned_repositories()
             .await
-            .expect("load recent repositories");
+            .expect("load pinned repositories");
 
         assert_eq!(repositories.len(), 1);
         assert_eq!(repositories[0].id, RepoId::new("acme", "app"));

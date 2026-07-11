@@ -1,8 +1,11 @@
 use gpui::{App, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::*, px};
-use gpui_component::StyledExt;
+use gpui_component::{
+    Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+};
 use harbor_domain::RepoId;
 
-use crate::{visual::color, workspace::AppView};
+use crate::{icons::Octicon, visual::color, workspace::AppView};
 
 const REPOSITORY_SWITCHER_ROW_HEIGHT: f32 = 34.;
 const REPOSITORY_SWITCHER_MAX_VISIBLE_ROWS: usize = 10;
@@ -57,7 +60,10 @@ pub(super) fn render_switcher_repository_row(
     repository: &RepoId,
     current: bool,
     highlighted: bool,
+    pinned: bool,
+    view: Entity<AppView>,
 ) -> Stateful<Div> {
+    let repository_for_pin = repository.clone();
     div()
         .id(format!("switcher-repository-{}", repository.full_name()))
         .h(px(REPOSITORY_SWITCHER_ROW_HEIGHT))
@@ -87,9 +93,34 @@ pub(super) fn render_switcher_repository_row(
         .child(
             div()
                 .flex_none()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child(if current { "current" } else { "repo" }),
+                .flex()
+                .items_center()
+                .gap_1()
+                .when(current, |element| {
+                    element.child(
+                        div()
+                            .text_xs()
+                            .text_color(color::text_muted())
+                            .child("current"),
+                    )
+                })
+                .child(
+                    Button::new(format!("pin-{}", repository.full_name()))
+                        .xsmall()
+                        .ghost()
+                        .icon(Octicon::Pin)
+                        .tooltip(if pinned {
+                            "Unpin repository"
+                        } else {
+                            "Pin repository"
+                        })
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            view.update(cx, |view, cx| {
+                                view.toggle_repository_pin(repository_for_pin.clone(), cx);
+                            });
+                        }),
+                ),
         )
 }
 

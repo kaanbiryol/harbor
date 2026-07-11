@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use gpui::{Anchor, Context, div, prelude::*, px, uniform_list};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
@@ -35,6 +37,11 @@ impl AppView {
             .value();
         let repository_query = normalized_search_query(&repository_search_value);
         let choices = self.repository_switcher_choices(cx);
+        let pinned_repositories = self
+            .repository_state
+            .pinned_repositories()
+            .cloned()
+            .collect::<HashSet<_>>();
         let current_repository = self.current_repository().cloned();
         let repository_error = self.repository_state.error().map(str::to_string);
         let repository_notice = self.repository_state.notice().map(str::to_string);
@@ -124,8 +131,7 @@ impl AppView {
                             .px_1()
                             .pb_2()
                             .child(Input::new(&repository_search_input).small().cleanable(true)),
-                    )
-                    .child(render_switcher_section_label("repositories"));
+                    );
 
                 if let Some(error) = repository_error.clone() {
                     menu = menu.child(render_switcher_error_row(error));
@@ -149,36 +155,43 @@ impl AppView {
                     };
                     menu = menu.child(render_switcher_empty_row(label));
                 } else {
-                    let choice_count = choices.len();
-                    let list_height = repository_switcher_list_height(choice_count);
-                    let choices = choices.clone();
-                    let current_repository = current_repository.clone();
-                    let view = view.clone();
-                    let popover = popover.clone();
-
-                    menu = menu.child(
-                        uniform_list(
-                            "repository-switcher-list",
-                            choice_count,
-                            move |range, _window, _cx| {
+                    let (pinned_choices, repository_choices): (Vec<_>, Vec<_>) = choices
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .partition(|(_, choice)| pinned_repositories.contains(choice.repository()));
+                    let render_choices =
+                        |id: &'static str, choices: Vec<(usize, RepositorySwitcherChoice)>| {
+                            let choice_count = choices.len();
+                            let list_height = repository_switcher_list_height(choice_count);
+                            let current_repository = current_repository.clone();
+                            let pinned_repositories = pinned_repositories.clone();
+                            let view = view.clone();
+                            let popover = popover.clone();
+                            uniform_list(id, choice_count, move |range, _window, _cx| {
                                 let mut rows = Vec::with_capacity(range.len());
 
                                 for row_index in range {
-                                    let Some(choice) = choices.get(row_index).cloned() else {
+                                    let Some((selection_index, choice)) =
+                                        choices.get(row_index).cloned()
+                                    else {
                                         continue;
                                     };
                                     let current =
                                         current_repository.as_ref() == Some(choice.repository());
-                                    let highlighted = row_index == repository_selection;
+                                    let highlighted = selection_index == repository_selection;
                                     let view = view.clone();
                                     let popover = popover.clone();
 
                                     let row = match &choice {
                                         RepositorySwitcherChoice::Cached(repository) => {
+                                            let pinned = pinned_repositories.contains(repository);
                                             render_switcher_repository_row(
                                                 repository,
                                                 current,
                                                 highlighted,
+                                                pinned,
+                                                view.clone(),
                                             )
                                         }
                                         RepositorySwitcherChoice::Typed(repository) => {
@@ -207,12 +220,25 @@ impl AppView {
                                 }
 
                                 rows
-                            },
-                        )
-                        .h(px(list_height))
-                        .w_full()
-                        .min_h_0(),
-                    );
+                            })
+                            .h(px(list_height))
+                            .w_full()
+                            .min_h_0()
+                        };
+
+                    if !pinned_choices.is_empty() {
+                        menu = menu
+                            .child(render_switcher_section_label("pinned"))
+                            .child(render_choices("pinned-repository-list", pinned_choices));
+                    }
+                    if !repository_choices.is_empty() {
+                        menu = menu
+                            .child(render_switcher_section_label("repositories"))
+                            .child(render_choices(
+                                "repository-switcher-list",
+                                repository_choices,
+                            ));
+                    }
                 }
 
                 menu

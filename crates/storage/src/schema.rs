@@ -63,6 +63,13 @@ impl SqliteStore {
         }
 
         sqlx::query(
+            "DELETE FROM recent_repositories
+             WHERE pinned = 0 AND local_path IS NULL",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
             "CREATE TABLE IF NOT EXISTS last_selected_repository (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 owner TEXT NOT NULL,

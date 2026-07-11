@@ -283,7 +283,7 @@ impl AppView {
 
         if start_startup_tasks {
             view.load_github_credentials(cx);
-            view.load_recent_repositories(cx);
+            view.load_repository_preferences(cx);
             view.refresh_external_app_availability(cx);
             view.ensure_sync_loop(cx);
         }

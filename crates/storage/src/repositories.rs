@@ -6,15 +6,13 @@ use sqlx::Row;
 use super::{Result, SqliteStore, rows::recent_repositories_from_rows, types::RecentRepository};
 
 impl SqliteStore {
-    pub async fn recent_repositories(&self) -> Result<Vec<RecentRepository>> {
+    pub async fn pinned_repositories(&self) -> Result<Vec<RecentRepository>> {
         let rows = sqlx::query(
             "SELECT owner, name, pinned, local_path
              FROM recent_repositories
+             WHERE pinned = 1
              ORDER BY
-                pinned DESC,
                 last_opened_at DESC,
-                last_seen_at DESC,
-                last_seen_position ASC,
                 owner ASC,
                 name ASC",
         )
@@ -24,20 +22,12 @@ impl SqliteStore {
         Ok(recent_repositories_from_rows(rows))
     }
 
-    pub async fn recent_repositories_limited(&self, limit: usize) -> Result<Vec<RecentRepository>> {
+    pub async fn repositories_with_local_paths(&self) -> Result<Vec<RecentRepository>> {
         let rows = sqlx::query(
             "SELECT owner, name, pinned, local_path
              FROM recent_repositories
-             ORDER BY
-                pinned DESC,
-                last_opened_at DESC,
-                last_seen_at DESC,
-                last_seen_position ASC,
-                owner ASC,
-                name ASC
-             LIMIT ?1",
+             WHERE local_path IS NOT NULL",
         )
-        .bind(limit as i64)
         .fetch_all(&self.pool)
         .await?;
 
@@ -45,16 +35,6 @@ impl SqliteStore {
     }
 
     pub async fn record_repository(&self, repository: &RepoId) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at)
-             VALUES (?1, ?2, 0, unixepoch())
-             ON CONFLICT(owner, name) DO UPDATE SET last_opened_at = unixepoch()",
-        )
-        .bind(&repository.owner)
-        .bind(&repository.name)
-        .execute(&self.pool)
-        .await?;
-
         self.record_last_selected_repository(repository).await?;
 
         Ok(())
@@ -72,19 +52,27 @@ impl SqliteStore {
         Ok(row.map(|row| RepoId::new(row.get::<String, _>("owner"), row.get::<String, _>("name"))))
     }
 
-    pub async fn sync_repositories(&self, repositories: &[RepoId]) -> Result<()> {
-        for (position, repository) in repositories.iter().enumerate() {
+    pub async fn set_repository_pinned(&self, repository: &RepoId, pinned: bool) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at)
+             VALUES (?1, ?2, ?3, unixepoch())
+             ON CONFLICT(owner, name) DO UPDATE SET
+                pinned = excluded.pinned,
+                last_opened_at = unixepoch()",
+        )
+        .bind(&repository.owner)
+        .bind(&repository.name)
+        .bind(i64::from(pinned))
+        .execute(&self.pool)
+        .await?;
+
+        if !pinned {
             sqlx::query(
-                "INSERT INTO recent_repositories
-                    (owner, name, pinned, last_opened_at, last_seen_at, last_seen_position)
-                 VALUES (?1, ?2, 0, 0, unixepoch(), ?3)
-                 ON CONFLICT(owner, name) DO UPDATE SET
-                    last_seen_at = unixepoch(),
-                    last_seen_position = excluded.last_seen_position",
+                "DELETE FROM recent_repositories
+                 WHERE owner = ?1 AND name = ?2 AND pinned = 0 AND local_path IS NULL",
             )
             .bind(&repository.owner)
             .bind(&repository.name)
-            .bind(position as i64)
             .execute(&self.pool)
             .await?;
         }

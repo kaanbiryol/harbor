@@ -238,7 +238,7 @@ impl AppView {
             GitHubAuthSource::OAuth => "Signed in to GitHub".to_string(),
             GitHubAuthSource::GhCli => "Signed in with GitHub CLI".to_string(),
         };
-        self.load_recent_repositories(cx);
+        self.load_repository_preferences(cx);
         self.refresh_authenticated_github_user(cx);
     }
 

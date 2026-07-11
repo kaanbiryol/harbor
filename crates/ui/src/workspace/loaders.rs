@@ -136,7 +136,7 @@ impl AppView {
 
         if refresh_intent.uses_cache() && self.restore_pull_request_inbox_snapshot(key.clone(), cx)
         {
-            self.record_recent_repository(repo.clone(), cx);
+            self.record_selected_repository(repo.clone(), cx);
             self.spawn_pull_request_inbox_refresh(repo, mode, key, false, cx);
             return;
         }
@@ -151,7 +151,7 @@ impl AppView {
         }
         self.ensure_sync_loop(cx);
         if refresh_intent != PullRequestInboxRefreshIntent::LightRefresh {
-            self.record_recent_repository(repo.clone(), cx);
+            self.record_selected_repository(repo.clone(), cx);
         }
         self.pull_request_inbox.start_loading();
 
