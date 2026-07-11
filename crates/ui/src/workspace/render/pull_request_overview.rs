@@ -2073,18 +2073,22 @@ fn render_readiness_status(label: &'static str, description: &'static str, tone:
                 .items_center()
                 .justify_center()
                 .bg(colors.background)
-                .child(Icon::new(Octicon::CodeSquare).text_color(colors.text)),
+                .child(
+                    Icon::new(Octicon::CodeSquare)
+                        .size(px(16.0))
+                        .text_color(colors.text),
+                ),
         )
         .child(
             div()
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .gap_1()
+                .gap_0p5()
                 .child(
                     div()
-                        .text_base()
-                        .font_semibold()
+                        .text_size(px(16.0))
+                        .font_medium()
                         .text_color(colors.text)
                         .child(label),
                 )
@@ -2179,7 +2183,7 @@ fn pull_request_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone
     } else if pr.review_decision != Some(ReviewDecision::Approved) {
         (
             "Review required",
-            "At least 1 approval is required before merging.",
+            "At least 1 approval is required.",
             Tone::Warning,
         )
     } else if pr.unresolved_threads > 0 {
