@@ -204,14 +204,16 @@ impl AppView {
                     )
                     .child(
                         div()
+                            .id("pull-request-overview-sidebar-scroll")
                             .debug_selector(|| "pull-request-overview-sidebar".to_string())
                             .w(px(OVERVIEW_SIDEBAR_WIDTH))
+                            .h_full()
                             .min_h_0()
                             .flex_none()
                             .flex()
                             .flex_col()
                             .gap_3()
-                            .overflow_y_scrollbar()
+                            .overflow_y_scroll()
                             .child(self.render_merge_readiness_card(pr, cx))
                             .child(self.render_people_card(pr, cx))
                             .child(self.render_labels_card(pr, cx)),
@@ -542,33 +544,67 @@ impl AppView {
 
     fn render_merge_readiness_card(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
         let (review_label, review_tone) = review_readiness(pr.review_decision);
-        let (merge_label, merge_tone) = merge_readiness(pr.merge_state);
+        let (merge_label, merge_description, merge_tone) = merge_readiness(pr);
+        let (status_label, status_description, status_tone) = pull_request_readiness(pr);
         let unresolved_tone = if pr.unresolved_threads == 0 {
             Tone::Success
         } else {
             Tone::Warning
         };
+        let checks_tone = if pr.checks_summary.failed > 0 {
+            Tone::Danger
+        } else if pr.checks_summary.pending > 0 {
+            Tone::Warning
+        } else {
+            Tone::Success
+        };
+        let checks_label = if pr.checks_summary.failed > 0 {
+            format!("{} failed", pr.checks_summary.failed)
+        } else if pr.checks_summary.pending > 0 {
+            format!("{} pending", pr.checks_summary.pending)
+        } else {
+            format!("{} successful", pr.checks_summary.passed)
+        };
+        let checks_summary_title = if pr.checks_summary.failed > 0 {
+            "Status checks need attention"
+        } else if pr.checks_summary.pending > 0 {
+            "Status checks are running"
+        } else {
+            "All status checks passed"
+        };
+        let (conflicts_label, conflicts_tone) = if pr.merge_state == Some(MergeState::Dirty) {
+            ("Merge conflicts", Tone::Danger)
+        } else {
+            ("No merge conflicts", Tone::Success)
+        };
+        let pull_request_url = pr.url.clone();
+        let close_pull_request_url = pr.url.clone();
 
-        render_overview_card("Merge readiness")
+        render_overview_card("PR status")
             .debug_selector(|| "pull-request-merge-readiness".to_string())
             .gap_0()
-            .pb_0()
+            .child(render_readiness_status(
+                status_label,
+                status_description,
+                status_tone,
+            ))
+            .child(render_readiness_section_title("Readiness checklist"))
             .child(render_readiness_row(
                 "pull-request-review-readiness-row",
                 "Review",
+                review_readiness_description(pr.review_decision),
                 review_label,
                 Octicon::Eye,
                 review_tone,
-                false,
                 false,
             ))
             .child(render_readiness_row(
                 "pull-request-merge-readiness-row",
                 "Merge",
+                merge_description,
                 merge_label,
                 Octicon::CheckCircle,
                 merge_tone,
-                true,
                 false,
             ))
             .child(
@@ -578,15 +614,57 @@ impl AppView {
                         render_readiness_row(
                             "pull-request-unresolved-conversations-row",
                             "Conversations",
+                            "Address open threads",
                             format!("{} unresolved", pr.unresolved_threads),
                             Octicon::CommentDiscussion,
                             unresolved_tone,
-                            true,
                             true,
                         )
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.select_panel_tab(PanelTab::Review, cx);
                         })),
+                    ),
+            )
+            .child(render_readiness_section_title("Summary"))
+            .child(render_summary_row(
+                "pull-request-checks-summary-row",
+                checks_summary_title,
+                checks_label,
+                checks_tone,
+            ))
+            .child(render_summary_row(
+                "pull-request-conflicts-summary-row",
+                conflicts_label,
+                if conflicts_tone == Tone::Success {
+                    "Branch is up to date"
+                } else {
+                    "Resolve before merging"
+                },
+                conflicts_tone,
+            ))
+            .child(
+                div()
+                    .pt_2()
+                    .flex()
+                    .flex_wrap()
+                    .gap_1()
+                    .child(
+                        Button::new("pull-request-draft-action")
+                            .label(if pr.is_draft {
+                                "Mark ready for review"
+                            } else {
+                                "Convert to draft"
+                            })
+                            .xsmall()
+                            .link()
+                            .on_click(move |_, _, cx| cx.open_url(&pull_request_url)),
+                    )
+                    .child(
+                        Button::new("close-pull-request-action")
+                            .label("Close pull request")
+                            .xsmall()
+                            .link()
+                            .on_click(move |_, _, cx| cx.open_url(&close_pull_request_url)),
                     ),
             )
             .into_any_element()
@@ -730,6 +808,7 @@ impl AppView {
         };
 
         render_overview_card("People")
+            .debug_selector(|| "pull-request-people-card".to_string())
             .child(render_overview_section(
                 "Author",
                 div()
@@ -1919,10 +1998,10 @@ fn render_overview_card(title: &'static str) -> Div {
 fn render_readiness_row(
     id: &'static str,
     label: &'static str,
+    description: &'static str,
     value: impl Into<String>,
     icon: Octicon,
     tone: Tone,
-    divided: bool,
     navigable: bool,
 ) -> ListItem {
     let colors = tone_colors(tone);
@@ -1930,12 +2009,12 @@ fn render_readiness_row(
 
     ListItem::new(id)
         .w_full()
-        .h(px(40.0))
+        .h(px(52.0))
         .px_0()
         .py_0()
         .rounded_none()
         .disabled(!navigable)
-        .when(divided, |element| {
+        .when(label != "Review", |element| {
             element.border_t_1().border_color(color::border_subtle())
         })
         .child(
@@ -1949,9 +2028,21 @@ fn render_readiness_row(
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_xs()
-                        .text_color(color::text_secondary())
-                        .child(label),
+                        .flex()
+                        .flex_col()
+                        .gap_0p5()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(color::text_primary())
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(color::text_muted())
+                                .child(description),
+                        ),
                 ),
         )
         .suffix(move |_, _| {
@@ -1965,6 +2056,155 @@ fn render_readiness_row(
         })
 }
 
+fn render_readiness_status(label: &'static str, description: &'static str, tone: Tone) -> Div {
+    let colors = tone_colors(tone);
+
+    div()
+        .py_3()
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(
+            div()
+                .size(px(44.0))
+                .flex_none()
+                .rounded_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(colors.background)
+                .child(Icon::new(Octicon::CodeSquare).text_color(colors.text)),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .text_base()
+                        .font_semibold()
+                        .text_color(colors.text)
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(color::text_muted())
+                        .child(description),
+                ),
+        )
+}
+
+fn render_readiness_section_title(title: &'static str) -> Div {
+    div()
+        .mt_2()
+        .pt_3()
+        .pb_1()
+        .border_t_1()
+        .border_color(color::border_subtle())
+        .text_sm()
+        .font_semibold()
+        .text_color(color::text_primary())
+        .child(title)
+}
+
+fn render_summary_row(
+    id: &'static str,
+    label: &'static str,
+    value: impl Into<String>,
+    tone: Tone,
+) -> impl IntoElement {
+    let colors = tone_colors(tone);
+
+    div()
+        .id(id)
+        .h(px(36.0))
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(
+            Icon::new(Octicon::CheckCircle)
+                .xsmall()
+                .text_color(colors.text),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .text_color(color::text_secondary())
+                .child(label),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(value.into()),
+        )
+}
+
+fn pull_request_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
+    if pr.merge_state == Some(MergeState::Dirty) {
+        (
+            "Conflicts",
+            "Resolve merge conflicts before merging.",
+            Tone::Danger,
+        )
+    } else if pr.checks_summary.failed > 0 {
+        (
+            "Checks failed",
+            "One or more status checks need attention.",
+            Tone::Danger,
+        )
+    } else if pr.checks_summary.pending > 0 {
+        (
+            "Checks pending",
+            "Status checks are still running.",
+            Tone::Warning,
+        )
+    } else if pr.is_draft {
+        (
+            "Draft",
+            "Mark ready when this pull request can be reviewed.",
+            Tone::Neutral,
+        )
+    } else if pr.review_decision == Some(ReviewDecision::ChangesRequested) {
+        (
+            "Changes requested",
+            "Address requested changes before merging.",
+            Tone::Danger,
+        )
+    } else if pr.review_decision != Some(ReviewDecision::Approved) {
+        (
+            "Review required",
+            "At least 1 approval is required before merging.",
+            Tone::Warning,
+        )
+    } else if pr.unresolved_threads > 0 {
+        (
+            "Conversations open",
+            "Resolve open conversations before merging.",
+            Tone::Warning,
+        )
+    } else {
+        (
+            "Ready",
+            "All checks have passed. Ready for review.",
+            Tone::Success,
+        )
+    }
+}
+
+fn review_readiness_description(decision: Option<ReviewDecision>) -> &'static str {
+    match decision {
+        Some(ReviewDecision::Approved) => "Required approvals received",
+        Some(ReviewDecision::ChangesRequested) => "Changes were requested",
+        Some(ReviewDecision::ReviewRequired) | None => "At least 1 approval is required",
+    }
+}
+
 fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
     match decision {
         Some(ReviewDecision::Approved) => ("Approved", Tone::Success),
@@ -1974,13 +2214,34 @@ fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
     }
 }
 
-fn merge_readiness(state: Option<MergeState>) -> (&'static str, Tone) {
-    match state {
-        Some(MergeState::Clean) => ("Ready", Tone::Success),
-        Some(MergeState::Dirty) => ("Conflicts", Tone::Danger),
-        Some(MergeState::Blocked) => ("Blocked", Tone::Danger),
-        Some(MergeState::Behind) => ("Behind", Tone::Warning),
-        Some(MergeState::Unknown) | None => ("Unknown", Tone::Neutral),
+fn merge_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
+    match pr.merge_state {
+        Some(MergeState::Dirty) => ("Conflicts", "Resolve merge conflicts", Tone::Danger),
+        Some(MergeState::Blocked) => ("Blocked", "Merge requirements are not met", Tone::Danger),
+        Some(MergeState::Behind) => ("Behind", "Update the branch before merging", Tone::Warning),
+        Some(MergeState::Unknown) | None => {
+            ("Unknown", "Merge status is unavailable", Tone::Neutral)
+        }
+        Some(MergeState::Clean) if pr.review_decision != Some(ReviewDecision::Approved) => (
+            "Blocked",
+            "Required approval has not been received",
+            Tone::Warning,
+        ),
+        Some(MergeState::Clean) if pr.unresolved_threads > 0 => (
+            "Blocked",
+            "Resolve open conversations before merging",
+            Tone::Warning,
+        ),
+        Some(MergeState::Clean)
+            if pr.checks_summary.failed > 0 || pr.checks_summary.pending > 0 =>
+        {
+            (
+                "Blocked",
+                "Status checks must pass before merging",
+                Tone::Warning,
+            )
+        }
+        Some(MergeState::Clean) => ("Ready", "All merge requirements are met", Tone::Success),
     }
 }
 
@@ -2184,15 +2445,18 @@ mod tests {
     use gpui::{AppContext, ListAlignment, ListOffset, ListState, TestAppContext, px};
     use gpui_component::{Root, Theme, ThemeMode};
     use harbor_domain::{
-        PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThreadState,
+        MergeState, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewDecision,
+        ReviewThreadState,
     };
 
     use super::{
-        OverviewTimelineItem, avatar_initial, overview_panel_items, overview_review_visible,
-        overview_thread_expanded, overview_thread_item_index, overview_timeline_items,
-        parse_label_color, sync_overview_list_items,
+        OverviewTimelineItem, avatar_initial, merge_readiness, overview_panel_items,
+        overview_review_visible, overview_thread_expanded, overview_thread_item_index,
+        overview_timeline_items, parse_label_color, pull_request_readiness,
+        sync_overview_list_items,
     };
-    use crate::test_fixtures::{review_thread, test_time};
+    use crate::test_fixtures::{pull_request, review_thread, test_time};
+    use crate::visual::Tone;
     use crate::workspace::AppView;
 
     #[test]
@@ -2208,6 +2472,31 @@ mod tests {
         assert_eq!(avatar_initial("octocat"), "O");
         assert_eq!(avatar_initial(" team-reviewers"), "T");
         assert_eq!(avatar_initial(""), "?");
+    }
+
+    #[test]
+    fn clean_merge_state_still_requires_approval_and_resolved_conversations() {
+        let mut pull_request = pull_request();
+        pull_request.merge_state = Some(MergeState::Clean);
+        pull_request.review_decision = None;
+        pull_request.unresolved_threads = 5;
+
+        assert_eq!(merge_readiness(&pull_request).0, "Blocked");
+        assert_eq!(pull_request_readiness(&pull_request).0, "Review required");
+
+        pull_request.review_decision = Some(ReviewDecision::Approved);
+        assert_eq!(merge_readiness(&pull_request).0, "Blocked");
+        assert_eq!(
+            pull_request_readiness(&pull_request),
+            (
+                "Conversations open",
+                "Resolve open conversations before merging.",
+                Tone::Warning,
+            )
+        );
+
+        pull_request.unresolved_threads = 0;
+        assert_eq!(merge_readiness(&pull_request).0, "Ready");
     }
 
     #[test]

@@ -6,7 +6,7 @@ use crate::{
     test_fixtures::{pull_request, review_thread, test_time},
     workspace::github_service::test_support::FakeGitHubApi,
 };
-use gpui::{AppContext, Modifiers, TestAppContext, px};
+use gpui::{AppContext, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px};
 use gpui_component::{Root, Theme, ThemeMode};
 use harbor_domain::{
     Label, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThreadState,
@@ -227,6 +227,61 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
     assert!(cx.debug_bounds("add-assignee-control").is_some());
     assert!(cx.debug_bounds("add-label-control").is_some());
     assert!(cx.debug_bounds("changed-files-sidebar").is_none());
+}
+
+#[gpui::test]
+async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            let mut pull_request = pull_request();
+            pull_request.unresolved_threads = 5;
+            view.pull_requests = vec![pull_request];
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    let sidebar = cx
+        .debug_bounds("pull-request-overview-sidebar")
+        .expect("overview sidebar should render");
+    let people_before_scroll = cx
+        .debug_bounds("pull-request-people-card")
+        .expect("people card should render");
+    let description_before_scroll = cx
+        .debug_bounds("pull-request-overview-description")
+        .expect("overview description should render");
+
+    cx.simulate_event(ScrollWheelEvent {
+        position: sidebar.center(),
+        delta: ScrollDelta::Pixels(point(px(0.0), px(-400.0))),
+        ..Default::default()
+    });
+    cx.refresh()
+        .expect("test window should refresh after scrolling the sidebar");
+
+    let people_after_scroll = cx
+        .debug_bounds("pull-request-people-card")
+        .expect("people card should remain rendered after scrolling");
+    let description_after_scroll = cx
+        .debug_bounds("pull-request-overview-description")
+        .expect("overview description should remain rendered after scrolling");
+    assert!(
+        people_after_scroll.origin.y < people_before_scroll.origin.y,
+        "scrolling over the overview sidebar should move its cards"
+    );
+    assert_eq!(
+        description_after_scroll.origin.y, description_before_scroll.origin.y,
+        "scrolling over the overview sidebar should not move the timeline"
+    );
 }
 
 #[gpui::test]
