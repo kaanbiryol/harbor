@@ -5,9 +5,10 @@ use harbor_domain::PullRequest;
 use crate::{
     actions::PanelTab,
     panels::{
-        ActionsPanelRenderInput, CheckPanelRenderInput, DiffPanelRenderInput,
-        ReviewPanelRenderInput, render_actions_panel, render_checks_panel, render_diff_panel,
-        render_logs_panel, render_review_panel, render_status_pill,
+        ActionsPanelRenderInput, CheckPanelRenderInput, CommitsPanelRenderInput,
+        DiffPanelRenderInput, ReviewPanelRenderInput, render_actions_panel, render_checks_panel,
+        render_commits_panel, render_diff_panel, render_logs_panel, render_review_panel,
+        render_status_pill,
     },
     visual::{Tone, color},
     workspace::AppView,
@@ -174,6 +175,16 @@ impl AppView {
                                 is_loading: self.detail_state.checks_loading(),
                                 error: self.detail_state.checks_error(),
                                 list_state: self.checks_list_state.clone(),
+                            },
+                            cx,
+                        )
+                        .into_any_element(),
+                        PanelTab::Commits => render_commits_panel(
+                            CommitsPanelRenderInput {
+                                commits: self.detail_state.commits(),
+                                is_loading: self.detail_state.commits_loading(),
+                                error: self.detail_state.commits_error(),
+                                list_state: self.commits_list_state.clone(),
                             },
                             cx,
                         )

@@ -17,6 +17,7 @@ fn detail_snapshot() -> PullRequestDetailSnapshot {
         files: Vec::new(),
         diffs: Vec::new(),
         check_runs: Vec::new(),
+        commits: Vec::new(),
         workflow_runs: Vec::new(),
         workflow_jobs: Vec::new(),
         pull_request_reviews: Vec::new(),

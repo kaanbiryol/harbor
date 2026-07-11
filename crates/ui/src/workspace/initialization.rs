@@ -257,6 +257,7 @@ impl AppView {
             overview_markdown_states: HashMap::new(),
             overview_thread_expansion_overrides: HashMap::new(),
             review_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+            commits_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             checks_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             actions_workflow_list_state: ListState::new(
                 0,

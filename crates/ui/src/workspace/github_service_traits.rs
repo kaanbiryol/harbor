@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
-    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
+    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
+    WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     GitHubRateLimitStatus, PullRequestMetadataOptions, RepositoryList, Result,
@@ -73,6 +74,13 @@ pub(crate) trait GitHubPullRequestDetailApi: Send + Sync {
         repo: &str,
         number: u64,
     ) -> Result<Vec<DiffFile>>;
+
+    async fn list_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestCommit>>;
 
     async fn mark_pull_request_file_viewed(
         &self,

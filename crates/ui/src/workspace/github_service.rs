@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
-    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
+    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
+    WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubClient, GitHubRateLimitStatus, GitHubTransportSource,
@@ -152,6 +153,17 @@ impl GitHubPullRequestDetailApi for RealGitHubApi {
     ) -> Result<Vec<DiffFile>> {
         self.client()?
             .list_pull_request_files(owner, repo, number)
+            .await
+    }
+
+    async fn list_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestCommit>> {
+        self.client()?
+            .list_pull_request_commits(owner, repo, number)
             .await
     }
 

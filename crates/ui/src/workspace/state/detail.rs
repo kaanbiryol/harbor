@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use harbor_domain::{CheckRun, DiffFile, FileViewedState, WorkflowJob, WorkflowRun};
+use harbor_domain::{
+    CheckRun, DiffFile, FileViewedState, PullRequestCommit, WorkflowJob, WorkflowRun,
+};
 
 use crate::{
     diff::ParsedDiff,
@@ -19,12 +21,14 @@ pub(crate) struct PullRequestDetailUiState {
     files: Vec<DiffFile>,
     diffs: Vec<Option<ParsedDiff>>,
     check_runs: Vec<CheckRun>,
+    commits: Vec<PullRequestCommit>,
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
     details_load: LoadStatus,
     files_load: LoadStatus,
     checks_load: LoadStatus,
+    commits_load: LoadStatus,
     workflows_load: LoadStatus,
     pub(crate) log_state: WorkflowLogState,
 }
@@ -34,6 +38,7 @@ pub(crate) struct PullRequestDetailLoadedState {
     pub(crate) details: bool,
     pub(crate) files: bool,
     pub(crate) checks: bool,
+    pub(crate) commits: bool,
     pub(crate) workflows: bool,
     pub(crate) reviews: bool,
 }
@@ -48,12 +53,14 @@ impl PullRequestDetailUiState {
             files,
             diffs,
             check_runs: Vec::new(),
+            commits: Vec::new(),
             workflow_runs: Vec::new(),
             workflow_jobs: Vec::new(),
             pull_request_detail_cache: HashMap::new(),
             details_load: LoadStatus::Idle,
             files_load: LoadStatus::Idle,
             checks_load: LoadStatus::Idle,
+            commits_load: LoadStatus::Idle,
             workflows_load: LoadStatus::Idle,
             log_state,
         }
@@ -63,6 +70,7 @@ impl PullRequestDetailUiState {
         self.details_load.reset();
         self.files_load.reset();
         self.checks_load.reset();
+        self.commits_load.reset();
         self.workflows_load.reset();
     }
 
@@ -120,6 +128,7 @@ impl PullRequestDetailUiState {
         self.details_load = load_status_from_loaded(sections.details);
         self.files_load = load_status_from_loaded(sections.files);
         self.checks_load = load_status_from_loaded(sections.checks);
+        self.commits_load = load_status_from_loaded(sections.commits);
         self.workflows_load = load_status_from_loaded(sections.workflows);
     }
 
@@ -172,6 +181,16 @@ impl PullRequestDetailUiState {
         self.check_runs.clear();
     }
 
+    pub(crate) fn replace_commits(&mut self, commits: Vec<PullRequestCommit>) {
+        self.commits = commits;
+    }
+    pub(crate) fn commits(&self) -> &[PullRequestCommit] {
+        &self.commits
+    }
+    pub(crate) fn clear_commits(&mut self) {
+        self.commits.clear();
+    }
+
     pub(crate) fn replace_workflow_runs(&mut self, workflow_runs: Vec<WorkflowRun>) {
         self.workflow_runs = workflow_runs;
     }
@@ -201,6 +220,7 @@ impl PullRequestDetailUiState {
             details: self.details_load.is_finished(),
             files: self.files_load.is_finished(),
             checks: self.checks_load.is_finished(),
+            commits: self.commits_load.is_finished(),
             workflows: self.workflows_load.is_finished(),
             reviews: reviews_loaded,
         }
@@ -210,6 +230,7 @@ impl PullRequestDetailUiState {
         self.details_load.is_loading()
             || self.files_load.is_loading()
             || self.checks_load.is_loading()
+            || self.commits_load.is_loading()
             || self.workflows_load.is_loading()
     }
 
@@ -221,6 +242,7 @@ impl PullRequestDetailUiState {
         self.details_load.clear_error();
         self.files_load.clear_error();
         self.checks_load.clear_error();
+        self.commits_load.clear_error();
         self.workflows_load.clear_error();
     }
 
@@ -234,6 +256,9 @@ impl PullRequestDetailUiState {
 
     pub(crate) fn should_load_checks(&self) -> bool {
         !self.checks_load.is_loading() && !self.checks_load.is_finished()
+    }
+    pub(crate) fn should_load_commits(&self) -> bool {
+        !self.commits_load.is_loading() && !self.commits_load.is_finished()
     }
 
     pub(crate) fn should_load_workflows(&self) -> bool {
@@ -263,6 +288,9 @@ impl PullRequestDetailUiState {
     pub(crate) fn start_checks_load(&mut self) {
         self.checks_load.start();
     }
+    pub(crate) fn start_commits_load(&mut self) {
+        self.commits_load.start();
+    }
 
     pub(crate) fn start_workflows_load(&mut self) {
         self.workflows_load.start();
@@ -279,6 +307,9 @@ impl PullRequestDetailUiState {
     pub(crate) fn apply_checks_success(&mut self) {
         self.checks_load.succeed();
     }
+    pub(crate) fn apply_commits_success(&mut self) {
+        self.commits_load.succeed();
+    }
 
     pub(crate) fn apply_workflows_success(&mut self) {
         self.workflows_load.succeed();
@@ -294,6 +325,9 @@ impl PullRequestDetailUiState {
 
     pub(crate) fn apply_checks_failure(&mut self, error: impl Into<String>) {
         self.checks_load.fail(error);
+    }
+    pub(crate) fn apply_commits_failure(&mut self, error: impl Into<String>) {
+        self.commits_load.fail(error);
     }
 
     pub(crate) fn apply_workflows_failure(&mut self, error: impl Into<String>) {
@@ -315,6 +349,9 @@ impl PullRequestDetailUiState {
     pub(crate) fn checks_loading(&self) -> bool {
         self.checks_load.is_loading()
     }
+    pub(crate) fn commits_loading(&self) -> bool {
+        self.commits_load.is_loading()
+    }
 
     pub(crate) fn workflows_loading(&self) -> bool {
         self.workflows_load.is_loading()
@@ -330,6 +367,9 @@ impl PullRequestDetailUiState {
 
     pub(crate) fn checks_error(&self) -> Option<&str> {
         self.checks_load.error()
+    }
+    pub(crate) fn commits_error(&self) -> Option<&str> {
+        self.commits_load.error()
     }
 
     pub(crate) fn workflows_error(&self) -> Option<&str> {

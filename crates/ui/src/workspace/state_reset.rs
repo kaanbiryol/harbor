@@ -61,6 +61,7 @@ impl AppView {
 
     pub(super) fn clear_workflow_state(&mut self) {
         self.detail_state.clear_check_runs();
+        self.detail_state.clear_commits();
         self.detail_state.clear_workflow_runs();
         self.detail_state.clear_workflow_jobs();
         self.collapsed_check_groups.clear();

@@ -5,8 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestReview,
-    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
+    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
+    WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
@@ -40,6 +41,7 @@ pub(crate) struct FakeGitHubApi {
     pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
     pull_request_details: FakeQueue<PullRequest>,
     files: FakeQueue<Vec<DiffFile>>,
+    commits: FakeQueue<Vec<PullRequestCommit>>,
     mark_file_viewed_results: FakeQueue<()>,
     unmark_file_viewed_results: FakeQueue<()>,
     check_runs: FakeQueue<Vec<CheckRun>>,
@@ -352,6 +354,16 @@ impl GitHubPullRequestDetailApi for FakeGitHubApi {
     ) -> Result<Vec<DiffFile>> {
         self.record_call("list_pull_request_files");
         pop_result(&self.files, "list_pull_request_files")
+    }
+
+    async fn list_pull_request_commits(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+    ) -> Result<Vec<PullRequestCommit>> {
+        self.record_call("list_pull_request_commits");
+        pop_result(&self.commits, "list_pull_request_commits")
     }
 
     async fn mark_pull_request_file_viewed(

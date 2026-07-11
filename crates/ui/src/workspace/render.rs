@@ -131,6 +131,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::select_overview_panel))
             .on_action(cx.listener(Self::select_diff_panel))
             .on_action(cx.listener(Self::select_review_panel))
+            .on_action(cx.listener(Self::select_commits_panel))
             .on_action(cx.listener(Self::select_checks_panel))
             .on_action(cx.listener(Self::select_actions_panel))
             .on_action(cx.listener(Self::select_logs_panel))

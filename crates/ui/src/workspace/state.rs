@@ -63,6 +63,7 @@ mod tests {
             details: true,
             files: false,
             checks: true,
+            commits: true,
             workflows: false,
             reviews: true,
         });
@@ -74,6 +75,7 @@ mod tests {
                 details: true,
                 files: false,
                 checks: true,
+                commits: true,
                 workflows: false,
                 reviews: true,
             }

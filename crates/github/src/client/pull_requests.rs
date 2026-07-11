@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use harbor_domain::{DiffFile, FileViewedState, MergeMethod, PullRequest, RepoId};
+use harbor_domain::{
+    DiffFile, FileViewedState, MergeMethod, PullRequest, PullRequestCommit, RepoId,
+};
 use serde_json::json;
 
 use crate::{
@@ -23,6 +25,8 @@ const PULL_REQUEST_ENRICHMENT_CHUNK_SIZE: usize = 10;
 const PULL_REQUEST_FILE_PAGE_LIMIT: usize = 30;
 const PULL_REQUEST_FILE_PAGE_SIZE: usize = 100;
 const PULL_REQUEST_FILE_PAGE_SIZE_QUERY: &str = "100";
+const PULL_REQUEST_COMMIT_PAGE_LIMIT: usize = 3;
+const PULL_REQUEST_COMMIT_PAGE_SIZE: usize = 100;
 
 impl<T> GitHubClient<T>
 where
@@ -369,6 +373,35 @@ where
         }
 
         Ok(files)
+    }
+
+    pub async fn list_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestCommit>> {
+        let path = format!("/repos/{owner}/{repo}/pulls/{number}/commits");
+        let mut commits = Vec::new();
+
+        for page in 1..=PULL_REQUEST_COMMIT_PAGE_LIMIT {
+            let page_string = page.to_string();
+            let response = self
+                .transport
+                .rest_get(
+                    &path,
+                    &[("per_page", "100"), ("page", page_string.as_str())],
+                )
+                .await?;
+            let mut page_commits = dto::pull_request_commits_from_value(response)?;
+            let page_count = page_commits.len();
+            commits.append(&mut page_commits);
+            if page_count < PULL_REQUEST_COMMIT_PAGE_SIZE {
+                break;
+            }
+        }
+
+        Ok(commits)
     }
 
     async fn list_pull_request_file_viewed_states(

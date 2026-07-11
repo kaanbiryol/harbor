@@ -18,6 +18,7 @@ mod navigation_commands;
 mod notifications;
 mod panel_commands;
 mod pull_request_ci_loaders;
+mod pull_request_commit_loaders;
 mod pull_request_description_actions;
 mod pull_request_detail_cache_loader;
 mod pull_request_detail_content_loaders;
@@ -172,6 +173,7 @@ pub struct AppView {
     overview_markdown_states: HashMap<String, OverviewMarkdownState>,
     overview_thread_expansion_overrides: HashMap<String, bool>,
     review_list_state: ListState,
+    commits_list_state: ListState,
     checks_list_state: ListState,
     actions_workflow_list_state: ListState,
     actions_list_state: ListState,

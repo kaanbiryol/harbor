@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use harbor_domain::{
     CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, FileViewedState, Label,
-    MergeState, PullRequest, PullRequestPerson, PullRequestState, PullRequestTeam, RepoId,
-    ReviewDecision,
+    MergeState, PullRequest, PullRequestCommit, PullRequestPerson, PullRequestState,
+    PullRequestTeam, RepoId, ReviewDecision,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -47,6 +47,25 @@ struct ApiUser {
     login: String,
     #[serde(default, alias = "avatarUrl")]
     avatar_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiPullRequestCommit {
+    sha: String,
+    commit: ApiCommitDetails,
+    author: Option<ApiUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiCommitDetails {
+    message: String,
+    author: Option<ApiCommitAuthor>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiCommitAuthor {
+    name: String,
+    date: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -314,6 +333,33 @@ pub fn pull_request_from_value(repo: RepoId, value: Value) -> Result<PullRequest
         serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
 
     Ok(pull.into_domain(repo))
+}
+
+pub fn pull_request_commits_from_value(value: Value) -> Result<Vec<PullRequestCommit>> {
+    let commits: Vec<ApiPullRequestCommit> =
+        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+
+    Ok(commits
+        .into_iter()
+        .map(|commit| PullRequestCommit {
+            sha: commit.sha,
+            message: commit.commit.message,
+            author: commit
+                .author
+                .as_ref()
+                .map(|author| author.login.clone())
+                .or_else(|| {
+                    commit
+                        .commit
+                        .author
+                        .as_ref()
+                        .map(|author| author.name.clone())
+                })
+                .unwrap_or_else(|| "ghost".to_string()),
+            author_avatar_url: commit.author.and_then(|author| author.avatar_url),
+            authored_at: commit.commit.author.and_then(|author| author.date),
+        })
+        .collect())
 }
 
 pub(crate) fn pull_request_search_page_from_graphql_value(
@@ -714,9 +760,10 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        diff_files_from_value, pull_request_file_viewed_states_page_from_graphql_value,
-        pull_request_from_value, pull_request_search_count_from_graphql_value,
-        pull_request_search_page_from_graphql_value, pull_requests_from_value,
+        diff_files_from_value, pull_request_commits_from_value,
+        pull_request_file_viewed_states_page_from_graphql_value, pull_request_from_value,
+        pull_request_search_count_from_graphql_value, pull_request_search_page_from_graphql_value,
+        pull_requests_from_value,
     };
 
     #[test]
@@ -999,6 +1046,25 @@ mod tests {
         );
         assert!(files[1].patch.is_none());
         assert_eq!(files[1].viewed_state, FileViewedState::Unviewed);
+    }
+
+    #[test]
+    fn maps_pull_request_commits() {
+        let commits = pull_request_commits_from_value(json!([{
+            "sha": "abcdef123456",
+            "author": { "login": "octocat", "avatar_url": "https://example.com/avatar.png" },
+            "commit": {
+                "message": "Add commits panel\n\nWith details",
+                "author": { "name": "Octo Cat", "date": "2026-07-12T09:30:00Z" }
+            }
+        }]))
+        .unwrap();
+
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].sha, "abcdef123456");
+        assert_eq!(commits[0].author, "octocat");
+        assert_eq!(commits[0].message, "Add commits panel\n\nWith details");
+        assert!(commits[0].authored_at.is_some());
     }
 
     #[test]

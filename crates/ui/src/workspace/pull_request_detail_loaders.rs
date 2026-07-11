@@ -174,6 +174,11 @@ impl AppView {
                     self.spawn_pull_request_checks_loader(load, cx);
                 }
             }
+            PanelTab::Commits => {
+                if self.detail_state.should_load_commits() {
+                    self.spawn_pull_request_commits_loader(load, cx);
+                }
+            }
             PanelTab::Actions => {
                 if self.detail_state.should_load_workflows() {
                     self.spawn_pull_request_workflows_loader(load, cx);
@@ -271,7 +276,12 @@ mod tests {
             PanelTab::Diff
         ));
 
-        for tab in [PanelTab::Checks, PanelTab::Actions, PanelTab::Logs] {
+        for tab in [
+            PanelTab::Commits,
+            PanelTab::Checks,
+            PanelTab::Actions,
+            PanelTab::Logs,
+        ] {
             assert!(!should_defer_review_load_until_cache(
                 PullRequestDetailFetchPolicy::PreferCache,
                 true,

@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use gpui::{Context, ScrollStrategy};
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, RepoId, ReviewThread,
-    WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestCommit, PullRequestReview,
+    RepoId, ReviewThread, WorkflowJob, WorkflowRun,
 };
 use harbor_logs::LogChunk;
 use harbor_sync::PullRequestInboxPageInfo;
@@ -61,6 +61,7 @@ pub(crate) struct PullRequestDetailSnapshot {
     files: Vec<DiffFile>,
     diffs: Vec<Option<ParsedDiff>>,
     check_runs: Vec<CheckRun>,
+    commits: Vec<PullRequestCommit>,
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
@@ -90,6 +91,7 @@ pub(crate) struct PullRequestInboxSnapshot {
     files: Vec<DiffFile>,
     diffs: Vec<Option<ParsedDiff>>,
     check_runs: Vec<CheckRun>,
+    commits: Vec<PullRequestCommit>,
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_reviews: Vec<PullRequestReview>,
@@ -182,6 +184,7 @@ impl AppView {
             files: self.detail_state.files().to_vec(),
             diffs: self.detail_state.diffs().to_vec(),
             check_runs: self.detail_state.check_runs().to_vec(),
+            commits: self.detail_state.commits().to_vec(),
             workflow_runs: self.detail_state.workflow_runs().to_vec(),
             workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
@@ -231,6 +234,7 @@ impl AppView {
         self.detail_state
             .replace_diff_files(snapshot.files, snapshot.diffs);
         self.detail_state.replace_check_runs(snapshot.check_runs);
+        self.detail_state.replace_commits(snapshot.commits);
         self.detail_state
             .replace_workflow_runs(snapshot.workflow_runs);
         self.detail_state
@@ -277,6 +281,7 @@ impl AppView {
             files: self.detail_state.files().to_vec(),
             diffs: self.detail_state.diffs().to_vec(),
             check_runs: self.detail_state.check_runs().to_vec(),
+            commits: self.detail_state.commits().to_vec(),
             workflow_runs: self.detail_state.workflow_runs().to_vec(),
             workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
             pull_request_reviews: self.review_state.pull_request_reviews.clone(),
@@ -331,6 +336,7 @@ impl AppView {
         self.detail_state
             .replace_diff_files(snapshot.files, snapshot.diffs);
         self.detail_state.replace_check_runs(snapshot.check_runs);
+        self.detail_state.replace_commits(snapshot.commits);
         self.detail_state
             .replace_workflow_runs(snapshot.workflow_runs);
         self.detail_state

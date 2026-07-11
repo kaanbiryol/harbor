@@ -24,6 +24,8 @@ actions!(
         SelectDiffPanel,
         /// Selects the review panel tab.
         SelectReviewPanel,
+        /// Selects the commits panel tab.
+        SelectCommitsPanel,
         /// Selects the checks panel tab.
         SelectChecksPanel,
         /// Selects the actions panel tab.
@@ -123,9 +125,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-1", SelectOverviewPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-2", SelectDiffPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-3", SelectReviewPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-4", SelectChecksPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-5", SelectActionsPanel, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-6", SelectLogsPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-4", SelectCommitsPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-5", SelectChecksPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-6", SelectActionsPanel, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-7", SelectLogsPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-o", OpenPullRequestInBrowser, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
         KeyBinding::new("down", SelectNextPullRequest, Some(KEY_BINDING_CONTEXT)),
@@ -138,16 +141,18 @@ pub(crate) enum PanelTab {
     Overview,
     Diff,
     Review,
+    Commits,
     Checks,
     Actions,
     Logs,
 }
 
 impl PanelTab {
-    pub(crate) const ALL: [Self; 6] = [
+    pub(crate) const ALL: [Self; 7] = [
         Self::Overview,
         Self::Diff,
         Self::Review,
+        Self::Commits,
         Self::Checks,
         Self::Actions,
         Self::Logs,
@@ -158,6 +163,7 @@ impl PanelTab {
             Self::Overview => "Overview",
             Self::Diff => "Diff",
             Self::Review => "Review",
+            Self::Commits => "Commits",
             Self::Checks => "Checks",
             Self::Actions => "Actions",
             Self::Logs => "Logs",
@@ -169,6 +175,7 @@ impl PanelTab {
             Self::Overview => Octicon::Eye,
             Self::Diff => Octicon::CodeSquare,
             Self::Review => Octicon::CommentDiscussion,
+            Self::Commits => Octicon::Clock,
             Self::Checks => Octicon::CheckCircle,
             Self::Actions => Octicon::Gear,
             Self::Logs => Octicon::Terminal,

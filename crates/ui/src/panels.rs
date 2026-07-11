@@ -4,6 +4,8 @@ mod changed_file_rows;
 mod checks;
 #[path = "panels/chrome.rs"]
 mod chrome;
+#[path = "panels/commits.rs"]
+mod commits;
 #[path = "panels/diff_view.rs"]
 mod diff_view;
 #[path = "panels/logs.rs"]
@@ -26,6 +28,7 @@ mod workflows;
 pub(crate) use changed_file_rows::*;
 pub(crate) use checks::*;
 pub(crate) use chrome::*;
+pub(crate) use commits::*;
 pub(crate) use diff_view::*;
 pub(crate) use logs::*;
 pub(crate) use pull_request::*;

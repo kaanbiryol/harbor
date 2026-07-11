@@ -44,6 +44,15 @@ pub struct PullRequestPerson {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestCommit {
+    pub sha: String,
+    pub message: String,
+    pub author: String,
+    pub author_avatar_url: Option<String>,
+    pub authored_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PullRequestTeam {
     pub name: String,
     pub slug: String,

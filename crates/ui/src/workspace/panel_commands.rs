@@ -50,6 +50,15 @@ impl AppView {
         self.select_panel_tab(PanelTab::Checks, cx);
     }
 
+    pub(super) fn select_commits_panel(
+        &mut self,
+        _: &SelectCommitsPanel,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_panel_tab(PanelTab::Commits, cx);
+    }
+
     pub(super) fn select_actions_panel(
         &mut self,
         _: &SelectActionsPanel,
