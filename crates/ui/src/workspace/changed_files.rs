@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use harbor_domain::{DiffFile, FileStatus};
+use harbor_domain::DiffFile;
 
 #[cfg(test)]
 mod tests;
@@ -30,7 +30,6 @@ pub(crate) struct ChangedFileRow {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ChangedFileFilters {
-    pub(crate) query: String,
     pub(crate) excluded_file_types: HashSet<String>,
     pub(crate) owned_by_current_user_only: bool,
     pub(crate) owned_file_paths: HashSet<String>,
@@ -38,9 +37,7 @@ pub(crate) struct ChangedFileFilters {
 
 impl ChangedFileFilters {
     fn has_active_filter(&self) -> bool {
-        !self.query.is_empty()
-            || !self.excluded_file_types.is_empty()
-            || self.owned_by_current_user_only
+        !self.excluded_file_types.is_empty() || self.owned_by_current_user_only
     }
 }
 
@@ -90,12 +87,6 @@ pub(crate) fn changed_file_tree_rows(
     reviewed_file_paths: &HashSet<String>,
     filters: &ChangedFileFilters,
 ) -> Vec<ChangedFileTreeRow> {
-    let filters = ChangedFileFilters {
-        query: normalized_search_query(&filters.query),
-        excluded_file_types: filters.excluded_file_types.clone(),
-        owned_by_current_user_only: filters.owned_by_current_user_only,
-        owned_file_paths: filters.owned_file_paths.clone(),
-    };
     let mut root = ChangedFileTreeNode::default();
 
     for (file_index, file) in files.iter().enumerate() {
@@ -144,30 +135,7 @@ pub(crate) fn changed_file_matches_filters(file: &DiffFile, filters: &ChangedFil
         return false;
     }
 
-    changed_file_matches_query(file, &filters.query)
-}
-
-pub(crate) fn changed_file_matches_query(file: &DiffFile, query: &str) -> bool {
-    let query = normalized_search_query(query);
-
-    if query.is_empty() {
-        return true;
-    }
-
-    if file.path.to_lowercase().contains(&query) {
-        return true;
-    }
-
-    if file
-        .previous_path
-        .as_deref()
-        .map(|path| path.to_lowercase().contains(&query))
-        .unwrap_or(false)
-    {
-        return true;
-    }
-
-    changed_file_status_label(file.status).contains(&query)
+    true
 }
 
 pub(crate) fn changed_file_type_filters(
@@ -203,18 +171,6 @@ pub(crate) fn changed_file_type_key(file: &DiffFile) -> String {
     }
 
     "no extension".to_string()
-}
-
-pub(crate) fn changed_file_status_label(status: FileStatus) -> &'static str {
-    match status {
-        FileStatus::Added => "added",
-        FileStatus::Modified => "modified",
-        FileStatus::Removed => "removed",
-        FileStatus::Renamed => "renamed",
-        FileStatus::Copied => "copied",
-        FileStatus::Changed => "changed",
-        FileStatus::Unchanged => "unchanged",
-    }
 }
 
 fn push_changed_file_tree_rows(
@@ -313,8 +269,4 @@ fn changed_file_name(path: &str) -> &str {
         .next()
         .filter(|segment| !segment.is_empty())
         .unwrap_or(path)
-}
-
-fn normalized_search_query(query: &str) -> String {
-    query.trim().to_lowercase()
 }

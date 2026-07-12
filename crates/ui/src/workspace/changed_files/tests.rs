@@ -56,31 +56,6 @@ fn collapses_changed_file_tree_folders() {
 }
 
 #[test]
-fn filters_changed_file_tree_and_expands_matches() {
-    let files = vec![
-        diff_file("crates/ui/src/workspace.rs", FileStatus::Modified),
-        diff_file("crates/ui/Cargo.toml", FileStatus::Modified),
-        diff_file("README.md", FileStatus::Modified),
-    ];
-    let collapsed = HashSet::from(["crates/ui".to_string()]);
-
-    let rows = changed_file_tree_rows(
-        &files,
-        &collapsed,
-        &HashSet::new(),
-        &ChangedFileFilters {
-            query: "workspace".to_string(),
-            ..ChangedFileFilters::default()
-        },
-    );
-
-    assert_eq!(
-        changed_file_tree_labels(&rows),
-        vec!["dir:crates/ui/src:0:0/1:open", "file:workspace.rs:1:0"]
-    );
-}
-
-#[test]
 fn groups_deep_single_child_folder_chains() {
     let files = vec![
         diff_file(
@@ -108,17 +83,6 @@ fn groups_deep_single_child_folder_chains() {
             "file:Service.kt:1:0",
         ]
     );
-}
-
-#[test]
-fn matches_changed_files_by_path_previous_path_and_status() {
-    let mut file = diff_file("src/new_name.rs", FileStatus::Renamed);
-    file.previous_path = Some("src/old_name.rs".to_string());
-
-    assert!(changed_file_matches_query(&file, "new_name"));
-    assert!(changed_file_matches_query(&file, "old_name"));
-    assert!(changed_file_matches_query(&file, "renamed"));
-    assert!(!changed_file_matches_query(&file, "deleted"));
 }
 
 #[test]

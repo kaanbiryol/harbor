@@ -75,7 +75,6 @@ impl AppView {
 
     pub(crate) fn changed_file_filters(&self) -> ChangedFileFilters {
         ChangedFileFilters {
-            query: String::new(),
             excluded_file_types: self.excluded_file_type_filters.clone(),
             owned_by_current_user_only: self.show_files_owned_by_current_user,
             owned_file_paths: self.owned_file_paths.clone(),
