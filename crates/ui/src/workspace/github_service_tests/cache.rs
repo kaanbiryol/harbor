@@ -162,7 +162,7 @@ async fn cached_detail_restore_preserves_diff_section_overrides(cx: &mut TestApp
     });
     cx.run_until_parked();
 
-    assert!(api.calls().is_empty());
+    assert_eq!(api.calls(), vec!["list_pull_request_commits"]);
 }
 
 #[gpui::test]
@@ -206,7 +206,7 @@ async fn cached_inbox_restore_bounds_stale_selection_without_refetch(cx: &mut Te
     });
     cx.run_until_parked();
 
-    assert!(api.calls().is_empty());
+    assert_eq!(api.calls(), vec!["list_pull_request_commits"]);
 }
 
 #[gpui::test]
@@ -255,7 +255,7 @@ async fn cached_inbox_restore_rebuilds_diff_list_items(cx: &mut TestAppContext) 
     });
     cx.run_until_parked();
 
-    assert!(api.calls().is_empty());
+    assert_eq!(api.calls(), vec!["list_pull_request_commits"]);
 }
 
 #[gpui::test]
@@ -304,7 +304,13 @@ async fn repository_load_restores_in_memory_snapshot_before_refresh(cx: &mut Tes
         assert_eq!(view.status, "Loaded 1 open pull requests from acme/app");
         assert!(!view.pull_request_inbox.is_loading());
     });
-    assert_eq!(api.calls(), vec!["list_repository_pull_requests_light"]);
+    assert_eq!(
+        api.calls(),
+        vec![
+            "list_pull_request_commits",
+            "list_repository_pull_requests_light"
+        ]
+    );
 }
 
 fn mark_detail_sections_loaded(view: &mut AppView) {

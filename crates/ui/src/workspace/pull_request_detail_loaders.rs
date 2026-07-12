@@ -170,7 +170,15 @@ impl AppView {
         match self.active_tab {
             PanelTab::Overview | PanelTab::Diff | PanelTab::Review => {
                 if self.review_state.should_load_reviews() {
-                    self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
+                    self.spawn_selected_review_data_loader(
+                        load.clone(),
+                        ReviewDataLoadMode::Initial,
+                        cx,
+                    );
+                }
+                if self.active_tab == PanelTab::Overview && self.detail_state.should_load_commits()
+                {
+                    self.spawn_pull_request_commits_loader(load, cx);
                 }
             }
             PanelTab::Checks => {

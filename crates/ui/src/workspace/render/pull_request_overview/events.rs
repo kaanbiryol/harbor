@@ -1,6 +1,6 @@
-use gpui::{AnyElement, div, prelude::*, px};
+use gpui::{AnyElement, Context, div, prelude::*, px};
 use gpui_component::{StyledExt, tooltip::Tooltip};
-use harbor_domain::{PullRequestComment, PullRequestPerson, PullRequestReview};
+use harbor_domain::{PullRequestComment, PullRequestCommit, PullRequestPerson, PullRequestReview};
 
 use crate::{
     date_time::{
@@ -10,7 +10,77 @@ use crate::{
     icons::Octicon,
     panels::render_status_pill,
     visual::{color, tone_colors},
+    workspace::AppView,
 };
+
+pub(super) fn render_overview_commit_event(
+    commit: &PullRequestCommit,
+    index: usize,
+    cx: &mut Context<AppView>,
+) -> AnyElement {
+    let person = PullRequestPerson {
+        login: commit.author.clone(),
+        avatar_url: commit.author_avatar_url.clone(),
+    };
+    let subject = commit
+        .message
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let short_sha: String = commit.sha.chars().take(7).collect();
+    let sha = commit.sha.clone();
+
+    render_timeline_row(
+        render_person_avatar_with_size(&person, 24.0),
+        div()
+            .debug_selector({
+                let sha = commit.sha.clone();
+                move || format!("overview-commit-{sha}")
+            })
+            .id(("overview-commit", index))
+            .w_full()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .gap_1()
+            .text_xs()
+            .cursor_pointer()
+            .on_click(cx.listener(move |view, _, _, cx| {
+                view.select_commit(sha.clone(), cx);
+            }))
+            .child(
+                div()
+                    .font_semibold()
+                    .text_color(color::text_primary())
+                    .child(commit.author.clone()),
+            )
+            .child(div().text_color(color::text_secondary()).child("committed"))
+            .child(
+                div()
+                    .min_w_0()
+                    .flex_1()
+                    .truncate()
+                    .text_color(color::text_primary())
+                    .child(subject),
+            )
+            .child(
+                div()
+                    .font_family("monospace")
+                    .text_color(color::text_muted())
+                    .child(short_sha),
+            )
+            .when_some(commit.authored_at, |element, authored_at| {
+                element.child(render_timeline_time(
+                    format!("overview-commit-time-{}", commit.sha),
+                    natural_time_label(authored_at),
+                    full_time_label(authored_at),
+                ))
+            })
+            .into_any_element(),
+        true,
+    )
+}
 
 use super::{
     render_person_avatar_with_size,

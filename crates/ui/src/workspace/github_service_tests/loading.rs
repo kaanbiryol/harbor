@@ -41,7 +41,8 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "current_user",
             "list_pull_request_reviews",
             "list_pull_request_comments",
-            "list_review_threads"
+            "list_review_threads",
+            "list_pull_request_commits"
         ]
     );
     view_entity.read_with(cx, |view, _| {
@@ -62,6 +63,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_reviews",
             "list_pull_request_comments",
             "list_review_threads",
+            "list_pull_request_commits",
             "list_check_runs"
         ]
     );
@@ -81,6 +83,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_reviews",
             "list_pull_request_comments",
             "list_review_threads",
+            "list_pull_request_commits",
             "list_check_runs"
         ]
     );
@@ -114,7 +117,8 @@ async fn overview_loads_review_activity_for_its_timeline(cx: &mut TestAppContext
             "current_user",
             "list_pull_request_reviews",
             "list_pull_request_comments",
-            "list_review_threads"
+            "list_review_threads",
+            "list_pull_request_commits"
         ]
     );
     view_entity.read_with(cx, |view, _| {
@@ -155,7 +159,8 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
             "current_user",
             "list_pull_request_reviews",
             "list_pull_request_comments",
-            "list_review_threads"
+            "list_review_threads",
+            "list_pull_request_commits"
         ]
     );
 }

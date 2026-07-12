@@ -2,11 +2,14 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
 use gpui::{ListOffset, px};
-use harbor_domain::{PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThread};
+use harbor_domain::{
+    PullRequestComment, PullRequestCommit, PullRequestReview, PullRequestReviewState, ReviewThread,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OverviewPanelItem {
     Description,
+    Commit { sha: String },
     Comment { id: String },
     Review { id: String },
     Thread { id: String },
@@ -18,6 +21,7 @@ impl OverviewPanelItem {
     pub(super) fn key(&self) -> String {
         match self {
             Self::Description => "description".to_string(),
+            Self::Commit { sha } => format!("commit:{sha}"),
             Self::Comment { id } => format!("comment:{id}"),
             Self::Review { id } => format!("review:{id}"),
             Self::Thread { id } => format!("thread:{id}"),
@@ -38,6 +42,7 @@ pub(super) enum OverviewTimelineMessage {
 
 #[derive(Clone, Copy)]
 pub(super) enum OverviewTimelineItem<'a> {
+    Commit(&'a PullRequestCommit),
     Comment(&'a PullRequestComment),
     Review(&'a PullRequestReview),
     Thread(&'a ReviewThread),
@@ -46,6 +51,7 @@ pub(super) enum OverviewTimelineItem<'a> {
 impl OverviewTimelineItem<'_> {
     fn time(self) -> Option<DateTime<Utc>> {
         match self {
+            Self::Commit(commit) => commit.authored_at,
             Self::Comment(comment) => Some(comment.created_at),
             Self::Review(review) => review.submitted_at,
             Self::Thread(thread) => thread
@@ -123,13 +129,14 @@ pub(super) fn overview_thread_item_index(
 }
 
 pub(super) fn overview_panel_items(
+    commits: &[PullRequestCommit],
     reviews: &[PullRequestReview],
     comments: &[PullRequestComment],
     threads: &[ReviewThread],
     loading: bool,
     error: Option<&str>,
 ) -> Vec<OverviewPanelItem> {
-    let timeline_items = overview_timeline_items(reviews, comments, threads);
+    let timeline_items = overview_timeline_items(commits, reviews, comments, threads);
     let mut items = Vec::with_capacity(timeline_items.len() + 3);
     items.push(OverviewPanelItem::Description);
 
@@ -147,6 +154,9 @@ pub(super) fn overview_panel_items(
         }));
     } else {
         items.extend(timeline_items.into_iter().map(|item| match item {
+            OverviewTimelineItem::Commit(commit) => OverviewPanelItem::Commit {
+                sha: commit.sha.clone(),
+            },
             OverviewTimelineItem::Comment(comment) => OverviewPanelItem::Comment {
                 id: comment.id.clone(),
             },
@@ -164,11 +174,14 @@ pub(super) fn overview_panel_items(
 }
 
 pub(super) fn overview_timeline_items<'a>(
+    commits: &'a [PullRequestCommit],
     reviews: &'a [PullRequestReview],
     comments: &'a [PullRequestComment],
     threads: &'a [ReviewThread],
 ) -> Vec<OverviewTimelineItem<'a>> {
-    let mut items = Vec::with_capacity(reviews.len() + comments.len() + threads.len());
+    let mut items =
+        Vec::with_capacity(commits.len() + reviews.len() + comments.len() + threads.len());
+    items.extend(commits.iter().map(OverviewTimelineItem::Commit));
     items.extend(comments.iter().map(OverviewTimelineItem::Comment));
     items.extend(
         reviews

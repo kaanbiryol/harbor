@@ -82,6 +82,7 @@ impl AppView {
 
     pub(crate) fn remeasure_overview_thread_item(&self, thread_id: &str) {
         let panel_items = overview_panel_items(
+            self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
@@ -125,6 +126,7 @@ impl AppView {
         let previous_threads = self.review_state.review_threads().to_vec();
         let result = update(&mut self.review_state);
         let panel_items = overview_panel_items(
+            self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
@@ -140,6 +142,7 @@ impl AppView {
 
         for (index, item) in panel_items.iter().enumerate() {
             let changed = match item {
+                OverviewPanelItem::Commit { .. } => false,
                 OverviewPanelItem::Comment { id } => {
                     previous_comments.iter().find(|comment| comment.id == *id)
                         != self

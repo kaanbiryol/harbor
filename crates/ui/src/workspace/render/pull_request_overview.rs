@@ -44,11 +44,14 @@ impl AppView {
                 .into_any_element();
         };
         let panel_items = overview_panel_items(
+            self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
-            self.review_state.reviews_loading(),
-            self.review_state.reviews_error(),
+            self.review_state.reviews_loading() || self.detail_state.commits_loading(),
+            self.review_state
+                .reviews_error()
+                .or_else(|| self.detail_state.commits_error()),
         );
         let panel_item_keys = panel_items.iter().map(OverviewPanelItem::key).collect();
         sync_overview_list_items(
@@ -100,6 +103,16 @@ impl AppView {
                                                             view.render_description_card(&pr, cx),
                                                         )
                                                         .into_any_element()
+                                                })
+                                                .unwrap_or_else(|| div().into_any_element()),
+                                            OverviewPanelItem::Commit { sha } => view
+                                                .detail_state
+                                                .commits()
+                                                .iter()
+                                                .find(|commit| commit.sha == *sha)
+                                                .cloned()
+                                                .map(|commit| {
+                                                    render_overview_commit_event(&commit, index, cx)
                                                 })
                                                 .unwrap_or_else(|| div().into_any_element()),
                                             OverviewPanelItem::Comment { id } => view
@@ -211,8 +224,8 @@ mod tests {
     use gpui::{AppContext, ListAlignment, ListOffset, ListState, TestAppContext, px};
     use gpui_component::{Root, Theme, ThemeMode};
     use harbor_domain::{
-        MergeState, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewDecision,
-        ReviewThreadState,
+        MergeState, PullRequestComment, PullRequestCommit, PullRequestReview,
+        PullRequestReviewState, ReviewDecision, ReviewThreadState,
     };
 
     use super::{
@@ -260,6 +273,13 @@ mod tests {
     #[test]
     fn orders_timeline_activity_and_hides_pending_reviews() {
         let time = test_time();
+        let commits = vec![PullRequestCommit {
+            sha: "abc123".to_string(),
+            message: "Initial commit".to_string(),
+            author: "octocat".to_string(),
+            author_avatar_url: None,
+            authored_at: Some(time),
+        }];
         let comments = vec![PullRequestComment {
             id: "comment".to_string(),
             author: "octocat".to_string(),
@@ -298,12 +318,13 @@ mod tests {
         thread.comments[0].created_at = time + Duration::minutes(3);
         let threads = vec![thread];
 
-        let items = overview_timeline_items(&reviews, &comments, &threads);
+        let items = overview_timeline_items(&commits, &reviews, &comments, &threads);
 
-        assert_eq!(items.len(), 3);
-        assert!(matches!(items[0], OverviewTimelineItem::Review(_)));
-        assert!(matches!(items[1], OverviewTimelineItem::Comment(_)));
-        assert!(matches!(items[2], OverviewTimelineItem::Thread(_)));
+        assert_eq!(items.len(), 4);
+        assert!(matches!(items[0], OverviewTimelineItem::Commit(_)));
+        assert!(matches!(items[1], OverviewTimelineItem::Review(_)));
+        assert!(matches!(items[2], OverviewTimelineItem::Comment(_)));
+        assert!(matches!(items[3], OverviewTimelineItem::Thread(_)));
     }
 
     #[test]
@@ -364,7 +385,7 @@ mod tests {
     #[test]
     fn finds_thread_index_in_virtual_overview_items() {
         let thread = review_thread(ReviewThreadState::Unresolved);
-        let items = overview_panel_items(&[], &[], &[thread], false, None);
+        let items = overview_panel_items(&[], &[], &[], &[thread], false, None);
 
         assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(1));
         assert_eq!(overview_thread_item_index(&items, "missing"), None);
