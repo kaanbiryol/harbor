@@ -1,4 +1,5 @@
 use super::*;
+use crate::icons::Octicon;
 
 impl AppView {
     pub(super) fn render_description_card(
