@@ -30,7 +30,7 @@ Write idiomatic, maintainable Rust that can scale with future development.
 - Keep modules small and cohesive. Public APIs should be intentional, documented when non-obvious, and hard to misuse.
 - Use traits at architecture boundaries, such as GitHub transport, storage, sync, and local Git integration. Do not add abstractions without a concrete boundary or testability benefit.
 - Keep async code explicit about cancellation, ordering, and UI handoff. Do not block async executors with synchronous heavy work.
-- Add focused tests around domain mapping, diff parsing, review-thread mapping, storage migrations, and command behavior.
+- Add focused tests around domain mapping, diff parsing, review-thread mapping, storage schema initialization, and command behavior.
 - Use `tracing` or an equivalent structured logging approach for diagnostics once runtime code exists.
 
 ## Target Architecture
