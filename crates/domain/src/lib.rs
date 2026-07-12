@@ -1,9 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+mod checks;
 pub mod diff;
 pub mod diff_reviews;
 pub mod reviews;
+
+pub use checks::checks_summary_from_runs;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct RepoId {

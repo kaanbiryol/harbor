@@ -1,9 +1,9 @@
 use gpui::Context;
+use harbor_domain::checks_summary_from_runs;
 use harbor_sync::SyncTarget;
 
 use crate::{
     actions::PanelTab,
-    panels::checks_summary_from_runs,
     workspace::{
         AppView, async_updates::AppViewAsyncUpdateExt,
         pull_request_detail_loaders::SelectedPullRequestLoad,

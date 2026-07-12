@@ -1,13 +1,12 @@
 use gpui::{AppContext, Context};
 use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReviewThread,
-    WorkflowRun,
+    WorkflowRun, checks_summary_from_runs,
 };
 use harbor_sync::SyncTarget;
 
 use crate::{
     diff::{ParsedDiff, parse_files},
-    panels::checks_summary_from_runs,
     workspace::{
         AppView, async_updates::AppViewAsyncUpdateExt,
         pull_request_detail_loaders::SelectedPullRequestLoad,

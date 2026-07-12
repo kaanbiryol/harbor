@@ -1,25 +1,7 @@
-use harbor_domain::{CheckConclusion, CheckStatus, MergeState, ReviewDecision};
+use harbor_domain::{ChecksSummary, MergeState, ReviewDecision};
 
 use super::*;
-use crate::test_fixtures::{check_run, pull_request};
-
-#[test]
-fn summarizes_check_runs() {
-    let check_runs = vec![
-        check_run(CheckStatus::Completed, Some(CheckConclusion::Success)),
-        check_run(CheckStatus::Completed, Some(CheckConclusion::Failure)),
-        check_run(CheckStatus::Completed, Some(CheckConclusion::Skipped)),
-        check_run(CheckStatus::InProgress, None),
-    ];
-
-    let summary = checks_summary_from_runs(&check_runs);
-
-    assert_eq!(summary.total, 4);
-    assert_eq!(summary.passed, 1);
-    assert_eq!(summary.failed, 1);
-    assert_eq!(summary.skipped, 1);
-    assert_eq!(summary.pending, 1);
-}
+use crate::test_fixtures::pull_request;
 
 #[test]
 fn shows_missing_checks_without_no_review_noise() {

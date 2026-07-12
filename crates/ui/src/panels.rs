@@ -33,8 +33,8 @@ pub(crate) use diff_view::*;
 pub(crate) use logs::*;
 pub(crate) use pull_request::*;
 pub(crate) use pull_request_signals::{
-    MergeReadiness, PullRequestReadiness, ReviewReadiness, checks_summary_from_runs, merge_blocker,
-    merge_readiness, pull_request_readiness, review_action_blocker, review_readiness,
+    MergeReadiness, PullRequestReadiness, ReviewReadiness, merge_blocker, merge_readiness,
+    pull_request_readiness, review_action_blocker, review_readiness,
 };
 pub(crate) use review::*;
 pub(crate) use review_markdown::{

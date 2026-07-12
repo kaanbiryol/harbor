@@ -1,7 +1,4 @@
-use harbor_domain::{
-    CheckConclusion, CheckRun, CheckStatus, ChecksSummary, MergeState, PullRequest,
-    PullRequestState, ReviewDecision,
-};
+use harbor_domain::{MergeState, PullRequest, PullRequestState, ReviewDecision};
 
 const MAX_PULL_REQUEST_ROW_SIGNALS: usize = 3;
 
@@ -147,29 +144,6 @@ impl PullRequestRowSignal {
             label: Some(label.into()),
         }
     }
-}
-
-pub(crate) fn checks_summary_from_runs(check_runs: &[CheckRun]) -> ChecksSummary {
-    let mut summary = ChecksSummary {
-        total: check_runs.len(),
-        ..ChecksSummary::default()
-    };
-
-    for check_run in check_runs {
-        match (check_run.status, check_run.conclusion) {
-            (CheckStatus::Completed, Some(CheckConclusion::Success)) => summary.passed += 1,
-            (CheckStatus::Completed, Some(CheckConclusion::Skipped)) => summary.skipped += 1,
-            (CheckStatus::Completed, Some(CheckConclusion::Neutral)) => summary.skipped += 1,
-            (CheckStatus::Completed, Some(CheckConclusion::Cancelled)) => summary.failed += 1,
-            (CheckStatus::Completed, Some(CheckConclusion::Failure)) => summary.failed += 1,
-            (CheckStatus::Completed, Some(CheckConclusion::TimedOut)) => summary.failed += 1,
-            (CheckStatus::Completed, Some(CheckConclusion::ActionRequired)) => summary.failed += 1,
-            (CheckStatus::Completed, None) => summary.failed += 1,
-            (CheckStatus::InProgress | CheckStatus::Queued, _) => summary.pending += 1,
-        }
-    }
-
-    summary
 }
 
 pub(crate) fn review_action_blocker(pr: &PullRequest) -> Option<String> {
