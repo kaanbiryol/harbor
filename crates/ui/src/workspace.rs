@@ -165,6 +165,7 @@ pub struct AppView {
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
     diff_list_items: Arc<[DiffListItem]>,
+    active_commit_sha: Option<String>,
     overview_state: OverviewUiState,
     panel_list_state: PanelListState,
     selection_state: PullRequestSelectionState,

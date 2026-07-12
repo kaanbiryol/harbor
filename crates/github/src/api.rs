@@ -71,6 +71,8 @@ pub trait PullRequestContentSource: Send + Sync {
         repo: &str,
         number: u64,
     ) -> Result<Vec<DiffFile>>;
+
+    async fn list_commit_files(&self, owner: &str, repo: &str, sha: &str) -> Result<Vec<DiffFile>>;
 }
 
 pub trait GitHubAuthApi: Send + Sync {

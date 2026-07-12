@@ -6,7 +6,7 @@ use crate::{date_time::natural_time_label, visual::color, workspace::AppView};
 
 use super::{
     render_empty_panel_card, render_error_panel_card, render_panel_card, render_panel_header,
-    sync_virtual_list_item_count,
+    render_review_avatar, sync_virtual_list_item_count,
 };
 
 pub(crate) struct CommitsPanelRenderInput<'a> {
@@ -29,6 +29,7 @@ pub(crate) fn render_commits_panel(
     sync_virtual_list_item_count(&list_state, commits.len());
 
     div()
+        .image_cache(gpui::retain_all("commit-avatar-cache"))
         .id("commits-panel")
         .flex()
         .flex_col()
@@ -68,7 +69,7 @@ pub(crate) fn render_commits_panel(
                                 view.detail_state
                                     .commits()
                                     .get(index)
-                                    .map(render_commit_row)
+                                    .map(|commit| render_commit_row(commit, _cx))
                                     .unwrap_or_else(|| div().into_any_element())
                             }),
                         )
@@ -80,7 +81,7 @@ pub(crate) fn render_commits_panel(
         })
 }
 
-fn render_commit_row(commit: &PullRequestCommit) -> gpui::AnyElement {
+fn render_commit_row(commit: &PullRequestCommit, cx: &mut Context<AppView>) -> gpui::AnyElement {
     let subject = commit
         .message
         .lines()
@@ -89,16 +90,12 @@ fn render_commit_row(commit: &PullRequestCommit) -> gpui::AnyElement {
         .to_string();
     let short_sha: String = commit.sha.chars().take(7).collect();
     let time = commit.authored_at.map(natural_time_label);
-    let initial = commit
-        .author
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_uppercase()
-        .to_string();
+    let sha = commit.sha.clone();
 
     div()
         .id(format!("commit-row-{}", commit.sha))
+        .w_full()
+        .min_w_0()
         .flex()
         .items_center()
         .gap_3()
@@ -106,20 +103,16 @@ fn render_commit_row(commit: &PullRequestCommit) -> gpui::AnyElement {
         .py_2()
         .border_b_1()
         .border_color(color::border())
-        .child(
-            div()
-                .flex_none()
-                .size_6()
-                .rounded_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(color::row_hover())
-                .text_xs()
-                .font_medium()
-                .text_color(color::text_secondary())
-                .child(initial),
-        )
+        .cursor_pointer()
+        .hover(|style| style.bg(color::row_hover()))
+        .on_click(cx.listener(move |view, _, _, cx| {
+            view.select_commit(sha.clone(), cx);
+        }))
+        .child(render_review_avatar(
+            &commit.author,
+            commit.author_avatar_url.as_deref(),
+            24.0,
+        ))
         .child(
             div()
                 .flex_1()

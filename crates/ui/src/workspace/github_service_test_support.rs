@@ -332,6 +332,16 @@ impl PullRequestContentSource for FakeGitHubApi {
         self.record_call("list_pull_request_files");
         pop_result(&self.files, "list_pull_request_files")
     }
+
+    async fn list_commit_files(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _sha: &str,
+    ) -> Result<Vec<DiffFile>> {
+        self.record_call("list_commit_files");
+        pop_result(&self.files, "list_commit_files")
+    }
 }
 
 #[async_trait]

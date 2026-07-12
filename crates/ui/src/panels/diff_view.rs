@@ -21,10 +21,15 @@ pub(crate) use inline_reviews::{
 use std::{collections::HashSet, sync::Arc};
 
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use harbor_domain::{DiffFile, ReviewThread};
+use gpui_component::{
+    Icon, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+};
+use harbor_domain::{DiffFile, PullRequest, ReviewThread};
 
 use crate::diff::ParsedDiff;
 use crate::diff_reviews::ReviewThreadIndex;
+use crate::icons::Octicon;
 use crate::visual::color;
 use crate::workspace::{AppView, ReviewComposer};
 
@@ -50,6 +55,7 @@ const REVIEW_MARKER_WIDTH: f32 = 24.0;
 const PREFIX_WIDTH: f32 = 16.0;
 
 pub(crate) struct DiffPanelRenderInput<'a> {
+    pub(crate) pull_request: Option<&'a PullRequest>,
     pub(crate) files: &'a [DiffFile],
     pub(crate) diffs: &'a [Option<ParsedDiff>],
     pub(crate) visible_file_indices: &'a [usize],
@@ -59,6 +65,7 @@ pub(crate) struct DiffPanelRenderInput<'a> {
     pub(crate) review_threads: &'a [ReviewThread],
     pub(crate) review_composer: Option<&'a ReviewComposer>,
     pub(crate) active_file_index: usize,
+    pub(crate) commit_sha: Option<&'a str>,
     pub(crate) is_loading: bool,
     pub(crate) error: Option<&'a str>,
     pub(crate) list_state: ListState,
@@ -156,6 +163,112 @@ pub(crate) fn render_diff_panel(
     let processor_view_entity = view_entity.clone();
     let list_items_for_render = input.list_items.clone();
     let review_thread_index = Arc::new(ReviewThreadIndex::new(input.review_threads));
+    let commit_scope = input.commit_sha.map(|sha| {
+        let short_sha: String = sha.chars().take(7).collect();
+        let pull_request = input.pull_request;
+        div()
+            .flex()
+            .flex_none()
+            .w_full()
+            .h(px(56.0))
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .px_3()
+            .py_2()
+            .border_1()
+            .border_color(color::border())
+            .bg(color::content_background())
+            .text_sm()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .flex_none()
+                            .size_7()
+                            .rounded_md()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(color::row_hover())
+                            .child(Icon::new(Octicon::GitPullRequest).text_color(color::accent())),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .gap_0p5()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .font_medium()
+                                    .text_sm()
+                                    .text_color(color::text_primary())
+                                    .child("This diff is part of a pull request"),
+                            )
+                            .when_some(pull_request, |element, pull_request| {
+                                element.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .min_w_0()
+                                        .text_xs()
+                                        .text_color(color::text_secondary())
+                                        .child(format!(
+                                            "{}/{}",
+                                            pull_request.repo.owner, pull_request.repo.name
+                                        ))
+                                        .child(
+                                            div()
+                                                .flex_none()
+                                                .rounded_sm()
+                                                .px_1()
+                                                .bg(color::row_hover())
+                                                .text_color(color::accent())
+                                                .child(format!("#{}", pull_request.number)),
+                                        )
+                                        .child(div().truncate().child(pull_request.title.clone())),
+                                )
+                            }),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .flex_none()
+                    .child(
+                        div()
+                            .rounded_full()
+                            .px_1p5()
+                            .py_0p5()
+                            .font_family("Lilex")
+                            .text_xs()
+                            .bg(color::row_hover())
+                            .text_color(color::accent())
+                            .child(short_sha),
+                    )
+                    .child(
+                        Button::new("show-full-pull-request-diff")
+                            .label("View full PR diff")
+                            .xsmall()
+                            .compact()
+                            .ghost()
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.show_full_pull_request_diff(cx);
+                            })),
+                    ),
+            )
+    });
 
     div()
         .image_cache(gpui::retain_all("diff-review-avatar-cache"))
@@ -165,6 +278,7 @@ pub(crate) fn render_diff_panel(
         .flex_1()
         .min_h_0()
         .min_w_0()
+        .when_some(commit_scope, |element, scope| element.gap_2().child(scope))
         .child(
             div()
                 .flex()

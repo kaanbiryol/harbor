@@ -375,6 +375,22 @@ where
         Ok(files)
     }
 
+    pub async fn list_commit_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        sha: &str,
+    ) -> Result<Vec<DiffFile>> {
+        let path = format!("/repos/{owner}/{repo}/commits/{sha}");
+        let response = self.transport.rest_get(&path, &[]).await?;
+        let files = response
+            .get("files")
+            .cloned()
+            .ok_or_else(|| GitHubError::Mapping("missing files in commit response".to_string()))?;
+
+        dto::diff_files_from_value(files)
+    }
+
     pub async fn list_pull_request_commits(
         &self,
         owner: &str,

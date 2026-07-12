@@ -133,6 +133,7 @@ impl AppView {
                             let visible_file_indices = self.visible_file_indices(cx);
                             render_diff_panel(
                                 DiffPanelRenderInput {
+                                    pull_request: pr,
                                     files: self.detail_state.files(),
                                     diffs: self.detail_state.diffs(),
                                     visible_file_indices: &visible_file_indices,
@@ -151,6 +152,7 @@ impl AppView {
                                         .review_composer_state
                                         .inline_composer(),
                                     active_file_index: self.active_file_index(),
+                                    commit_sha: self.active_commit_sha.as_deref(),
                                     is_loading: self.detail_state.files_loading(),
                                     error: self.detail_state.files_error(),
                                     list_state: self.diff_list_state.clone(),

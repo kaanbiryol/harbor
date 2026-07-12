@@ -173,6 +173,10 @@ impl PullRequestContentSource for GitHubSession {
             .list_pull_request_files(owner, repo, number)
             .await
     }
+
+    async fn list_commit_files(&self, owner: &str, repo: &str, sha: &str) -> Result<Vec<DiffFile>> {
+        self.client()?.list_commit_files(owner, repo, sha).await
+    }
 }
 
 #[async_trait]

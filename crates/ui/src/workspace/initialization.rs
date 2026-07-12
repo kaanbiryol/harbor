@@ -258,6 +258,7 @@ impl AppView {
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
             diff_list_items: Arc::from([]),
+            active_commit_sha: None,
             overview_state: OverviewUiState::new(ListState::new(
                 0,
                 ListAlignment::Top,
