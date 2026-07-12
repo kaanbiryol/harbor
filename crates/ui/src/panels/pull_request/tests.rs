@@ -220,6 +220,47 @@ fn allows_clean_pull_request_merge() {
     assert_eq!(merge_blocker(&pull_request()), None);
 }
 
+#[test]
+fn classifies_overview_readiness_in_priority_order() {
+    let mut pr = pull_request();
+    pr.merge_state = Some(MergeState::Dirty);
+    pr.checks_summary.failed = 1;
+    pr.review_decision = Some(ReviewDecision::ChangesRequested);
+    assert_eq!(pull_request_readiness(&pr), PullRequestReadiness::Conflicts);
+
+    pr.merge_state = Some(MergeState::Clean);
+    assert_eq!(
+        pull_request_readiness(&pr),
+        PullRequestReadiness::ChecksFailed
+    );
+
+    pr.checks_summary.failed = 0;
+    pr.review_decision = Some(ReviewDecision::Approved);
+    pr.unresolved_threads = 1;
+    assert_eq!(
+        pull_request_readiness(&pr),
+        PullRequestReadiness::ConversationsOpen
+    );
+    assert_eq!(merge_readiness(&pr), MergeReadiness::ConversationsOpen);
+
+    pr.unresolved_threads = 0;
+    assert_eq!(pull_request_readiness(&pr), PullRequestReadiness::Ready);
+    assert_eq!(merge_readiness(&pr), MergeReadiness::Ready);
+}
+
+#[test]
+fn keeps_merge_action_eligibility_distinct_from_visual_approval_readiness() {
+    let mut pr = pull_request();
+    pr.review_decision = None;
+
+    assert_eq!(merge_blocker(&pr), None);
+    assert_eq!(merge_readiness(&pr), MergeReadiness::WaitingForApproval);
+    assert_eq!(
+        pull_request_readiness(&pr),
+        PullRequestReadiness::ReviewRequired
+    );
+}
+
 fn signal_summary(
     signals: &[PullRequestRowSignal],
 ) -> Vec<(PullRequestRowSignalKind, Option<String>)> {

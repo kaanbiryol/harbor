@@ -21,7 +21,10 @@ use crate::{
     github::{avatar_initial, avatar_url},
     icons::Octicon,
     panels::{
-        overview_markdown_body, render_review_markdown_state, review_markdown_body,
+        MergeReadiness, PullRequestReadiness, ReviewReadiness,
+        merge_readiness as classify_merge_readiness, overview_markdown_body,
+        pull_request_readiness as classify_pull_request_readiness, render_review_markdown_state,
+        review_markdown_body, review_readiness as classify_review_readiness,
         review_thread_diff_preview,
     },
     visual::{Tone, color, tone_colors},
@@ -1268,72 +1271,49 @@ fn render_summary_row(
 }
 
 fn pull_request_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
-    if pr.merge_state == Some(MergeState::Dirty) {
-        ("Conflicts", "Resolve conflicts to merge.", Tone::Danger)
-    } else if pr.checks_summary.failed > 0 {
-        ("Checks failed", "Fix failing checks.", Tone::Danger)
-    } else if pr.checks_summary.pending > 0 {
-        ("Checks pending", "Waiting for checks.", Tone::Warning)
-    } else if pr.is_draft {
-        ("Draft", "Not ready for review.", Tone::Neutral)
-    } else if pr.review_decision == Some(ReviewDecision::ChangesRequested) {
-        (
-            "Changes requested",
-            "Address review feedback.",
-            Tone::Danger,
-        )
-    } else if pr.review_decision != Some(ReviewDecision::Approved) {
-        (
-            "Review required",
-            "Approval needed to merge.",
-            Tone::Warning,
-        )
-    } else if pr.unresolved_threads > 0 {
-        (
-            "Conversations open",
-            "Resolve threads to merge.",
-            Tone::Warning,
-        )
-    } else {
-        ("Ready", "Ready to merge.", Tone::Success)
-    }
+    let readiness = classify_pull_request_readiness(pr);
+    let tone = match readiness {
+        PullRequestReadiness::Conflicts
+        | PullRequestReadiness::ChecksFailed
+        | PullRequestReadiness::ChangesRequested => Tone::Danger,
+        PullRequestReadiness::ChecksPending
+        | PullRequestReadiness::ReviewRequired
+        | PullRequestReadiness::ConversationsOpen => Tone::Warning,
+        PullRequestReadiness::Draft => Tone::Neutral,
+        PullRequestReadiness::Ready => Tone::Success,
+    };
+
+    (readiness.label(), readiness.description(), tone)
 }
 
 fn review_readiness_description(decision: Option<ReviewDecision>) -> &'static str {
-    match decision {
-        Some(ReviewDecision::Approved) => "Approvals received",
-        Some(ReviewDecision::ChangesRequested) => "Changes were requested",
-        Some(ReviewDecision::ReviewRequired) | None => "1 approval required",
-    }
+    classify_review_readiness(decision).description()
 }
 
 fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
-    match decision {
-        Some(ReviewDecision::Approved) => ("Approved", Tone::Success),
-        Some(ReviewDecision::ChangesRequested) => ("Changes requested", Tone::Danger),
-        Some(ReviewDecision::ReviewRequired) | None => ("Pending", Tone::Warning),
-    }
+    let readiness = classify_review_readiness(decision);
+    let tone = match readiness {
+        ReviewReadiness::Approved => Tone::Success,
+        ReviewReadiness::ChangesRequested => Tone::Danger,
+        ReviewReadiness::Pending => Tone::Warning,
+    };
+
+    (readiness.label(), tone)
 }
 
 fn merge_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
-    match pr.merge_state {
-        Some(MergeState::Dirty) => ("Conflicts", "Resolve merge conflicts", Tone::Danger),
-        Some(MergeState::Blocked) => ("Blocked", "Requirements not met", Tone::Danger),
-        Some(MergeState::Behind) => ("Behind", "Update branch", Tone::Warning),
-        Some(MergeState::Unknown) | None => ("Unknown", "Status unavailable", Tone::Neutral),
-        Some(MergeState::Clean) if pr.review_decision != Some(ReviewDecision::Approved) => {
-            ("Blocked", "Waiting for approval", Tone::Warning)
-        }
-        Some(MergeState::Clean) if pr.unresolved_threads > 0 => {
-            ("Blocked", "Resolve open threads", Tone::Warning)
-        }
-        Some(MergeState::Clean)
-            if pr.checks_summary.failed > 0 || pr.checks_summary.pending > 0 =>
-        {
-            ("Blocked", "Waiting for checks", Tone::Warning)
-        }
-        Some(MergeState::Clean) => ("Ready", "Requirements met", Tone::Success),
-    }
+    let readiness = classify_merge_readiness(pr);
+    let tone = match readiness {
+        MergeReadiness::Conflicts | MergeReadiness::Blocked => Tone::Danger,
+        MergeReadiness::Behind
+        | MergeReadiness::WaitingForApproval
+        | MergeReadiness::ConversationsOpen
+        | MergeReadiness::ChecksPending => Tone::Warning,
+        MergeReadiness::Unknown => Tone::Neutral,
+        MergeReadiness::Ready => Tone::Success,
+    };
+
+    (readiness.label(), readiness.description(), tone)
 }
 
 fn render_empty_value(label: &'static str) -> AnyElement {

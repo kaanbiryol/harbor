@@ -29,6 +29,111 @@ pub(crate) enum PullRequestRowSignalKind {
     UnresolvedThreads,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PullRequestReadiness {
+    Conflicts,
+    ChecksFailed,
+    ChecksPending,
+    Draft,
+    ChangesRequested,
+    ReviewRequired,
+    ConversationsOpen,
+    Ready,
+}
+
+impl PullRequestReadiness {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Conflicts => "Conflicts",
+            Self::ChecksFailed => "Checks failed",
+            Self::ChecksPending => "Checks pending",
+            Self::Draft => "Draft",
+            Self::ChangesRequested => "Changes requested",
+            Self::ReviewRequired => "Review required",
+            Self::ConversationsOpen => "Conversations open",
+            Self::Ready => "Ready",
+        }
+    }
+
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::Conflicts => "Resolve conflicts to merge.",
+            Self::ChecksFailed => "Fix failing checks.",
+            Self::ChecksPending => "Waiting for checks.",
+            Self::Draft => "Not ready for review.",
+            Self::ChangesRequested => "Address review feedback.",
+            Self::ReviewRequired => "Approval needed to merge.",
+            Self::ConversationsOpen => "Resolve threads to merge.",
+            Self::Ready => "Ready to merge.",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MergeReadiness {
+    Conflicts,
+    Blocked,
+    Behind,
+    Unknown,
+    WaitingForApproval,
+    ConversationsOpen,
+    ChecksPending,
+    Ready,
+}
+
+impl MergeReadiness {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Conflicts => "Conflicts",
+            Self::Blocked
+            | Self::WaitingForApproval
+            | Self::ConversationsOpen
+            | Self::ChecksPending => "Blocked",
+            Self::Behind => "Behind",
+            Self::Unknown => "Unknown",
+            Self::Ready => "Ready",
+        }
+    }
+
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::Conflicts => "Resolve merge conflicts",
+            Self::Blocked => "Requirements not met",
+            Self::Behind => "Update branch",
+            Self::Unknown => "Status unavailable",
+            Self::WaitingForApproval => "Waiting for approval",
+            Self::ConversationsOpen => "Resolve open threads",
+            Self::ChecksPending => "Waiting for checks",
+            Self::Ready => "Requirements met",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReviewReadiness {
+    Approved,
+    ChangesRequested,
+    Pending,
+}
+
+impl ReviewReadiness {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Approved => "Approved",
+            Self::ChangesRequested => "Changes requested",
+            Self::Pending => "Pending",
+        }
+    }
+
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::Approved => "Approvals received",
+            Self::ChangesRequested => "Changes were requested",
+            Self::Pending => "1 approval required",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PullRequestRowSignal {
     pub(crate) kind: PullRequestRowSignalKind,
@@ -72,6 +177,53 @@ pub(crate) fn review_action_blocker(pr: &PullRequest) -> Option<String> {
         Some(format!("PR #{} is not open", pr.number))
     } else {
         None
+    }
+}
+
+pub(crate) fn pull_request_readiness(pr: &PullRequest) -> PullRequestReadiness {
+    if pr.merge_state == Some(MergeState::Dirty) {
+        PullRequestReadiness::Conflicts
+    } else if pr.checks_summary.failed > 0 {
+        PullRequestReadiness::ChecksFailed
+    } else if pr.checks_summary.pending > 0 {
+        PullRequestReadiness::ChecksPending
+    } else if pr.is_draft {
+        PullRequestReadiness::Draft
+    } else if pr.review_decision == Some(ReviewDecision::ChangesRequested) {
+        PullRequestReadiness::ChangesRequested
+    } else if pr.review_decision != Some(ReviewDecision::Approved) {
+        PullRequestReadiness::ReviewRequired
+    } else if pr.unresolved_threads > 0 {
+        PullRequestReadiness::ConversationsOpen
+    } else {
+        PullRequestReadiness::Ready
+    }
+}
+
+pub(crate) fn review_readiness(decision: Option<ReviewDecision>) -> ReviewReadiness {
+    match decision {
+        Some(ReviewDecision::Approved) => ReviewReadiness::Approved,
+        Some(ReviewDecision::ChangesRequested) => ReviewReadiness::ChangesRequested,
+        Some(ReviewDecision::ReviewRequired) | None => ReviewReadiness::Pending,
+    }
+}
+
+pub(crate) fn merge_readiness(pr: &PullRequest) -> MergeReadiness {
+    match pr.merge_state {
+        Some(MergeState::Dirty) => MergeReadiness::Conflicts,
+        Some(MergeState::Blocked) => MergeReadiness::Blocked,
+        Some(MergeState::Behind) => MergeReadiness::Behind,
+        Some(MergeState::Unknown) | None => MergeReadiness::Unknown,
+        Some(MergeState::Clean) if pr.review_decision != Some(ReviewDecision::Approved) => {
+            MergeReadiness::WaitingForApproval
+        }
+        Some(MergeState::Clean) if pr.unresolved_threads > 0 => MergeReadiness::ConversationsOpen,
+        Some(MergeState::Clean)
+            if pr.checks_summary.failed > 0 || pr.checks_summary.pending > 0 =>
+        {
+            MergeReadiness::ChecksPending
+        }
+        Some(MergeState::Clean) => MergeReadiness::Ready,
     }
 }
 
