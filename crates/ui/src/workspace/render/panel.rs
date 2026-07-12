@@ -21,6 +21,10 @@ impl AppView {
             .selected_pull_request()
             .map(|pull_request| pull_request.unresolved_threads)
             .unwrap_or_default();
+        let commit_count = self
+            .detail_state
+            .commits_loaded()
+            .then(|| self.detail_state.commits().len());
 
         div()
             .debug_selector(|| "pull-request-panel-tabs".to_string())
@@ -88,6 +92,19 @@ impl AppView {
                                             .child(render_status_pill(
                                                 unresolved_threads.to_string(),
                                                 Tone::Warning,
+                                            )),
+                                    )
+                                },
+                            )
+                            .when_some(
+                                (tab == PanelTab::Commits).then_some(commit_count).flatten(),
+                                |element, commit_count| {
+                                    element.child(
+                                        div()
+                                            .debug_selector(|| "commits-tab-count".to_string())
+                                            .child(render_status_pill(
+                                                commit_count.to_string(),
+                                                Tone::Neutral,
                                             )),
                                     )
                                 },

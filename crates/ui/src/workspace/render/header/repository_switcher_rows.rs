@@ -64,6 +64,11 @@ pub(super) fn render_switcher_repository_row(
     view: Entity<AppView>,
 ) -> Stateful<Div> {
     let repository_for_pin = repository.clone();
+    let pin_icon = if pinned {
+        Octicon::PinSlash
+    } else {
+        Octicon::Pin
+    };
     div()
         .id(format!("switcher-repository-{}", repository.full_name()))
         .h(px(REPOSITORY_SWITCHER_ROW_HEIGHT))
@@ -106,9 +111,9 @@ pub(super) fn render_switcher_repository_row(
                 })
                 .child(
                     Button::new(format!("pin-{}", repository.full_name()))
-                        .xsmall()
+                        .with_size(px(24.))
                         .ghost()
-                        .icon(Octicon::Pin)
+                        .icon(pin_icon)
                         .tooltip(if pinned {
                             "Unpin repository"
                         } else {

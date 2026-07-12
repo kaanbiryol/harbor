@@ -36,21 +36,6 @@ impl SqliteStore {
         .execute(&mut **transaction)
         .await?;
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS pull_request_inbox_cache (
-                owner TEXT NOT NULL,
-                name TEXT NOT NULL,
-                mode TEXT NOT NULL,
-                number INTEGER NOT NULL,
-                head_sha TEXT NOT NULL,
-                position INTEGER NOT NULL,
-                pr_json TEXT NOT NULL,
-                fetched_at INTEGER NOT NULL,
-                PRIMARY KEY (owner, name, mode, number)
-            )",
-        )
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
             "CREATE TABLE IF NOT EXISTS pull_request_detail_cache (
                 owner TEXT NOT NULL,
                 name TEXT NOT NULL,

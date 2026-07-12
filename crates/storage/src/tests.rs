@@ -209,155 +209,6 @@ fn saves_and_deletes_app_settings() {
 }
 
 #[test]
-fn saves_and_loads_pull_request_inbox_cache() {
-    smol::block_on(async {
-        let database_path = test_database_path("pull-request-inbox-cache");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-        let repository = RepoId::new("acme", "app");
-        let pull_request = pull_request(7);
-
-        store
-            .save_pull_request_inbox(&repository, "open", std::slice::from_ref(&pull_request))
-            .await
-            .expect("save inbox");
-
-        let cached = store
-            .load_pull_request_inbox(&repository, "open")
-            .await
-            .expect("load inbox");
-
-        assert_eq!(cached, vec![pull_request]);
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
-fn invalid_inbox_cache_rows_are_discarded() {
-    smol::block_on(async {
-        let database_path = test_database_path("invalid-inbox-cache");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-        let repository = RepoId::new("acme", "app");
-
-        store
-            .save_pull_request_inbox(&repository, "open", &[pull_request(7)])
-            .await
-            .expect("save inbox");
-        sqlx::query(
-            "UPDATE pull_request_inbox_cache
-             SET pr_json = 'not-json'
-             WHERE owner = 'acme' AND name = 'app' AND mode = 'open'",
-        )
-        .execute(&store.pool)
-        .await
-        .expect("corrupt inbox cache");
-
-        let cached = store
-            .load_pull_request_inbox(&repository, "open")
-            .await
-            .expect("load invalid inbox as cache miss");
-        assert!(cached.is_empty());
-
-        let remaining = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM pull_request_inbox_cache
-             WHERE owner = 'acme' AND name = 'app' AND mode = 'open'",
-        )
-        .fetch_one(&store.pool)
-        .await
-        .expect("count inbox cache rows");
-        assert_eq!(remaining, 0);
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
-fn replaces_absent_pull_requests_for_cached_mode() {
-    smol::block_on(async {
-        let database_path = test_database_path("replace-pull-request-inbox-cache");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-        let repository = RepoId::new("acme", "app");
-
-        store
-            .save_pull_request_inbox(&repository, "open", &[pull_request(7), pull_request(8)])
-            .await
-            .expect("save initial inbox");
-        store
-            .save_pull_request_inbox(&repository, "open", &[pull_request(8)])
-            .await
-            .expect("replace inbox");
-
-        let cached = store
-            .load_pull_request_inbox(&repository, "open")
-            .await
-            .expect("load inbox");
-
-        assert_eq!(cached.len(), 1);
-        assert_eq!(cached[0].number, 8);
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
-fn failed_inbox_replacement_keeps_existing_cache() {
-    smol::block_on(async {
-        let database_path = test_database_path("inbox-rollback");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-        let repository = RepoId::new("acme", "app");
-        let original_pull_request = pull_request(7);
-
-        store
-            .save_pull_request_inbox(
-                &repository,
-                "open",
-                std::slice::from_ref(&original_pull_request),
-            )
-            .await
-            .expect("save original inbox");
-        sqlx::query(
-            "CREATE TRIGGER fail_inbox_insert
-             BEFORE INSERT ON pull_request_inbox_cache
-             BEGIN
-                SELECT RAISE(FAIL, 'blocked insert');
-             END",
-        )
-        .execute(&store.pool)
-        .await
-        .expect("create failing trigger");
-
-        let result = store
-            .save_pull_request_inbox(&repository, "open", &[pull_request(8)])
-            .await;
-        assert!(result.is_err());
-
-        let cached = store
-            .load_pull_request_inbox(&repository, "open")
-            .await
-            .expect("load inbox after failed replacement");
-        assert_eq!(cached, vec![original_pull_request]);
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
 fn saves_and_loads_detail_sections_independently() {
     smol::block_on(async {
         let database_path = test_database_path("pull-request-detail-cache");
@@ -477,38 +328,28 @@ fn invalid_detail_cache_rows_are_discarded() {
 }
 
 #[test]
-fn records_sync_failure_without_dropping_cache() {
+fn records_sync_failure() {
     smol::block_on(async {
-        let database_path = test_database_path("sync-failure-preserves-cache");
+        let database_path = test_database_path("sync-failure");
         let store = SqliteStore::connect(StorageConfig {
             database_path: database_path.clone(),
         })
         .await
         .expect("connect sqlite store");
         let repository = RepoId::new("acme", "app");
-        let pull_request = pull_request(7);
         let target_key = inbox_target_key(&repository, "open");
 
-        store
-            .save_pull_request_inbox(&repository, "open", std::slice::from_ref(&pull_request))
-            .await
-            .expect("save inbox");
         store
             .record_sync_failure(&target_key, "rate limited")
             .await
             .expect("record failure");
 
-        let cached = store
-            .load_pull_request_inbox(&repository, "open")
-            .await
-            .expect("load inbox");
         let target_state = store
             .sync_target_state(&target_key)
             .await
             .expect("load target state")
             .expect("target state");
 
-        assert_eq!(cached, vec![pull_request]);
         assert_eq!(target_state.last_error.as_deref(), Some("rate limited"));
         assert!(target_state.stale);
 

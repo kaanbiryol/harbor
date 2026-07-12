@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
+use gpui::{ListOffset, px};
 use harbor_domain::{PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThread};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,12 +62,20 @@ pub(super) fn sync_overview_list_items(
     previous_keys: &mut Vec<String>,
     next_keys: Vec<String>,
 ) {
+    let scroll_top = list_state.logical_scroll_top();
+    let was_at_top = scroll_top.item_ix == 0 && scroll_top.offset_in_item == px(0.0);
     let current_item_count = list_state.item_count();
     if current_item_count != previous_keys.len() {
         if current_item_count == 0 {
             list_state.reset(next_keys.len());
         } else {
             list_state.splice(0..current_item_count, next_keys.len());
+        }
+        if was_at_top {
+            list_state.scroll_to(ListOffset {
+                item_ix: 0,
+                offset_in_item: px(0.0),
+            });
         }
         *previous_keys = next_keys;
         return;
@@ -95,6 +104,12 @@ pub(super) fn sync_overview_list_items(
         prefix_len..previous_suffix_start,
         next_suffix_start - prefix_len,
     );
+    if was_at_top {
+        list_state.scroll_to(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        });
+    }
     *previous_keys = next_keys;
 }
 

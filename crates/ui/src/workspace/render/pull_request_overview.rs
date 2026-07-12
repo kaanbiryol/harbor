@@ -399,6 +399,28 @@ mod tests {
         assert_eq!(list_state.logical_scroll_top().offset_in_item, px(18.0));
     }
 
+    #[test]
+    fn keeps_overview_at_top_when_loading_placeholder_is_replaced() {
+        let list_state = ListState::new(3, ListAlignment::Top, px(160.0));
+        let mut previous_keys = vec![
+            "description".to_string(),
+            "message:loading".to_string(),
+            "composer".to_string(),
+        ];
+        let next_keys = vec![
+            "description".to_string(),
+            "comment:1".to_string(),
+            "review:1".to_string(),
+            "thread:1".to_string(),
+            "composer".to_string(),
+        ];
+
+        sync_overview_list_items(&list_state, &mut previous_keys, next_keys);
+
+        assert_eq!(list_state.logical_scroll_top().item_ix, 0);
+        assert_eq!(list_state.logical_scroll_top().offset_in_item, px(0.0));
+    }
+
     #[gpui::test]
     async fn overview_markdown_state_survives_virtual_row_recreation(cx: &mut TestAppContext) {
         cx.update(|cx| {

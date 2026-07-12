@@ -9,7 +9,8 @@ use crate::{
 use gpui::{AppContext, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px};
 use gpui_component::{Root, Theme, ThemeMode};
 use harbor_domain::{
-    Label, PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThreadState,
+    Label, PullRequestComment, PullRequestCommit, PullRequestReview, PullRequestReviewState,
+    ReviewThreadState,
 };
 
 #[test]
@@ -91,6 +92,14 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
                 color: Some("34d399".to_string()),
             }];
             view.pull_requests = vec![pull_request];
+            view.detail_state.replace_commits(vec![PullRequestCommit {
+                sha: "abc123".to_string(),
+                message: "Add commit count".to_string(),
+                author: "octocat".to_string(),
+                author_avatar_url: None,
+                authored_at: Some(test_time()),
+            }]);
+            view.detail_state.apply_commits_success();
             let unresolved_thread = review_thread(ReviewThreadState::Unresolved);
             let mut resolved_thread = review_thread(ReviewThreadState::Resolved);
             resolved_thread.id = "thread-resolved".to_string();
@@ -242,6 +251,7 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
             .is_some()
     );
     assert!(cx.debug_bounds("review-tab-unresolved-count").is_some());
+    assert!(cx.debug_bounds("commits-tab-count").is_some());
     let author_chip = cx
         .debug_bounds("pull-request-person-octocat")
         .expect("pull request author chip should render");

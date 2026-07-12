@@ -372,6 +372,10 @@ impl PullRequestDetailUiState {
         self.commits_load.is_loading()
     }
 
+    pub(crate) fn commits_loaded(&self) -> bool {
+        self.commits_load.is_loaded()
+    }
+
     pub(crate) fn workflows_loading(&self) -> bool {
         self.workflows_load.is_loading()
     }
