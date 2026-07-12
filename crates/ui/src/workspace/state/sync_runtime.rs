@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use harbor_sync::{
-    ActivityState, SyncDecision, SyncPolicy, SyncReason, SyncSignals, SyncState, SyncTarget,
-};
+use harbor_sync::{ActivityState, SyncDecision, SyncPolicy, SyncReason, SyncState, SyncTarget};
 
 pub(crate) struct SyncRuntimeState {
     activity_state: ActivityState,
@@ -64,23 +62,12 @@ impl SyncRuntimeState {
         self.sync_states.entry(target).or_default().mark_stale();
     }
 
-    pub(crate) fn decision(
-        &self,
-        target: SyncTarget,
-        reason: SyncReason,
-        signals: SyncSignals,
-    ) -> SyncDecision {
+    pub(crate) fn decision(&self, target: SyncTarget, reason: SyncReason) -> SyncDecision {
         let empty_state = SyncState::default();
         let state = self.sync_states.get(&target).unwrap_or(&empty_state);
 
-        self.sync_policy.decision(
-            target,
-            reason,
-            self.activity_state,
-            state,
-            signals,
-            Utc::now(),
-        )
+        self.sync_policy
+            .decision(reason, self.activity_state, state, Utc::now())
     }
 
     #[cfg(test)]

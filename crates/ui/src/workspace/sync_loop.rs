@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use gpui::Context;
-use harbor_sync::{
-    SyncDecision, SyncReason, SyncSignals, SyncTarget, checks_have_running_or_pending_work,
-};
+use harbor_sync::{SyncDecision, SyncReason, SyncTarget};
 
 use crate::{
     actions::PanelTab,
@@ -113,20 +111,7 @@ impl AppView {
     }
 
     fn sync_decision(&self, target: SyncTarget, reason: SyncReason) -> SyncDecision {
-        self.sync_runtime
-            .decision(target, reason, self.sync_signals())
-    }
-
-    fn sync_signals(&self) -> SyncSignals {
-        SyncSignals {
-            has_running_or_pending_checks: self.pull_requests.iter().any(|pull_request| {
-                checks_have_running_or_pending_work(pull_request.checks_summary)
-            }),
-            has_running_workflows: harbor_sync::workflow_runs_have_running_work(
-                self.detail_state.workflow_runs(),
-            ),
-            selected_pr_visible: self.selected_pull_request().is_some(),
-        }
+        self.sync_runtime.decision(target, reason)
     }
 
     pub(crate) fn active_inbox_focus_catch_up_due(&self) -> bool {
@@ -183,8 +168,9 @@ impl AppView {
             SyncTarget::SelectedPullRequestWorkflows => {
                 self.detail_state.mark_workflows_stale();
             }
-            SyncTarget::ActiveInbox | SyncTarget::SelectedPullRequestMetadata => {}
-            SyncTarget::ActiveInboxLight | SyncTarget::ActiveInboxEnrichment => {}
+            SyncTarget::ActiveInbox
+            | SyncTarget::ActiveInboxLight
+            | SyncTarget::SelectedPullRequestMetadata => {}
         }
         self.load_active_panel_data_if_needed(cx);
     }

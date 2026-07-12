@@ -6,8 +6,8 @@ use super::{
     PULL_REQUEST_INBOX_PAGE_SIZE, PullRequestInboxMode, PullRequestInboxPageInfo,
     PullRequestInboxRefresh, PullRequestInboxSource,
     enrichment::{
-        apply_pull_request_enrichments, graphql_rate_limit_too_low_for_enrichment,
-        merge_light_pull_request_rows, pull_request_enrichment_node_ids,
+        apply_pull_request_enrichments, merge_light_pull_request_rows,
+        pull_request_enrichment_node_ids,
     },
     http_cache::{
         github_validator_from_storage, http_validator_key, storage_validator_from_github,
@@ -80,10 +80,7 @@ where
     merge_light_pull_request_rows(previous_pull_requests, &mut pull_requests);
 
     let node_ids = pull_request_enrichment_node_ids(&pull_requests, force_enrichment);
-    let enrichment_error = if node_ids.is_empty()
-        || (!force_enrichment
-            && graphql_rate_limit_too_low_for_enrichment(&source.latest_rate_limits()))
-    {
+    let enrichment_error = if node_ids.is_empty() {
         None
     } else {
         tracing::info!(

@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use harbor_domain::{ChecksSummary, WorkflowConclusion, WorkflowRun, WorkflowStatus};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivityState {
@@ -13,7 +12,6 @@ pub enum ActivityState {
 pub enum SyncTarget {
     ActiveInbox,
     ActiveInboxLight,
-    ActiveInboxEnrichment,
     SelectedPullRequestMetadata,
     SelectedPullRequestReviews,
     SelectedPullRequestChecks,
@@ -23,11 +21,7 @@ pub enum SyncTarget {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SyncReason {
     Scheduled,
-    Manual,
-    Startup,
-    RepositorySwitch,
     FocusGained,
-    LocalMutation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -72,23 +66,6 @@ impl SyncState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SyncSignals {
-    pub has_running_or_pending_checks: bool,
-    pub has_running_workflows: bool,
-    pub selected_pr_visible: bool,
-}
-
-impl Default for SyncSignals {
-    fn default() -> Self {
-        Self {
-            has_running_or_pending_checks: false,
-            has_running_workflows: false,
-            selected_pr_visible: true,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyncPolicy {
     pub focused_interval: Duration,
     pub background_interval: Duration,
@@ -106,25 +83,16 @@ impl Default for SyncPolicy {
 impl SyncPolicy {
     pub fn decision(
         &self,
-        _target: SyncTarget,
         reason: SyncReason,
         activity: ActivityState,
         state: &SyncState,
-        _signals: SyncSignals,
         now: DateTime<Utc>,
     ) -> SyncDecision {
         if state.in_flight {
             return SyncDecision::SkipInFlight;
         }
 
-        if matches!(
-            reason,
-            SyncReason::Manual
-                | SyncReason::Startup
-                | SyncReason::RepositorySwitch
-                | SyncReason::LocalMutation
-        ) || state.stale
-        {
+        if state.stale {
             return SyncDecision::RunNow;
         }
 
@@ -201,20 +169,6 @@ impl SyncBackoff {
     }
 }
 
-pub fn workflow_runs_have_running_work(workflow_runs: &[WorkflowRun]) -> bool {
-    workflow_runs.iter().any(|run| {
-        run.status != WorkflowStatus::Completed
-            || matches!(
-                run.conclusion,
-                None | Some(WorkflowConclusion::ActionRequired)
-            )
-    })
-}
-
-pub fn checks_have_running_or_pending_work(summary: ChecksSummary) -> bool {
-    summary.pending > 0
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, TimeZone, Utc};
@@ -222,7 +176,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn focused_targets_refresh_every_five_minutes() {
+    fn focused_sync_refreshes_every_five_minutes() {
         let policy = SyncPolicy::default();
         let now = time(10);
         let state = SyncState {
@@ -230,200 +184,18 @@ mod tests {
             ..SyncState::default()
         };
 
-        for target in [
-            SyncTarget::ActiveInbox,
-            SyncTarget::ActiveInboxLight,
-            SyncTarget::ActiveInboxEnrichment,
-            SyncTarget::SelectedPullRequestMetadata,
-            SyncTarget::SelectedPullRequestReviews,
-            SyncTarget::SelectedPullRequestChecks,
-            SyncTarget::SelectedPullRequestWorkflows,
-        ] {
-            assert_eq!(
-                policy.decision(
-                    target,
-                    SyncReason::Scheduled,
-                    ActivityState::Focused,
-                    &state,
-                    SyncSignals::default(),
-                    now,
-                ),
-                SyncDecision::Wait(Duration::from_secs(60))
-            );
-
-            assert_eq!(
-                policy.decision(
-                    target,
-                    SyncReason::Scheduled,
-                    ActivityState::Focused,
-                    &SyncState {
-                        last_successful_fetch_at: Some(time(5)),
-                        ..SyncState::default()
-                    },
-                    SyncSignals::default(),
-                    now,
-                ),
-                SyncDecision::RunNow
-            );
-        }
-    }
-
-    #[test]
-    fn focus_catch_up_uses_focused_cadence_for_all_inbox_targets() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
-        for target in [SyncTarget::ActiveInbox, SyncTarget::ActiveInboxLight] {
-            assert_eq!(
-                policy.decision(
-                    target,
-                    SyncReason::FocusGained,
-                    ActivityState::Focused,
-                    &SyncState {
-                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
-                        ..SyncState::default()
-                    },
-                    SyncSignals::default(),
-                    now,
-                ),
-                SyncDecision::Wait(Duration::from_secs(269))
-            );
-
-            assert_eq!(
-                policy.decision(
-                    target,
-                    SyncReason::FocusGained,
-                    ActivityState::Focused,
-                    &SyncState {
-                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(300)),
-                        ..SyncState::default()
-                    },
-                    SyncSignals::default(),
-                    now,
-                ),
-                SyncDecision::RunNow
-            );
-        }
-    }
-
-    #[test]
-    fn background_targets_refresh_every_thirty_minutes() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
-        for target in [
-            SyncTarget::ActiveInbox,
-            SyncTarget::ActiveInboxLight,
-            SyncTarget::ActiveInboxEnrichment,
-            SyncTarget::SelectedPullRequestMetadata,
-            SyncTarget::SelectedPullRequestReviews,
-            SyncTarget::SelectedPullRequestChecks,
-            SyncTarget::SelectedPullRequestWorkflows,
-        ] {
-            assert_eq!(
-                policy.decision(
-                    target,
-                    SyncReason::Scheduled,
-                    ActivityState::Background,
-                    &SyncState {
-                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_740)),
-                        ..SyncState::default()
-                    },
-                    SyncSignals::default(),
-                    now,
-                ),
-                SyncDecision::Wait(Duration::from_secs(60))
-            );
-
-            assert_eq!(
-                policy.decision(
-                    target,
-                    SyncReason::Scheduled,
-                    ActivityState::Background,
-                    &SyncState {
-                        last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_800)),
-                        ..SyncState::default()
-                    },
-                    SyncSignals::default(),
-                    now,
-                ),
-                SyncDecision::RunNow
-            );
-        }
-    }
-
-    #[test]
-    fn running_checks_do_not_accelerate_refresh() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
         assert_eq!(
-            policy.decision(
-                SyncTarget::SelectedPullRequestChecks,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(44)),
-                    ..SyncState::default()
-                },
-                SyncSignals {
-                    has_running_or_pending_checks: true,
-                    ..SyncSignals::default()
-                },
-                now,
-            ),
-            SyncDecision::Wait(Duration::from_secs(256))
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::SelectedPullRequestChecks,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(300)),
-                    ..SyncState::default()
-                },
-                SyncSignals {
-                    has_running_or_pending_checks: true,
-                    ..SyncSignals::default()
-                },
-                now,
-            ),
-            SyncDecision::RunNow
-        );
-    }
-
-    #[test]
-    fn selected_metadata_refreshes_every_five_minutes() {
-        let policy = SyncPolicy::default();
-        let now = time(10);
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::SelectedPullRequestMetadata,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &SyncState {
-                    last_successful_fetch_at: Some(time(6)),
-                    ..SyncState::default()
-                },
-                SyncSignals::default(),
-                now,
-            ),
+            policy.decision(SyncReason::Scheduled, ActivityState::Focused, &state, now,),
             SyncDecision::Wait(Duration::from_secs(60))
         );
-
         assert_eq!(
             policy.decision(
-                SyncTarget::SelectedPullRequestMetadata,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
                     last_successful_fetch_at: Some(time(5)),
                     ..SyncState::default()
                 },
-                SyncSignals::default(),
                 now,
             ),
             SyncDecision::RunNow
@@ -431,7 +203,69 @@ mod tests {
     }
 
     #[test]
-    fn manual_and_stale_sync_run_immediately() {
+    fn focus_catch_up_uses_focused_cadence() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        assert_eq!(
+            policy.decision(
+                SyncReason::FocusGained,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(31)),
+                    ..SyncState::default()
+                },
+                now,
+            ),
+            SyncDecision::Wait(Duration::from_secs(269))
+        );
+        assert_eq!(
+            policy.decision(
+                SyncReason::FocusGained,
+                ActivityState::Focused,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(300)),
+                    ..SyncState::default()
+                },
+                now,
+            ),
+            SyncDecision::RunNow
+        );
+    }
+
+    #[test]
+    fn background_sync_refreshes_every_thirty_minutes() {
+        let policy = SyncPolicy::default();
+        let now = time(10);
+
+        assert_eq!(
+            policy.decision(
+                SyncReason::Scheduled,
+                ActivityState::Background,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_740)),
+                    ..SyncState::default()
+                },
+                now,
+            ),
+            SyncDecision::Wait(Duration::from_secs(60))
+        );
+        assert_eq!(
+            policy.decision(
+                SyncReason::Scheduled,
+                ActivityState::Background,
+                &SyncState {
+                    last_successful_fetch_at: Some(now - chrono::Duration::seconds(1_800)),
+                    ..SyncState::default()
+                },
+                now,
+            ),
+            SyncDecision::RunNow
+        );
+    }
+
+    #[test]
+    fn stale_sync_runs_immediately() {
         let policy = SyncPolicy::default();
         let now = time(10);
         let fresh = SyncState {
@@ -441,26 +275,12 @@ mod tests {
 
         assert_eq!(
             policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::Manual,
-                ActivityState::Focused,
-                &fresh,
-                SyncSignals::default(),
-                now,
-            ),
-            SyncDecision::RunNow
-        );
-
-        assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInbox,
                 SyncReason::Scheduled,
                 ActivityState::Focused,
                 &SyncState {
                     stale: true,
                     ..fresh
                 },
-                SyncSignals::default(),
                 now,
             ),
             SyncDecision::RunNow
@@ -479,14 +299,7 @@ mod tests {
         };
 
         assert_eq!(
-            policy.decision(
-                SyncTarget::ActiveInbox,
-                SyncReason::Scheduled,
-                ActivityState::Focused,
-                &state,
-                SyncSignals::default(),
-                now,
-            ),
+            policy.decision(SyncReason::Scheduled, ActivityState::Focused, &state, now,),
             SyncDecision::Backoff(Duration::from_secs(20))
         );
     }

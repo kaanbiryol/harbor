@@ -10,8 +10,7 @@ pub use inbox::{
     cache_pull_request_inbox_refresh, refresh_pull_request_inbox,
 };
 pub use policy::{
-    ActivityState, SyncBackoff, SyncDecision, SyncPolicy, SyncReason, SyncSignals, SyncState,
-    SyncTarget, checks_have_running_or_pending_work, workflow_runs_have_running_work,
+    ActivityState, SyncBackoff, SyncDecision, SyncPolicy, SyncReason, SyncState, SyncTarget,
 };
 pub use pull_request_detail::{
     PullRequestCiSource, PullRequestContentSource, PullRequestDetailRefresh,
