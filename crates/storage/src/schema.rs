@@ -44,7 +44,6 @@ impl SqliteStore {
                 head_sha TEXT NOT NULL,
                 position INTEGER NOT NULL,
                 pr_json TEXT NOT NULL,
-                cache_version INTEGER NOT NULL DEFAULT 1,
                 fetched_at INTEGER NOT NULL,
                 PRIMARY KEY (owner, name, mode, number)
             )",
@@ -59,7 +58,6 @@ impl SqliteStore {
                 head_sha TEXT NOT NULL,
                 section TEXT NOT NULL,
                 data_json TEXT NOT NULL,
-                cache_version INTEGER NOT NULL DEFAULT 1,
                 fetched_at INTEGER NOT NULL,
                 PRIMARY KEY (owner, name, number, head_sha, section)
             )",

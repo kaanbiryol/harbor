@@ -7,8 +7,6 @@ use sqlx::{Row, Sqlite, Transaction};
 
 use super::{PullRequestDetailSection, Result, SqliteStore};
 
-const CACHE_PAYLOAD_VERSION: i64 = 1;
-
 impl SqliteStore {
     pub async fn load_pull_request_inbox(
         &self,
@@ -18,13 +16,12 @@ impl SqliteStore {
         let rows = sqlx::query(
             "SELECT number, pr_json
              FROM pull_request_inbox_cache
-             WHERE owner = ?1 AND name = ?2 AND mode = ?3 AND cache_version = ?4
+             WHERE owner = ?1 AND name = ?2 AND mode = ?3
              ORDER BY position ASC",
         )
         .bind(&repository.owner)
         .bind(&repository.name)
         .bind(mode)
-        .bind(CACHE_PAYLOAD_VERSION)
         .fetch_all(&self.pool)
         .await?;
 
@@ -80,8 +77,8 @@ impl SqliteStore {
         for (position, pull_request) in pull_requests.iter().enumerate() {
             sqlx::query(
                 "INSERT INTO pull_request_inbox_cache
-                    (owner, name, mode, number, head_sha, position, pr_json, cache_version, fetched_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())",
+                    (owner, name, mode, number, head_sha, position, pr_json, fetched_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())",
             )
             .bind(&repository.owner)
             .bind(&repository.name)
@@ -90,7 +87,6 @@ impl SqliteStore {
             .bind(&pull_request.head_sha)
             .bind(position as i64)
             .bind(serde_json::to_string(pull_request)?)
-            .bind(CACHE_PAYLOAD_VERSION)
             .execute(&mut *transaction)
             .await?;
         }
@@ -376,11 +372,10 @@ impl SqliteStore {
     {
         sqlx::query(
             "INSERT INTO pull_request_detail_cache
-                (owner, name, number, head_sha, section, data_json, cache_version, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
+                (owner, name, number, head_sha, section, data_json, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
              ON CONFLICT(owner, name, number, head_sha, section) DO UPDATE SET
                 data_json = excluded.data_json,
-                cache_version = excluded.cache_version,
                 fetched_at = unixepoch()",
         )
         .bind(&repository.owner)
@@ -389,7 +384,6 @@ impl SqliteStore {
         .bind(head_sha)
         .bind(section.key())
         .bind(serde_json::to_string(value)?)
-        .bind(CACHE_PAYLOAD_VERSION)
         .execute(&mut **transaction)
         .await?;
 
@@ -409,15 +403,13 @@ impl SqliteStore {
         let row = sqlx::query(
             "SELECT data_json
              FROM pull_request_detail_cache
-             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5
-               AND cache_version = ?6",
+             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5",
         )
         .bind(&repository.owner)
         .bind(&repository.name)
         .bind(number as i64)
         .bind(head_sha)
         .bind(section.key())
-        .bind(CACHE_PAYLOAD_VERSION)
         .fetch_optional(&self.pool)
         .await?;
 
