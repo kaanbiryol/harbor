@@ -1,11 +1,77 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    MergeMethod, PullRequestComment, PullRequestCommit, PullRequestMetadataOptions,
-    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread,
-    SubmitPullRequestReviewEvent, Workflow, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
+    PullRequestEnrichment, PullRequestMetadataOptions, PullRequestReview, ReactionContent, RepoId,
+    ReviewCommentRange, ReviewThread, SubmitPullRequestReviewEvent, Workflow, WorkflowJob,
+    WorkflowRun,
 };
 
-use crate::{GitHubRateLimitStatus, RepositoryList, Result};
+use crate::{
+    ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestListFilter,
+    PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
+};
+
+#[async_trait]
+pub trait PullRequestInboxSource: Send + Sync {
+    fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus>;
+
+    async fn list_repository_pull_request_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage>;
+
+    async fn count_repository_pull_requests(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+    ) -> Result<usize>;
+
+    async fn list_repository_pull_requests_light_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+        validator: Option<HttpCacheValidator>,
+    ) -> Result<ConditionalFetch<PullRequestPage>>;
+
+    async fn enrich_pull_requests_by_node_ids(
+        &self,
+        node_ids: &[String],
+    ) -> Result<Vec<PullRequestEnrichment>>;
+}
+
+#[async_trait]
+pub trait PullRequestCiSource: Send + Sync {
+    async fn list_check_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<CheckRun>>;
+
+    async fn list_workflow_runs_for_head(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<WorkflowRun>>;
+}
+
+#[async_trait]
+pub trait PullRequestContentSource: Send + Sync {
+    async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest>;
+
+    async fn list_pull_request_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<DiffFile>>;
+}
 
 pub trait GitHubAuthApi: Send + Sync {
     fn configure_token(&self, token: String) -> Result<()>;

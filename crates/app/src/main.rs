@@ -1,17 +1,15 @@
 mod app_icon;
 mod assets;
 mod fonts;
-mod github_api;
 
 use assets::Assets;
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
+use harbor_github::GitHubSession;
 use harbor_storage::{SqliteStore, StorageConfig};
 use harbor_ui::{AppView, bind_keys};
 use std::sync::Arc;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
-
-use github_api::RealGitHubApi;
 
 fn main() {
     install_rustls_provider();
@@ -51,7 +49,7 @@ fn main() {
                     ..Default::default()
                 },
                 |window, cx| {
-                    let github_api = Arc::new(RealGitHubApi::default());
+                    let github_api = Arc::new(GitHubSession::default());
                     let view = cx.new(|cx| AppView::new(github_api, None, window, cx));
                     let storage_view = view.downgrade();
                     cx.spawn(async move |cx| {

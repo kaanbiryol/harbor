@@ -11,15 +11,12 @@ name = "harbor"
 path = "src/main.rs"
 
 [dependencies]
-async-trait.workspace = true
 gpui.workspace = true
 gpui-component-assets.workspace = true
 gpui-component.workspace = true
 gpui_platform.workspace = true
-harbor-domain = { path = "../domain" }
 harbor-github = { path = "../github" }
 harbor-storage = { path = "../storage" }
-harbor-sync = { path = "../sync" }
 harbor-ui = { path = "../ui" }
 reqwest_client.workspace = true
 rustls.workspace = true

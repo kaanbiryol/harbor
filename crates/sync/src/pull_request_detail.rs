@@ -1,36 +1,6 @@
-use async_trait::async_trait;
 use harbor_domain::{CheckRun, DiffFile, PullRequest, RepoId, WorkflowRun};
-use harbor_github::Result;
+use harbor_github::{PullRequestCiSource, PullRequestContentSource, Result};
 use harbor_storage::{PullRequestDetailSection, SqliteStore, detail_target_key};
-
-#[async_trait]
-pub trait PullRequestCiSource: Send + Sync {
-    async fn list_check_runs(
-        &self,
-        owner: &str,
-        repo: &str,
-        head_sha: &str,
-    ) -> Result<Vec<CheckRun>>;
-
-    async fn list_workflow_runs_for_head(
-        &self,
-        owner: &str,
-        repo: &str,
-        head_sha: &str,
-    ) -> Result<Vec<WorkflowRun>>;
-}
-
-#[async_trait]
-pub trait PullRequestContentSource: Send + Sync {
-    async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest>;
-
-    async fn list_pull_request_files(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<DiffFile>>;
-}
 
 pub struct PullRequestDetailRefresh<T> {
     pub result: Result<T>,

@@ -1,6 +1,7 @@
 mod api;
 mod client;
 mod dto;
+mod session;
 mod transport;
 
 pub use client::{
@@ -9,6 +10,7 @@ pub use client::{
 pub use harbor_domain::{
     PullRequestEnrichment, PullRequestMetadataOptions, SubmitPullRequestReviewEvent,
 };
+pub use session::GitHubSession;
 pub use transport::{
     GhCliTransport, GitHubDeviceFlow, GitHubTransport, GitHubTransportSource, OctocrabTransport,
     start_oauth_device_flow,
@@ -110,4 +112,5 @@ pub enum GitHubError {
 pub use api::{
     GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi, GitHubRepositoryApi,
     GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi, GitHubWorkflowMutationApi,
+    PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource,
 };

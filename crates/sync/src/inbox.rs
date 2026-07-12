@@ -1,8 +1,7 @@
-use async_trait::async_trait;
-use harbor_domain::{PullRequest, PullRequestEnrichment, RepoId};
+use harbor_domain::{PullRequest, RepoId};
 use harbor_github::{
-    ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-    PullRequestListFilter, PullRequestPage, PullRequestPageCursor,
+    GitHubError, PullRequestInboxSource, PullRequestListFilter, PullRequestPage,
+    PullRequestPageCursor,
 };
 use harbor_storage::SqliteStore;
 
@@ -143,39 +142,6 @@ pub enum PullRequestInboxRefresh {
         enrichment_error: Option<String>,
     },
     NotModified,
-}
-
-#[async_trait]
-pub trait PullRequestInboxSource: Send + Sync {
-    fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus>;
-
-    async fn list_repository_pull_request_page(
-        &self,
-        repository: &RepoId,
-        filter: PullRequestListFilter,
-        cursor: Option<PullRequestPageCursor>,
-        page_size: usize,
-    ) -> harbor_github::Result<PullRequestPage>;
-
-    async fn count_repository_pull_requests(
-        &self,
-        repository: &RepoId,
-        filter: PullRequestListFilter,
-    ) -> harbor_github::Result<usize>;
-
-    async fn list_repository_pull_requests_light_page(
-        &self,
-        repository: &RepoId,
-        filter: PullRequestListFilter,
-        cursor: Option<PullRequestPageCursor>,
-        page_size: usize,
-        validator: Option<HttpCacheValidator>,
-    ) -> harbor_github::Result<ConditionalFetch<PullRequestPage>>;
-
-    async fn enrich_pull_requests_by_node_ids(
-        &self,
-        node_ids: &[String],
-    ) -> harbor_github::Result<Vec<PullRequestEnrichment>>;
 }
 
 pub async fn refresh_pull_request_inbox<S>(

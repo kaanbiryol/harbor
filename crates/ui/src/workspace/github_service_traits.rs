@@ -1,8 +1,8 @@
 pub use harbor_github::{
     GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi, GitHubRepositoryApi,
     GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi, GitHubWorkflowMutationApi,
+    PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource,
 };
-use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
 pub trait GitHubApi:
     GitHubAuthApi
