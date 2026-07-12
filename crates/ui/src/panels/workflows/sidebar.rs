@@ -113,10 +113,9 @@ fn render_workflow_filter_row(
         color::text_secondary()
     };
 
-    div()
+    let row = div()
         .id(("workflow-filter", workflow_id.unwrap_or(0)))
-        .mx_2()
-        .my_1()
+        .w_full()
         .rounded_xs()
         .min_w_0()
         .overflow_hidden()
@@ -174,7 +173,9 @@ fn render_workflow_filter_row(
                         .text_color(color::text_muted())
                         .child(subtitle),
                 ),
-        )
+        );
+
+    div().w_full().min_w_0().px_2().py_1().child(row)
 }
 
 fn workflow_sidebar_subtitle(workflow: &Workflow) -> String {
