@@ -1,15 +1,18 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
+use harbor_domain::{DiffFile, RepoId};
 use harbor_sync::SyncTarget;
 
 use crate::{
-    diff::{parse_files, parse_unified_diff_with_syntax},
+    diff::{ParsedDiff, parse_files, parse_unified_diff_with_syntax},
     workspace::{
         AppView, async_updates::AppViewAsyncUpdateExt,
         pull_request_detail_loaders::SelectedPullRequestLoad,
         review_data_loaders::selected_pull_request_matches,
     },
 };
+
+type PullRequestFilesResult = harbor_github::Result<(Vec<DiffFile>, Vec<Option<ParsedDiff>>)>;
 
 impl AppView {
     pub(super) fn spawn_pull_request_metadata_loader(
@@ -135,69 +138,24 @@ impl AppView {
                         .map_err(|error| error.to_string()),
                     (None, _) => Ok(()),
                 };
-                let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
                 let update_repo = repo.clone();
 
-                this.update_or_log(
-                    cx,
-                    "failed to update pull request file state",
-                    move |view, cx| {
-                        if !selected_pull_request_matches(view, &update_repo, number) {
-                            return;
-                        }
-
-                        if let Err(error) = cache_result {
-                            view.repository_state.set_error(error);
-                        }
-                        match result {
-                            Ok((files, diffs)) => {
-                                let count = files.len();
-                                view.detail_state.replace_diff_files(files, diffs);
-                                view.reset_diff_selection();
-                                view.expanded_diff_file_paths.clear();
-                                view.collapsed_diff_file_paths.clear();
-                                view.reset_changed_file_filters();
-                                view.sync_reviewed_file_paths_from_files();
-                                view.ensure_active_file_visible(cx);
-                                view.clear_review_composer_state();
-                                view.sync_diff_list_items(cx);
-                                view.refresh_owned_file_filters(cx);
-                                let row_index = view
-                                    .file_tree_row_index_for_file(view.active_file_index(), cx)
-                                    .unwrap_or(0);
-                                view.file_list_scroll
-                                    .scroll_to_item(row_index, ScrollStrategy::Top);
-                                view.reset_diff_list_scroll();
-                                view.detail_state.apply_files_success();
-                                view.status =
-                                    format!("Loaded {count} changed files for PR #{number}");
-                            }
-                            Err(error) => {
-                                let error = error.to_string();
-                                view.detail_state.clear_diff_files();
-                                view.collapsed_file_tree_folders.clear();
-                                view.expanded_diff_file_paths.clear();
-                                view.collapsed_diff_file_paths.clear();
-                                view.reviewed_file_paths.clear();
-                                view.reset_changed_file_filters();
-                                view.owned_file_paths.clear();
-                                view.reset_diff_selection();
-                                view.clear_review_composer_state();
-                                view.sync_diff_list_items(cx);
-                                view.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-                                view.reset_diff_list_scroll();
-                                view.detail_state.apply_files_failure(error);
-                                view.status =
-                                    format!("Failed to load changed files for PR #{number}");
-                            }
-                        }
-
-                        view.cache_current_pull_request_detail_snapshot();
-                        cx.notify();
-                    },
-                );
-
-                let Some(files_for_syntax) = files_for_syntax else {
+                let Some(files_for_syntax) = this
+                    .update_or_log(
+                        cx,
+                        "failed to update pull request file state",
+                        move |view, cx| {
+                            view.apply_pull_request_files_result(
+                                &update_repo,
+                                number,
+                                result,
+                                cache_result,
+                                cx,
+                            )
+                        },
+                    )
+                    .flatten()
+                else {
                     return;
                 };
 
@@ -218,30 +176,110 @@ impl AppView {
                         cx,
                         "failed to update pull request syntax highlight state",
                         move |view, cx| {
-                            if !selected_pull_request_matches(view, &update_repo, number) {
-                                return;
-                            }
-                            if view
-                                .detail_state
-                                .files()
-                                .get(file_index)
-                                .map(|file| file.path.as_str())
-                                != Some(file_path.as_str())
-                            {
-                                return;
-                            }
-
-                            if view
-                                .detail_state
-                                .replace_parsed_diff(file_index, highlighted_diff)
-                            {
-                                view.cache_current_pull_request_detail_snapshot();
-                                cx.notify();
-                            }
+                            view.apply_pull_request_file_syntax(
+                                &update_repo,
+                                number,
+                                file_index,
+                                &file_path,
+                                highlighted_diff,
+                                cx,
+                            );
                         },
                     );
                 }
             }
         }));
+    }
+
+    fn apply_pull_request_files_result(
+        &mut self,
+        repository: &RepoId,
+        number: u64,
+        result: PullRequestFilesResult,
+        cache_result: std::result::Result<(), String>,
+        cx: &mut Context<Self>,
+    ) -> Option<Vec<DiffFile>> {
+        if !selected_pull_request_matches(self, repository, number) {
+            return None;
+        }
+
+        if let Err(error) = cache_result {
+            self.repository_state.set_error(error);
+        }
+        let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
+        match result {
+            Ok((files, diffs)) => {
+                let count = files.len();
+                self.detail_state.replace_diff_files(files, diffs);
+                self.reset_diff_selection();
+                self.expanded_diff_file_paths.clear();
+                self.collapsed_diff_file_paths.clear();
+                self.reset_changed_file_filters();
+                self.sync_reviewed_file_paths_from_files();
+                self.ensure_active_file_visible(cx);
+                self.clear_review_composer_state();
+                self.sync_diff_list_items(cx);
+                self.refresh_owned_file_filters(cx);
+                let row_index = self
+                    .file_tree_row_index_for_file(self.active_file_index(), cx)
+                    .unwrap_or(0);
+                self.file_list_scroll
+                    .scroll_to_item(row_index, ScrollStrategy::Top);
+                self.reset_diff_list_scroll();
+                self.detail_state.apply_files_success();
+                self.status = format!("Loaded {count} changed files for PR #{number}");
+            }
+            Err(error) => {
+                self.detail_state.clear_diff_files();
+                self.collapsed_file_tree_folders.clear();
+                self.expanded_diff_file_paths.clear();
+                self.collapsed_diff_file_paths.clear();
+                self.reviewed_file_paths.clear();
+                self.reset_changed_file_filters();
+                self.owned_file_paths.clear();
+                self.reset_diff_selection();
+                self.clear_review_composer_state();
+                self.sync_diff_list_items(cx);
+                self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                self.reset_diff_list_scroll();
+                self.detail_state.apply_files_failure(error.to_string());
+                self.status = format!("Failed to load changed files for PR #{number}");
+            }
+        }
+
+        self.cache_current_pull_request_detail_snapshot();
+        cx.notify();
+        files_for_syntax
+    }
+
+    fn apply_pull_request_file_syntax(
+        &mut self,
+        repository: &RepoId,
+        number: u64,
+        file_index: usize,
+        file_path: &str,
+        highlighted_diff: ParsedDiff,
+        cx: &mut Context<Self>,
+    ) {
+        if !selected_pull_request_matches(self, repository, number) {
+            return;
+        }
+        if self
+            .detail_state
+            .files()
+            .get(file_index)
+            .map(|file| file.path.as_str())
+            != Some(file_path)
+        {
+            return;
+        }
+
+        if self
+            .detail_state
+            .replace_parsed_diff(file_index, highlighted_diff)
+        {
+            self.cache_current_pull_request_detail_snapshot();
+            cx.notify();
+        }
     }
 }
