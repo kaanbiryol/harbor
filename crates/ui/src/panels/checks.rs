@@ -97,6 +97,7 @@ pub(crate) fn render_checks_panel(
     } = input;
     let rows = check_panel_rows(check_runs, collapsed_groups, active_filter);
     sync_virtual_list_item_count(&list_state, rows.len());
+    let rows_for_render = rows.clone();
 
     div()
         .id("checks-panel")
@@ -180,13 +181,8 @@ pub(crate) fn render_checks_panel(
                     .child(
                         list(
                             list_state,
-                            cx.processor(|view, index: usize, _window, cx| {
-                                let rows = check_panel_rows(
-                                    view.detail_state.check_runs(),
-                                    view.collapsed_check_groups(),
-                                    view.checks_filter(),
-                                );
-                                let Some(row) = rows.get(index) else {
+                            cx.processor(move |view, index: usize, _window, cx| {
+                                let Some(row) = rows_for_render.get(index) else {
                                     return div().into_any_element();
                                 };
 

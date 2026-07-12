@@ -35,21 +35,26 @@ impl AppView {
             return render_changed_files_message("No changed files", color::text_muted());
         }
 
-        if self.changed_file_tree_rows(cx).is_empty() {
+        let tree_rows = self.changed_file_tree_rows(cx);
+        if tree_rows.is_empty() {
             return render_changed_files_message("No files match filter", color::text_muted());
         }
 
-        self.render_changed_files_list(cx).into_any_element()
+        self.render_changed_files_list(tree_rows, cx)
+            .into_any_element()
     }
 
-    pub(super) fn render_changed_files_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let row_count = self.changed_file_tree_rows(cx).len();
+    pub(super) fn render_changed_files_list(
+        &self,
+        tree_rows: Vec<ChangedFileTreeRow>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let row_count = tree_rows.len();
 
         uniform_list(
             "changed-files-list",
             row_count,
-            cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
-                let tree_rows = view.changed_file_tree_rows(cx);
+            cx.processor(move |view, range: std::ops::Range<usize>, _window, cx| {
                 let mut rows = Vec::with_capacity(range.len());
 
                 for row_index in range {

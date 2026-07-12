@@ -62,6 +62,7 @@ impl AppView {
         let pull_request_list_item_count =
             visible_pull_request_indices.len() + usize::from(show_page_footer);
         let show_list = rows_available && pull_request_list_item_count > 0;
+        let visible_pull_request_indices_for_render = visible_pull_request_indices.clone();
         let mut body = Vec::new();
 
         match body_state {
@@ -136,42 +137,48 @@ impl AppView {
                         uniform_list(
                             "pull-request-inbox-rows",
                             pull_request_list_item_count,
-                            cx.processor(|view, range: std::ops::Range<usize>, _window, cx| {
-                                let visible_indices = view.visible_pull_request_indices();
-                                let visible_count = visible_indices.len();
-                                let prefetch_indices = range
-                                    .clone()
-                                    .filter_map(|row_index| visible_indices.get(row_index).copied())
-                                    .collect::<Vec<_>>();
-                                view.prefetch_visible_pull_request_row_enrichments(
-                                    prefetch_indices,
-                                    cx,
-                                );
-                                let mut rows = Vec::with_capacity(range.len());
+                            cx.processor(
+                                move |view, range: std::ops::Range<usize>, _window, cx| {
+                                    let visible_indices = &visible_pull_request_indices_for_render;
+                                    let visible_count = visible_indices.len();
+                                    let prefetch_indices = range
+                                        .clone()
+                                        .filter_map(|row_index| {
+                                            visible_indices.get(row_index).copied()
+                                        })
+                                        .collect::<Vec<_>>();
+                                    view.prefetch_visible_pull_request_row_enrichments(
+                                        prefetch_indices,
+                                        cx,
+                                    );
+                                    let mut rows = Vec::with_capacity(range.len());
 
-                                for row_index in range {
-                                    if row_index == visible_count {
-                                        rows.push(view.render_pull_request_inbox_page_footer(cx));
-                                        continue;
+                                    for row_index in range {
+                                        if row_index == visible_count {
+                                            rows.push(
+                                                view.render_pull_request_inbox_page_footer(cx),
+                                            );
+                                            continue;
+                                        }
+
+                                        let Some(index) = visible_indices.get(row_index).copied()
+                                        else {
+                                            continue;
+                                        };
+                                        let Some(pr) = view.pull_requests.get(index) else {
+                                            continue;
+                                        };
+                                        rows.push(render_pull_request_row(
+                                            index,
+                                            pr,
+                                            index == view.selected_pull_request_index(),
+                                            cx,
+                                        ));
                                     }
 
-                                    let Some(index) = visible_indices.get(row_index).copied()
-                                    else {
-                                        continue;
-                                    };
-                                    let Some(pr) = view.pull_requests.get(index) else {
-                                        continue;
-                                    };
-                                    rows.push(render_pull_request_row(
-                                        index,
-                                        pr,
-                                        index == view.selected_pull_request_index(),
-                                        cx,
-                                    ));
-                                }
-
-                                rows
-                            }),
+                                    rows
+                                },
+                            ),
                         )
                         .track_scroll(&self.pr_list_scroll)
                         .flex_1()
