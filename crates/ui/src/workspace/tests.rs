@@ -141,8 +141,10 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
         .debug_bounds("overview-toggle-thread-thread-1")
         .expect("overview resolve action should render");
     assert!(
-        reply_field.origin.x + reply_field.size.width <= toggle_thread.origin.x,
-        "reply field should leave room for the resolve action"
+        reply_field.origin.x >= unresolved_thread.origin.x
+            && reply_field.origin.x + reply_field.size.width
+                <= unresolved_thread.origin.x + unresolved_thread.size.width,
+        "reply field should stay inside the thread card"
     );
     assert!(
         toggle_thread.origin.x + toggle_thread.size.width
@@ -242,6 +244,12 @@ async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
         view.update(cx, |view, cx| {
             let mut pull_request = pull_request();
             pull_request.unresolved_threads = 5;
+            pull_request.labels = (0..24)
+                .map(|index| Label {
+                    name: format!("sidebar-overflow-{index}"),
+                    color: None,
+                })
+                .collect();
             view.pull_requests = vec![pull_request];
             view.active_tab = PanelTab::Overview;
             cx.notify();
@@ -296,6 +304,7 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
         view.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
+            view.active_tab = PanelTab::Diff;
             cx.notify();
         });
         Root::new(view, window, cx)

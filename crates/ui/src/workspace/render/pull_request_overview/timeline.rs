@@ -218,10 +218,7 @@ pub(super) fn overview_review_visible(review: &PullRequestReview) -> bool {
     }
 }
 
-fn compare_timeline_times(
-    left: Option<DateTime<Utc>>,
-    right: Option<DateTime<Utc>>,
-) -> Ordering {
+fn compare_timeline_times(left: Option<DateTime<Utc>>, right: Option<DateTime<Utc>>) -> Ordering {
     match (left, right) {
         (Some(left), Some(right)) => left.cmp(&right),
         (Some(_), None) => Ordering::Less,
@@ -486,17 +483,19 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
                                     .items_center()
                                     .gap_2()
                                     .when(ui_state.can_toggle_resolution, |element| {
-                                        let button = Button::new(format!(
+                                        let selector = format!(
                                             "overview-toggle-thread-{resolution_thread_id}"
-                                        ))
-                                        .label(if ui_state.is_resolved {
-                                            "Reopen"
-                                        } else {
-                                            "Resolve"
-                                        })
-                                        .xsmall()
-                                        .loading(ui_state.action_running)
-                                        .disabled(ui_state.action_running);
+                                        );
+                                        let button = Button::new(selector.clone())
+                                            .debug_selector(move || selector.clone())
+                                            .label(if ui_state.is_resolved {
+                                                "Reopen"
+                                            } else {
+                                                "Resolve"
+                                            })
+                                            .xsmall()
+                                            .loading(ui_state.action_running)
+                                            .disabled(ui_state.action_running);
                                         let button = if ui_state.is_resolved {
                                             button.success()
                                         } else {
@@ -812,9 +811,7 @@ pub(super) fn overview_thread_expanded(
     override_expanded.unwrap_or(state == ReviewThreadState::Unresolved)
 }
 
-fn overview_review_state(
-    state: PullRequestReviewState,
-) -> (&'static str, &'static str, Tone) {
+fn overview_review_state(state: PullRequestReviewState) -> (&'static str, &'static str, Tone) {
     match state {
         PullRequestReviewState::Pending => ("started a review", "pending", Tone::Warning),
         PullRequestReviewState::Commented => ("reviewed changes", "commented", Tone::Info),
