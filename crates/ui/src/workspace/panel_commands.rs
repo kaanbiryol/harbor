@@ -205,21 +205,14 @@ impl AppView {
         self.load_pull_requests(repository, cx);
     }
 
-    pub(super) fn set_placeholder_status(&mut self, label: &str, cx: &mut Context<Self>) {
-        self.status = format!(
-            "{label} is wired as a command placeholder for {}",
-            self.selected_pr_label()
-        );
-        cx.notify();
-    }
-
     pub(super) fn open_logs(&mut self, _: &OpenLogs, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected_pull_request().is_some() {
             self.active_tab = PanelTab::Logs;
             self.load_active_panel_data_if_needed(cx);
             cx.notify();
         } else {
-            self.set_placeholder_status("Open logs", cx);
+            self.status = "Select a pull request before opening logs".to_string();
+            cx.notify();
         }
     }
 

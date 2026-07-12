@@ -249,12 +249,6 @@ impl AppView {
         cx.notify();
     }
 
-    fn selected_pr_label(&self) -> String {
-        self.selected_pull_request()
-            .map(|pr| format!("PR #{}", pr.number))
-            .unwrap_or_else(|| "no selected pull request".to_string())
-    }
-
     fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
         self.detail_state
             .workflow_runs()
