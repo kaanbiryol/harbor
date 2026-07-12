@@ -4,7 +4,7 @@ use harbor_domain::{MergeState, PullRequest, RepoId};
 use crate::{
     actions::PanelTab,
     workspace::{
-        AppView,
+        AppView, PullRequestDetailCacheKey,
         review_data_loaders::{ReviewDataLoadMode, ReviewDataLoadTarget},
     },
 };
@@ -50,6 +50,10 @@ impl SelectedPullRequestLoad {
             number: pull_request.number,
             head_sha: pull_request.head_sha.clone(),
         }
+    }
+
+    pub(super) fn detail_key(&self) -> PullRequestDetailCacheKey {
+        PullRequestDetailCacheKey::new(self.repo.clone(), self.number, self.head_sha.clone())
     }
 }
 

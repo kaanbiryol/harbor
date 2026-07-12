@@ -8,7 +8,7 @@ use harbor_sync::SyncTarget;
 use crate::{
     diff::{ParsedDiff, parse_files},
     workspace::{
-        AppView, async_updates::AppViewAsyncUpdateExt,
+        AppView, SelectedPullRequestTaskKind, async_updates::AppViewAsyncUpdateExt,
         pull_request_detail_loaders::SelectedPullRequestLoad,
         review_data_loaders::selected_pull_request_matches,
     },
@@ -38,6 +38,7 @@ impl AppView {
             return;
         };
 
+        let detail_key = load.detail_key();
         let task = cx.background_spawn({
             let repo = load.repo.clone();
             let head_sha = load.head_sha.clone();
@@ -71,16 +72,16 @@ impl AppView {
                 })
             }
         });
-
-        self.tasks
-            .push_selected_pull_request_task(cx.spawn(async move |this, cx| {
+        self.tasks.set_selected_pull_request_task(
+            SelectedPullRequestTaskKind::Cache,
+            cx.spawn(async move |this, cx| {
                 let result = task.await;
 
                 this.update_or_log(
                     cx,
                     "failed to update cached pull request detail state",
                     move |view, cx| {
-                        if !selected_pull_request_matches(view, &load.repo, load.number) {
+                        if !selected_pull_request_matches(view, &detail_key) {
                             return;
                         }
 
@@ -158,6 +159,7 @@ impl AppView {
                         }
                     },
                 );
-            }));
+            }),
+        );
     }
 }

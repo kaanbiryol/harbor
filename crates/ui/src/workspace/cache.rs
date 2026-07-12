@@ -53,6 +53,10 @@ impl PullRequestDetailCacheKey {
             head_sha,
         }
     }
+
+    pub(crate) fn number(&self) -> u64 {
+        self.number
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

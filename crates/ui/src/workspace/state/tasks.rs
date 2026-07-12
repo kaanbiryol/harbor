@@ -1,10 +1,29 @@
+use std::collections::HashMap;
+
 use gpui::Task;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum SelectedPullRequestTaskKind {
+    Cache,
+    Metadata,
+    Files,
+    Checks,
+    Commits,
+    Workflows,
+    Reviews,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum RepositoryActionsTaskKind {
+    Workflows,
+    Runs,
+}
 
 #[derive(Default)]
 pub(crate) struct WorkspaceTasks {
     pull_request_list_task: Option<Task<()>>,
-    selected_pull_request_tasks: Vec<Task<()>>,
-    repository_actions_tasks: Vec<Task<()>>,
+    selected_pull_request_tasks: HashMap<SelectedPullRequestTaskKind, Task<()>>,
+    repository_actions_tasks: HashMap<RepositoryActionsTaskKind, Task<()>>,
     repository_task: Option<Task<()>>,
     local_task: Option<Task<()>>,
     external_app_availability_task: Option<Task<()>>,
@@ -25,12 +44,20 @@ impl WorkspaceTasks {
         self.pull_request_list_task = Some(task);
     }
 
-    pub(crate) fn push_selected_pull_request_task(&mut self, task: Task<()>) {
-        self.selected_pull_request_tasks.push(task);
+    pub(crate) fn set_selected_pull_request_task(
+        &mut self,
+        kind: SelectedPullRequestTaskKind,
+        task: Task<()>,
+    ) {
+        self.selected_pull_request_tasks.insert(kind, task);
     }
 
-    pub(crate) fn push_repository_actions_task(&mut self, task: Task<()>) {
-        self.repository_actions_tasks.push(task);
+    pub(crate) fn set_repository_actions_task(
+        &mut self,
+        kind: RepositoryActionsTaskKind,
+        task: Task<()>,
+    ) {
+        self.repository_actions_tasks.insert(kind, task);
     }
 
     pub(crate) fn cancel_pull_request_list_task(&mut self) {

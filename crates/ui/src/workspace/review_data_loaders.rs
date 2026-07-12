@@ -2,7 +2,10 @@ use gpui::Context;
 use harbor_domain::RepoId;
 use harbor_sync::{PullRequestReviewRefreshRequest, SyncTarget, refresh_pull_request_reviews};
 
-use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
+use crate::workspace::{
+    AppView, PullRequestDetailCacheKey, SelectedPullRequestTaskKind,
+    async_updates::AppViewAsyncUpdateExt,
+};
 
 mod load_mode;
 
@@ -29,6 +32,10 @@ impl ReviewDataLoadTarget {
             head_sha: head_sha.into(),
             generation,
         }
+    }
+
+    fn detail_key(&self) -> PullRequestDetailCacheKey {
+        PullRequestDetailCacheKey::new(self.repo.clone(), self.number, self.head_sha.clone())
     }
 }
 
@@ -63,7 +70,10 @@ impl AppView {
         let existing_pending_review = self.review_state.pending_review_cloned();
         let github_api = self.github_api.clone();
         let store = self.repository_state.store();
-        self.tasks.push_selected_pull_request_task(cx.spawn(async move |this, cx| {
+        let detail_key = target.detail_key();
+        self.tasks.set_selected_pull_request_task(
+            SelectedPullRequestTaskKind::Reviews,
+            cx.spawn(async move |this, cx| {
             tracing::info!(
                 repository = %target.repo.full_name(),
                 pull_request = target.number,
@@ -84,7 +94,7 @@ impl AppView {
             .await;
 
             this.update_or_log(cx, mode.update_error_log_message(), move |view, cx| {
-                if !selected_pull_request_matches(view, &target.repo, target.number) {
+                if !selected_pull_request_matches(view, &detail_key) {
                     return;
                 }
                 if view.review_data_generation() != target.generation {
@@ -190,18 +200,16 @@ impl AppView {
                 view.cache_current_pull_request_detail_snapshot();
                 cx.notify();
             });
-        }));
+            }),
+        );
     }
 }
 
 pub(super) fn selected_pull_request_matches(
     view: &AppView,
-    repository: &RepoId,
-    number: u64,
+    detail_key: &PullRequestDetailCacheKey,
 ) -> bool {
-    view.selected_pull_request().is_some_and(|pull_request| {
-        &pull_request.repo == repository && pull_request.number == number
-    })
+    view.selected_pull_request_detail_key().as_ref() == Some(detail_key)
 }
 
 fn append_review_error(error: &mut Option<String>, message: String) {

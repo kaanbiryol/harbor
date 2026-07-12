@@ -14,8 +14,9 @@ use crate::{
 };
 
 use super::{
-    AppView, ChangedFileFilters, ChangedFileTreeRow, ChangedFileTypeFilter, changed_file_tree_rows,
-    changed_file_type_filters, codeowners::codeowners_owned_file_paths, log_entity_update_error,
+    AppView, ChangedFileFilters, ChangedFileTreeRow, ChangedFileTypeFilter,
+    PullRequestDetailCacheKey, changed_file_tree_rows, changed_file_type_filters,
+    codeowners::codeowners_owned_file_paths, log_entity_update_error,
     review_data_loaders::selected_pull_request_matches,
 };
 
@@ -355,8 +356,11 @@ impl AppView {
         self.set_changed_file_reviewed_by_path(&path, reviewed);
 
         let github_api = self.github_api.clone();
-        let repo = pull_request.repo.clone();
-        let number = pull_request.number;
+        let detail_key = PullRequestDetailCacheKey::new(
+            pull_request.repo.clone(),
+            pull_request.number,
+            pull_request.head_sha.clone(),
+        );
         let pull_request_node_id = pull_request.node_id.clone();
         let sync_path = path.clone();
         cx.spawn(async move |this, cx| {
@@ -376,7 +380,7 @@ impl AppView {
                     cx,
                     "failed to update pull request file viewed state",
                     move |view, cx| {
-                        if !selected_pull_request_matches(view, &repo, number) {
+                        if !selected_pull_request_matches(view, &detail_key) {
                             return;
                         }
 

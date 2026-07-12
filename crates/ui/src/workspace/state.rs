@@ -44,7 +44,7 @@ pub(crate) use review_composer::ReviewComposerState;
 pub(crate) use review_runtime::ReviewRuntimeState;
 pub(crate) use selection::PullRequestSelectionState;
 pub(crate) use sync_runtime::SyncRuntimeState;
-pub(crate) use tasks::WorkspaceTasks;
+pub(crate) use tasks::{RepositoryActionsTaskKind, SelectedPullRequestTaskKind, WorkspaceTasks};
 pub(crate) use workflow_log::WorkflowLogState;
 
 #[cfg(test)]

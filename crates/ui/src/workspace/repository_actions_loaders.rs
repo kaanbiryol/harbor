@@ -4,7 +4,7 @@ use harbor_domain::RepoId;
 use crate::{
     actions::PanelTab,
     panels::workflow_run_label,
-    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
+    workspace::{AppView, RepositoryActionsTaskKind, async_updates::AppViewAsyncUpdateExt},
 };
 
 impl AppView {
@@ -66,51 +66,54 @@ impl AppView {
         self.status = format!("Loading workflows for {}", repository.full_name());
         let github_api = self.github_api.clone();
 
-        self.tasks.push_repository_actions_task(cx.spawn({
-            let repository = repository.clone();
+        self.tasks.set_repository_actions_task(
+            RepositoryActionsTaskKind::Workflows,
+            cx.spawn({
+                let repository = repository.clone();
 
-            async move |this, cx| {
-                let result = github_api
-                    .list_workflows(&repository.owner, &repository.name)
-                    .await;
+                async move |this, cx| {
+                    let result = github_api
+                        .list_workflows(&repository.owner, &repository.name)
+                        .await;
 
-                this.update_or_log(
-                    cx,
-                    "failed to update repository workflow state",
-                    move |view, cx| {
-                        if view.current_repository() != Some(&repository) {
-                            return;
-                        }
+                    this.update_or_log(
+                        cx,
+                        "failed to update repository workflow state",
+                        move |view, cx| {
+                            if view.current_repository() != Some(&repository) {
+                                return;
+                            }
 
-                        match result {
-                            Ok(workflows) => {
-                                let count = workflows.len();
-                                view.repository_actions_state.replace_workflows(workflows);
-                                view.repository_actions_state.apply_workflows_success();
-                                if view.active_tab == PanelTab::Actions {
-                                    view.status = format!(
-                                        "Loaded {count} workflows for {}",
-                                        repository.full_name()
-                                    );
+                            match result {
+                                Ok(workflows) => {
+                                    let count = workflows.len();
+                                    view.repository_actions_state.replace_workflows(workflows);
+                                    view.repository_actions_state.apply_workflows_success();
+                                    if view.active_tab == PanelTab::Actions {
+                                        view.status = format!(
+                                            "Loaded {count} workflows for {}",
+                                            repository.full_name()
+                                        );
+                                    }
+                                }
+                                Err(error) => {
+                                    view.repository_actions_state
+                                        .apply_workflows_failure(error.to_string());
+                                    if view.active_tab == PanelTab::Actions {
+                                        view.status = format!(
+                                            "Failed to load workflows for {}",
+                                            repository.full_name()
+                                        );
+                                    }
                                 }
                             }
-                            Err(error) => {
-                                view.repository_actions_state
-                                    .apply_workflows_failure(error.to_string());
-                                if view.active_tab == PanelTab::Actions {
-                                    view.status = format!(
-                                        "Failed to load workflows for {}",
-                                        repository.full_name()
-                                    );
-                                }
-                            }
-                        }
 
-                        cx.notify();
-                    },
-                );
-            }
-        }));
+                            cx.notify();
+                        },
+                    );
+                }
+            }),
+        );
     }
 
     fn spawn_repository_workflow_runs_loader(
@@ -126,69 +129,75 @@ impl AppView {
         };
         let github_api = self.github_api.clone();
 
-        self.tasks.push_repository_actions_task(cx.spawn({
-            let repository = repository.clone();
+        self.tasks.set_repository_actions_task(
+            RepositoryActionsTaskKind::Runs,
+            cx.spawn({
+                let repository = repository.clone();
 
-            async move |this, cx| {
-                let result = match workflow_id {
-                    Some(workflow_id) => {
-                        github_api
-                            .list_workflow_runs_for_workflow(
-                                &repository.owner,
-                                &repository.name,
-                                workflow_id,
-                            )
-                            .await
-                    }
-                    None => {
-                        github_api
-                            .list_repository_workflow_runs(&repository.owner, &repository.name)
-                            .await
-                    }
-                };
-
-                this.update_or_log(
-                    cx,
-                    "failed to update repository workflow run state",
-                    move |view, cx| {
-                        if view.current_repository() != Some(&repository)
-                            || view.repository_actions_state.selected_workflow_id() != workflow_id
-                        {
-                            return;
+                async move |this, cx| {
+                    let result = match workflow_id {
+                        Some(workflow_id) => {
+                            github_api
+                                .list_workflow_runs_for_workflow(
+                                    &repository.owner,
+                                    &repository.name,
+                                    workflow_id,
+                                )
+                                .await
                         }
+                        None => {
+                            github_api
+                                .list_repository_workflow_runs(&repository.owner, &repository.name)
+                                .await
+                        }
+                    };
 
-                        match result {
-                            Ok(workflow_runs) => {
-                                let count = workflow_runs.len();
-                                let first_run = workflow_runs.first().map(workflow_run_label);
-                                view.repository_actions_state
-                                    .replace_workflow_runs(workflow_runs);
-                                view.repository_actions_state.apply_runs_success();
-                                if view.active_tab == PanelTab::Actions {
-                                    view.status = first_run.map_or_else(
-                                        || format!("Loaded {count} workflow runs"),
-                                        |run| {
-                                            format!("Loaded {count} workflow runs; latest: {run}")
-                                        },
-                                    );
+                    this.update_or_log(
+                        cx,
+                        "failed to update repository workflow run state",
+                        move |view, cx| {
+                            if view.current_repository() != Some(&repository)
+                                || view.repository_actions_state.selected_workflow_id()
+                                    != workflow_id
+                            {
+                                return;
+                            }
+
+                            match result {
+                                Ok(workflow_runs) => {
+                                    let count = workflow_runs.len();
+                                    let first_run = workflow_runs.first().map(workflow_run_label);
+                                    view.repository_actions_state
+                                        .replace_workflow_runs(workflow_runs);
+                                    view.repository_actions_state.apply_runs_success();
+                                    if view.active_tab == PanelTab::Actions {
+                                        view.status = first_run.map_or_else(
+                                            || format!("Loaded {count} workflow runs"),
+                                            |run| {
+                                                format!(
+                                                    "Loaded {count} workflow runs; latest: {run}"
+                                                )
+                                            },
+                                        );
+                                    }
+                                }
+                                Err(error) => {
+                                    view.repository_actions_state
+                                        .apply_runs_failure(error.to_string());
+                                    if view.active_tab == PanelTab::Actions {
+                                        view.status = format!(
+                                            "Failed to load workflow runs for {}",
+                                            repository.full_name()
+                                        );
+                                    }
                                 }
                             }
-                            Err(error) => {
-                                view.repository_actions_state
-                                    .apply_runs_failure(error.to_string());
-                                if view.active_tab == PanelTab::Actions {
-                                    view.status = format!(
-                                        "Failed to load workflow runs for {}",
-                                        repository.full_name()
-                                    );
-                                }
-                            }
-                        }
 
-                        cx.notify();
-                    },
-                );
-            }
-        }));
+                            cx.notify();
+                        },
+                    );
+                }
+            }),
+        );
     }
 }

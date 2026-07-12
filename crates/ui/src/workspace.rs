@@ -82,8 +82,9 @@ pub(crate) use reviews::{
 use state::{
     ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
     PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
-    PullRequestSelectionState, RepositoryActionsUiState, RepositoryUiState, ReviewComposerState,
-    ReviewRuntimeState, SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    PullRequestSelectionState, RepositoryActionsTaskKind, RepositoryActionsUiState,
+    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SelectedPullRequestTaskKind,
+    SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};

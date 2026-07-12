@@ -183,11 +183,15 @@ impl PanelTab {
     }
 
     pub(crate) fn next(self) -> Self {
-        let index = Self::ALL
-            .iter()
-            .position(|tab| *tab == self)
-            .expect("active tab must be present");
-        Self::ALL[(index + 1) % Self::ALL.len()]
+        match self {
+            Self::Overview => Self::Diff,
+            Self::Diff => Self::Review,
+            Self::Review => Self::Commits,
+            Self::Commits => Self::Checks,
+            Self::Checks => Self::Actions,
+            Self::Actions => Self::Logs,
+            Self::Logs => Self::Overview,
+        }
     }
 }
 
