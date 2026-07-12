@@ -262,7 +262,7 @@ impl AppView {
         source: GitHubAuthSource,
         cx: &mut Context<Self>,
     ) {
-        match self.configure_github_token(token.clone(), source) {
+        match self.configure_github_token(token.clone()) {
             Ok(()) => {
                 let write_token_task = cx.write_credentials(
                     GITHUB_CREDENTIAL_URL,

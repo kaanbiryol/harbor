@@ -7,17 +7,14 @@ use harbor_domain::{
     WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    ConditionalFetch, GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus,
-    GitHubTransportSource, HttpCacheValidator, OctocrabTransport, PullRequestEnrichment,
+    ConditionalFetch, GhCliTransport, GitHubAuthApi, GitHubClient, GitHubError,
+    GitHubPullRequestApi, GitHubPullRequestMutationApi, GitHubRateLimitStatus, GitHubRepositoryApi,
+    GitHubReviewApi, GitHubReviewMutationApi, GitHubTransportSource, GitHubWorkflowApi,
+    GitHubWorkflowMutationApi, HttpCacheValidator, OctocrabTransport, PullRequestEnrichment,
     PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
-use harbor_ui::{
-    GitHubAuthApi, GitHubAuthSource, GitHubPullRequestApi, GitHubPullRequestMutationApi,
-    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
-    GitHubWorkflowMutationApi,
-};
 
 #[derive(Clone, Debug)]
 pub(crate) struct RealGitHubApi {
@@ -189,7 +186,7 @@ impl GitHubAuthApi for RealGitHubApi {
             .and_then(|client| client.as_ref().and_then(GitHubClient::latest_rate_limit))
     }
 
-    fn configure_token(&self, token: String, _source: GitHubAuthSource) -> Result<()> {
+    fn configure_token(&self, token: String) -> Result<()> {
         let transport = OctocrabTransport::with_token(token)?;
         let mut client = self
             .client

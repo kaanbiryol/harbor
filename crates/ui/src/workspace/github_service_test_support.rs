@@ -13,18 +13,15 @@ use harbor_domain::{
     WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
-    ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
+    ConditionalFetch, GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi,
+    GitHubRateLimitStatus, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
+    GitHubWorkflowApi, GitHubWorkflowMutationApi, HttpCacheValidator, PullRequestEnrichment,
     PullRequestListFilter, PullRequestMetadataOptions, PullRequestPage, PullRequestPageCursor,
     RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
-use crate::workspace::{
-    GitHubAuthApi, GitHubAuthSource, GitHubPullRequestApi, GitHubPullRequestMutationApi,
-    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
-    GitHubWorkflowMutationApi,
-};
 use queues::{FakeQueue, pop_result, push_result};
 
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
@@ -343,11 +340,8 @@ impl GitHubAuthApi for FakeGitHubApi {
         None
     }
 
-    fn configure_token(&self, _token: String, source: GitHubAuthSource) -> Result<()> {
-        self.record_call(match source {
-            GitHubAuthSource::OAuth => "configure_oauth_token",
-            GitHubAuthSource::GhCli => "configure_gh_cli_token",
-        });
+    fn configure_token(&self, _token: String) -> Result<()> {
+        self.record_call("configure_token");
         self.signed_out.store(false, Ordering::Relaxed);
         Ok(())
     }

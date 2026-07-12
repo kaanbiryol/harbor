@@ -1,0 +1,219 @@
+use async_trait::async_trait;
+use harbor_domain::{
+    MergeMethod, PullRequestComment, PullRequestCommit, PullRequestMetadataOptions,
+    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread,
+    SubmitPullRequestReviewEvent, Workflow, WorkflowJob, WorkflowRun,
+};
+
+use crate::{GitHubRateLimitStatus, RepositoryList, Result};
+
+pub trait GitHubAuthApi: Send + Sync {
+    fn configure_token(&self, token: String) -> Result<()>;
+    fn configure_gh_cli(&self) -> Result<()>;
+    fn clear_auth(&self) -> Result<()>;
+    fn has_auth(&self) -> bool;
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus>;
+}
+
+#[async_trait]
+pub trait GitHubRepositoryApi: Send + Sync {
+    async fn list_repositories(&self) -> Result<RepositoryList>;
+    async fn get_repository(&self, repository: &RepoId) -> Result<RepoId>;
+    async fn list_pull_request_metadata_options(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<PullRequestMetadataOptions>;
+    async fn current_user(&self) -> Result<String>;
+}
+
+#[async_trait]
+pub trait GitHubPullRequestApi: Send + Sync {
+    async fn list_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestCommit>>;
+    async fn mark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()>;
+    async fn unmark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()>;
+}
+
+#[async_trait]
+pub trait GitHubPullRequestMutationApi: Send + Sync {
+    async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()>;
+    async fn request_pull_request_reviewer(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        reviewer: &str,
+    ) -> Result<()>;
+    async fn add_pull_request_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        assignee: &str,
+    ) -> Result<()>;
+    async fn add_pull_request_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        label: &str,
+    ) -> Result<()>;
+    async fn create_pull_request_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()>;
+    async fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: Option<&str>,
+    ) -> Result<()>;
+    async fn request_pull_request_changes(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()>;
+    async fn merge_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        head_sha: &str,
+        method: MergeMethod,
+    ) -> Result<()>;
+}
+
+#[async_trait]
+pub trait GitHubWorkflowApi: Send + Sync {
+    async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>>;
+    async fn list_repository_workflow_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<WorkflowRun>>;
+    async fn list_workflow_runs_for_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+    ) -> Result<Vec<WorkflowRun>>;
+    async fn list_workflow_jobs_for_run(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+    ) -> Result<Vec<WorkflowJob>>;
+    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
+}
+
+#[async_trait]
+pub trait GitHubWorkflowMutationApi: Send + Sync {
+    async fn dispatch_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+        git_ref: &str,
+    ) -> Result<()>;
+    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()>;
+}
+
+#[async_trait]
+pub trait GitHubReviewApi: Send + Sync {
+    async fn list_pull_request_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestReview>>;
+    async fn list_pull_request_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestComment>>;
+    async fn pull_request_review_comment_count(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        review_id: &str,
+    ) -> Result<usize>;
+    async fn list_review_threads(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<ReviewThread>>;
+}
+
+#[async_trait]
+pub trait GitHubReviewMutationApi: Send + Sync {
+    async fn submit_pull_request_review(
+        &self,
+        pull_request_review_node_id: &str,
+        event: SubmitPullRequestReviewEvent,
+        body: Option<&str>,
+    ) -> Result<()>;
+    async fn create_pull_request_review_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        commit_id: &str,
+        range: &ReviewCommentRange,
+        body: &str,
+    ) -> Result<()>;
+    async fn start_pull_request_review(
+        &self,
+        pull_request_node_id: &str,
+        commit_id: &str,
+        range: &ReviewCommentRange,
+        body: &str,
+    ) -> Result<String>;
+    async fn add_pending_review_thread(
+        &self,
+        pull_request_review_node_id: &str,
+        range: &ReviewCommentRange,
+        body: &str,
+    ) -> Result<()>;
+    async fn add_review_thread_reply(
+        &self,
+        thread_id: &str,
+        pull_request_review_node_id: Option<&str>,
+        body: &str,
+    ) -> Result<()>;
+    async fn resolve_review_thread(&self, thread_id: &str) -> Result<()>;
+    async fn unresolve_review_thread(&self, thread_id: &str) -> Result<()>;
+    async fn update_review_comment(&self, comment_id: &str, body: &str) -> Result<()>;
+    async fn delete_review_comment(&self, comment_id: &str) -> Result<()>;
+    async fn add_review_comment_reaction(
+        &self,
+        comment_id: &str,
+        content: ReactionContent,
+    ) -> Result<()>;
+    async fn remove_review_comment_reaction(
+        &self,
+        comment_id: &str,
+        content: ReactionContent,
+    ) -> Result<()>;
+}

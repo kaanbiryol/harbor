@@ -5,7 +5,7 @@ use gpui::TestAppContext;
 use crate::{
     test_fixtures::{patched_diff_file, pull_request, workflow_run},
     workspace::{
-        GitHubAuthSource, GitHubAuthStatus,
+        GitHubAuthStatus,
         github_service::{GitHubAuthApi, test_support::FakeGitHubApi},
     },
 };
@@ -13,10 +13,10 @@ use crate::{
 use super::init_workspace_service_test;
 
 #[test]
-fn fake_github_api_records_auth_source_calls() {
+fn fake_github_api_records_auth_calls() {
     let api = FakeGitHubApi::default();
 
-    api.configure_token("oauth-token".to_string(), GitHubAuthSource::OAuth)
+    api.configure_token("oauth-token".to_string())
         .expect("fake oauth token auth should succeed");
     api.configure_gh_cli()
         .expect("fake github cli auth should succeed");
@@ -24,7 +24,7 @@ fn fake_github_api_records_auth_source_calls() {
 
     assert_eq!(
         api.calls(),
-        vec!["configure_oauth_token", "configure_gh_cli", "clear_auth",]
+        vec!["configure_token", "configure_gh_cli", "clear_auth",]
     );
 }
 

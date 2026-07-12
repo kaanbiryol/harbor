@@ -140,7 +140,7 @@ impl AppView {
                                 .map_err(|error| error.to_string())
                                 .and_then(|token| {
                                     let source = saved_source.unwrap_or(GitHubAuthSource::OAuth);
-                                    view.configure_github_token(token, source)?;
+                                    view.configure_github_token(token)?;
                                     Ok(source)
                                 });
                             match token {
@@ -263,13 +263,9 @@ impl AppView {
         };
     }
 
-    pub(super) fn configure_github_token(
-        &self,
-        token: String,
-        source: GitHubAuthSource,
-    ) -> std::result::Result<(), String> {
+    pub(super) fn configure_github_token(&self, token: String) -> std::result::Result<(), String> {
         self.github_api
-            .configure_token(token, source)
+            .configure_token(token)
             .map_err(|error| error.to_string())
     }
 

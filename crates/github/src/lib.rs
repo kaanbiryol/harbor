@@ -1,3 +1,4 @@
+mod api;
 mod client;
 mod dto;
 mod transport;
@@ -106,3 +107,7 @@ pub enum GitHubError {
     #[error("github response could not be mapped into the domain model: {0}")]
     Mapping(String),
 }
+pub use api::{
+    GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi, GitHubRepositoryApi,
+    GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi, GitHubWorkflowMutationApi,
+};
