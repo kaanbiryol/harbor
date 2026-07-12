@@ -12,7 +12,7 @@ use harbor_sync::PullRequestInboxSource;
 
 use crate::workspace::GitHubAuthSource;
 
-pub(crate) trait GitHubApi:
+pub trait GitHubApi:
     GitHubAuthApi
     + GitHubRateLimitApi
     + GitHubRepositoryApi
@@ -40,19 +40,19 @@ impl<T> GitHubApi for T where
 {
 }
 
-pub(crate) trait GitHubAuthApi: Send + Sync {
+pub trait GitHubAuthApi: Send + Sync {
     fn configure_token(&self, token: String, source: GitHubAuthSource) -> Result<()>;
     fn configure_gh_cli(&self) -> Result<()>;
     fn clear_auth(&self) -> Result<()>;
     fn has_auth(&self) -> bool;
 }
 
-pub(crate) trait GitHubRateLimitApi: Send + Sync {
+pub trait GitHubRateLimitApi: Send + Sync {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus>;
 }
 
 #[async_trait]
-pub(crate) trait GitHubRepositoryApi: Send + Sync {
+pub trait GitHubRepositoryApi: Send + Sync {
     async fn list_repositories(&self) -> Result<RepositoryList>;
 
     async fn get_repository(&self, repository: &RepoId) -> Result<RepoId>;
@@ -65,7 +65,7 @@ pub(crate) trait GitHubRepositoryApi: Send + Sync {
 }
 
 #[async_trait]
-pub(crate) trait GitHubPullRequestDetailApi: Send + Sync {
+pub trait GitHubPullRequestDetailApi: Send + Sync {
     async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest>;
 
     async fn list_pull_request_files(
@@ -110,7 +110,7 @@ pub(crate) trait GitHubPullRequestDetailApi: Send + Sync {
 }
 
 #[async_trait]
-pub(crate) trait GitHubWorkflowApi: Send + Sync {
+pub trait GitHubWorkflowApi: Send + Sync {
     async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>>;
 
     async fn list_repository_workflow_runs(
@@ -137,7 +137,7 @@ pub(crate) trait GitHubWorkflowApi: Send + Sync {
 }
 
 #[async_trait]
-pub(crate) trait GitHubWorkflowActionApi: Send + Sync {
+pub trait GitHubWorkflowActionApi: Send + Sync {
     async fn dispatch_workflow(
         &self,
         owner: &str,
@@ -150,7 +150,7 @@ pub(crate) trait GitHubWorkflowActionApi: Send + Sync {
 }
 
 #[async_trait]
-pub(crate) trait GitHubReviewApi: Send + Sync {
+pub trait GitHubReviewApi: Send + Sync {
     async fn current_user(&self) -> Result<String>;
 
     async fn list_pull_request_reviews(
@@ -184,7 +184,7 @@ pub(crate) trait GitHubReviewApi: Send + Sync {
 }
 
 #[async_trait]
-pub(crate) trait GitHubReviewMutationApi: Send + Sync {
+pub trait GitHubReviewMutationApi: Send + Sync {
     async fn submit_pull_request_review(
         &self,
         pull_request_review_node_id: &str,
@@ -246,7 +246,7 @@ pub(crate) trait GitHubReviewMutationApi: Send + Sync {
 }
 
 #[async_trait]
-pub(crate) trait GitHubPullRequestActionApi: Send + Sync {
+pub trait GitHubPullRequestActionApi: Send + Sync {
     async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()>;
 
     async fn request_pull_request_reviewer(

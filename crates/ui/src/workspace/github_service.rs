@@ -18,14 +18,14 @@ use super::GitHubAuthSource;
 mod auth;
 #[path = "github_service_traits.rs"]
 mod traits;
-pub(crate) use traits::{
+pub use traits::{
     GitHubApi, GitHubAuthApi, GitHubPullRequestActionApi, GitHubPullRequestDetailApi,
     GitHubRateLimitApi, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
     GitHubWorkflowActionApi, GitHubWorkflowApi,
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct RealGitHubApi {
+pub struct RealGitHubApi {
     client: Arc<Mutex<Option<GitHubClient<GitHubTransportSource>>>>,
     current_user_login: Arc<Mutex<Option<String>>>,
 }

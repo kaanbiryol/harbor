@@ -17,7 +17,7 @@ use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
     OVERVIEW_LIST_OVERDRAW, PANEL_LIST_OVERDRAW, PullRequestFilters, SettingsSection,
     external_apps::ExternalAppAvailability,
-    github_service::{GitHubApi, RealGitHubApi},
+    github_service::GitHubApi,
     notifications::NativeNotificationSink,
     state::{
         NotificationState, PullRequestDetailUiState, PullRequestInboxState,
@@ -28,13 +28,22 @@ use super::{
 };
 
 impl AppView {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_with_startup_tasks(window, cx, true)
+    pub fn new(
+        github_api: Arc<dyn GitHubApi>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_with_startup_tasks_and_github_api(window, cx, true, github_api)
     }
 
     #[cfg(test)]
     pub(crate) fn new_without_startup_tasks(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_with_startup_tasks(window, cx, false)
+        Self::new_with_startup_tasks_and_github_api(
+            window,
+            cx,
+            false,
+            Arc::new(super::RealGitHubApi::default()),
+        )
     }
 
     #[cfg(test)]
@@ -44,19 +53,6 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Self {
         Self::new_with_startup_tasks_and_github_api(window, cx, false, github_api)
-    }
-
-    fn new_with_startup_tasks(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        start_startup_tasks: bool,
-    ) -> Self {
-        Self::new_with_startup_tasks_and_github_api(
-            window,
-            cx,
-            start_startup_tasks,
-            Arc::new(RealGitHubApi::default()),
-        )
     }
 
     fn new_with_startup_tasks_and_github_api(

@@ -68,7 +68,11 @@ pub(crate) use changed_files::{
     ChangedFileTypeFilter, changed_file_tree_rows, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
-use github_service::GitHubApi;
+pub use github_service::{
+    GitHubApi, GitHubAuthApi, GitHubPullRequestActionApi, GitHubPullRequestDetailApi,
+    GitHubRateLimitApi, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
+    GitHubWorkflowActionApi, GitHubWorkflowApi, RealGitHubApi,
+};
 pub(crate) use pull_request_filters::{
     PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections, PullRequestFilters,
 };
@@ -88,7 +92,8 @@ use state::{
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
 
-pub(crate) use auth_state::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
+pub use auth_state::GitHubAuthSource;
+pub(crate) use auth_state::{GitHubAuthStatus, GitHubCliAvailability};
 pub(crate) use settings::{AuthSwitchStatus, SettingsSection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

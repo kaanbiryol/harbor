@@ -5,7 +5,7 @@ mod fonts;
 use assets::Assets;
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
-use harbor_ui::{AppView, bind_keys};
+use harbor_ui::{AppView, RealGitHubApi, bind_keys};
 use std::sync::Arc;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -40,7 +40,8 @@ fn main() {
                         ..Default::default()
                     },
                     |window, cx| {
-                        let view = cx.new(|cx| AppView::new(window, cx));
+                        let github_api = Arc::new(RealGitHubApi::default());
+                        let view = cx.new(|cx| AppView::new(github_api, window, cx));
                         cx.new(|cx| Root::new(view, window, cx))
                     },
                 )
