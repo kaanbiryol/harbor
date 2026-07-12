@@ -282,7 +282,11 @@ fn status_output_is_dirty(status: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use super::*;
+
+    static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn matches_common_github_remote_urls() {
@@ -325,5 +329,117 @@ mod tests {
         assert!(!status_output_is_dirty("   \n"));
         assert!(status_output_is_dirty(" M src/main.rs\n"));
         assert!(status_output_is_dirty("?? src/new.rs\n"));
+    }
+
+    #[test]
+    fn creates_and_updates_pull_request_worktrees_from_a_local_remote() {
+        let fixture = LocalGitFixture::new("worktree-update");
+        let first_sha = fixture.commit_and_publish_pull_request("first\n");
+
+        let worktree = create_or_update_pr_worktree(&fixture.source, "acme", "app", 7)
+            .expect("create pull request worktree");
+        assert_eq!(
+            git_stdout(&worktree, ["rev-parse", "HEAD"]).expect("worktree head"),
+            first_sha
+        );
+
+        let second_sha = fixture.commit_and_publish_pull_request("second\n");
+        let updated_worktree = create_or_update_pr_worktree(&fixture.source, "acme", "app", 7)
+            .expect("update pull request worktree");
+        assert_eq!(updated_worktree, worktree);
+        assert_eq!(
+            git_stdout(&worktree, ["rev-parse", "HEAD"]).expect("updated worktree head"),
+            second_sha
+        );
+
+        fixture.cleanup();
+    }
+
+    #[test]
+    fn refuses_to_update_a_dirty_pull_request_worktree() {
+        let fixture = LocalGitFixture::new("dirty-worktree");
+        fixture.commit_and_publish_pull_request("first\n");
+        let worktree = create_or_update_pr_worktree(&fixture.source, "acme", "app", 7)
+            .expect("create pull request worktree");
+        std::fs::write(worktree.join("README.md"), "dirty\n").expect("dirty worktree file");
+
+        let result = create_or_update_pr_worktree(&fixture.source, "acme", "app", 7);
+        assert_eq!(
+            result.expect_err("dirty worktree should fail").to_string(),
+            format!("managed worktree has local changes: {}", worktree.display())
+        );
+
+        fixture.cleanup();
+    }
+
+    struct LocalGitFixture {
+        root: PathBuf,
+        remote: PathBuf,
+        source: PathBuf,
+    }
+
+    impl LocalGitFixture {
+        fn new(name: &str) -> Self {
+            let sequence = TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "harbor-git-{name}-{}-{sequence}",
+                std::process::id()
+            ));
+            let remote = root.join("remote.git");
+            let source = root.join("source");
+            std::fs::create_dir_all(&root).expect("create git fixture root");
+            run_git(
+                &root,
+                ["init", "--bare", remote.to_str().expect("remote path")],
+            );
+            run_git(&root, ["init", source.to_str().expect("source path")]);
+            run_git(&source, ["config", "user.name", "Harbor Tests"]);
+            run_git(&source, ["config", "user.email", "harbor@example.com"]);
+            run_git(
+                &source,
+                [
+                    "config",
+                    &format!("url.{}.insteadOf", remote.display()),
+                    "https://github.com/acme/app.git",
+                ],
+            );
+            run_git(
+                &source,
+                ["remote", "add", "origin", "https://github.com/acme/app.git"],
+            );
+
+            Self {
+                root,
+                remote,
+                source,
+            }
+        }
+
+        fn commit_and_publish_pull_request(&self, contents: &str) -> String {
+            std::fs::write(self.source.join("README.md"), contents).expect("write fixture file");
+            run_git(&self.source, ["add", "README.md"]);
+            run_git(&self.source, ["commit", "-m", "fixture"]);
+            let sha = git_stdout(&self.source, ["rev-parse", "HEAD"]).expect("fixture head");
+            run_git(&self.remote, ["update-ref", "refs/pull/7/head", &sha]);
+            sha
+        }
+
+        fn cleanup(self) {
+            std::fs::remove_dir_all(&self.root).expect("remove git fixture");
+        }
+    }
+
+    fn run_git<const N: usize>(directory: &Path, args: [&str; N]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(args)
+            .output()
+            .expect("run git fixture command");
+        assert!(
+            output.status.success(),
+            "git fixture command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
