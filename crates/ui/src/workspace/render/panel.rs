@@ -148,7 +148,7 @@ impl AppView {
                                     is_loading: self.detail_state.files_loading(),
                                     error: self.detail_state.files_error(),
                                     list_state: self.diff_list_state.clone(),
-                                    list_items: &self.diff_list_items,
+                                    list_items: self.diff_list_items.clone(),
                                 },
                                 cx,
                             )

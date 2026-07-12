@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use harbor_domain::{
     CheckRun, DiffFile, FileViewedState, PullRequestCommit, WorkflowJob, WorkflowRun,
@@ -24,7 +24,7 @@ pub(crate) struct PullRequestDetailUiState {
     commits: Vec<PullRequestCommit>,
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
-    pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, PullRequestDetailSnapshot>,
+    pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, Arc<PullRequestDetailSnapshot>>,
     details_load: LoadStatus,
     files_load: LoadStatus,
     checks_load: LoadStatus,
@@ -77,7 +77,7 @@ impl PullRequestDetailUiState {
     pub(crate) fn cache_snapshot(
         &mut self,
         key: PullRequestDetailCacheKey,
-        snapshot: PullRequestDetailSnapshot,
+        snapshot: Arc<PullRequestDetailSnapshot>,
     ) {
         self.pull_request_detail_cache.insert(key, snapshot);
     }
@@ -85,7 +85,7 @@ impl PullRequestDetailUiState {
     pub(crate) fn snapshot(
         &self,
         key: &PullRequestDetailCacheKey,
-    ) -> Option<&PullRequestDetailSnapshot> {
+    ) -> Option<&Arc<PullRequestDetailSnapshot>> {
         self.pull_request_detail_cache.get(key)
     }
 
@@ -95,6 +95,7 @@ impl PullRequestDetailUiState {
         comment_id: &str,
     ) {
         if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            let snapshot = Arc::make_mut(snapshot);
             remove_review_comment_from_threads(&mut snapshot.review_threads, comment_id);
             snapshot.pull_request.unresolved_threads =
                 unresolved_review_thread_count(&snapshot.review_threads);
@@ -107,6 +108,7 @@ impl PullRequestDetailUiState {
         previous_pending_review: Option<&PendingReviewSession>,
     ) {
         if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            let snapshot = Arc::make_mut(snapshot);
             rollback_pending_review_comment_count(
                 &mut snapshot.pending_review,
                 previous_pending_review,
@@ -120,6 +122,7 @@ impl PullRequestDetailUiState {
         pending_review: PendingReviewSession,
     ) {
         if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
+            let snapshot = Arc::make_mut(snapshot);
             snapshot.pending_review = Some(pending_review);
         }
     }

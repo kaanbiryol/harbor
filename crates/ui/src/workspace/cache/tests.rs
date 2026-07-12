@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use harbor_domain::ReviewThreadState;
 
@@ -56,7 +56,7 @@ fn detail_cache_helpers_update_review_snapshot_consistently() {
     );
     let previous_pending_review = snapshot.pending_review.clone();
 
-    detail_state.cache_snapshot(key.clone(), snapshot);
+    detail_state.cache_snapshot(key.clone(), Arc::new(snapshot));
     detail_state.remove_optimistic_comment_from_snapshot(&key, "comment-1");
     let snapshot = detail_state.snapshot(&key).expect("snapshot should exist");
     assert!(snapshot.review_threads.is_empty());

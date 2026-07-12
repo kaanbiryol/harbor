@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ops::Range};
+use std::{collections::HashSet, ops::Range, sync::Arc};
 
 use gpui::ListState;
 use harbor_domain::{DiffFile, ReviewThread};
@@ -107,24 +107,24 @@ pub(crate) fn continuous_diff_items(input: ContinuousDiffLayoutInput<'_>) -> Vec
 
 pub(crate) fn sync_diff_list_state(
     list_state: &ListState,
-    previous_items: &mut Vec<DiffListItem>,
+    previous_items: &mut Arc<[DiffListItem]>,
     next_items: Vec<DiffListItem>,
 ) {
     if list_state.item_count() != previous_items.len() {
         let current_item_count = list_state.item_count();
         list_state.splice(0..current_item_count, next_items.len());
-        *previous_items = next_items;
+        *previous_items = next_items.into();
         return;
     }
 
-    if previous_items == &next_items {
+    if previous_items.as_ref() == next_items.as_slice() {
         return;
     }
 
     if let Some((old_range, inserted_item_count)) = diff_list_splice(previous_items, &next_items) {
         list_state.splice(old_range, inserted_item_count);
     }
-    *previous_items = next_items;
+    *previous_items = next_items.into();
 }
 
 fn diff_list_splice(

@@ -64,11 +64,7 @@ pub(crate) use changed_files::{
     ChangedFileTypeFilter, changed_file_tree_rows, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
-pub use github_service::{
-    GitHubApi, GitHubAuthApi, GitHubPullRequestActionApi, GitHubPullRequestDetailApi,
-    GitHubRateLimitApi, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
-    GitHubWorkflowActionApi, GitHubWorkflowApi, RealGitHubApi,
-};
+pub use github_service::{GitHubApi, RealGitHubApi};
 pub(crate) use pull_request_filters::{
     PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections, PullRequestFilters,
 };
@@ -163,7 +159,7 @@ pub struct AppView {
     pr_list_scroll: UniformListScrollHandle,
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
-    diff_list_items: Vec<DiffListItem>,
+    diff_list_items: Arc<[DiffListItem]>,
     overview_state: OverviewUiState,
     panel_list_state: PanelListState,
     selection_state: PullRequestSelectionState,

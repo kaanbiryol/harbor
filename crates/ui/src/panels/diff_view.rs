@@ -18,7 +18,7 @@ pub(crate) use inline_reviews::{
     render_review_comment_edit_composer, render_review_reactions, review_comment_ui_state,
 };
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{DiffFile, ReviewThread};
@@ -61,7 +61,7 @@ pub(crate) struct DiffPanelRenderInput<'a> {
     pub(crate) is_loading: bool,
     pub(crate) error: Option<&'a str>,
     pub(crate) list_state: ListState,
-    pub(crate) list_items: &'a [DiffListItem],
+    pub(crate) list_items: Arc<[DiffListItem]>,
 }
 
 impl<'a> DiffPanelRenderInput<'a> {
@@ -144,7 +144,7 @@ pub(crate) fn render_diff_panel(
     let logical_scroll_top = input.list_state.logical_scroll_top();
     let sticky_section = continuous_diff_section_for_item(
         input.layout_input(),
-        input.list_items,
+        &input.list_items,
         logical_scroll_top.item_ix,
     )
     .filter(|section| {
@@ -153,7 +153,7 @@ pub(crate) fn render_diff_panel(
     });
     let view_entity = cx.entity().clone();
     let processor_view_entity = view_entity.clone();
-    let list_items_for_render = input.list_items.to_vec();
+    let list_items_for_render = input.list_items.clone();
 
     div()
         .image_cache(gpui::retain_all("diff-review-avatar-cache"))

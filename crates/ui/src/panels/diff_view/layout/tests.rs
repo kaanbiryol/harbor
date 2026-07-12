@@ -1,5 +1,5 @@
 use std::{
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
 
@@ -85,7 +85,7 @@ fn calculates_minimal_diff_list_splice_for_inline_composer() {
 
 #[test]
 fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() {
-    let mut previous_items = vec![
+    let mut previous_items: Arc<[DiffListItem]> = vec![
         DiffListItem::FileHeader {
             file_index: 0,
             expanded: true,
@@ -104,8 +104,9 @@ fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() 
             file_index: 1,
             expanded: true,
         },
-    ];
-    let mut next_items = previous_items.clone();
+    ]
+    .into();
+    let mut next_items = previous_items.to_vec();
     next_items.insert(
         2,
         DiffListItem::ReviewComposer {
@@ -123,7 +124,7 @@ fn sync_diff_list_state_preserves_scroll_top_when_inline_composer_is_inserted() 
     sync_diff_list_state(&list_state, &mut previous_items, next_items.clone());
 
     assert_eq!(list_state.item_count(), next_items.len());
-    assert_eq!(previous_items, next_items);
+    assert_eq!(previous_items.as_ref(), next_items.as_slice());
     assert_eq!(list_state.logical_scroll_top().item_ix, 4);
     assert_eq!(list_state.logical_scroll_top().offset_in_item, px(0.0));
 }

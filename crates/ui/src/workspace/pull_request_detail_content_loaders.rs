@@ -159,6 +159,7 @@ impl AppView {
                     return;
                 };
 
+                let mut syntax_updated = false;
                 for (file_index, file) in files_for_syntax.into_iter().enumerate() {
                     let file_path = file.path.clone();
                     let Some(patch) = file.patch.clone() else {
@@ -172,19 +173,29 @@ impl AppView {
                         .await;
 
                     let update_repo = repo.clone();
+                    syntax_updated |= this
+                        .update_or_log(
+                            cx,
+                            "failed to update pull request syntax highlight state",
+                            move |view, cx| {
+                                view.apply_pull_request_file_syntax(
+                                    &update_repo,
+                                    number,
+                                    file_index,
+                                    &file_path,
+                                    highlighted_diff,
+                                    cx,
+                                )
+                            },
+                        )
+                        .unwrap_or(false);
+                }
+
+                if syntax_updated {
                     this.update_or_log(
                         cx,
-                        "failed to update pull request syntax highlight state",
-                        move |view, cx| {
-                            view.apply_pull_request_file_syntax(
-                                &update_repo,
-                                number,
-                                file_index,
-                                &file_path,
-                                highlighted_diff,
-                                cx,
-                            );
-                        },
+                        "failed to cache pull request syntax highlight state",
+                        |view, _| view.cache_current_pull_request_detail_snapshot(),
                     );
                 }
             }
@@ -260,9 +271,9 @@ impl AppView {
         file_path: &str,
         highlighted_diff: ParsedDiff,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         if !selected_pull_request_matches(self, repository, number) {
-            return;
+            return false;
         }
         if self
             .detail_state
@@ -271,15 +282,17 @@ impl AppView {
             .map(|file| file.path.as_str())
             != Some(file_path)
         {
-            return;
+            return false;
         }
 
         if self
             .detail_state
             .replace_parsed_diff(file_index, highlighted_diff)
         {
-            self.cache_current_pull_request_detail_snapshot();
             cx.notify();
+            true
+        } else {
+            false
         }
     }
 }
