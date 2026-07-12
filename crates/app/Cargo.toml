@@ -18,6 +18,7 @@ gpui-component.workspace = true
 gpui_platform.workspace = true
 harbor-domain = { path = "../domain" }
 harbor-github = { path = "../github" }
+harbor-storage = { path = "../storage" }
 harbor-sync = { path = "../sync" }
 harbor-ui = { path = "../ui" }
 reqwest_client.workspace = true

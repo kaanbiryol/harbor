@@ -76,7 +76,7 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    NotificationState, OverviewUiState, PanelListState, PullRequestDetailUiState,
+    ChecksUiState, NotificationState, OverviewUiState, PanelListState, PullRequestDetailUiState,
     PullRequestInboxState, PullRequestRowEnrichmentKey, PullRequestSelectionState,
     RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
     SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
@@ -183,14 +183,13 @@ pub struct AppView {
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,
     collapsed_file_tree_folders: HashSet<String>,
-    collapsed_check_groups: HashSet<String>,
+    checks_state: ChecksUiState,
     expanded_diff_file_paths: HashSet<String>,
     collapsed_diff_file_paths: HashSet<String>,
     reviewed_file_paths: HashSet<String>,
     excluded_file_type_filters: HashSet<String>,
     show_files_owned_by_current_user: bool,
     owned_file_paths: HashSet<String>,
-    checks_filter: CheckRunFilter,
     action_runtime: ActionRuntimeState,
     status: String,
     _subscriptions: Vec<Subscription>,
@@ -216,21 +215,21 @@ impl AppView {
     }
 
     pub(crate) fn collapsed_check_groups(&self) -> &HashSet<String> {
-        &self.collapsed_check_groups
+        &self.checks_state.collapsed_groups
     }
 
     pub(crate) fn checks_filter(&self) -> CheckRunFilter {
-        self.checks_filter
+        self.checks_state.filter
     }
 
     pub(crate) fn set_checks_filter(&mut self, filter: CheckRunFilter, cx: &mut Context<Self>) {
-        let filter = if filter == CheckRunFilter::All || self.checks_filter == filter {
+        let filter = if filter == CheckRunFilter::All || self.checks_state.filter == filter {
             CheckRunFilter::All
         } else {
             filter
         };
 
-        self.checks_filter = filter;
+        self.checks_state.filter = filter;
         self.panel_list_state.checks.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
@@ -240,10 +239,12 @@ impl AppView {
     }
 
     pub(crate) fn toggle_check_group(&mut self, group_name: String, cx: &mut Context<Self>) {
-        self.status = if self.collapsed_check_groups.remove(&group_name) {
+        self.status = if self.checks_state.collapsed_groups.remove(&group_name) {
             format!("Expanded {group_name} checks")
         } else {
-            self.collapsed_check_groups.insert(group_name.clone());
+            self.checks_state
+                .collapsed_groups
+                .insert(group_name.clone());
             format!("Collapsed {group_name} checks")
         };
         cx.notify();

@@ -4,35 +4,16 @@ use serde::{Deserialize, Serialize};
 mod checks;
 pub mod diff;
 pub mod diff_reviews;
+mod repository;
 pub mod reviews;
+mod workflows;
 
 pub use checks::checks_summary_from_runs;
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct RepoId {
-    pub owner: String,
-    pub name: String,
-}
-
-impl RepoId {
-    pub fn new(owner: impl Into<String>, name: impl Into<String>) -> Self {
-        Self {
-            owner: owner.into(),
-            name: name.into(),
-        }
-    }
-
-    pub fn full_name(&self) -> String {
-        format!("{}/{}", self.owner, self.name)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Repository {
-    pub id: RepoId,
-    pub default_branch: String,
-    pub private: bool,
-}
+pub use repository::{RepoId, Repository};
+pub use workflows::{
+    Workflow, WorkflowConclusion, WorkflowJob, WorkflowRun, WorkflowState, WorkflowStatus,
+    WorkflowStep,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Label {
@@ -351,89 +332,6 @@ pub struct CheckRun {
     pub conclusion: Option<CheckConclusion>,
     pub details_url: Option<String>,
     pub html_url: Option<String>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub completed_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum WorkflowStatus {
-    Queued,
-    InProgress,
-    Completed,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum WorkflowConclusion {
-    Success,
-    Failure,
-    Cancelled,
-    Skipped,
-    TimedOut,
-    ActionRequired,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum WorkflowState {
-    Active,
-    DisabledManually,
-    DisabledInactivity,
-    DisabledFork,
-    Deleted,
-    Unknown(String),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Workflow {
-    pub id: u64,
-    pub name: String,
-    pub path: String,
-    pub state: WorkflowState,
-    pub html_url: String,
-    pub badge_url: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct WorkflowRun {
-    pub id: u64,
-    pub workflow_id: Option<u64>,
-    pub name: String,
-    pub workflow_name: Option<String>,
-    pub status: WorkflowStatus,
-    pub conclusion: Option<WorkflowConclusion>,
-    pub head_branch: String,
-    pub head_sha: String,
-    pub event: String,
-    pub url: String,
-    pub html_url: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    #[serde(default)]
-    pub run_number: Option<u64>,
-    #[serde(default)]
-    pub run_attempt: Option<u64>,
-    #[serde(default)]
-    pub actor_login: Option<String>,
-    #[serde(default)]
-    pub run_started_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct WorkflowJob {
-    pub id: u64,
-    pub name: String,
-    pub status: WorkflowStatus,
-    pub conclusion: Option<WorkflowConclusion>,
-    pub steps: Vec<WorkflowStep>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct WorkflowStep {
-    pub name: String,
-    pub number: u32,
-    pub status: WorkflowStatus,
-    pub conclusion: Option<WorkflowConclusion>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
 }

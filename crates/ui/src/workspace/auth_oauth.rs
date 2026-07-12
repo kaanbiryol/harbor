@@ -269,8 +269,9 @@ impl AppView {
                     GITHUB_CREDENTIAL_USERNAME,
                     token.as_bytes(),
                 );
-                let write_source_task =
-                    cx.background_spawn(async move { save_github_auth_source(source).await });
+                let store = self.repository_state.store();
+                let write_source_task = cx
+                    .background_spawn(async move { save_github_auth_source(store, source).await });
                 self.finish_authenticated_github_sign_in(source, cx);
 
                 self.tasks.set_auth_task(cx.spawn(async move |this, cx| {

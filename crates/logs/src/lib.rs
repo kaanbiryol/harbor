@@ -20,21 +20,67 @@ pub struct LogChunk {
     pub run_id: u64,
     pub job_id: Option<u64>,
     pub lines: Vec<LogLine>,
+    pub warning_line_indices: Vec<usize>,
+    pub error_line_indices: Vec<usize>,
 }
 
 pub fn parse_workflow_log(run_id: u64, text: &str) -> LogChunk {
-    LogChunk {
-        run_id,
-        job_id: None,
-        lines: text
-            .lines()
-            .enumerate()
-            .map(|(index, line)| LogLine {
-                number: index + 1,
-                severity: infer_severity(line),
-                text: line.to_string(),
-            })
-            .collect(),
+    let mut parser = WorkflowLogParser::new(run_id);
+    parser.push(text);
+    parser.finish()
+}
+
+pub struct WorkflowLogParser {
+    chunk: LogChunk,
+    pending: String,
+}
+
+impl WorkflowLogParser {
+    pub fn new(run_id: u64) -> Self {
+        Self {
+            chunk: LogChunk {
+                run_id,
+                job_id: None,
+                lines: Vec::new(),
+                warning_line_indices: Vec::new(),
+                error_line_indices: Vec::new(),
+            },
+            pending: String::new(),
+        }
+    }
+
+    pub fn push(&mut self, text: &str) {
+        self.pending.push_str(text);
+        while let Some(newline_index) = self.pending.find('\n') {
+            let line = self.pending[..newline_index]
+                .trim_end_matches('\r')
+                .to_string();
+            self.pending.drain(..=newline_index);
+            self.push_line(line);
+        }
+    }
+
+    pub fn finish(mut self) -> LogChunk {
+        if !self.pending.is_empty() {
+            let line = std::mem::take(&mut self.pending);
+            self.push_line(line);
+        }
+        self.chunk
+    }
+
+    fn push_line(&mut self, text: String) {
+        let index = self.chunk.lines.len();
+        let severity = infer_severity(&text);
+        match severity {
+            LogSeverity::Warning => self.chunk.warning_line_indices.push(index),
+            LogSeverity::Error => self.chunk.error_line_indices.push(index),
+            LogSeverity::Trace | LogSeverity::Info => {}
+        }
+        self.chunk.lines.push(LogLine {
+            number: index + 1,
+            severity,
+            text,
+        });
     }
 }
 
@@ -69,5 +115,26 @@ mod tests {
         assert_eq!(chunk.lines[0].severity, LogSeverity::Info);
         assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
         assert_eq!(chunk.lines[2].severity, LogSeverity::Error);
+        assert_eq!(chunk.warning_line_indices, [1]);
+        assert_eq!(chunk.error_line_indices, [2]);
+    }
+
+    #[test]
+    fn incrementally_parses_lines_split_across_chunks() {
+        let mut parser = WorkflowLogParser::new(42);
+        parser.push("build\nwarn");
+        parser.push("ing: slow\r\n::error::failed");
+        let chunk = parser.finish();
+
+        assert_eq!(
+            chunk
+                .lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            ["build", "warning: slow", "::error::failed"]
+        );
+        assert_eq!(chunk.warning_line_indices, [1]);
+        assert_eq!(chunk.error_line_indices, [2]);
     }
 }

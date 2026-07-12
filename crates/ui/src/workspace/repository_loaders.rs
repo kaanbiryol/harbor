@@ -2,15 +2,25 @@ use std::sync::Arc;
 
 use gpui::{AppContext, Context};
 use harbor_domain::RepoId;
-use harbor_storage::{RecentRepository, SqliteStore, StorageConfig, StorageError};
+use harbor_storage::{RecentRepository, SqliteStore, StorageError};
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt, github_service::GitHubApi};
 
 impl AppView {
     pub(super) fn load_repository_preferences(&mut self, cx: &mut Context<Self>) {
         let configured_repo = self.repository_state.configured_repo_cloned();
+        let Some(store) = self.repository_state.store() else {
+            if self.repository_state.error().is_none() {
+                self.repository_state
+                    .clear_store_with_error("storage was not initialized");
+            }
+            self.status = "Failed to initialize repository storage".to_string();
+            cx.notify();
+            return;
+        };
         self.repository_state.start_loading();
-        let task = cx.background_spawn(async move { load_repository_store(configured_repo).await });
+        let task =
+            cx.background_spawn(async move { load_repository_store(store, configured_repo).await });
 
         self.tasks.set_repository_task(cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -294,10 +304,9 @@ struct RepositoryRefresh {
 }
 
 async fn load_repository_store(
+    store: SqliteStore,
     configured_repo: Option<RepoId>,
 ) -> std::result::Result<RepositoryLoad, StorageError> {
-    let store = SqliteStore::connect(StorageConfig::from_env()?).await?;
-
     if let Some(repository) = configured_repo.as_ref() {
         store.record_repository(repository).await?;
     }

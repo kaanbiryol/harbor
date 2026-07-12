@@ -2,12 +2,12 @@ use std::{collections::HashSet, sync::Arc};
 
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
 use gpui_component::{ActiveTheme, input::InputState};
+use harbor_storage::SqliteStore;
 use harbor_sync::{ActivityState, SyncPolicy};
 
 use crate::{
     actions::{PanelTab, PullRequestMetadataField},
     diff::parse_files_with_syntax,
-    panels::CheckRunFilter,
 };
 
 use super::{
@@ -17,20 +17,21 @@ use super::{
     github_service::GitHubApi,
     notifications::NativeNotificationSink,
     state::{
-        NotificationState, OverviewUiState, PanelListState, PullRequestDetailUiState,
-        PullRequestInboxState, PullRequestSelectionState, RepositoryActionsUiState,
-        RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState,
-        WorkflowLogState, WorkspaceTasks,
+        ChecksUiState, NotificationState, OverviewUiState, PanelListState,
+        PullRequestDetailUiState, PullRequestInboxState, PullRequestSelectionState,
+        RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
+        SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
     },
 };
 
 impl AppView {
     pub fn new(
         github_api: Arc<dyn GitHubApi>,
+        storage: std::result::Result<SqliteStore, String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_with_startup_tasks_and_github_api(window, cx, true, github_api)
+        Self::new_with_startup_tasks_and_github_api(window, cx, true, github_api, storage)
     }
 
     #[cfg(test)]
@@ -40,6 +41,7 @@ impl AppView {
             cx,
             false,
             Arc::new(super::github_service::test_support::FakeGitHubApi::default()),
+            Err("storage is disabled in this test".to_string()),
         )
     }
 
@@ -49,7 +51,13 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_with_startup_tasks_and_github_api(window, cx, false, github_api)
+        Self::new_with_startup_tasks_and_github_api(
+            window,
+            cx,
+            false,
+            github_api,
+            Err("storage is disabled in this test".to_string()),
+        )
     }
 
     fn new_with_startup_tasks_and_github_api(
@@ -57,6 +65,7 @@ impl AppView {
         cx: &mut Context<Self>,
         start_startup_tasks: bool,
         github_api: Arc<dyn GitHubApi>,
+        storage: std::result::Result<SqliteStore, String>,
     ) -> Self {
         let pull_requests = Vec::new();
         let files = Vec::new();
@@ -215,7 +224,11 @@ impl AppView {
             settings_section: SettingsSection::GitHub,
             auth_switch_status: None,
             tasks: WorkspaceTasks::default(),
-            repository_state: RepositoryUiState::new(repository_search_input, start_startup_tasks),
+            repository_state: RepositoryUiState::new(
+                repository_search_input,
+                start_startup_tasks,
+                storage,
+            ),
             repository_actions_state: RepositoryActionsUiState::new(),
             detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
             review_state: ReviewRuntimeState::new(
@@ -278,14 +291,13 @@ impl AppView {
             pull_request_search_input,
             external_app_availability: ExternalAppAvailability::default(),
             collapsed_file_tree_folders: HashSet::new(),
-            collapsed_check_groups: HashSet::new(),
+            checks_state: ChecksUiState::default(),
             expanded_diff_file_paths: HashSet::new(),
             collapsed_diff_file_paths: HashSet::new(),
             reviewed_file_paths: HashSet::new(),
             excluded_file_type_filters: HashSet::new(),
             show_files_owned_by_current_user: false,
             owned_file_paths: HashSet::new(),
-            checks_filter: CheckRunFilter::All,
             action_runtime: ActionRuntimeState::default(),
             status,
             _subscriptions: subscriptions,

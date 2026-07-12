@@ -2843,6 +2843,7 @@ dependencies = [
  "gpui_platform",
  "harbor-domain",
  "harbor-github",
+ "harbor-storage",
  "harbor-sync",
  "harbor-ui",
  "reqwest_client",

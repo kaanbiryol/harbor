@@ -195,7 +195,7 @@ impl AppView {
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login().map(str::to_string),
             collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
-            collapsed_check_groups: self.collapsed_check_groups.clone(),
+            collapsed_check_groups: self.checks_state.collapsed_groups.clone(),
             expanded_diff_file_paths: self.expanded_diff_file_paths.clone(),
             collapsed_diff_file_paths: self.collapsed_diff_file_paths.clone(),
             reviewed_file_paths: self.reviewed_file_paths.clone(),
@@ -298,7 +298,7 @@ impl AppView {
             .log_state
             .set_chunk(snapshot.log_chunk.clone());
         self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders.clone();
-        self.collapsed_check_groups = snapshot.collapsed_check_groups.clone();
+        self.checks_state.collapsed_groups = snapshot.collapsed_check_groups.clone();
         self.expanded_diff_file_paths = snapshot.expanded_diff_file_paths.clone();
         self.collapsed_diff_file_paths = snapshot.collapsed_diff_file_paths.clone();
         self.reviewed_file_paths = snapshot.reviewed_file_paths.clone();

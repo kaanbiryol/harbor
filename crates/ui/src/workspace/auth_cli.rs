@@ -135,10 +135,10 @@ impl AppView {
 
     fn persist_github_cli_auth_source(&mut self, cx: &mut Context<Self>) {
         let delete_token_task = cx.delete_credentials(GITHUB_CREDENTIAL_URL);
-        let write_source_task =
-            cx.background_spawn(
-                async move { save_github_auth_source(GitHubAuthSource::GhCli).await },
-            );
+        let store = self.repository_state.store();
+        let write_source_task = cx.background_spawn(async move {
+            save_github_auth_source(store, GitHubAuthSource::GhCli).await
+        });
 
         self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
             let delete_token_result = delete_token_task.await;

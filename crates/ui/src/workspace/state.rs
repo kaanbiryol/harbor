@@ -1,3 +1,5 @@
+#[path = "state/checks.rs"]
+mod checks;
 #[path = "state/detail.rs"]
 mod detail;
 #[path = "state/inbox.rs"]
@@ -25,6 +27,7 @@ mod tasks;
 #[path = "state/workflow_log.rs"]
 mod workflow_log;
 
+pub(crate) use checks::ChecksUiState;
 pub(crate) use detail::{PullRequestDetailLoadedState, PullRequestDetailUiState};
 pub(crate) use inbox::{PullRequestInboxState, PullRequestRowEnrichmentKey};
 pub(crate) use notification::NotificationState;

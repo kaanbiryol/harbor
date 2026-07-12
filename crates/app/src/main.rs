@@ -6,6 +6,7 @@ mod github_api;
 use assets::Assets;
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
+use harbor_storage::{SqliteStore, StorageConfig};
 use harbor_ui::{AppView, bind_keys};
 use std::sync::Arc;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
@@ -36,6 +37,12 @@ fn main() {
             let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
 
             cx.spawn(async move |cx| {
+                let storage = match StorageConfig::from_env() {
+                    Ok(config) => SqliteStore::connect(config)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    Err(error) => Err(error.to_string()),
+                };
                 cx.open_window(
                     WindowOptions {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -44,7 +51,7 @@ fn main() {
                     },
                     |window, cx| {
                         let github_api = Arc::new(RealGitHubApi::default());
-                        let view = cx.new(|cx| AppView::new(github_api, window, cx));
+                        let view = cx.new(|cx| AppView::new(github_api, storage, window, cx));
                         cx.new(|cx| Root::new(view, window, cx))
                     },
                 )

@@ -135,7 +135,9 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
             .log_state
             .set_chunk(Some(parse_workflow_log(42, "build")));
         view.collapsed_file_tree_folders.insert("src".to_string());
-        view.collapsed_check_groups.insert("build".to_string());
+        view.checks_state
+            .collapsed_groups
+            .insert("build".to_string());
         view.expanded_diff_file_paths
             .insert("src/lib.rs".to_string());
         view.collapsed_diff_file_paths
@@ -156,7 +158,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         assert!(view.review_state.review_threads().is_empty());
         assert!(view.detail_state.log_state.chunk().is_none());
         assert!(view.collapsed_file_tree_folders.is_empty());
-        assert!(view.collapsed_check_groups.is_empty());
+        assert!(view.checks_state.collapsed_groups.is_empty());
         assert!(view.expanded_diff_file_paths.is_empty());
         assert!(view.collapsed_diff_file_paths.is_empty());
         assert!(view.reviewed_file_paths.is_empty());

@@ -64,8 +64,7 @@ impl AppView {
         self.detail_state.clear_commits();
         self.detail_state.clear_workflow_runs();
         self.detail_state.clear_workflow_jobs();
-        self.collapsed_check_groups.clear();
-        self.checks_filter = crate::panels::CheckRunFilter::All;
+        self.checks_state.reset();
     }
 
     pub(super) fn clear_log_content(&mut self) {

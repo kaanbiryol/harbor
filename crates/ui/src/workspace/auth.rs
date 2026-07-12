@@ -1,5 +1,5 @@
 use gpui::{AppContext, Context, Window};
-use harbor_storage::{SqliteStore, StorageConfig};
+use harbor_storage::SqliteStore;
 
 use crate::{
     actions::SignOutOfGitHub,
@@ -88,7 +88,9 @@ impl AppView {
         self.auth_status = GitHubAuthStatus::Loading;
         self.github_cli_availability = GitHubCliAvailability::Checking;
         self.github_auth_popover_open = false;
-        let source_task = cx.background_spawn(async move { load_saved_github_auth_source().await });
+        let store = self.repository_state.store();
+        let source_task =
+            cx.background_spawn(async move { load_saved_github_auth_source(store).await });
 
         self.tasks.set_auth_task(cx.spawn(async move |this, cx| {
             let source_result = source_task.await;
@@ -182,8 +184,9 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let delete_token_task = cx.delete_credentials(GITHUB_CREDENTIAL_URL);
+        let store = self.repository_state.store();
         let delete_source_task = cx.background_spawn(async move {
-            delete_saved_github_auth_source()
+            delete_saved_github_auth_source(store)
                 .await
                 .map_err(|error| error.to_string())
         });
@@ -305,9 +308,10 @@ impl AppView {
     }
 }
 
-pub(super) async fn load_saved_github_auth_source()
--> std::result::Result<Option<GitHubAuthSource>, String> {
-    let store = connect_storage_for_auth().await?;
+pub(super) async fn load_saved_github_auth_source(
+    store: Option<SqliteStore>,
+) -> std::result::Result<Option<GitHubAuthSource>, String> {
+    let store = store.ok_or_else(|| "storage was not initialized".to_string())?;
     let value = store
         .load_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY)
         .await
@@ -317,26 +321,22 @@ pub(super) async fn load_saved_github_auth_source()
 }
 
 pub(super) async fn save_github_auth_source(
+    store: Option<SqliteStore>,
     source: GitHubAuthSource,
 ) -> std::result::Result<(), String> {
-    let store = connect_storage_for_auth().await?;
+    let store = store.ok_or_else(|| "storage was not initialized".to_string())?;
     store
         .save_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY, source.storage_value())
         .await
         .map_err(|error| error.to_string())
 }
 
-async fn delete_saved_github_auth_source() -> std::result::Result<(), String> {
-    let store = connect_storage_for_auth().await?;
+async fn delete_saved_github_auth_source(
+    store: Option<SqliteStore>,
+) -> std::result::Result<(), String> {
+    let store = store.ok_or_else(|| "storage was not initialized".to_string())?;
     store
         .delete_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY)
-        .await
-        .map_err(|error| error.to_string())
-}
-
-async fn connect_storage_for_auth() -> std::result::Result<SqliteStore, String> {
-    let config = StorageConfig::from_env().map_err(|error| error.to_string())?;
-    SqliteStore::connect(config)
         .await
         .map_err(|error| error.to_string())
 }

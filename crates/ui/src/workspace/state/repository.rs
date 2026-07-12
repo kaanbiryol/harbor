@@ -23,7 +23,15 @@ pub(crate) struct RepositoryUiState {
 }
 
 impl RepositoryUiState {
-    pub(crate) fn new(repository_search_input: Entity<InputState>, is_loading: bool) -> Self {
+    pub(crate) fn new(
+        repository_search_input: Entity<InputState>,
+        is_loading: bool,
+        storage: std::result::Result<SqliteStore, String>,
+    ) -> Self {
+        let (repository_store, repository_error) = match storage {
+            Ok(store) => (Some(store), None),
+            Err(error) => (None, Some(error)),
+        };
         Self {
             repositories: Vec::new(),
             pinned_repositories: HashSet::new(),
@@ -31,10 +39,10 @@ impl RepositoryUiState {
             repository_switcher_selection: 0,
             repository_search_input,
             configured_repo: None,
-            repository_store: None,
+            repository_store,
             repository_local_paths: HashMap::new(),
             is_loading_repositories: is_loading,
-            repository_error: None,
+            repository_error,
             repository_notice: None,
         }
     }
