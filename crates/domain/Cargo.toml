@@ -9,3 +9,7 @@ rust-version.workspace = true
 [dependencies]
 chrono.workspace = true
 serde.workspace = true
+
+[[bench]]
+name = "review_thread_index"
+harness = false

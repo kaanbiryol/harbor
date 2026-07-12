@@ -191,7 +191,7 @@ pub enum ReviewThreadState {
     Outdated,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ReviewSide {
     Left,
     Right,

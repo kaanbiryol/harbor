@@ -7,7 +7,6 @@ use harbor_domain::{DiffFile, ReviewThreadState};
 
 use crate::{
     diff::{DiffLine, ParsedDiff},
-    diff_reviews::{anchored_review_threads, review_threads_for_line},
     visual::color,
     workspace::{AppView, ReviewLineTarget},
 };
@@ -120,8 +119,16 @@ fn render_diff_line_item(
         return div().into_any_element();
     };
 
-    let anchored_threads = anchored_review_threads(file, row_state.review_threads);
-    let matching_threads = review_threads_for_line(&anchored_threads, line);
+    let mut thread_count = 0;
+    let mut has_unresolved_thread = false;
+    row_state
+        .review_thread_index
+        .for_each_thread_for_line(file, line, |thread_index| {
+            if let Some(thread) = row_state.review_threads.get(thread_index) {
+                thread_count += 1;
+                has_unresolved_thread |= thread.state == ReviewThreadState::Unresolved;
+            }
+        });
     let active_selection_range = row_state.review_line_selection.and_then(|selection| {
         crate::workspace::review_range_from_targets(&selection.anchor, &selection.current).ok()
     });
@@ -132,10 +139,7 @@ fn render_diff_line_item(
     let dragging_for_comment = active_selection_range
         .as_ref()
         .is_some_and(|range| review_comment_range_matches_line(file, range, line));
-    let has_unresolved_thread = matching_threads
-        .iter()
-        .any(|thread| thread.state == ReviewThreadState::Unresolved);
-    let has_thread_anchor = !matching_threads.is_empty();
+    let has_thread_anchor = thread_count > 0;
     let has_thread_range = row_state
         .review_threads
         .iter()
@@ -145,7 +149,7 @@ fn render_diff_line_item(
     render_diff_line(DiffLineRenderInput {
         item_index,
         line,
-        thread_count: matching_threads.len(),
+        thread_count,
         has_unresolved_thread,
         dragging_for_comment,
         selected_for_comment,

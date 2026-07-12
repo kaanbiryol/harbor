@@ -24,6 +24,7 @@ use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{DiffFile, ReviewThread};
 
 use crate::diff::ParsedDiff;
+use crate::diff_reviews::ReviewThreadIndex;
 use crate::visual::color;
 use crate::workspace::{AppView, ReviewComposer};
 
@@ -154,6 +155,7 @@ pub(crate) fn render_diff_panel(
     let view_entity = cx.entity().clone();
     let processor_view_entity = view_entity.clone();
     let list_items_for_render = input.list_items.clone();
+    let review_thread_index = Arc::new(ReviewThreadIndex::new(input.review_threads));
 
     div()
         .image_cache(gpui::retain_all("diff-review-avatar-cache"))
@@ -190,6 +192,7 @@ pub(crate) fn render_diff_panel(
                                         view,
                                         cx,
                                         processor_view_entity.clone(),
+                                        review_thread_index.clone(),
                                     );
 
                                     render_diff_list_item(

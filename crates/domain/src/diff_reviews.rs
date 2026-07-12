@@ -1,4 +1,6 @@
-use crate::{DiffFile, ReviewSide, ReviewThread};
+use std::collections::HashMap;
+
+use crate::{DiffFile, ReviewCommentPosition, ReviewSide, ReviewThread};
 
 use crate::diff::DiffLine;
 #[cfg(test)]
@@ -23,10 +25,112 @@ pub struct AnchoredReviewThread<'a> {
     thread: &'a ReviewThread,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct ReviewThreadAnchor {
     side: ReviewSide,
     line: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ReviewThreadIndex {
+    threads_by_path: HashMap<String, HashMap<ReviewThreadAnchor, Vec<usize>>>,
+}
+
+impl ReviewThreadIndex {
+    pub fn new(review_threads: &[ReviewThread]) -> Self {
+        let mut index = Self::default();
+        for (thread_index, thread) in review_threads.iter().enumerate() {
+            if let Some(range) = thread.range.as_ref() {
+                index.insert(
+                    &range.path,
+                    ReviewThreadAnchor {
+                        side: range.side,
+                        line: range.line,
+                    },
+                    thread_index,
+                );
+                continue;
+            }
+
+            let Some(position) = thread
+                .comments
+                .iter()
+                .find_map(|comment| comment.position.as_ref())
+            else {
+                continue;
+            };
+            let Some(anchor) = review_comment_anchor(position) else {
+                continue;
+            };
+            index.insert(&position.path, anchor, thread_index);
+            if normalize_path(&position.path) != normalize_path(&thread.path) {
+                index.insert(&thread.path, anchor, thread_index);
+            }
+        }
+        index
+    }
+
+    pub fn for_each_thread_for_line<T>(
+        &self,
+        file: &DiffFile,
+        line: &DiffLine<T>,
+        mut visit: impl FnMut(usize),
+    ) {
+        let anchors = [
+            line.old_line.map(|line| ReviewThreadAnchor {
+                side: ReviewSide::Left,
+                line,
+            }),
+            line.new_line.map(|line| ReviewThreadAnchor {
+                side: ReviewSide::Right,
+                line,
+            }),
+        ];
+        let paths = [Some(file.path.as_str()), file.previous_path.as_deref()];
+        let mut groups: [&[usize]; 4] = [&[]; 4];
+        let mut group_count = 0;
+        for path in paths.into_iter().flatten() {
+            for anchor in anchors.into_iter().flatten() {
+                groups[group_count] = self.thread_indices(path, anchor);
+                group_count += 1;
+            }
+        }
+
+        let mut positions = [0; 4];
+        loop {
+            let next = groups[..group_count]
+                .iter()
+                .enumerate()
+                .filter_map(|(group, indices)| indices.get(positions[group]).copied())
+                .min();
+            let Some(next) = next else {
+                break;
+            };
+            visit(next);
+            for (group, indices) in groups[..group_count].iter().enumerate() {
+                while indices.get(positions[group]) == Some(&next) {
+                    positions[group] += 1;
+                }
+            }
+        }
+    }
+
+    fn insert(&mut self, path: &str, anchor: ReviewThreadAnchor, thread_index: usize) {
+        self.threads_by_path
+            .entry(normalize_path(path).to_string())
+            .or_default()
+            .entry(anchor)
+            .or_default()
+            .push(thread_index);
+    }
+
+    fn thread_indices(&self, path: &str, anchor: ReviewThreadAnchor) -> &[usize] {
+        self.threads_by_path
+            .get(normalize_path(path))
+            .and_then(|threads_by_anchor| threads_by_anchor.get(&anchor))
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -133,30 +237,34 @@ fn review_thread_anchor(
             return None;
         }
 
-        match position.side {
-            ReviewSide::Left => {
-                position
-                    .original_line
-                    .or(position.line)
-                    .map(|line| ReviewThreadAnchor {
-                        side: ReviewSide::Left,
-                        line,
-                    })
-            }
-            ReviewSide::Right => position
-                .line
+        review_comment_anchor(position)
+    })
+}
+
+fn review_comment_anchor(position: &ReviewCommentPosition) -> Option<ReviewThreadAnchor> {
+    match position.side {
+        ReviewSide::Left => {
+            position
+                .original_line
+                .or(position.line)
                 .map(|line| ReviewThreadAnchor {
-                    side: ReviewSide::Right,
+                    side: ReviewSide::Left,
                     line,
                 })
-                .or_else(|| {
-                    position.original_line.map(|line| ReviewThreadAnchor {
-                        side: ReviewSide::Left,
-                        line,
-                    })
-                }),
         }
-    })
+        ReviewSide::Right => position
+            .line
+            .map(|line| ReviewThreadAnchor {
+                side: ReviewSide::Right,
+                line,
+            })
+            .or_else(|| {
+                position.original_line.map(|line| ReviewThreadAnchor {
+                    side: ReviewSide::Left,
+                    line,
+                })
+            }),
+    }
 }
 
 fn review_anchor_matches_line<T>(anchor: ReviewThreadAnchor, line: &DiffLine<T>) -> bool {
@@ -269,6 +377,29 @@ mod tests {
             diff_row_count_with_reviews(&diff, &file, &[thread]),
             diff_row_count(&diff) + REVIEW_THREAD_INLINE_ROWS
         );
+    }
+
+    #[test]
+    fn review_thread_index_matches_renamed_files_without_duplicates() {
+        let mut file = test_file("src/new.rs");
+        file.previous_path = Some("src/old.rs".to_string());
+        let diff = parse_unified_diff("@@ -1 +1 @@\n context\n");
+        let thread = review_thread(
+            "thread-1",
+            "src/old.rs",
+            ReviewSide::Right,
+            Some(1),
+            Some(1),
+        );
+        let threads = vec![thread];
+        let index = ReviewThreadIndex::new(&threads);
+        let mut matches = Vec::new();
+
+        index.for_each_thread_for_line(&file, &diff.hunks[0].lines[0], |thread_index| {
+            matches.push(thread_index);
+        });
+
+        assert_eq!(matches, [0]);
     }
 
     #[test]

@@ -3,11 +3,7 @@ use std::{collections::HashSet, ops::Range, sync::Arc};
 use gpui::ListState;
 use harbor_domain::{DiffFile, ReviewThread};
 
-use crate::{
-    diff::ParsedDiff,
-    diff_reviews::{anchored_review_threads, review_threads_for_line},
-    workspace::ReviewComposer,
-};
+use crate::{diff::ParsedDiff, diff_reviews::ReviewThreadIndex, workspace::ReviewComposer};
 
 use super::{
     LINE_NUMBER_DIGIT_WIDTH, LINE_NUMBER_PADDING, MIN_LINE_NUMBER_WIDTH,
@@ -27,9 +23,13 @@ pub(crate) struct ContinuousDiffLayoutInput<'a> {
 }
 
 impl<'a> ContinuousDiffLayoutInput<'a> {
-    fn review_controls(self) -> ReviewLayoutControls<'a> {
+    fn review_controls(
+        self,
+        review_thread_index: &'a ReviewThreadIndex,
+    ) -> ReviewLayoutControls<'a> {
         ReviewLayoutControls {
             review_threads: self.review_threads,
+            review_thread_index,
             review_composer: self.review_composer,
         }
     }
@@ -38,6 +38,7 @@ impl<'a> ContinuousDiffLayoutInput<'a> {
 #[derive(Clone, Copy)]
 struct ReviewLayoutControls<'a> {
     review_threads: &'a [ReviewThread],
+    review_thread_index: &'a ReviewThreadIndex,
     review_composer: Option<&'a ReviewComposer>,
 }
 
@@ -70,6 +71,7 @@ pub(crate) enum DiffListItem {
 
 pub(crate) fn continuous_diff_items(input: ContinuousDiffLayoutInput<'_>) -> Vec<DiffListItem> {
     let mut items = Vec::new();
+    let review_thread_index = ReviewThreadIndex::new(input.review_threads);
 
     for file_index in input.visible_file_indices {
         let Some(file) = input.files.get(*file_index) else {
@@ -99,7 +101,13 @@ pub(crate) fn continuous_diff_items(input: ContinuousDiffLayoutInput<'_>) -> Vec
             continue;
         };
 
-        diff_body_items(&mut items, diff, file, *file_index, input.review_controls());
+        diff_body_items(
+            &mut items,
+            diff,
+            file,
+            *file_index,
+            input.review_controls(&review_thread_index),
+        );
     }
 
     items
@@ -274,8 +282,6 @@ fn diff_body_items(
     file_index: usize,
     controls: ReviewLayoutControls<'_>,
 ) {
-    let anchored_threads = anchored_review_threads(file, controls.review_threads);
-
     for (hunk_index, hunk) in diff.hunks.iter().enumerate() {
         for (line_index, line) in hunk.lines.iter().enumerate() {
             items.push(DiffListItem::Line {
@@ -296,14 +302,19 @@ fn diff_body_items(
                 });
             }
 
-            for thread in review_threads_for_line(&anchored_threads, line) {
-                items.push(DiffListItem::ReviewThread {
-                    file_index,
-                    hunk_index,
-                    line_index,
-                    thread_id: thread.id.clone(),
+            controls
+                .review_thread_index
+                .for_each_thread_for_line(file, line, |thread_index| {
+                    let Some(thread) = controls.review_threads.get(thread_index) else {
+                        return;
+                    };
+                    items.push(DiffListItem::ReviewThread {
+                        file_index,
+                        hunk_index,
+                        line_index,
+                        thread_id: thread.id.clone(),
+                    });
                 });
-            }
         }
     }
 }

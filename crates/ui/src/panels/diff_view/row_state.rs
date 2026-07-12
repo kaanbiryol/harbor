@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use gpui::{App, Entity, SharedString};
 use gpui_component::{ActiveTheme, input::InputState};
 use harbor_domain::ReviewThread;
 
+use crate::diff_reviews::ReviewThreadIndex;
 use crate::workspace::{
     AppView, PendingReviewSession, ReviewCommentUiError, ReviewComposer, ReviewLineSelection,
     ReviewReactionAction, ReviewThreadUiError,
@@ -9,6 +12,7 @@ use crate::workspace::{
 
 pub(super) struct DiffRowRenderState<'a> {
     pub(super) review_threads: &'a [ReviewThread],
+    pub(super) review_thread_index: Arc<ReviewThreadIndex>,
     pub(super) review_composer: Option<&'a ReviewComposer>,
     pub(super) review_line_selection: Option<&'a ReviewLineSelection>,
     pub(super) pending_review: Option<&'a PendingReviewSession>,
@@ -38,9 +42,15 @@ pub(super) struct DiffRowRenderState<'a> {
 }
 
 impl<'a> DiffRowRenderState<'a> {
-    pub(super) fn from_view(view: &'a AppView, cx: &App, view_entity: Entity<AppView>) -> Self {
+    pub(super) fn from_view(
+        view: &'a AppView,
+        cx: &App,
+        view_entity: Entity<AppView>,
+        review_thread_index: Arc<ReviewThreadIndex>,
+    ) -> Self {
         Self {
             review_threads: view.review_state.review_threads(),
+            review_thread_index,
             review_composer: view.review_state.review_composer_state.inline_composer(),
             review_line_selection: view.review_state.review_composer_state.line_selection(),
             pending_review: view.review_state.pending_review(),
