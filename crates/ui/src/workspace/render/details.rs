@@ -1,14 +1,11 @@
-use crate::{
-    visual::{color, layout},
-    workspace::AppView,
-};
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use crate::{visual::color, workspace::AppView};
+use gpui::{Context, IntoElement, div, prelude::*};
 
 impl AppView {
     pub(super) fn render_changed_files_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .debug_selector(|| "changed-files-sidebar".to_string())
-            .w(px(layout::PULL_REQUEST_DETAILS_WIDTH))
+            .size_full()
             .flex()
             .flex_col()
             .min_h_0()

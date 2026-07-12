@@ -11,7 +11,10 @@ pub(crate) mod opacity {
 
 pub(crate) mod layout {
     pub(crate) const PULL_REQUEST_INBOX_WIDTH: f32 = 320.0;
+    pub(crate) const PULL_REQUEST_INBOX_MIN_WIDTH: f32 = 240.0;
     pub(crate) const PULL_REQUEST_DETAILS_WIDTH: f32 = 380.0;
+    pub(crate) const PULL_REQUEST_DETAILS_MIN_WIDTH: f32 = 240.0;
+    pub(crate) const PULL_REQUEST_DIFF_MIN_WIDTH: f32 = 320.0;
     pub(crate) const PULL_REQUEST_ROW_HEIGHT: f32 = 72.0;
     pub(crate) const PULL_REQUEST_TITLE_FONT_SIZE: f32 = 15.0;
     pub(crate) const CHANGED_FILE_TREE_ROW_HEIGHT: f32 = 36.0;

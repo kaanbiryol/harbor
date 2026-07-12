@@ -1,8 +1,13 @@
-use gpui::{App, Context, FocusHandle, Focusable, IntoElement, Render, Window, div, prelude::*};
-use gpui_component::Root;
+use gpui::{
+    App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, Window, div, prelude::*, px,
+};
+use gpui_component::{
+    Root,
+    resizable::{h_resizable, resizable_panel},
+};
 
 use crate::actions::*;
-use crate::visual::{color, font};
+use crate::visual::{color, font, layout};
 use crate::workspace::AppView;
 
 #[path = "render/auth_gate.rs"]
@@ -99,12 +104,58 @@ impl Render for AppView {
                     pull_request_workspace.child(self.render_pull_request_details_header(pr, cx));
             }
 
-            let mut panel_workspace = div().flex().flex_1().min_h_0().min_w_0().gap_3();
-            if self.active_tab == PanelTab::Diff && selected_pr.is_some() {
-                panel_workspace = panel_workspace.child(self.render_changed_files_sidebar(cx));
-            }
-            panel_workspace = panel_workspace.child(self.render_panel(selected_pr.as_ref(), cx));
+            let panel_workspace = if self.active_tab == PanelTab::Diff && selected_pr.is_some() {
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .child(
+                        h_resizable("changed-files-diff-resizable")
+                            .child(
+                                resizable_panel()
+                                    .size(px(layout::PULL_REQUEST_DETAILS_WIDTH))
+                                    .size_range(
+                                        px(layout::PULL_REQUEST_DETAILS_MIN_WIDTH)..Pixels::MAX,
+                                    )
+                                    .flex_none()
+                                    .child(self.render_changed_files_sidebar(cx)),
+                            )
+                            .child(
+                                resizable_panel()
+                                    .size_range(
+                                        px(layout::PULL_REQUEST_DIFF_MIN_WIDTH)..Pixels::MAX,
+                                    )
+                                    .pl_3()
+                                    .child(self.render_panel(selected_pr.as_ref(), cx)),
+                            ),
+                    )
+                    .into_any_element()
+            } else {
+                self.render_panel(selected_pr.as_ref(), cx)
+                    .into_any_element()
+            };
             pull_request_workspace = pull_request_workspace.child(panel_workspace);
+
+            let pull_request_workspace = if self.pull_request_inbox.is_visible() {
+                h_resizable("pull-request-inbox-resizable")
+                    .child(
+                        resizable_panel()
+                            .size(px(layout::PULL_REQUEST_INBOX_WIDTH))
+                            .size_range(px(layout::PULL_REQUEST_INBOX_MIN_WIDTH)..Pixels::MAX)
+                            .flex_none()
+                            .child(self.render_inbox(cx)),
+                    )
+                    .child(
+                        resizable_panel()
+                            .size_range(px(layout::PULL_REQUEST_DIFF_MIN_WIDTH)..Pixels::MAX)
+                            .pl_3()
+                            .child(pull_request_workspace),
+                    )
+                    .into_any_element()
+            } else {
+                pull_request_workspace.into_any_element()
+            };
 
             div()
                 .flex()
@@ -112,11 +163,7 @@ impl Render for AppView {
                 .min_h_0()
                 .min_w_0()
                 .overflow_hidden()
-                .gap_3()
                 .p_2()
-                .when(self.pull_request_inbox.is_visible(), |element| {
-                    element.child(self.render_inbox(cx))
-                })
                 .child(pull_request_workspace)
                 .into_any_element()
         };

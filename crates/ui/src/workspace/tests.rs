@@ -6,7 +6,9 @@ use crate::{
     test_fixtures::{pull_request, review_thread, test_time},
     workspace::github_service::test_support::FakeGitHubApi,
 };
-use gpui::{AppContext, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px};
+use gpui::{
+    AppContext, Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px,
+};
 use gpui_component::{Root, Theme, ThemeMode};
 use harbor_domain::{
     Label, PullRequestComment, PullRequestCommit, PullRequestReview, PullRequestReviewState,
@@ -382,6 +384,92 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
     assert!(
         tabs.origin.y + tabs.size.height <= panel.origin.y,
         "tabs should render in the header above the active panel"
+    );
+}
+
+#[gpui::test]
+async fn pull_request_columns_resize_horizontally(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.active_tab = PanelTab::Diff;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+
+    let inbox_before = cx
+        .debug_bounds("pull-request-inbox")
+        .expect("pull request inbox should render");
+    let inbox_splitter = point(inbox_before.right(), inbox_before.center().y);
+    let wider_inbox_splitter = point(inbox_splitter.x + px(80.0), inbox_splitter.y);
+    cx.simulate_mouse_down(inbox_splitter, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_move(
+        point(inbox_splitter.x + px(10.0), inbox_splitter.y),
+        MouseButton::Left,
+        Modifiers::none(),
+    );
+    cx.simulate_mouse_move(wider_inbox_splitter, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_up(wider_inbox_splitter, MouseButton::Left, Modifiers::none());
+    cx.refresh()
+        .expect("test window should refresh after resizing the inbox");
+
+    let inbox_after = cx
+        .debug_bounds("pull-request-inbox")
+        .expect("pull request inbox should remain rendered");
+    assert!(
+        inbox_after.size.width > inbox_before.size.width + px(60.0),
+        "dragging the inbox splitter should increase its width"
+    );
+
+    let changed_files_before = cx
+        .debug_bounds("changed-files-sidebar")
+        .expect("changed files should render");
+    let changed_files_splitter = point(
+        changed_files_before.right(),
+        changed_files_before.center().y,
+    );
+    let wider_changed_files_splitter = point(
+        changed_files_splitter.x + px(80.0),
+        changed_files_splitter.y,
+    );
+    cx.simulate_mouse_down(changed_files_splitter, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_move(
+        point(
+            changed_files_splitter.x + px(10.0),
+            changed_files_splitter.y,
+        ),
+        MouseButton::Left,
+        Modifiers::none(),
+    );
+    cx.simulate_mouse_move(
+        wider_changed_files_splitter,
+        MouseButton::Left,
+        Modifiers::none(),
+    );
+    cx.simulate_mouse_up(
+        wider_changed_files_splitter,
+        MouseButton::Left,
+        Modifiers::none(),
+    );
+    cx.refresh()
+        .expect("test window should refresh after resizing changed files");
+
+    let changed_files_after = cx
+        .debug_bounds("changed-files-sidebar")
+        .expect("changed files should remain rendered");
+    assert!(
+        changed_files_after.size.width > changed_files_before.size.width + px(60.0),
+        "dragging the changed-files splitter should increase its width"
     );
 }
 
