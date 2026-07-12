@@ -384,9 +384,10 @@ mod tests {
                 "harbor-git-{name}-{}-{sequence}",
                 std::process::id()
             ));
-            let remote = root.join("remote.git");
+            let remote = root.join("github.com").join("acme").join("app.git");
             let source = root.join("source");
-            std::fs::create_dir_all(&root).expect("create git fixture root");
+            std::fs::create_dir_all(remote.parent().expect("remote parent"))
+                .expect("create git fixture root");
             run_git(
                 &root,
                 ["init", "--bare", remote.to_str().expect("remote path")],
@@ -397,14 +398,11 @@ mod tests {
             run_git(
                 &source,
                 [
-                    "config",
-                    &format!("url.{}.insteadOf", remote.display()),
-                    "https://github.com/acme/app.git",
+                    "remote",
+                    "add",
+                    "origin",
+                    remote.to_str().expect("remote path"),
                 ],
-            );
-            run_git(
-                &source,
-                ["remote", "add", "origin", "https://github.com/acme/app.git"],
             );
 
             Self { root, source }
