@@ -90,7 +90,7 @@ pub(crate) fn changed_file_tree_rows(
     let mut root = ChangedFileTreeNode::default();
 
     for (file_index, file) in files.iter().enumerate() {
-        if !changed_file_matches_filters(file, &filters) {
+        if !changed_file_matches_filters(file, filters) {
             continue;
         }
 
