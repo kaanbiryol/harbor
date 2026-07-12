@@ -2912,8 +2912,8 @@ dependencies = [
 name = "harbor-sync"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "chrono",
+ "futures-lite 2.6.1",
  "harbor-domain",
  "harbor-github",
  "harbor-storage",

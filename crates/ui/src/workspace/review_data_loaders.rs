@@ -1,20 +1,16 @@
 use gpui::Context;
 use harbor_domain::RepoId;
-use harbor_sync::SyncTarget;
+use harbor_sync::{PullRequestReviewRefreshRequest, SyncTarget, refresh_pull_request_reviews};
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
 mod load_mode;
-mod pending_review;
 
 pub(super) use load_mode::ReviewDataLoadMode;
-use pending_review::pending_review_rest_id;
 
 #[derive(Clone, Debug)]
 pub(super) struct ReviewDataLoadTarget {
     repo: RepoId,
-    owner: String,
-    name: String,
     number: u64,
     head_sha: String,
     generation: u64,
@@ -28,8 +24,6 @@ impl ReviewDataLoadTarget {
         generation: u64,
     ) -> Self {
         Self {
-            owner: repo.owner.clone(),
-            name: repo.name.clone(),
             repo,
             number,
             head_sha: head_sha.into(),
@@ -70,82 +64,24 @@ impl AppView {
         let github_api = self.github_api.clone();
         let store = self.repository_state.store();
         self.tasks.push_selected_pull_request_task(cx.spawn(async move |this, cx| {
-            let current_user_result = match cached_current_user_login {
-                Some(login) => Ok(login),
-                None => github_api.current_user().await,
-            };
-            let reviews_result = github_api
-                .list_pull_request_reviews(&target.owner, &target.name, target.number)
-                .await;
-            let pending_review_comment_count_result = if let Ok(reviews) = reviews_result.as_ref()
-            {
-                if let Some(review_id) = pending_review_rest_id(
-                    reviews,
-                    current_user_result.as_ref().ok().map(String::as_str),
-                    existing_pending_review.as_ref(),
-                ) {
-                    Some(
-                        github_api
-                            .pull_request_review_comment_count(
-                                &target.owner,
-                                &target.name,
-                                target.number,
-                                &review_id,
-                            )
-                            .await,
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let comments_result = github_api
-                .list_pull_request_comments(&target.owner, &target.name, target.number)
-                .await;
             tracing::info!(
                 repository = %target.repo.full_name(),
                 pull_request = target.number,
                 mode = ?mode,
                 "github graphql source: selected pull request review threads"
             );
-            let threads_result = github_api
-                .list_review_threads(&target.owner, &target.name, target.number)
-                .await;
-            let cache_result = match (
-                &store,
-                reviews_result.as_ref(),
-                comments_result.as_ref(),
-                threads_result.as_ref(),
-            ) {
-                (Some(store), Ok(reviews), Ok(comments), Ok(threads)) => {
-                    store
-                        .save_pull_request_reviews(
-                            &target.repo,
-                            target.number,
-                            &target.head_sha,
-                            reviews,
-                            comments,
-                            threads,
-                        )
-                        .await
-                        .map_err(|error| error.to_string())
-                }
-                (Some(store), Err(error), _, _)
-                | (Some(store), _, Err(error), _)
-                | (Some(store), _, _, Err(error)) => store
-                    .record_sync_failure(
-                        &harbor_storage::detail_target_key(
-                            &target.repo,
-                            target.number,
-                            harbor_storage::PullRequestDetailSection::Reviews,
-                        ),
-                        &error.to_string(),
-                    )
-                    .await
-                    .map_err(|error| error.to_string()),
-                (None, _, _, _) => Ok(()),
-            };
+            let refresh = refresh_pull_request_reviews(
+                github_api.as_ref(),
+                PullRequestReviewRefreshRequest {
+                    store: store.as_ref(),
+                    repository: &target.repo,
+                    number: target.number,
+                    head_sha: &target.head_sha,
+                    cached_current_user: cached_current_user_login,
+                    existing_pending_review: existing_pending_review.as_ref(),
+                },
+            )
+            .await;
 
             this.update_or_log(cx, mode.update_error_log_message(), move |view, cx| {
                 if !selected_pull_request_matches(view, &target.repo, target.number) {
@@ -155,11 +91,11 @@ impl AppView {
                     return;
                 }
 
-                if let Err(error) = cache_result {
+                if let Some(error) = refresh.cache_error {
                     view.repository_state.set_error(error);
                 }
                 let mut review_error = None;
-                let current_user_login = match current_user_result {
+                let current_user_login = match refresh.current_user {
                     Ok(login) => Some(login),
                     Err(error) => {
                         append_review_error(
@@ -169,7 +105,7 @@ impl AppView {
                         None
                     }
                 };
-                let pending_review_comment_count = match pending_review_comment_count_result {
+                let pending_review_comment_count = match refresh.pending_review_comment_count {
                     Some(Ok(count)) => Some(count),
                     Some(Err(error)) => {
                         let message = format!("Failed to count pending review comments: {error}");
@@ -178,7 +114,7 @@ impl AppView {
                     }
                     None => None,
                 };
-                let pull_request_comments = match comments_result {
+                let pull_request_comments = match refresh.comments {
                     Ok(comments) => comments,
                     Err(error) => {
                         append_review_error(
@@ -189,7 +125,7 @@ impl AppView {
                     }
                 };
 
-                match (reviews_result, threads_result) {
+                match (refresh.reviews, refresh.threads) {
                     (Ok(reviews), Ok(threads)) => {
                         view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
                         let thread_count = threads.len();

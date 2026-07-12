@@ -2,6 +2,7 @@ mod changes;
 mod inbox;
 mod policy;
 mod pull_request_detail;
+mod pull_request_reviews;
 
 pub use changes::{PullRequestChangeEvent, PullRequestChangeKind, detect_pull_request_changes};
 pub use harbor_github::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
@@ -16,4 +17,7 @@ pub use policy::{
 pub use pull_request_detail::{
     PullRequestDetailRefresh, refresh_pull_request_check_runs, refresh_pull_request_files,
     refresh_pull_request_metadata, refresh_pull_request_workflow_runs,
+};
+pub use pull_request_reviews::{
+    PullRequestReviewRefresh, PullRequestReviewRefreshRequest, refresh_pull_request_reviews,
 };

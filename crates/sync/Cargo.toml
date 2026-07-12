@@ -7,8 +7,8 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-async-trait.workspace = true
 chrono.workspace = true
+futures-lite.workspace = true
 harbor-domain = { path = "../domain" }
 harbor-github = { path = "../github" }
 harbor-storage = { path = "../storage" }
