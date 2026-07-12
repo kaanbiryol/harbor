@@ -374,7 +374,6 @@ mod tests {
 
     struct LocalGitFixture {
         root: PathBuf,
-        remote: PathBuf,
         source: PathBuf,
     }
 
@@ -408,11 +407,7 @@ mod tests {
                 ["remote", "add", "origin", "https://github.com/acme/app.git"],
             );
 
-            Self {
-                root,
-                remote,
-                source,
-            }
+            Self { root, source }
         }
 
         fn commit_and_publish_pull_request(&self, contents: &str) -> String {
@@ -420,7 +415,11 @@ mod tests {
             run_git(&self.source, ["add", "README.md"]);
             run_git(&self.source, ["commit", "-m", "fixture"]);
             let sha = git_stdout(&self.source, ["rev-parse", "HEAD"]).expect("fixture head");
-            run_git(&self.remote, ["update-ref", "refs/pull/7/head", &sha]);
+            let pull_request_ref = format!("{sha}:refs/pull/7/head");
+            run_git(
+                &self.source,
+                ["push", "--force", "origin", &pull_request_ref],
+            );
             sha
         }
 
