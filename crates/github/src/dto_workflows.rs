@@ -29,6 +29,8 @@ struct ApiWorkflow {
 #[derive(Debug, Deserialize)]
 struct ApiWorkflowRunsResponse {
     #[serde(default)]
+    total_count: usize,
+    #[serde(default)]
     workflow_runs: Vec<ApiWorkflowRun>,
 }
 
@@ -105,14 +107,40 @@ pub fn workflows_from_value(value: Value) -> Result<Vec<Workflow>> {
 }
 
 pub fn workflow_runs_from_value(value: Value) -> Result<Vec<WorkflowRun>> {
-    let response: ApiWorkflowRunsResponse =
-        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
+    let response = workflow_runs_response_from_value(value)?;
 
     Ok(response
         .workflow_runs
         .into_iter()
         .map(ApiWorkflowRun::into_domain)
         .collect())
+}
+
+pub(crate) fn workflow_run_page_from_value(
+    value: Value,
+    page: usize,
+    page_size: usize,
+) -> Result<crate::WorkflowRunPage> {
+    let response = workflow_runs_response_from_value(value)?;
+    let next_page = if page.saturating_mul(page_size) < response.total_count {
+        page.checked_add(1)
+    } else {
+        None
+    };
+
+    Ok(crate::WorkflowRunPage {
+        workflow_runs: response
+            .workflow_runs
+            .into_iter()
+            .map(ApiWorkflowRun::into_domain)
+            .collect(),
+        total_count: response.total_count,
+        next_page,
+    })
+}
+
+fn workflow_runs_response_from_value(value: Value) -> Result<ApiWorkflowRunsResponse> {
+    serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))
 }
 
 pub fn workflow_jobs_from_value(value: Value) -> Result<Vec<WorkflowJob>> {

@@ -17,7 +17,7 @@ use harbor_github::{
     GitHubRateLimitStatus, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
     GitHubWorkflowApi, GitHubWorkflowMutationApi, HttpCacheValidator, PullRequestEnrichment,
     PullRequestListFilter, PullRequestMetadataOptions, PullRequestPage, PullRequestPageCursor,
-    RepositoryList, Result, SubmitPullRequestReviewEvent,
+    RepositoryList, Result, SubmitPullRequestReviewEvent, WorkflowRunPage,
 };
 
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
@@ -46,8 +46,8 @@ pub(crate) struct FakeGitHubApi {
     unmark_file_viewed_results: FakeQueue<()>,
     check_runs: FakeQueue<Vec<CheckRun>>,
     workflows: FakeQueue<Vec<Workflow>>,
-    repository_workflow_runs: FakeQueue<Vec<WorkflowRun>>,
-    workflow_runs_for_workflow: FakeQueue<Vec<WorkflowRun>>,
+    repository_workflow_runs: FakeQueue<WorkflowRunPage>,
+    workflow_runs_for_workflow: FakeQueue<WorkflowRunPage>,
     workflow_runs: FakeQueue<Vec<WorkflowRun>>,
     workflow_jobs: FakeQueue<Vec<WorkflowJob>>,
     workflow_logs: FakeQueue<String>,
@@ -150,11 +150,21 @@ impl FakeGitHubApi {
     }
 
     pub(crate) fn push_repository_workflow_runs(&self, result: Result<Vec<WorkflowRun>>) {
-        push_result(&self.repository_workflow_runs, result);
+        push_result(
+            &self.repository_workflow_runs,
+            result.map(workflow_run_page),
+        );
     }
 
     pub(crate) fn push_workflow_runs_for_workflow(&self, result: Result<Vec<WorkflowRun>>) {
-        push_result(&self.workflow_runs_for_workflow, result);
+        push_result(
+            &self.workflow_runs_for_workflow,
+            result.map(workflow_run_page),
+        );
+    }
+
+    pub(crate) fn push_repository_workflow_run_page(&self, result: Result<WorkflowRunPage>) {
+        push_result(&self.repository_workflow_runs, result);
     }
 
     pub(crate) fn push_current_user(&self, result: Result<String>) {
@@ -444,11 +454,12 @@ impl GitHubWorkflowApi for FakeGitHubApi {
         pop_result(&self.workflows, "list_workflows")
     }
 
-    async fn list_repository_workflow_runs(
+    async fn list_repository_workflow_run_page(
         &self,
         _owner: &str,
         _repo: &str,
-    ) -> Result<Vec<WorkflowRun>> {
+        _page: usize,
+    ) -> Result<WorkflowRunPage> {
         self.record_call("list_repository_workflow_runs");
         pop_result(
             &self.repository_workflow_runs,
@@ -456,12 +467,13 @@ impl GitHubWorkflowApi for FakeGitHubApi {
         )
     }
 
-    async fn list_workflow_runs_for_workflow(
+    async fn list_workflow_run_page_for_workflow(
         &self,
         _owner: &str,
         _repo: &str,
         _workflow_id: u64,
-    ) -> Result<Vec<WorkflowRun>> {
+        _page: usize,
+    ) -> Result<WorkflowRunPage> {
         self.record_call("list_workflow_runs_for_workflow");
         pop_result(
             &self.workflow_runs_for_workflow,
@@ -482,6 +494,14 @@ impl GitHubWorkflowApi for FakeGitHubApi {
     async fn workflow_run_log(&self, _owner: &str, _repo: &str, _run_id: u64) -> Result<String> {
         self.record_call("workflow_run_log");
         pop_result(&self.workflow_logs, "workflow_run_log")
+    }
+}
+
+fn workflow_run_page(workflow_runs: Vec<WorkflowRun>) -> WorkflowRunPage {
+    WorkflowRunPage {
+        total_count: workflow_runs.len(),
+        workflow_runs,
+        next_page: None,
     }
 }
 

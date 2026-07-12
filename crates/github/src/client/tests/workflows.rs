@@ -37,7 +37,7 @@ fn gets_repository_workflow_runs() {
     }));
     let client = GitHubClient::new(transport.clone());
 
-    smol::block_on(client.list_repository_workflow_runs("acme", "app")).unwrap();
+    let page = smol::block_on(client.list_repository_workflow_run_page("acme", "app", 1)).unwrap();
 
     let gets = transport
         .gets
@@ -46,10 +46,41 @@ fn gets_repository_workflow_runs() {
     assert_eq!(gets.len(), 1);
     assert_eq!(gets[0].0, "/repos/acme/app/actions/runs");
     assert_eq!(gets[0].1, vec![("per_page".to_string(), "100".to_string())]);
+    assert_eq!(page.next_page, None);
 }
 
 #[test]
-fn gets_workflow_runs_for_workflow() {
+fn gets_second_repository_workflow_run_page() {
+    let transport = RecordingTransport::default();
+    *transport
+        .get_response
+        .lock()
+        .expect("get response mutex should not be poisoned") = Some(json!({
+        "total_count": 250,
+        "workflow_runs": []
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    let page = smol::block_on(client.list_repository_workflow_run_page("acme", "app", 2)).unwrap();
+
+    let gets = transport
+        .gets
+        .lock()
+        .expect("gets mutex should not be poisoned");
+    assert_eq!(gets.len(), 1);
+    assert_eq!(
+        gets[0].1,
+        vec![
+            ("per_page".to_string(), "100".to_string()),
+            ("page".to_string(), "2".to_string())
+        ]
+    );
+    assert_eq!(page.total_count, 250);
+    assert_eq!(page.next_page, Some(3));
+}
+
+#[test]
+fn gets_workflow_run_page_for_workflow() {
     let transport = RecordingTransport::default();
     *transport
         .get_response
@@ -60,7 +91,7 @@ fn gets_workflow_runs_for_workflow() {
     }));
     let client = GitHubClient::new(transport.clone());
 
-    smol::block_on(client.list_workflow_runs_for_workflow("acme", "app", 901)).unwrap();
+    smol::block_on(client.list_workflow_run_page_for_workflow("acme", "app", 901, 1)).unwrap();
 
     let gets = transport
         .gets

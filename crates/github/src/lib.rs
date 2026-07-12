@@ -6,6 +6,7 @@ mod transport;
 
 pub use client::{
     GitHubClient, PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList,
+    WorkflowRunPage,
 };
 pub use harbor_domain::{
     PullRequestEnrichment, PullRequestMetadataOptions, SubmitPullRequestReviewEvent,

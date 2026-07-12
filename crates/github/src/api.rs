@@ -8,7 +8,7 @@ use harbor_domain::{
 
 use crate::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestListFilter,
-    PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
+    PullRequestPage, PullRequestPageCursor, RepositoryList, Result, WorkflowRunPage,
 };
 
 #[async_trait]
@@ -173,17 +173,19 @@ pub trait GitHubPullRequestMutationApi: Send + Sync {
 #[async_trait]
 pub trait GitHubWorkflowApi: Send + Sync {
     async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>>;
-    async fn list_repository_workflow_runs(
+    async fn list_repository_workflow_run_page(
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<Vec<WorkflowRun>>;
-    async fn list_workflow_runs_for_workflow(
+        page: usize,
+    ) -> Result<WorkflowRunPage>;
+    async fn list_workflow_run_page_for_workflow(
         &self,
         owner: &str,
         repo: &str,
         workflow_id: u64,
-    ) -> Result<Vec<WorkflowRun>>;
+        page: usize,
+    ) -> Result<WorkflowRunPage>;
     async fn list_workflow_jobs_for_run(
         &self,
         owner: &str,

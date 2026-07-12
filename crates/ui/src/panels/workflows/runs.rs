@@ -1,6 +1,9 @@
 use chrono::Duration;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt};
+use gpui_component::{
+    Disableable, Icon, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+};
 use harbor_domain::{RepoId, Workflow, WorkflowConclusion, WorkflowRun, WorkflowStatus};
 
 use crate::date_time::{full_time_label, natural_time_label, short_duration_label};
@@ -17,8 +20,12 @@ pub(super) struct RepositoryWorkflowRunsRenderInput<'a> {
     pub(super) workflows: &'a [Workflow],
     pub(super) selected_workflow_id: Option<u64>,
     pub(super) workflow_runs: &'a [WorkflowRun],
+    pub(super) total_count: Option<usize>,
+    pub(super) has_next_page: bool,
     pub(super) is_loading: bool,
+    pub(super) is_loading_more: bool,
     pub(super) error: Option<&'a str>,
+    pub(super) load_more_error: Option<&'a str>,
     pub(super) list_state: ListState,
 }
 
@@ -31,8 +38,12 @@ pub(super) fn render_repository_workflow_runs(
         workflows,
         selected_workflow_id,
         workflow_runs,
+        total_count,
+        has_next_page,
         is_loading,
+        is_loading_more,
         error,
+        load_more_error,
         list_state,
     } = input;
     let selected_workflow = selected_workflow_id
@@ -48,6 +59,7 @@ pub(super) fn render_repository_workflow_runs(
                 repository.full_name()
             )
         });
+    let can_load_more = has_next_page && !is_loading && !is_loading_more && error.is_none();
 
     div()
         .flex()
@@ -79,7 +91,7 @@ pub(super) fn render_repository_workflow_runs(
                         ),
                 )
                 .child(render_status_pill(
-                    format!("{} runs", workflow_runs.len()),
+                    workflow_run_count_label(workflow_runs.len(), total_count),
                     Tone::Neutral,
                 )),
         )
@@ -118,9 +130,75 @@ pub(super) fn render_repository_workflow_runs(
                         .min_h_0()
                         .w_full()
                         .min_w_0(),
+                    )
+                    .when(
+                        has_next_page || is_loading_more || load_more_error.is_some(),
+                        |element| {
+                            element.child(
+                                div()
+                                    .flex_none()
+                                    .border_t_1()
+                                    .border_color(color::border())
+                                    .px_3()
+                                    .py_2()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .justify_between()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(color::text_muted())
+                                                    .child(workflow_run_count_label(
+                                                        workflow_runs.len(),
+                                                        total_count,
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new("load-more-workflow-runs")
+                                                    .ghost()
+                                                    .small()
+                                                    .compact()
+                                                    .icon(Octicon::ChevronDown)
+                                                    .label("Load more")
+                                                    .tooltip("Load more workflow runs")
+                                                    .loading(is_loading_more)
+                                                    .disabled(!can_load_more)
+                                                    .on_click(cx.listener(|view, _, _, cx| {
+                                                        view.load_more_repository_workflow_runs(cx);
+                                                    })),
+                                            ),
+                                    )
+                                    .when_some(
+                                        load_more_error.map(str::to_string),
+                                        |element, error| {
+                                            element.child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(color::danger())
+                                                    .child(format!("Load more failed: {error}")),
+                                            )
+                                        },
+                                    ),
+                            )
+                        },
                     ),
             )
         })
+}
+
+fn workflow_run_count_label(loaded_count: usize, total_count: Option<usize>) -> String {
+    match total_count {
+        Some(total_count) if total_count != loaded_count => {
+            format!("{loaded_count} of {total_count} runs")
+        }
+        _ => format!("{loaded_count} runs"),
+    }
 }
 
 fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {

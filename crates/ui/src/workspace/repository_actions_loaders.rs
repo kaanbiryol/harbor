@@ -138,16 +138,21 @@ impl AppView {
                     let result = match workflow_id {
                         Some(workflow_id) => {
                             github_api
-                                .list_workflow_runs_for_workflow(
+                                .list_workflow_run_page_for_workflow(
                                     &repository.owner,
                                     &repository.name,
                                     workflow_id,
+                                    1,
                                 )
                                 .await
                         }
                         None => {
                             github_api
-                                .list_repository_workflow_runs(&repository.owner, &repository.name)
+                                .list_repository_workflow_run_page(
+                                    &repository.owner,
+                                    &repository.name,
+                                    1,
+                                )
                                 .await
                         }
                     };
@@ -164,11 +169,15 @@ impl AppView {
                             }
 
                             match result {
-                                Ok(workflow_runs) => {
-                                    let count = workflow_runs.len();
-                                    let first_run = workflow_runs.first().map(workflow_run_label);
-                                    view.repository_actions_state
-                                        .replace_workflow_runs(workflow_runs);
+                                Ok(page) => {
+                                    let count = page.workflow_runs.len();
+                                    let first_run =
+                                        page.workflow_runs.first().map(workflow_run_label);
+                                    view.repository_actions_state.replace_workflow_runs(
+                                        page.workflow_runs,
+                                        page.total_count,
+                                        page.next_page,
+                                    );
                                     view.repository_actions_state.apply_runs_success();
                                     if view.active_tab == PanelTab::Actions {
                                         view.status = first_run.map_or_else(
@@ -190,6 +199,105 @@ impl AppView {
                                             repository.full_name()
                                         );
                                     }
+                                }
+                            }
+
+                            cx.notify();
+                        },
+                    );
+                }
+            }),
+        );
+    }
+
+    pub(crate) fn load_more_repository_workflow_runs(&mut self, cx: &mut Context<Self>) {
+        if self.repository_actions_state.runs_loading()
+            || self.repository_actions_state.is_loading_more_runs()
+        {
+            return;
+        }
+
+        let Some(repository) = self.current_repository().cloned() else {
+            self.status = "Select a repository before loading more workflow runs".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(page) = self.repository_actions_state.next_workflow_run_page() else {
+            self.status = "All workflow runs are loaded".to_string();
+            cx.notify();
+            return;
+        };
+
+        let workflow_id = self.repository_actions_state.selected_workflow_id();
+        let github_api = self.github_api.clone();
+        self.repository_actions_state.start_loading_more_runs();
+        self.status = match self.repository_actions_state.selected_workflow() {
+            Some(workflow) => format!("Loading more runs for {}", workflow.name),
+            None => format!("Loading more workflow runs for {}", repository.full_name()),
+        };
+
+        self.tasks.set_repository_actions_task(
+            RepositoryActionsTaskKind::Runs,
+            cx.spawn({
+                let repository = repository.clone();
+
+                async move |this, cx| {
+                    let result = match workflow_id {
+                        Some(workflow_id) => {
+                            github_api
+                                .list_workflow_run_page_for_workflow(
+                                    &repository.owner,
+                                    &repository.name,
+                                    workflow_id,
+                                    page,
+                                )
+                                .await
+                        }
+                        None => {
+                            github_api
+                                .list_repository_workflow_run_page(
+                                    &repository.owner,
+                                    &repository.name,
+                                    page,
+                                )
+                                .await
+                        }
+                    };
+
+                    this.update_or_log(
+                        cx,
+                        "failed to append repository workflow runs",
+                        move |view, cx| {
+                            if view.current_repository() != Some(&repository)
+                                || view.repository_actions_state.selected_workflow_id()
+                                    != workflow_id
+                                || view.repository_actions_state.next_workflow_run_page()
+                                    != Some(page)
+                            {
+                                return;
+                            }
+
+                            match result {
+                                Ok(result_page) => {
+                                    let appended_count =
+                                        view.repository_actions_state.append_workflow_runs(
+                                            result_page.workflow_runs,
+                                            result_page.total_count,
+                                            result_page.next_page,
+                                        );
+                                    view.repository_actions_state.apply_load_more_runs_success();
+                                    view.status = format!(
+                                        "Loaded {appended_count} more workflow runs; {} loaded",
+                                        view.repository_actions_state.workflow_runs().len()
+                                    );
+                                }
+                                Err(error) => {
+                                    view.repository_actions_state
+                                        .apply_load_more_runs_failure(error.to_string());
+                                    view.status = format!(
+                                        "Failed to load more workflow runs for {}",
+                                        repository.full_name()
+                                    );
                                 }
                             }
 

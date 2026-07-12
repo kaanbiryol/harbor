@@ -1,9 +1,12 @@
 use harbor_domain::{CheckRun, Workflow, WorkflowJob, WorkflowRun};
 use serde_json::json;
 
-use crate::{GitHubTransport, Result, dto};
+use crate::{GitHubTransport, Result, WorkflowRunPage, dto};
 
 use super::GitHubClient;
+
+const WORKFLOW_RUN_PAGE_SIZE: usize = 100;
+const WORKFLOW_RUN_PAGE_SIZE_QUERY: &str = "100";
 
 impl<T> GitHubClient<T>
 where
@@ -19,33 +22,41 @@ where
         dto::workflows_from_value(response)
     }
 
-    pub async fn list_repository_workflow_runs(
+    pub async fn list_repository_workflow_run_page(
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<Vec<WorkflowRun>> {
+        page: usize,
+    ) -> Result<WorkflowRunPage> {
+        let page = page.max(1);
+        let page_string = page.to_string();
         let path = format!("/repos/{owner}/{repo}/actions/runs");
-        let response = self
-            .transport
-            .rest_get(&path, &[("per_page", "100")])
-            .await?;
+        let mut query = vec![("per_page", WORKFLOW_RUN_PAGE_SIZE_QUERY)];
+        if page > 1 {
+            query.push(("page", page_string.as_str()));
+        }
+        let response = self.transport.rest_get(&path, &query).await?;
 
-        dto::workflow_runs_from_value(response)
+        dto::workflow_run_page_from_value(response, page, WORKFLOW_RUN_PAGE_SIZE)
     }
 
-    pub async fn list_workflow_runs_for_workflow(
+    pub async fn list_workflow_run_page_for_workflow(
         &self,
         owner: &str,
         repo: &str,
         workflow_id: u64,
-    ) -> Result<Vec<WorkflowRun>> {
+        page: usize,
+    ) -> Result<WorkflowRunPage> {
+        let page = page.max(1);
+        let page_string = page.to_string();
         let path = format!("/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs");
-        let response = self
-            .transport
-            .rest_get(&path, &[("per_page", "100")])
-            .await?;
+        let mut query = vec![("per_page", WORKFLOW_RUN_PAGE_SIZE_QUERY)];
+        if page > 1 {
+            query.push(("page", page_string.as_str()));
+        }
+        let response = self.transport.rest_get(&path, &query).await?;
 
-        dto::workflow_runs_from_value(response)
+        dto::workflow_run_page_from_value(response, page, WORKFLOW_RUN_PAGE_SIZE)
     }
 
     pub async fn list_check_runs(

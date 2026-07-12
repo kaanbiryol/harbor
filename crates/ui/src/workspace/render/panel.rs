@@ -225,16 +225,29 @@ impl AppView {
                                 repository_workflow_runs: self
                                     .repository_actions_state
                                     .workflow_runs(),
+                                repository_workflow_run_total_count: self
+                                    .repository_actions_state
+                                    .workflow_run_total_count(),
+                                repository_workflow_runs_has_next_page: self
+                                    .repository_actions_state
+                                    .next_workflow_run_page()
+                                    .is_some(),
                                 repository_workflows_loading: self
                                     .repository_actions_state
                                     .workflows_loading(),
                                 repository_runs_loading: self
                                     .repository_actions_state
                                     .runs_loading(),
+                                repository_runs_loading_more: self
+                                    .repository_actions_state
+                                    .is_loading_more_runs(),
                                 repository_workflows_error: self
                                     .repository_actions_state
                                     .workflows_error(),
                                 repository_runs_error: self.repository_actions_state.runs_error(),
+                                repository_runs_load_more_error: self
+                                    .repository_actions_state
+                                    .load_more_runs_error(),
                                 selected_pr_workflow_runs: self.detail_state.workflow_runs(),
                                 selected_pr_workflows_loading: self
                                     .detail_state

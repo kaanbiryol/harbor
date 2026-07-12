@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gpui::TestAppContext;
 use harbor_domain::{RepoId, ReviewThreadState, Workflow, WorkflowState};
-use harbor_github::ConditionalFetch;
+use harbor_github::{ConditionalFetch, WorkflowRunPage};
 
 use crate::{
     actions::PanelTab,
@@ -219,5 +219,58 @@ async fn actions_tab_loads_repository_workflows_and_runs(cx: &mut TestAppContext
             Some(9)
         );
         assert!(view.repository_actions_state.workflow_runs().is_empty());
+    });
+}
+
+#[gpui::test]
+async fn loads_more_repository_workflow_runs(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let repository = RepoId::new("acme", "app");
+    let first_run = workflow_run();
+    let mut second_run = first_run.clone();
+    second_run.id += 1;
+    api.push_workflows(Ok(Vec::new()));
+    api.push_repository_workflow_run_page(Ok(WorkflowRunPage {
+        workflow_runs: vec![first_run.clone()],
+        total_count: 2,
+        next_page: Some(2),
+    }));
+    api.push_repository_workflow_run_page(Ok(WorkflowRunPage {
+        workflow_runs: vec![second_run.clone()],
+        total_count: 2,
+        next_page: None,
+    }));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state.select_repository(repository);
+        view.select_panel_tab(PanelTab::Actions, cx);
+    });
+    cx.run_until_parked();
+
+    view_entity.update(cx, |view, cx| {
+        view.load_more_repository_workflow_runs(cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        api.calls(),
+        vec![
+            "list_workflows",
+            "list_repository_workflow_runs",
+            "list_repository_workflow_runs"
+        ]
+    );
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(
+            view.repository_actions_state.workflow_runs(),
+            &[first_run, second_run]
+        );
+        assert_eq!(
+            view.repository_actions_state.workflow_run_total_count(),
+            Some(2)
+        );
+        assert_eq!(view.repository_actions_state.next_workflow_run_page(), None);
+        assert_eq!(view.repository_actions_state.load_more_runs_error(), None);
     });
 }

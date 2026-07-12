@@ -9,7 +9,7 @@ mod reviews;
 #[path = "client/workflows.rs"]
 mod workflows;
 
-use harbor_domain::{PullRequest, RepoId, SubmitPullRequestReviewEvent};
+use harbor_domain::{PullRequest, RepoId, SubmitPullRequestReviewEvent, WorkflowRun};
 
 use crate::{GitHubRateLimitStatus, GitHubRequestAttribution, GitHubTransport};
 
@@ -36,6 +36,13 @@ pub struct PullRequestPage {
     pub pull_requests: Vec<PullRequest>,
     pub total_count: Option<usize>,
     pub next_cursor: Option<PullRequestPageCursor>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowRunPage {
+    pub workflow_runs: Vec<WorkflowRun>,
+    pub total_count: usize,
+    pub next_page: Option<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

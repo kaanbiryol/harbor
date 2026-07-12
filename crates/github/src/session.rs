@@ -299,24 +299,26 @@ impl GitHubWorkflowApi for GitHubSession {
         self.client()?.list_workflows(owner, repo).await
     }
 
-    async fn list_repository_workflow_runs(
+    async fn list_repository_workflow_run_page(
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<Vec<WorkflowRun>> {
+        page: usize,
+    ) -> Result<crate::WorkflowRunPage> {
         self.client()?
-            .list_repository_workflow_runs(owner, repo)
+            .list_repository_workflow_run_page(owner, repo, page)
             .await
     }
 
-    async fn list_workflow_runs_for_workflow(
+    async fn list_workflow_run_page_for_workflow(
         &self,
         owner: &str,
         repo: &str,
         workflow_id: u64,
-    ) -> Result<Vec<WorkflowRun>> {
+        page: usize,
+    ) -> Result<crate::WorkflowRunPage> {
         self.client()?
-            .list_workflow_runs_for_workflow(owner, repo, workflow_id)
+            .list_workflow_run_page_for_workflow(owner, repo, workflow_id, page)
             .await
     }
 
