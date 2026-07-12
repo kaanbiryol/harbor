@@ -36,28 +36,37 @@ fn main() {
 
             let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
 
-            cx.spawn(async move |cx| {
-                let storage = match StorageConfig::from_env() {
+            let storage_task = cx.background_spawn(async move {
+                match StorageConfig::from_env() {
                     Ok(config) => SqliteStore::connect(config)
                         .await
                         .map_err(|error| error.to_string()),
                     Err(error) => Err(error.to_string()),
-                };
-                cx.open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        titlebar: Some(TitleBar::title_bar_options()),
-                        ..Default::default()
-                    },
-                    |window, cx| {
-                        let github_api = Arc::new(RealGitHubApi::default());
-                        let view = cx.new(|cx| AppView::new(github_api, storage, window, cx));
-                        cx.new(|cx| Root::new(view, window, cx))
-                    },
-                )
-                .expect("failed to open application window");
-            })
-            .detach();
+                }
+            });
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitleBar::title_bar_options()),
+                    ..Default::default()
+                },
+                |window, cx| {
+                    let github_api = Arc::new(RealGitHubApi::default());
+                    let view = cx.new(|cx| AppView::new(github_api, None, window, cx));
+                    let storage_view = view.downgrade();
+                    cx.spawn(async move |cx| {
+                        let storage = storage_task.await;
+                        if let Err(error) = storage_view.update(cx, |view, cx| {
+                            view.finish_storage_initialization(storage, cx);
+                        }) {
+                            tracing::warn!(%error, "failed to finish storage initialization");
+                        }
+                    })
+                    .detach();
+                    cx.new(|cx| Root::new(view, window, cx))
+                },
+            )
+            .expect("failed to open application window");
         });
 }
 

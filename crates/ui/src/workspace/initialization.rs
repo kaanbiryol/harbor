@@ -27,7 +27,7 @@ use super::{
 impl AppView {
     pub fn new(
         github_api: Arc<dyn GitHubApi>,
-        storage: std::result::Result<SqliteStore, String>,
+        storage: Option<std::result::Result<SqliteStore, String>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -40,8 +40,8 @@ impl AppView {
             window,
             cx,
             false,
-            Arc::new(super::github_service::test_support::FakeGitHubApi::default()),
-            Err("storage is disabled in this test".to_string()),
+            Arc::new(super::github_service::test_support::FakeGitHubApi::signed_out()),
+            Some(Err("storage is disabled in this test".to_string())),
         )
     }
 
@@ -56,7 +56,7 @@ impl AppView {
             cx,
             false,
             github_api,
-            Err("storage is disabled in this test".to_string()),
+            Some(Err("storage is disabled in this test".to_string())),
         )
     }
 
@@ -65,7 +65,7 @@ impl AppView {
         cx: &mut Context<Self>,
         start_startup_tasks: bool,
         github_api: Arc<dyn GitHubApi>,
-        storage: std::result::Result<SqliteStore, String>,
+        storage: Option<std::result::Result<SqliteStore, String>>,
     ) -> Self {
         let pull_requests = Vec::new();
         let files = Vec::new();
@@ -208,7 +208,7 @@ impl AppView {
         }));
         let diffs = parse_files_with_syntax(&files, &cx.theme().highlight_theme);
         let status = if start_startup_tasks {
-            "Fetching repositories from GitHub...".to_string()
+            "Initializing local storage...".to_string()
         } else {
             "Ready".to_string()
         };
@@ -298,12 +298,31 @@ impl AppView {
         };
 
         if start_startup_tasks {
-            view.load_github_credentials(cx);
-            view.load_repository_preferences(cx);
             view.refresh_external_app_availability(cx);
             view.ensure_sync_loop(cx);
         }
 
         view
+    }
+
+    pub fn finish_storage_initialization(
+        &mut self,
+        storage: std::result::Result<SqliteStore, String>,
+        cx: &mut Context<Self>,
+    ) {
+        match storage {
+            Ok(store) => {
+                self.repository_state.set_store(store);
+                self.status = "Loading saved workspace state...".to_string();
+                self.load_github_credentials(cx);
+                self.load_repository_preferences(cx);
+            }
+            Err(error) => {
+                self.repository_state.clear_store_with_error(error);
+                self.status = "Failed to initialize repository storage".to_string();
+                self.load_github_credentials(cx);
+            }
+        }
+        cx.notify();
     }
 }

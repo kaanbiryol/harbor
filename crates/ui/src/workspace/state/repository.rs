@@ -26,11 +26,12 @@ impl RepositoryUiState {
     pub(crate) fn new(
         repository_search_input: Entity<InputState>,
         is_loading: bool,
-        storage: std::result::Result<SqliteStore, String>,
+        storage: Option<std::result::Result<SqliteStore, String>>,
     ) -> Self {
         let (repository_store, repository_error) = match storage {
-            Ok(store) => (Some(store), None),
-            Err(error) => (None, Some(error)),
+            Some(Ok(store)) => (Some(store), None),
+            Some(Err(error)) => (None, Some(error)),
+            None => (None, None),
         };
         Self {
             repositories: Vec::new(),

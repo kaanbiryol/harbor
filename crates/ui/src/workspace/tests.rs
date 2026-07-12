@@ -46,6 +46,31 @@ async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view =
+            cx.new(|cx| AppView::new(Arc::new(FakeGitHubApi::signed_out()), None, window, cx));
+        view_entity = Some(view.clone());
+        Root::new(view, window, cx)
+    });
+
+    view_entity
+        .expect("test AppView should be created")
+        .read_with(cx, |view, _| {
+            assert!(view.repository_state.store().is_none());
+            assert!(view.repository_state.error().is_none());
+            assert!(view.repository_state.is_loading());
+            assert_eq!(view.status, "Initializing local storage...");
+        });
+}
+
+#[gpui::test]
 async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
