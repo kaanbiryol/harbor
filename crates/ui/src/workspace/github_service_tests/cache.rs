@@ -71,7 +71,9 @@ async fn cached_detail_restore_rebuilds_diff_list_items(cx: &mut TestAppContext)
         let files = vec![patched_file("src/a.rs"), patched_file("src/b.rs")];
         view.detail_state
             .replace_diff_files(files.clone(), parse_files(&files));
-        view.reviewed_file_paths.insert("src/a.rs".to_string());
+        view.changed_files_state
+            .reviewed_file_paths
+            .insert("src/a.rs".to_string());
         mark_detail_sections_loaded(view);
         view.active_tab = PanelTab::Diff;
         view.cache_current_pull_request_detail_snapshot();
@@ -79,7 +81,7 @@ async fn cached_detail_restore_rebuilds_diff_list_items(cx: &mut TestAppContext)
         let stale_files = vec![patched_file("src/other.rs")];
         view.detail_state
             .replace_diff_files(stale_files.clone(), parse_files(&stale_files));
-        view.reviewed_file_paths.clear();
+        view.changed_files_state.reviewed_file_paths.clear();
         view.sync_diff_list_items(cx);
         assert_eq!(file_headers(&view.diff_list_items), vec![0]);
 
@@ -113,22 +115,39 @@ async fn cached_detail_restore_preserves_diff_section_overrides(cx: &mut TestApp
         let files = vec![patched_file("src/a.rs"), patched_file("src/b.rs")];
         view.detail_state
             .replace_diff_files(files.clone(), parse_files(&files));
-        view.reviewed_file_paths.insert("src/a.rs".to_string());
-        view.expanded_diff_file_paths.insert("src/a.rs".to_string());
-        view.collapsed_diff_file_paths
+        view.changed_files_state
+            .reviewed_file_paths
+            .insert("src/a.rs".to_string());
+        view.changed_files_state
+            .expanded_diff_file_paths
+            .insert("src/a.rs".to_string());
+        view.changed_files_state
+            .collapsed_diff_file_paths
             .insert("src/b.rs".to_string());
         mark_detail_sections_loaded(view);
         view.cache_current_pull_request_detail_snapshot();
 
-        view.reviewed_file_paths.clear();
-        view.expanded_diff_file_paths.clear();
-        view.collapsed_diff_file_paths.clear();
+        view.changed_files_state.reviewed_file_paths.clear();
+        view.changed_files_state.expanded_diff_file_paths.clear();
+        view.changed_files_state.collapsed_diff_file_paths.clear();
         view.sync_diff_list_items(cx);
 
         assert!(view.restore_selected_pull_request_detail_snapshot(cx));
-        assert!(view.reviewed_file_paths.contains("src/a.rs"));
-        assert!(view.expanded_diff_file_paths.contains("src/a.rs"));
-        assert!(view.collapsed_diff_file_paths.contains("src/b.rs"));
+        assert!(
+            view.changed_files_state
+                .reviewed_file_paths
+                .contains("src/a.rs")
+        );
+        assert!(
+            view.changed_files_state
+                .expanded_diff_file_paths
+                .contains("src/a.rs")
+        );
+        assert!(
+            view.changed_files_state
+                .collapsed_diff_file_paths
+                .contains("src/b.rs")
+        );
         assert!(
             view.diff_list_items
                 .iter()
@@ -204,7 +223,9 @@ async fn cached_inbox_restore_rebuilds_diff_list_items(cx: &mut TestAppContext) 
         let files = vec![patched_file("src/a.rs"), patched_file("src/b.rs")];
         view.detail_state
             .replace_diff_files(files.clone(), parse_files(&files));
-        view.reviewed_file_paths.insert("src/a.rs".to_string());
+        view.changed_files_state
+            .reviewed_file_paths
+            .insert("src/a.rs".to_string());
         mark_detail_sections_loaded(view);
 
         let key = view
@@ -214,7 +235,7 @@ async fn cached_inbox_restore_rebuilds_diff_list_items(cx: &mut TestAppContext) 
 
         view.pull_requests.clear();
         view.detail_state.clear_diff_files();
-        view.reviewed_file_paths.clear();
+        view.changed_files_state.reviewed_file_paths.clear();
         view.sync_diff_list_items(cx);
         assert!(view.diff_list_items.is_empty());
 

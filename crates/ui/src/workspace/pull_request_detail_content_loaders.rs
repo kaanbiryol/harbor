@@ -194,8 +194,8 @@ impl AppView {
                 let count = files.len();
                 self.detail_state.replace_diff_files(files, diffs);
                 self.reset_diff_selection();
-                self.expanded_diff_file_paths.clear();
-                self.collapsed_diff_file_paths.clear();
+                self.changed_files_state.expanded_diff_file_paths.clear();
+                self.changed_files_state.collapsed_diff_file_paths.clear();
                 self.reset_changed_file_filters();
                 self.sync_reviewed_file_paths_from_files();
                 self.ensure_active_file_visible(cx);
@@ -213,12 +213,12 @@ impl AppView {
             }
             Err(error) => {
                 self.detail_state.clear_diff_files();
-                self.collapsed_file_tree_folders.clear();
-                self.expanded_diff_file_paths.clear();
-                self.collapsed_diff_file_paths.clear();
-                self.reviewed_file_paths.clear();
+                self.changed_files_state.collapsed_file_tree_folders.clear();
+                self.changed_files_state.expanded_diff_file_paths.clear();
+                self.changed_files_state.collapsed_diff_file_paths.clear();
+                self.changed_files_state.reviewed_file_paths.clear();
                 self.reset_changed_file_filters();
-                self.owned_file_paths.clear();
+                self.changed_files_state.owned_file_paths.clear();
                 self.reset_diff_selection();
                 self.clear_review_composer_state();
                 self.sync_diff_list_items(cx);

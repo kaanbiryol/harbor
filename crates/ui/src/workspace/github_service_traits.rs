@@ -1,236 +1,52 @@
-use async_trait::async_trait;
-use harbor_domain::{
-    MergeMethod, PullRequestComment, PullRequestCommit, PullRequestReview, ReactionContent, RepoId,
-    ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
-};
-use harbor_github::{
-    GitHubRateLimitStatus, PullRequestMetadataOptions, RepositoryList, Result,
-    SubmitPullRequestReviewEvent,
-};
+#[path = "github_service_traits/auth.rs"]
+mod auth;
+#[path = "github_service_traits/pull_requests.rs"]
+mod pull_requests;
+#[path = "github_service_traits/repositories.rs"]
+mod repositories;
+#[path = "github_service_traits/reviews.rs"]
+mod reviews;
+#[path = "github_service_traits/workflows.rs"]
+mod workflows;
+
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
-use crate::workspace::GitHubAuthSource;
+pub use auth::GitHubAuthApi;
+pub use pull_requests::{GitHubPullRequestApi, GitHubPullRequestMutationApi};
+pub use repositories::GitHubRepositoryApi;
+pub use reviews::{GitHubReviewApi, GitHubReviewMutationApi};
+pub use workflows::{GitHubWorkflowApi, GitHubWorkflowMutationApi};
 
-#[async_trait]
 pub trait GitHubApi:
-    PullRequestCiSource + PullRequestContentSource + PullRequestInboxSource + Send + Sync
+    GitHubAuthApi
+    + GitHubPullRequestApi
+    + GitHubPullRequestMutationApi
+    + GitHubRepositoryApi
+    + GitHubReviewApi
+    + GitHubReviewMutationApi
+    + GitHubWorkflowApi
+    + GitHubWorkflowMutationApi
+    + PullRequestCiSource
+    + PullRequestContentSource
+    + PullRequestInboxSource
+    + Send
+    + Sync
 {
-    fn configure_token(&self, token: String, source: GitHubAuthSource) -> Result<()>;
-    fn configure_gh_cli(&self) -> Result<()>;
-    fn clear_auth(&self) -> Result<()>;
-    fn has_auth(&self) -> bool;
+}
 
-    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus>;
-
-    async fn list_repositories(&self) -> Result<RepositoryList>;
-
-    async fn get_repository(&self, repository: &RepoId) -> Result<RepoId>;
-
-    async fn list_pull_request_metadata_options(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<PullRequestMetadataOptions>;
-
-    async fn list_pull_request_commits(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<PullRequestCommit>>;
-
-    async fn mark_pull_request_file_viewed(
-        &self,
-        pull_request_node_id: &str,
-        path: &str,
-    ) -> Result<()>;
-
-    async fn unmark_pull_request_file_viewed(
-        &self,
-        pull_request_node_id: &str,
-        path: &str,
-    ) -> Result<()>;
-
-    async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>>;
-
-    async fn list_repository_workflow_runs(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<WorkflowRun>>;
-
-    async fn list_workflow_runs_for_workflow(
-        &self,
-        owner: &str,
-        repo: &str,
-        workflow_id: u64,
-    ) -> Result<Vec<WorkflowRun>>;
-
-    async fn list_workflow_jobs_for_run(
-        &self,
-        owner: &str,
-        repo: &str,
-        run_id: u64,
-    ) -> Result<Vec<WorkflowJob>>;
-
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
-
-    async fn dispatch_workflow(
-        &self,
-        owner: &str,
-        repo: &str,
-        workflow_id: u64,
-        git_ref: &str,
-    ) -> Result<()>;
-
-    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()>;
-
-    async fn current_user(&self) -> Result<String>;
-
-    async fn list_pull_request_reviews(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<PullRequestReview>>;
-
-    async fn list_pull_request_comments(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<PullRequestComment>>;
-
-    async fn pull_request_review_comment_count(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        review_id: &str,
-    ) -> Result<usize>;
-
-    async fn list_review_threads(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<ReviewThread>>;
-
-    async fn submit_pull_request_review(
-        &self,
-        pull_request_review_node_id: &str,
-        event: SubmitPullRequestReviewEvent,
-        body: Option<&str>,
-    ) -> Result<()>;
-
-    async fn create_pull_request_review_comment(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        commit_id: &str,
-        range: &ReviewCommentRange,
-        body: &str,
-    ) -> Result<()>;
-
-    async fn start_pull_request_review(
-        &self,
-        pull_request_node_id: &str,
-        commit_id: &str,
-        range: &ReviewCommentRange,
-        body: &str,
-    ) -> Result<String>;
-
-    async fn add_pending_review_thread(
-        &self,
-        pull_request_review_node_id: &str,
-        range: &ReviewCommentRange,
-        body: &str,
-    ) -> Result<()>;
-
-    async fn add_review_thread_reply(
-        &self,
-        thread_id: &str,
-        pull_request_review_node_id: Option<&str>,
-        body: &str,
-    ) -> Result<()>;
-
-    async fn resolve_review_thread(&self, thread_id: &str) -> Result<()>;
-
-    async fn unresolve_review_thread(&self, thread_id: &str) -> Result<()>;
-
-    async fn update_review_comment(&self, comment_id: &str, body: &str) -> Result<()>;
-
-    async fn delete_review_comment(&self, comment_id: &str) -> Result<()>;
-
-    async fn add_review_comment_reaction(
-        &self,
-        comment_id: &str,
-        content: ReactionContent,
-    ) -> Result<()>;
-
-    async fn remove_review_comment_reaction(
-        &self,
-        comment_id: &str,
-        content: ReactionContent,
-    ) -> Result<()>;
-
-    async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()>;
-
-    async fn request_pull_request_reviewer(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        reviewer: &str,
-    ) -> Result<()>;
-
-    async fn add_pull_request_assignee(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        assignee: &str,
-    ) -> Result<()>;
-
-    async fn add_pull_request_label(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        label: &str,
-    ) -> Result<()>;
-
-    async fn create_pull_request_comment(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        body: &str,
-    ) -> Result<()>;
-
-    async fn approve_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        body: Option<&str>,
-    ) -> Result<()>;
-
-    async fn request_pull_request_changes(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        body: &str,
-    ) -> Result<()>;
-
-    async fn merge_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        head_sha: &str,
-        method: MergeMethod,
-    ) -> Result<()>;
+impl<T> GitHubApi for T where
+    T: GitHubAuthApi
+        + GitHubPullRequestApi
+        + GitHubPullRequestMutationApi
+        + GitHubRepositoryApi
+        + GitHubReviewApi
+        + GitHubReviewMutationApi
+        + GitHubWorkflowApi
+        + GitHubWorkflowMutationApi
+        + PullRequestCiSource
+        + PullRequestContentSource
+        + PullRequestInboxSource
+        + Send
+        + Sync
+{
 }

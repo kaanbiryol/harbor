@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use harbor_domain::{PullRequest, RepoId};
+use harbor_domain::{PullRequest, PullRequestEnrichment, RepoId};
 use harbor_github::{
     ConditionalFetch, GitHubError, GitHubRateLimitStatus, HttpCacheValidator,
-    PullRequestEnrichment, PullRequestListFilter, PullRequestPage, PullRequestPageCursor,
+    PullRequestListFilter, PullRequestPage, PullRequestPageCursor,
 };
 use harbor_storage::SqliteStore;
 

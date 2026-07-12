@@ -42,6 +42,28 @@ pub struct PullRequestTeam {
     pub slug: String,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PullRequestMetadataOptions {
+    pub reviewers: Vec<PullRequestPerson>,
+    pub assignees: Vec<PullRequestPerson>,
+    pub labels: Vec<Label>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullRequestEnrichment {
+    pub node_id: String,
+    pub review_decision: Option<ReviewDecision>,
+    pub merge_state: Option<MergeState>,
+    pub checks_summary: ChecksSummary,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SubmitPullRequestReviewEvent {
+    Approve,
+    Comment,
+    RequestChanges,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PullRequestState {
     Open,

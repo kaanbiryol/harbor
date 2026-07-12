@@ -165,12 +165,7 @@ impl AppView {
             self.tasks.cancel_selected_pull_request_tasks();
             self.clear_review_data_state();
             self.clear_review_submission_errors();
-            self.collapsed_file_tree_folders.clear();
-            self.expanded_diff_file_paths.clear();
-            self.collapsed_diff_file_paths.clear();
-            self.reviewed_file_paths.clear();
-            self.reset_changed_file_filters();
-            self.owned_file_paths.clear();
+            self.changed_files_state.reset();
             self.clear_detail_loaded_state();
             self.set_detail_loading(false);
             self.set_log_loading(false);

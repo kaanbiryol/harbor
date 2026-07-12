@@ -1,7 +1,6 @@
 use gpui::{Context, Entity, Window};
 use gpui_component::input::{InputEvent, InputState};
-use harbor_domain::{Label, PullRequestPerson};
-use harbor_github::PullRequestMetadataOptions;
+use harbor_domain::{Label, PullRequestMetadataOptions, PullRequestPerson};
 
 use crate::{
     actions::{PullRequestMetadataField, PullRequestMetadataRequest},

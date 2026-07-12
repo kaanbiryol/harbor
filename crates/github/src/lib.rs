@@ -3,8 +3,10 @@ mod dto;
 mod transport;
 
 pub use client::{
-    GitHubClient, PullRequestEnrichment, PullRequestListFilter, PullRequestMetadataOptions,
-    PullRequestPage, PullRequestPageCursor, RepositoryList, SubmitPullRequestReviewEvent,
+    GitHubClient, PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList,
+};
+pub use harbor_domain::{
+    PullRequestEnrichment, PullRequestMetadataOptions, SubmitPullRequestReviewEvent,
 };
 pub use transport::{
     GhCliTransport, GitHubDeviceFlow, GitHubTransport, GitHubTransportSource, OctocrabTransport,

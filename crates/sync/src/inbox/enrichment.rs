@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use harbor_domain::{MergeState, PullRequest};
-use harbor_github::{GitHubRateLimitStatus, PullRequestEnrichment};
+use harbor_domain::{MergeState, PullRequest, PullRequestEnrichment};
 
 pub(super) fn merge_light_pull_request_rows(previous: &[PullRequest], current: &mut [PullRequest]) {
     let previous_by_number = previous
@@ -70,28 +69,13 @@ pub(super) fn apply_pull_request_enrichments(
     }
 }
 
-pub(super) fn graphql_rate_limit_too_low_for_enrichment(
-    rate_limits: &[GitHubRateLimitStatus],
-) -> bool {
-    rate_limits.iter().any(|rate_limit| {
-        rate_limit.resource.as_deref() == Some("graphql")
-            && match (rate_limit.remaining, rate_limit.limit) {
-                (Some(remaining), Some(limit)) if limit > 0 => {
-                    remaining <= 500 || remaining.saturating_mul(10) <= limit
-                }
-                (Some(remaining), None) => remaining <= 500,
-                _ => false,
-            }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, TimeZone, Utc};
+    use harbor_domain::PullRequestEnrichment;
     use harbor_domain::{
         ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId, ReviewDecision,
     };
-    use harbor_github::PullRequestEnrichment;
 
     use super::{apply_pull_request_enrichments, merge_light_pull_request_rows};
 

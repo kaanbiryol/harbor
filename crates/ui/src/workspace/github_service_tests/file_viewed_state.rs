@@ -120,7 +120,11 @@ async fn toggling_diff_file_section_does_not_select_file_or_sync_reviewed_state(
         view.toggle_diff_file_section(0, cx);
 
         assert_eq!(view.active_file_index(), 1);
-        assert!(view.collapsed_diff_file_paths.contains("src/a.rs"));
+        assert!(
+            view.changed_files_state
+                .collapsed_diff_file_paths
+                .contains("src/a.rs")
+        );
         assert!(!view.reviewed_file_paths().contains("src/a.rs"));
         assert!(
             !view

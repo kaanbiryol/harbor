@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use gpui::Context;
-use harbor_domain::PullRequest;
-use harbor_github::PullRequestEnrichment;
+use harbor_domain::{PullRequest, PullRequestEnrichment};
 
 use crate::workspace::{
     AppView, PullRequestInboxCacheKey, PullRequestRowEnrichmentKey,

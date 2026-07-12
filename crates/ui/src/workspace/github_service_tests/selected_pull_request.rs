@@ -134,18 +134,28 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         view.detail_state
             .log_state
             .set_chunk(Some(parse_workflow_log(42, "build")));
-        view.collapsed_file_tree_folders.insert("src".to_string());
+        view.changed_files_state
+            .collapsed_file_tree_folders
+            .insert("src".to_string());
         view.checks_state
             .collapsed_groups
             .insert("build".to_string());
-        view.expanded_diff_file_paths
+        view.changed_files_state
+            .expanded_diff_file_paths
             .insert("src/lib.rs".to_string());
-        view.collapsed_diff_file_paths
+        view.changed_files_state
+            .collapsed_diff_file_paths
             .insert("src/other.rs".to_string());
-        view.reviewed_file_paths.insert("src/lib.rs".to_string());
-        view.excluded_file_type_filters.insert("rs".to_string());
-        view.show_files_owned_by_current_user = true;
-        view.owned_file_paths.insert("src/lib.rs".to_string());
+        view.changed_files_state
+            .reviewed_file_paths
+            .insert("src/lib.rs".to_string());
+        view.changed_files_state
+            .excluded_file_type_filters
+            .insert("rs".to_string());
+        view.changed_files_state.show_files_owned_by_current_user = true;
+        view.changed_files_state
+            .owned_file_paths
+            .insert("src/lib.rs".to_string());
         view.active_tab = PanelTab::Review;
 
         view.select_pull_request(1, cx);
@@ -157,14 +167,26 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         assert!(view.detail_state.workflow_runs().is_empty());
         assert!(view.review_state.review_threads().is_empty());
         assert!(view.detail_state.log_state.chunk().is_none());
-        assert!(view.collapsed_file_tree_folders.is_empty());
+        assert!(
+            view.changed_files_state
+                .collapsed_file_tree_folders
+                .is_empty()
+        );
         assert!(view.checks_state.collapsed_groups.is_empty());
-        assert!(view.expanded_diff_file_paths.is_empty());
-        assert!(view.collapsed_diff_file_paths.is_empty());
-        assert!(view.reviewed_file_paths.is_empty());
-        assert!(view.excluded_file_type_filters.is_empty());
-        assert!(!view.show_files_owned_by_current_user);
-        assert!(view.owned_file_paths.is_empty());
+        assert!(view.changed_files_state.expanded_diff_file_paths.is_empty());
+        assert!(
+            view.changed_files_state
+                .collapsed_diff_file_paths
+                .is_empty()
+        );
+        assert!(view.changed_files_state.reviewed_file_paths.is_empty());
+        assert!(
+            view.changed_files_state
+                .excluded_file_type_filters
+                .is_empty()
+        );
+        assert!(!view.changed_files_state.show_files_owned_by_current_user);
+        assert!(view.changed_files_state.owned_file_paths.is_empty());
         assert!(view.diff_list_items.is_empty());
     });
 }

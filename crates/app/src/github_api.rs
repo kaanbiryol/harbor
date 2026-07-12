@@ -13,7 +13,11 @@ use harbor_github::{
     SubmitPullRequestReviewEvent,
 };
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
-use harbor_ui::{GitHubApi, GitHubAuthSource};
+use harbor_ui::{
+    GitHubAuthApi, GitHubAuthSource, GitHubPullRequestApi, GitHubPullRequestMutationApi,
+    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
+    GitHubWorkflowMutationApi,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct RealGitHubApi {
@@ -177,7 +181,7 @@ impl PullRequestContentSource for RealGitHubApi {
 }
 
 #[async_trait]
-impl GitHubApi for RealGitHubApi {
+impl GitHubAuthApi for RealGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         self.client
             .lock()
@@ -222,7 +226,10 @@ impl GitHubApi for RealGitHubApi {
     fn has_auth(&self) -> bool {
         self.has_configured_client()
     }
+}
 
+#[async_trait]
+impl GitHubRepositoryApi for RealGitHubApi {
     async fn list_repositories(&self) -> Result<RepositoryList> {
         self.client()?.list_repositories().await
     }
@@ -241,6 +248,20 @@ impl GitHubApi for RealGitHubApi {
             .await
     }
 
+    async fn current_user(&self) -> Result<String> {
+        if let Some(login) = self.cached_current_user_login()? {
+            return Ok(login);
+        }
+
+        let login = self.client()?.current_user().await?;
+        self.cache_current_user_login(login.clone())?;
+
+        Ok(login)
+    }
+}
+
+#[async_trait]
+impl GitHubPullRequestApi for RealGitHubApi {
     async fn list_pull_request_commits(
         &self,
         owner: &str,
@@ -271,7 +292,10 @@ impl GitHubApi for RealGitHubApi {
             .unmark_pull_request_file_viewed(pull_request_node_id, path)
             .await
     }
+}
 
+#[async_trait]
+impl GitHubWorkflowApi for RealGitHubApi {
     async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>> {
         self.client()?.list_workflows(owner, repo).await
     }
@@ -311,7 +335,10 @@ impl GitHubApi for RealGitHubApi {
     async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
         self.client()?.workflow_run_log(owner, repo, run_id).await
     }
+}
 
+#[async_trait]
+impl GitHubWorkflowMutationApi for RealGitHubApi {
     async fn dispatch_workflow(
         &self,
         owner: &str,
@@ -327,18 +354,10 @@ impl GitHubApi for RealGitHubApi {
     async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
         self.client()?.rerun_failed_jobs(owner, repo, run_id).await
     }
+}
 
-    async fn current_user(&self) -> Result<String> {
-        if let Some(login) = self.cached_current_user_login()? {
-            return Ok(login);
-        }
-
-        let login = self.client()?.current_user().await?;
-        self.cache_current_user_login(login.clone())?;
-
-        Ok(login)
-    }
-
+#[async_trait]
+impl GitHubReviewApi for RealGitHubApi {
     async fn list_pull_request_reviews(
         &self,
         owner: &str,
@@ -383,7 +402,10 @@ impl GitHubApi for RealGitHubApi {
             .list_review_threads(owner, repo, number)
             .await
     }
+}
 
+#[async_trait]
+impl GitHubReviewMutationApi for RealGitHubApi {
     async fn submit_pull_request_review(
         &self,
         pull_request_review_node_id: &str,
@@ -478,7 +500,10 @@ impl GitHubApi for RealGitHubApi {
             .remove_review_comment_reaction(comment_id, content)
             .await
     }
+}
 
+#[async_trait]
+impl GitHubPullRequestMutationApi for RealGitHubApi {
     async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()> {
         self.client()?
             .update_pull_request_body(pull_request_node_id, body)

@@ -1,7 +1,10 @@
 #[path = "github_service_test_support/queues.rs"]
 mod queues;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use async_trait::async_trait;
 use harbor_domain::{
@@ -17,8 +20,11 @@ use harbor_github::{
 
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
-use super::GitHubApi;
-use crate::workspace::GitHubAuthSource;
+use crate::workspace::{
+    GitHubAuthApi, GitHubAuthSource, GitHubPullRequestApi, GitHubPullRequestMutationApi,
+    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
+    GitHubWorkflowMutationApi,
+};
 use queues::{FakeQueue, pop_result, push_result};
 
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
@@ -26,6 +32,7 @@ type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>
 
 #[derive(Clone, Default)]
 pub(crate) struct FakeGitHubApi {
+    signed_out: Arc<AtomicBool>,
     calls: Arc<Mutex<Vec<String>>>,
     light_pull_request_requests: FakeLightPullRequestRequests,
     repositories: FakeQueue<RepositoryList>,
@@ -76,6 +83,12 @@ pub(crate) struct FakeGitHubApi {
 }
 
 impl FakeGitHubApi {
+    pub(crate) fn signed_out() -> Self {
+        let api = Self::default();
+        api.signed_out.store(true, Ordering::Relaxed);
+        api
+    }
+
     pub(crate) fn push_repository_lookup(&self, result: Result<RepoId>) {
         push_result(&self.repository_lookups, result);
     }
@@ -325,7 +338,7 @@ impl PullRequestContentSource for FakeGitHubApi {
 }
 
 #[async_trait]
-impl GitHubApi for FakeGitHubApi {
+impl GitHubAuthApi for FakeGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         None
     }
@@ -335,23 +348,29 @@ impl GitHubApi for FakeGitHubApi {
             GitHubAuthSource::OAuth => "configure_oauth_token",
             GitHubAuthSource::GhCli => "configure_gh_cli_token",
         });
+        self.signed_out.store(false, Ordering::Relaxed);
         Ok(())
     }
 
     fn configure_gh_cli(&self) -> Result<()> {
         self.record_call("configure_gh_cli");
+        self.signed_out.store(false, Ordering::Relaxed);
         Ok(())
     }
 
     fn clear_auth(&self) -> Result<()> {
         self.record_call("clear_auth");
+        self.signed_out.store(true, Ordering::Relaxed);
         Ok(())
     }
 
     fn has_auth(&self) -> bool {
-        true
+        !self.signed_out.load(Ordering::Relaxed)
     }
+}
 
+#[async_trait]
+impl GitHubRepositoryApi for FakeGitHubApi {
     async fn list_repositories(&self) -> Result<RepositoryList> {
         self.record_call("list_repositories");
         pop_result(&self.repositories, "list_repositories")
@@ -371,6 +390,14 @@ impl GitHubApi for FakeGitHubApi {
         pop_result(&self.metadata_options, "list_pull_request_metadata_options")
     }
 
+    async fn current_user(&self) -> Result<String> {
+        self.record_call("current_user");
+        pop_result(&self.current_user, "current_user")
+    }
+}
+
+#[async_trait]
+impl GitHubPullRequestApi for FakeGitHubApi {
     async fn list_pull_request_commits(
         &self,
         _owner: &str,
@@ -404,7 +431,10 @@ impl GitHubApi for FakeGitHubApi {
             "unmark_pull_request_file_viewed",
         )
     }
+}
 
+#[async_trait]
+impl GitHubWorkflowApi for FakeGitHubApi {
     async fn list_workflows(&self, _owner: &str, _repo: &str) -> Result<Vec<Workflow>> {
         self.record_call("list_workflows");
         pop_result(&self.workflows, "list_workflows")
@@ -449,12 +479,10 @@ impl GitHubApi for FakeGitHubApi {
         self.record_call("workflow_run_log");
         pop_result(&self.workflow_logs, "workflow_run_log")
     }
+}
 
-    async fn current_user(&self) -> Result<String> {
-        self.record_call("current_user");
-        pop_result(&self.current_user, "current_user")
-    }
-
+#[async_trait]
+impl GitHubReviewApi for FakeGitHubApi {
     async fn list_pull_request_reviews(
         &self,
         _owner: &str,
@@ -498,7 +526,10 @@ impl GitHubApi for FakeGitHubApi {
         self.record_call("list_review_threads");
         pop_result(&self.review_threads, "list_review_threads")
     }
+}
 
+#[async_trait]
+impl GitHubWorkflowMutationApi for FakeGitHubApi {
     async fn dispatch_workflow(
         &self,
         _owner: &str,
@@ -514,7 +545,10 @@ impl GitHubApi for FakeGitHubApi {
         self.record_call("rerun_failed_jobs");
         pop_result(&self.rerun_failed_jobs_results, "rerun_failed_jobs")
     }
+}
 
+#[async_trait]
+impl GitHubPullRequestMutationApi for FakeGitHubApi {
     async fn update_pull_request_body(
         &self,
         _pull_request_node_id: &str,
@@ -613,7 +647,10 @@ impl GitHubApi for FakeGitHubApi {
         self.record_call("merge_pull_request");
         pop_result(&self.merge_results, "merge_pull_request")
     }
+}
 
+#[async_trait]
+impl GitHubReviewMutationApi for FakeGitHubApi {
     async fn submit_pull_request_review(
         &self,
         _pull_request_review_node_id: &str,

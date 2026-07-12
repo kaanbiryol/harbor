@@ -9,22 +9,13 @@ mod reviews;
 #[path = "client/workflows.rs"]
 mod workflows;
 
-use harbor_domain::{
-    ChecksSummary, Label, MergeState, PullRequest, PullRequestPerson, RepoId, ReviewDecision,
-};
+use harbor_domain::{PullRequest, RepoId, SubmitPullRequestReviewEvent};
 
 use crate::{GitHubRateLimitStatus, GitHubRequestAttribution, GitHubTransport};
 
 #[derive(Clone, Debug)]
 pub struct GitHubClient<T> {
     transport: T,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SubmitPullRequestReviewEvent {
-    Approve,
-    Comment,
-    RequestChanges,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -51,21 +42,6 @@ pub struct PullRequestPage {
 pub struct RepositoryList {
     pub repositories: Vec<RepoId>,
     pub possibly_limited: bool,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct PullRequestMetadataOptions {
-    pub reviewers: Vec<PullRequestPerson>,
-    pub assignees: Vec<PullRequestPerson>,
-    pub labels: Vec<Label>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PullRequestEnrichment {
-    pub node_id: String,
-    pub review_decision: Option<ReviewDecision>,
-    pub merge_state: Option<MergeState>,
-    pub checks_summary: ChecksSummary,
 }
 
 impl<T> GitHubClient<T> {

@@ -1,5 +1,5 @@
 use gpui::{Context, Window};
-use harbor_github::SubmitPullRequestReviewEvent;
+use harbor_domain::SubmitPullRequestReviewEvent;
 
 use crate::{
     actions::DEFAULT_REQUEST_CHANGES_BODY,

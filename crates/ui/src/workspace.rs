@@ -64,7 +64,11 @@ pub(crate) use changed_files::{
     ChangedFileTypeFilter, changed_file_tree_rows, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
-pub use github_service::GitHubApi;
+pub use github_service::{
+    GitHubApi, GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi,
+    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
+    GitHubWorkflowMutationApi,
+};
 pub(crate) use pull_request_filters::{
     PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections, PullRequestFilters,
 };

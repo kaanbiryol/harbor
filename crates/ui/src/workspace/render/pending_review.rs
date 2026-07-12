@@ -4,7 +4,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::Input,
 };
-use harbor_github::SubmitPullRequestReviewEvent;
+use harbor_domain::SubmitPullRequestReviewEvent;
 
 use crate::{
     visual::color,
