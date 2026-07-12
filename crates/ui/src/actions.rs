@@ -219,8 +219,9 @@ pub(crate) enum PullRequestMetadataField {
 impl PullRequestMetadataField {
     pub(crate) fn input_placeholder(self) -> &'static str {
         match self {
-            Self::Reviewer | Self::Assignee => "GitHub username",
-            Self::Label => "Label name",
+            Self::Reviewer => "Search reviewers...",
+            Self::Assignee => "Search assignees...",
+            Self::Label => "Search labels...",
         }
     }
 
