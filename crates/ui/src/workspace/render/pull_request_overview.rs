@@ -30,9 +30,12 @@ use crate::{
 
 const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
 
+#[path = "pull_request_overview/model.rs"]
+mod model;
 #[path = "pull_request_overview/timeline.rs"]
 mod timeline;
 
+use model::*;
 use timeline::*;
 
 impl AppView {
