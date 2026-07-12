@@ -89,6 +89,7 @@ impl SqliteStore {
                 head_sha TEXT NOT NULL,
                 position INTEGER NOT NULL,
                 pr_json TEXT NOT NULL,
+                cache_version INTEGER NOT NULL DEFAULT 1,
                 fetched_at INTEGER NOT NULL,
                 PRIMARY KEY (owner, name, mode, number)
             )",
@@ -104,12 +105,43 @@ impl SqliteStore {
                 head_sha TEXT NOT NULL,
                 section TEXT NOT NULL,
                 data_json TEXT NOT NULL,
+                cache_version INTEGER NOT NULL DEFAULT 1,
                 fetched_at INTEGER NOT NULL,
                 PRIMARY KEY (owner, name, number, head_sha, section)
             )",
         )
         .execute(&self.pool)
         .await?;
+
+        let inbox_columns = sqlx::query("PRAGMA table_info(pull_request_inbox_cache)")
+            .fetch_all(&self.pool)
+            .await?;
+        if !inbox_columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "cache_version")
+        {
+            sqlx::query(
+                "ALTER TABLE pull_request_inbox_cache
+                 ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+
+        let detail_columns = sqlx::query("PRAGMA table_info(pull_request_detail_cache)")
+            .fetch_all(&self.pool)
+            .await?;
+        if !detail_columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "cache_version")
+        {
+            sqlx::query(
+                "ALTER TABLE pull_request_detail_cache
+                 ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
+            )
+            .execute(&self.pool)
+            .await?;
+        }
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS sync_target_state (
@@ -145,6 +177,7 @@ impl SqliteStore {
         .await?;
 
         self.record_schema_migration(1).await?;
+        self.record_schema_migration(2).await?;
 
         Ok(())
     }

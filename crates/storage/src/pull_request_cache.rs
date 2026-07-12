@@ -5,7 +5,9 @@ use harbor_domain::{
 use serde::{Serialize, de::DeserializeOwned};
 use sqlx::{Row, Sqlite, Transaction};
 
-use super::{PullRequestDetailSection, Result, SqliteStore, StorageError};
+use super::{PullRequestDetailSection, Result, SqliteStore};
+
+const CACHE_PAYLOAD_VERSION: i64 = 1;
 
 impl SqliteStore {
     pub async fn load_pull_request_inbox(
@@ -14,23 +16,47 @@ impl SqliteStore {
         mode: &str,
     ) -> Result<Vec<PullRequest>> {
         let rows = sqlx::query(
-            "SELECT pr_json
+            "SELECT number, pr_json
              FROM pull_request_inbox_cache
-             WHERE owner = ?1 AND name = ?2 AND mode = ?3
+             WHERE owner = ?1 AND name = ?2 AND mode = ?3 AND cache_version = ?4
              ORDER BY position ASC",
         )
         .bind(&repository.owner)
         .bind(&repository.name)
         .bind(mode)
+        .bind(CACHE_PAYLOAD_VERSION)
         .fetch_all(&self.pool)
         .await?;
 
-        rows.into_iter()
-            .map(|row| {
-                let json = row.get::<String, _>("pr_json");
-                serde_json::from_str(&json).map_err(StorageError::from)
-            })
-            .collect()
+        let mut pull_requests = Vec::with_capacity(rows.len());
+        for row in rows {
+            let number = row.get::<i64, _>("number");
+            let json = row.get::<String, _>("pr_json");
+            match serde_json::from_str(&json) {
+                Ok(pull_request) => pull_requests.push(pull_request),
+                Err(error) => {
+                    tracing::warn!(
+                        repository = %repository.full_name(),
+                        mode,
+                        number,
+                        %error,
+                        "discarding invalid pull request inbox cache row"
+                    );
+                    sqlx::query(
+                        "DELETE FROM pull_request_inbox_cache
+                         WHERE owner = ?1 AND name = ?2 AND mode = ?3 AND number = ?4",
+                    )
+                    .bind(&repository.owner)
+                    .bind(&repository.name)
+                    .bind(mode)
+                    .bind(number)
+                    .execute(&self.pool)
+                    .await?;
+                }
+            }
+        }
+
+        Ok(pull_requests)
     }
 
     pub async fn save_pull_request_inbox(
@@ -54,8 +80,8 @@ impl SqliteStore {
         for (position, pull_request) in pull_requests.iter().enumerate() {
             sqlx::query(
                 "INSERT INTO pull_request_inbox_cache
-                    (owner, name, mode, number, head_sha, position, pr_json, fetched_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())",
+                    (owner, name, mode, number, head_sha, position, pr_json, cache_version, fetched_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())",
             )
             .bind(&repository.owner)
             .bind(&repository.name)
@@ -64,6 +90,7 @@ impl SqliteStore {
             .bind(&pull_request.head_sha)
             .bind(position as i64)
             .bind(serde_json::to_string(pull_request)?)
+            .bind(CACHE_PAYLOAD_VERSION)
             .execute(&mut *transaction)
             .await?;
         }
@@ -349,10 +376,11 @@ impl SqliteStore {
     {
         sqlx::query(
             "INSERT INTO pull_request_detail_cache
-                (owner, name, number, head_sha, section, data_json, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+                (owner, name, number, head_sha, section, data_json, cache_version, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
              ON CONFLICT(owner, name, number, head_sha, section) DO UPDATE SET
                 data_json = excluded.data_json,
+                cache_version = excluded.cache_version,
                 fetched_at = unixepoch()",
         )
         .bind(&repository.owner)
@@ -361,6 +389,7 @@ impl SqliteStore {
         .bind(head_sha)
         .bind(section.key())
         .bind(serde_json::to_string(value)?)
+        .bind(CACHE_PAYLOAD_VERSION)
         .execute(&mut **transaction)
         .await?;
 
@@ -380,21 +409,46 @@ impl SqliteStore {
         let row = sqlx::query(
             "SELECT data_json
              FROM pull_request_detail_cache
-             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5",
+             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5
+               AND cache_version = ?6",
         )
         .bind(&repository.owner)
         .bind(&repository.name)
         .bind(number as i64)
         .bind(head_sha)
         .bind(section.key())
+        .bind(CACHE_PAYLOAD_VERSION)
         .fetch_optional(&self.pool)
         .await?;
 
-        row.map(|row| {
-            let json = row.get::<String, _>("data_json");
-            serde_json::from_str(&json).map_err(StorageError::from)
-        })
-        .transpose()
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let json = row.get::<String, _>("data_json");
+        match serde_json::from_str(&json) {
+            Ok(value) => Ok(Some(value)),
+            Err(error) => {
+                tracing::warn!(
+                    repository = %repository.full_name(),
+                    number,
+                    section = section.key(),
+                    %error,
+                    "discarding invalid pull request detail cache row"
+                );
+                sqlx::query(
+                    "DELETE FROM pull_request_detail_cache
+                     WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5",
+                )
+                .bind(&repository.owner)
+                .bind(&repository.name)
+                .bind(number as i64)
+                .bind(head_sha)
+                .bind(section.key())
+                .execute(&self.pool)
+                .await?;
+                Ok(None)
+            }
+        }
     }
 }
 

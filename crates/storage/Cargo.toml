@@ -14,3 +14,4 @@ serde_json.workspace = true
 smol.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+tracing.workspace = true

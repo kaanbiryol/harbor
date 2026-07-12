@@ -203,7 +203,7 @@ fn migrates_existing_repository_table_for_local_path() {
         assert_eq!(repositories[0].local_path, None);
         assert_eq!(
             migration_versions(&store).await.expect("load migrations"),
-            vec![1]
+            vec![1, 2]
         );
 
         cleanup_database(database_path);
@@ -222,7 +222,7 @@ fn records_initial_schema_migration_for_new_database() {
 
         assert_eq!(
             migration_versions(&store).await.expect("load migrations"),
-            vec![1]
+            vec![1, 2]
         );
 
         cleanup_database(database_path);
@@ -310,6 +310,49 @@ fn saves_and_loads_pull_request_inbox_cache() {
             .expect("load inbox");
 
         assert_eq!(cached, vec![pull_request]);
+
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
+fn invalid_inbox_cache_rows_are_discarded() {
+    smol::block_on(async {
+        let database_path = test_database_path("invalid-inbox-cache");
+        let store = SqliteStore::connect(StorageConfig {
+            database_path: database_path.clone(),
+        })
+        .await
+        .expect("connect sqlite store");
+        let repository = RepoId::new("acme", "app");
+
+        store
+            .save_pull_request_inbox(&repository, "open", &[pull_request(7)])
+            .await
+            .expect("save inbox");
+        sqlx::query(
+            "UPDATE pull_request_inbox_cache
+             SET pr_json = 'not-json'
+             WHERE owner = 'acme' AND name = 'app' AND mode = 'open'",
+        )
+        .execute(&store.pool)
+        .await
+        .expect("corrupt inbox cache");
+
+        let cached = store
+            .load_pull_request_inbox(&repository, "open")
+            .await
+            .expect("load invalid inbox as cache miss");
+        assert!(cached.is_empty());
+
+        let remaining = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM pull_request_inbox_cache
+             WHERE owner = 'acme' AND name = 'app' AND mode = 'open'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("count inbox cache rows");
+        assert_eq!(remaining, 0);
 
         cleanup_database(database_path);
     });
@@ -460,6 +503,53 @@ fn saves_and_loads_detail_sections_independently() {
         assert!(cached_reviews.0.is_empty());
         assert!(cached_reviews.1.is_empty());
         assert!(cached_reviews.2.is_empty());
+
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
+fn invalid_detail_cache_rows_are_discarded() {
+    smol::block_on(async {
+        let database_path = test_database_path("invalid-detail-cache");
+        let store = SqliteStore::connect(StorageConfig {
+            database_path: database_path.clone(),
+        })
+        .await
+        .expect("connect sqlite store");
+        let pull_request = pull_request(7);
+
+        store
+            .save_pull_request_metadata(&pull_request)
+            .await
+            .expect("save metadata");
+        sqlx::query(
+            "UPDATE pull_request_detail_cache
+             SET data_json = 'not-json'
+             WHERE owner = 'acme' AND name = 'app' AND number = 7 AND section = 'metadata'",
+        )
+        .execute(&store.pool)
+        .await
+        .expect("corrupt detail cache");
+
+        let cached = store
+            .load_pull_request_metadata(
+                &pull_request.repo,
+                pull_request.number,
+                &pull_request.head_sha,
+            )
+            .await
+            .expect("load invalid detail as cache miss");
+        assert_eq!(cached, None);
+
+        let remaining = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM pull_request_detail_cache
+             WHERE owner = 'acme' AND name = 'app' AND number = 7 AND section = 'metadata'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("count detail cache rows");
+        assert_eq!(remaining, 0);
 
         cleanup_database(database_path);
     });
