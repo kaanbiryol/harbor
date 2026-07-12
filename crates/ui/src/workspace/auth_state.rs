@@ -16,7 +16,6 @@ impl GitHubAuthSource {
         match value.trim() {
             "oauth" => Some(Self::OAuth),
             "gh_cli" => Some(Self::GhCli),
-            "token" => Some(Self::OAuth),
             _ => None,
         }
     }
@@ -93,13 +92,5 @@ mod tests {
     fn auth_source_rejects_unknown_storage_values() {
         assert_eq!(GitHubAuthSource::from_storage_value(""), None);
         assert_eq!(GitHubAuthSource::from_storage_value("github"), None);
-    }
-
-    #[test]
-    fn legacy_token_auth_source_reads_as_oauth() {
-        assert_eq!(
-            GitHubAuthSource::from_storage_value("token"),
-            Some(GitHubAuthSource::OAuth)
-        );
     }
 }

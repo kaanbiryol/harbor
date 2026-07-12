@@ -363,10 +363,6 @@ mod tests {
             GitHubAuthSource::from_storage_value("gh_cli"),
             Some(GitHubAuthSource::GhCli)
         );
-        assert_eq!(
-            GitHubAuthSource::from_storage_value("token"),
-            Some(GitHubAuthSource::OAuth)
-        );
         assert_eq!(GitHubAuthSource::from_storage_value("unknown"), None);
     }
 
