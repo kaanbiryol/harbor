@@ -1,45 +1,16 @@
-use std::collections::HashSet;
-
-use sqlx::{Row, Sqlite, Transaction};
+use sqlx::{Sqlite, Transaction};
 
 use crate::{Result, SqliteStore};
 
-const INITIAL_SCHEMA_VERSION: i64 = 1;
-const REPOSITORY_STATE_VERSION: i64 = 2;
-
 impl SqliteStore {
-    pub(super) async fn migrate(&self) -> Result<()> {
+    pub(super) async fn initialize_schema(&self) -> Result<()> {
         let mut transaction = self.pool.begin().await?;
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (
-                version INTEGER PRIMARY KEY,
-                applied_at INTEGER NOT NULL
-            )",
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        let applied_versions = sqlx::query("SELECT version FROM schema_migrations")
-            .fetch_all(&mut *transaction)
-            .await?
-            .into_iter()
-            .map(|row| row.get::<i64, _>("version"))
-            .collect::<HashSet<_>>();
-
-        if !applied_versions.contains(&INITIAL_SCHEMA_VERSION) {
-            Self::apply_initial_schema(&mut transaction).await?;
-            Self::record_schema_migration(&mut transaction, INITIAL_SCHEMA_VERSION).await?;
-        }
-        if !applied_versions.contains(&REPOSITORY_STATE_VERSION) {
-            Self::apply_repository_state_migration(&mut transaction).await?;
-            Self::record_schema_migration(&mut transaction, REPOSITORY_STATE_VERSION).await?;
-        }
-
+        Self::create_schema(&mut transaction).await?;
         transaction.commit().await?;
         Ok(())
     }
 
-    async fn apply_initial_schema(transaction: &mut Transaction<'_, Sqlite>) -> Result<()> {
+    async fn create_schema(transaction: &mut Transaction<'_, Sqlite>) -> Result<()> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS recent_repositories (
                 owner TEXT NOT NULL,
@@ -126,87 +97,6 @@ impl SqliteStore {
         .execute(&mut **transaction)
         .await?;
 
-        Ok(())
-    }
-
-    async fn apply_repository_state_migration(
-        transaction: &mut Transaction<'_, Sqlite>,
-    ) -> Result<()> {
-        Self::add_column_if_missing(
-            transaction,
-            "recent_repositories",
-            "local_path",
-            "ALTER TABLE recent_repositories ADD COLUMN local_path TEXT",
-        )
-        .await?;
-        Self::add_column_if_missing(
-            transaction,
-            "recent_repositories",
-            "last_seen_at",
-            "ALTER TABLE recent_repositories ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        Self::add_column_if_missing(
-            transaction,
-            "recent_repositories",
-            "last_seen_position",
-            "ALTER TABLE recent_repositories ADD COLUMN last_seen_position INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        Self::add_column_if_missing(
-            transaction,
-            "pull_request_inbox_cache",
-            "cache_version",
-            "ALTER TABLE pull_request_inbox_cache ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
-        )
-        .await?;
-        Self::add_column_if_missing(
-            transaction,
-            "pull_request_detail_cache",
-            "cache_version",
-            "ALTER TABLE pull_request_detail_cache ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
-        )
-        .await?;
-
-        sqlx::query(
-            "DELETE FROM recent_repositories
-             WHERE pinned = 0 AND local_path IS NULL",
-        )
-        .execute(&mut **transaction)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn add_column_if_missing(
-        transaction: &mut Transaction<'_, Sqlite>,
-        table: &str,
-        column: &str,
-        migration: &str,
-    ) -> Result<()> {
-        let columns = sqlx::query(&format!("PRAGMA table_info({table})"))
-            .fetch_all(&mut **transaction)
-            .await?;
-        if !columns
-            .iter()
-            .any(|row| row.get::<String, _>("name") == column)
-        {
-            sqlx::query(migration).execute(&mut **transaction).await?;
-        }
-        Ok(())
-    }
-
-    async fn record_schema_migration(
-        transaction: &mut Transaction<'_, Sqlite>,
-        version: i64,
-    ) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO schema_migrations (version, applied_at)
-             VALUES (?1, unixepoch())",
-        )
-        .bind(version)
-        .execute(&mut **transaction)
-        .await?;
         Ok(())
     }
 }

@@ -3,13 +3,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use super::*;
 use chrono::DateTime;
 use harbor_domain::{
     ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId, ReviewDecision,
 };
-use sqlx::Row;
-
-use super::*;
 
 #[test]
 fn persists_only_pinned_repositories_for_the_switcher() {
@@ -146,83 +144,6 @@ fn saves_repository_local_path() {
         assert_eq!(
             repositories[0].local_path.as_deref(),
             Some(local_path.as_path())
-        );
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
-fn migrates_existing_repository_table_for_local_path() {
-    smol::block_on(async {
-        let database_path = test_database_path("migrates-local-path");
-        std::fs::create_dir_all(database_path.parent().expect("database parent"))
-            .expect("create database parent");
-        let options = SqliteConnectOptions::new()
-            .filename(&database_path)
-            .create_if_missing(true);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .expect("connect old schema");
-
-        sqlx::query(
-            "CREATE TABLE recent_repositories (
-                owner TEXT NOT NULL,
-                name TEXT NOT NULL,
-                pinned INTEGER NOT NULL DEFAULT 0,
-                last_opened_at INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (owner, name)
-            )",
-        )
-        .execute(&pool)
-        .await
-        .expect("create old table");
-        sqlx::query(
-            "INSERT INTO recent_repositories (owner, name, pinned, last_opened_at)
-             VALUES ('acme', 'app', 1, 0)",
-        )
-        .execute(&pool)
-        .await
-        .expect("insert old row");
-        pool.close().await;
-
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("migrate sqlite store");
-        let repositories = store
-            .pinned_repositories()
-            .await
-            .expect("load pinned repositories");
-
-        assert_eq!(repositories.len(), 1);
-        assert_eq!(repositories[0].id, RepoId::new("acme", "app"));
-        assert_eq!(repositories[0].local_path, None);
-        assert_eq!(
-            migration_versions(&store).await.expect("load migrations"),
-            vec![1, 2]
-        );
-
-        cleanup_database(database_path);
-    });
-}
-
-#[test]
-fn records_initial_schema_migration_for_new_database() {
-    smol::block_on(async {
-        let database_path = test_database_path("records-schema-migration");
-        let store = SqliteStore::connect(StorageConfig {
-            database_path: database_path.clone(),
-        })
-        .await
-        .expect("connect sqlite store");
-
-        assert_eq!(
-            migration_versions(&store).await.expect("load migrations"),
-            vec![1, 2]
         );
 
         cleanup_database(database_path);
@@ -642,17 +563,6 @@ fn cleanup_database(database_path: PathBuf) {
     if let Err(error) = std::fs::remove_dir_all(directory) {
         eprintln!("failed to clean up test database: {error}");
     }
-}
-
-async fn migration_versions(store: &SqliteStore) -> Result<Vec<i64>> {
-    let rows = sqlx::query("SELECT version FROM schema_migrations ORDER BY version ASC")
-        .fetch_all(&store.pool)
-        .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|row| row.get::<i64, _>("version"))
-        .collect())
 }
 
 fn pull_request(number: u64) -> PullRequest {

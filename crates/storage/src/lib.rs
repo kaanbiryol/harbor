@@ -62,7 +62,7 @@ impl SqliteStore {
             .connect_with(options)
             .await?;
         let store = Self { pool };
-        store.migrate().await?;
+        store.initialize_schema().await?;
         Ok(store)
     }
 }
