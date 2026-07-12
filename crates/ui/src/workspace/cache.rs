@@ -8,7 +8,7 @@ use harbor_domain::{
 use harbor_logs::LogChunk;
 use harbor_sync::PullRequestInboxPageInfo;
 
-use super::state::PullRequestDetailLoadedState;
+use super::state::{ChangedFilesUiState, PullRequestDetailLoadedState};
 use crate::{
     actions::PanelTab,
     diff::ParsedDiff,
@@ -71,14 +71,8 @@ pub(crate) struct PullRequestDetailSnapshot {
     pub(super) pending_review: Option<PendingReviewSession>,
     log_chunk: Option<LogChunk>,
     current_user_login: Option<String>,
-    collapsed_file_tree_folders: HashSet<String>,
+    changed_files_state: ChangedFilesUiState,
     collapsed_check_groups: HashSet<String>,
-    expanded_diff_file_paths: HashSet<String>,
-    collapsed_diff_file_paths: HashSet<String>,
-    reviewed_file_paths: HashSet<String>,
-    excluded_file_type_filters: HashSet<String>,
-    show_files_owned_by_current_user: bool,
-    owned_file_paths: HashSet<String>,
     active_file: usize,
     active_hunk: usize,
     active_tab: PanelTab,
@@ -194,14 +188,8 @@ impl AppView {
             pending_review: self.review_state.pending_review_cloned(),
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login().map(str::to_string),
-            collapsed_file_tree_folders: self.collapsed_file_tree_folders.clone(),
+            changed_files_state: self.changed_files_state.clone(),
             collapsed_check_groups: self.checks_state.collapsed_groups.clone(),
-            expanded_diff_file_paths: self.expanded_diff_file_paths.clone(),
-            collapsed_diff_file_paths: self.collapsed_diff_file_paths.clone(),
-            reviewed_file_paths: self.reviewed_file_paths.clone(),
-            excluded_file_type_filters: self.excluded_file_type_filters.clone(),
-            show_files_owned_by_current_user: self.show_files_owned_by_current_user,
-            owned_file_paths: self.owned_file_paths.clone(),
             active_file: self.active_file_index(),
             active_hunk: self.active_hunk_index(),
             active_tab: self.active_tab,
@@ -297,14 +285,8 @@ impl AppView {
         self.detail_state
             .log_state
             .set_chunk(snapshot.log_chunk.clone());
-        self.collapsed_file_tree_folders = snapshot.collapsed_file_tree_folders.clone();
+        self.changed_files_state = snapshot.changed_files_state.clone();
         self.checks_state.collapsed_groups = snapshot.collapsed_check_groups.clone();
-        self.expanded_diff_file_paths = snapshot.expanded_diff_file_paths.clone();
-        self.collapsed_diff_file_paths = snapshot.collapsed_diff_file_paths.clone();
-        self.reviewed_file_paths = snapshot.reviewed_file_paths.clone();
-        self.excluded_file_type_filters = snapshot.excluded_file_type_filters.clone();
-        self.show_files_owned_by_current_user = snapshot.show_files_owned_by_current_user;
-        self.owned_file_paths = snapshot.owned_file_paths.clone();
         self.selection_state.restore_diff_position(
             snapshot.active_file,
             snapshot.active_hunk,

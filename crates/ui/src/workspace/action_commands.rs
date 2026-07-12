@@ -1,6 +1,6 @@
 use gpui::{Context, Window};
 use harbor_domain::MergeMethod;
-use harbor_github::SubmitPullRequestReviewEvent;
+use harbor_domain::SubmitPullRequestReviewEvent;
 
 use crate::{
     actions::{

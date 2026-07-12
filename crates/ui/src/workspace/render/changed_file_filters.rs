@@ -21,9 +21,9 @@ impl AppView {
         let total_count = self.detail_state.files().len();
         let type_filters = self.changed_file_type_filters();
         let included_type_count = self.included_file_type_filter_count();
-        let owned_file_count = self.owned_file_paths.len();
+        let owned_file_count = self.changed_files_state.owned_file_paths.len();
         let has_owned_filter_data = self.has_owned_file_filter_data();
-        let owned_filter_active = self.show_files_owned_by_current_user;
+        let owned_filter_active = self.changed_files_state.show_files_owned_by_current_user;
         let has_active_filter = self.has_active_changed_file_filters();
 
         Popover::new("changed-file-filters-popover")

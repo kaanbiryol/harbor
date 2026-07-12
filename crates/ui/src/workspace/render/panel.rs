@@ -136,9 +136,15 @@ impl AppView {
                                     files: self.detail_state.files(),
                                     diffs: self.detail_state.diffs(),
                                     visible_file_indices: &visible_file_indices,
-                                    reviewed_file_paths: &self.reviewed_file_paths,
-                                    expanded_diff_file_paths: &self.expanded_diff_file_paths,
-                                    collapsed_diff_file_paths: &self.collapsed_diff_file_paths,
+                                    reviewed_file_paths: &self
+                                        .changed_files_state
+                                        .reviewed_file_paths,
+                                    expanded_diff_file_paths: &self
+                                        .changed_files_state
+                                        .expanded_diff_file_paths,
+                                    collapsed_diff_file_paths: &self
+                                        .changed_files_state
+                                        .collapsed_diff_file_paths,
                                     review_threads: self.review_state.review_threads(),
                                     review_composer: self
                                         .review_state

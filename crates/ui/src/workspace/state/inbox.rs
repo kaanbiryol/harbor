@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use harbor_domain::PullRequest;
 use harbor_github::PullRequestPageCursor;
@@ -13,12 +13,15 @@ pub(crate) struct PullRequestInboxState {
     visible: bool,
     mode: PullRequestInboxMode,
     cache: HashMap<PullRequestInboxCacheKey, PullRequestInboxSnapshot>,
+    cache_order: VecDeque<PullRequestInboxCacheKey>,
     counts: HashMap<PullRequestInboxCacheKey, usize>,
     row_enrichment_attempts: HashSet<PullRequestRowEnrichmentKey>,
     page_info: PullRequestInboxPageInfo,
     load: LoadStatus,
     more_load: LoadStatus,
 }
+
+const MAX_PULL_REQUEST_INBOX_SNAPSHOTS: usize = 8;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct PullRequestRowEnrichmentKey {
@@ -169,7 +172,15 @@ impl PullRequestInboxState {
         if let Some(count) = snapshot.count() {
             self.counts.insert(key.clone(), count);
         }
+        self.cache_order.retain(|existing| existing != &key);
+        self.cache_order.push_back(key.clone());
         self.cache.insert(key, snapshot);
+
+        while self.cache_order.len() > MAX_PULL_REQUEST_INBOX_SNAPSHOTS {
+            if let Some(expired) = self.cache_order.pop_front() {
+                self.cache.remove(&expired);
+            }
+        }
     }
 
     pub(crate) fn insert_count(&mut self, key: PullRequestInboxCacheKey, count: usize) {

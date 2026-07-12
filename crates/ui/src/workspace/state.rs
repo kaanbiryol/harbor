@@ -1,3 +1,5 @@
+#[path = "state/changed_files.rs"]
+mod changed_files;
 #[path = "state/checks.rs"]
 mod checks;
 #[path = "state/detail.rs"]
@@ -27,6 +29,7 @@ mod tasks;
 #[path = "state/workflow_log.rs"]
 mod workflow_log;
 
+pub(crate) use changed_files::ChangedFilesUiState;
 pub(crate) use checks::ChecksUiState;
 pub(crate) use detail::{PullRequestDetailLoadedState, PullRequestDetailUiState};
 pub(crate) use inbox::{PullRequestInboxState, PullRequestRowEnrichmentKey};

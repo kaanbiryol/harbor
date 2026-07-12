@@ -5,7 +5,7 @@ use harbor_domain::ReviewThreadState;
 use super::*;
 use crate::{
     test_fixtures::{pull_request, review_thread},
-    workspace::state::{PullRequestDetailUiState, WorkflowLogState},
+    workspace::state::{PullRequestDetailUiState, PullRequestInboxState, WorkflowLogState},
 };
 
 fn detail_snapshot() -> PullRequestDetailSnapshot {
@@ -30,18 +30,89 @@ fn detail_snapshot() -> PullRequestDetailSnapshot {
         }),
         log_chunk: None,
         current_user_login: None,
-        collapsed_file_tree_folders: HashSet::new(),
+        changed_files_state: ChangedFilesUiState::default(),
         collapsed_check_groups: HashSet::new(),
-        expanded_diff_file_paths: HashSet::new(),
-        collapsed_diff_file_paths: HashSet::new(),
-        reviewed_file_paths: HashSet::new(),
-        excluded_file_type_filters: HashSet::new(),
-        show_files_owned_by_current_user: false,
-        owned_file_paths: HashSet::new(),
         active_file: 0,
         active_hunk: 0,
         active_tab: PanelTab::Diff,
     }
+}
+
+#[test]
+fn detail_cache_evicts_the_oldest_snapshot() {
+    let mut detail_state =
+        PullRequestDetailUiState::new(Vec::new(), Vec::new(), WorkflowLogState::new());
+    let repository = RepoId::new("acme", "app");
+
+    for number in 1..=9 {
+        let mut snapshot = detail_snapshot();
+        snapshot.pull_request.number = number;
+        snapshot.pull_request.head_sha = format!("head-{number}");
+        detail_state.cache_snapshot(
+            PullRequestDetailCacheKey::new(
+                repository.clone(),
+                number,
+                snapshot.pull_request.head_sha.clone(),
+            ),
+            Arc::new(snapshot),
+        );
+    }
+
+    assert!(
+        detail_state
+            .snapshot(&PullRequestDetailCacheKey::new(
+                repository.clone(),
+                1,
+                "head-1".to_string(),
+            ))
+            .is_none()
+    );
+    assert!(
+        detail_state
+            .snapshot(&PullRequestDetailCacheKey::new(
+                repository,
+                9,
+                "head-9".to_string(),
+            ))
+            .is_some()
+    );
+}
+
+#[test]
+fn inbox_cache_evicts_the_oldest_snapshot() {
+    let mut inbox_state = PullRequestInboxState::default();
+
+    for index in 1..=9 {
+        inbox_state.insert_snapshot(
+            PullRequestInboxCacheKey::new(
+                RepoId::new("acme", format!("app-{index}")),
+                PullRequestInboxMode::Open,
+            ),
+            PullRequestInboxSnapshot {
+                pull_requests: Vec::new(),
+                page_info: PullRequestInboxPageInfo::default(),
+                detail: None,
+                selected_pr: 0,
+            },
+        );
+    }
+
+    assert!(
+        inbox_state
+            .snapshot(&PullRequestInboxCacheKey::new(
+                RepoId::new("acme", "app-1"),
+                PullRequestInboxMode::Open,
+            ))
+            .is_none()
+    );
+    assert!(
+        inbox_state
+            .snapshot(&PullRequestInboxCacheKey::new(
+                RepoId::new("acme", "app-9"),
+                PullRequestInboxMode::Open,
+            ))
+            .is_some()
+    );
 }
 
 #[test]

@@ -51,12 +51,7 @@ impl AppView {
 
     pub(super) fn clear_changed_file_state(&mut self) {
         self.detail_state.clear_diff_files();
-        self.collapsed_file_tree_folders.clear();
-        self.expanded_diff_file_paths.clear();
-        self.collapsed_diff_file_paths.clear();
-        self.reviewed_file_paths.clear();
-        self.reset_changed_file_filters();
-        self.owned_file_paths.clear();
+        self.changed_files_state.reset();
     }
 
     pub(super) fn clear_workflow_state(&mut self) {

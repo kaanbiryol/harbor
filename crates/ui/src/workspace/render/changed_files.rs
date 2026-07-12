@@ -74,7 +74,9 @@ impl AppView {
                                 file_row,
                                 file,
                                 file_row.file_index == view.active_file_index(),
-                                view.reviewed_file_paths.contains(&file.path),
+                                view.changed_files_state
+                                    .reviewed_file_paths
+                                    .contains(&file.path),
                                 cx,
                             ));
                         }

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 
 use harbor_domain::{
     CheckRun, DiffFile, FileViewedState, PullRequestCommit, WorkflowJob, WorkflowRun,
@@ -25,6 +28,7 @@ pub(crate) struct PullRequestDetailUiState {
     workflow_runs: Vec<WorkflowRun>,
     workflow_jobs: Vec<WorkflowJob>,
     pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, Arc<PullRequestDetailSnapshot>>,
+    pull_request_detail_cache_order: VecDeque<PullRequestDetailCacheKey>,
     details_load: LoadStatus,
     files_load: LoadStatus,
     checks_load: LoadStatus,
@@ -32,6 +36,8 @@ pub(crate) struct PullRequestDetailUiState {
     workflows_load: LoadStatus,
     pub(crate) log_state: WorkflowLogState,
 }
+
+const MAX_PULL_REQUEST_DETAIL_SNAPSHOTS: usize = 8;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct PullRequestDetailLoadedState {
@@ -57,6 +63,7 @@ impl PullRequestDetailUiState {
             workflow_runs: Vec::new(),
             workflow_jobs: Vec::new(),
             pull_request_detail_cache: HashMap::new(),
+            pull_request_detail_cache_order: VecDeque::new(),
             details_load: LoadStatus::Idle,
             files_load: LoadStatus::Idle,
             checks_load: LoadStatus::Idle,
@@ -79,7 +86,16 @@ impl PullRequestDetailUiState {
         key: PullRequestDetailCacheKey,
         snapshot: Arc<PullRequestDetailSnapshot>,
     ) {
+        self.pull_request_detail_cache_order
+            .retain(|existing| existing != &key);
+        self.pull_request_detail_cache_order.push_back(key.clone());
         self.pull_request_detail_cache.insert(key, snapshot);
+
+        while self.pull_request_detail_cache_order.len() > MAX_PULL_REQUEST_DETAIL_SNAPSHOTS {
+            if let Some(expired) = self.pull_request_detail_cache_order.pop_front() {
+                self.pull_request_detail_cache.remove(&expired);
+            }
+        }
     }
 
     pub(crate) fn snapshot(

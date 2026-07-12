@@ -80,10 +80,10 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    ChecksUiState, NotificationState, OverviewUiState, PanelListState, PullRequestDetailUiState,
-    PullRequestInboxState, PullRequestRowEnrichmentKey, PullRequestSelectionState,
-    RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
-    SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
+    PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
+    PullRequestSelectionState, RepositoryActionsUiState, RepositoryUiState, ReviewComposerState,
+    ReviewRuntimeState, SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
@@ -186,14 +186,8 @@ pub struct AppView {
     pull_request_switcher_selection: usize,
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,
-    collapsed_file_tree_folders: HashSet<String>,
+    changed_files_state: ChangedFilesUiState,
     checks_state: ChecksUiState,
-    expanded_diff_file_paths: HashSet<String>,
-    collapsed_diff_file_paths: HashSet<String>,
-    reviewed_file_paths: HashSet<String>,
-    excluded_file_type_filters: HashSet<String>,
-    show_files_owned_by_current_user: bool,
-    owned_file_paths: HashSet<String>,
     action_runtime: ActionRuntimeState,
     status: String,
     _subscriptions: Vec<Subscription>,

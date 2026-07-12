@@ -165,7 +165,11 @@ impl AppView {
             let Some(file) = self.detail_state.files().get(file_index) else {
                 continue;
             };
-            if self.reviewed_file_paths.contains(&file.path) {
+            if self
+                .changed_files_state
+                .reviewed_file_paths
+                .contains(&file.path)
+            {
                 continue;
             }
 

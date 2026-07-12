@@ -41,7 +41,7 @@ impl AppView {
     }
 
     pub(crate) fn reviewed_file_paths(&self) -> &HashSet<String> {
-        &self.reviewed_file_paths
+        &self.changed_files_state.reviewed_file_paths
     }
 
     pub(crate) fn changed_file_tree_rows(&self, _cx: &App) -> Vec<ChangedFileTreeRow> {
@@ -49,8 +49,8 @@ impl AppView {
 
         changed_file_tree_rows(
             self.detail_state.files(),
-            &self.collapsed_file_tree_folders,
-            &self.reviewed_file_paths,
+            &self.changed_files_state.collapsed_file_tree_folders,
+            &self.changed_files_state.reviewed_file_paths,
             &filters,
         )
     }
@@ -69,20 +69,27 @@ impl AppView {
         self.detail_state
             .files()
             .iter()
-            .filter(|file| self.reviewed_file_paths.contains(&file.path))
+            .filter(|file| {
+                self.changed_files_state
+                    .reviewed_file_paths
+                    .contains(&file.path)
+            })
             .count()
     }
 
     pub(crate) fn changed_file_filters(&self) -> ChangedFileFilters {
         ChangedFileFilters {
-            excluded_file_types: self.excluded_file_type_filters.clone(),
-            owned_by_current_user_only: self.show_files_owned_by_current_user,
-            owned_file_paths: self.owned_file_paths.clone(),
+            excluded_file_types: self.changed_files_state.excluded_file_type_filters.clone(),
+            owned_by_current_user_only: self.changed_files_state.show_files_owned_by_current_user,
+            owned_file_paths: self.changed_files_state.owned_file_paths.clone(),
         }
     }
 
     pub(crate) fn changed_file_type_filters(&self) -> Vec<ChangedFileTypeFilter> {
-        changed_file_type_filters(self.detail_state.files(), &self.excluded_file_type_filters)
+        changed_file_type_filters(
+            self.detail_state.files(),
+            &self.changed_files_state.excluded_file_type_filters,
+        )
     }
 
     pub(crate) fn included_file_type_filter_count(&self) -> usize {
@@ -93,11 +100,15 @@ impl AppView {
     }
 
     pub(crate) fn has_active_changed_file_filters(&self) -> bool {
-        !self.excluded_file_type_filters.is_empty() || self.show_files_owned_by_current_user
+        !self
+            .changed_files_state
+            .excluded_file_type_filters
+            .is_empty()
+            || self.changed_files_state.show_files_owned_by_current_user
     }
 
     pub(crate) fn has_owned_file_filter_data(&self) -> bool {
-        !self.owned_file_paths.is_empty()
+        !self.changed_files_state.owned_file_paths.is_empty()
     }
 
     pub(super) fn file_tree_row_index_for_file(
@@ -120,9 +131,9 @@ impl AppView {
             files: self.detail_state.files(),
             diffs: self.detail_state.diffs(),
             visible_file_indices: &visible_file_indices,
-            reviewed_file_paths: &self.reviewed_file_paths,
-            expanded_diff_file_paths: &self.expanded_diff_file_paths,
-            collapsed_diff_file_paths: &self.collapsed_diff_file_paths,
+            reviewed_file_paths: &self.changed_files_state.reviewed_file_paths,
+            expanded_diff_file_paths: &self.changed_files_state.expanded_diff_file_paths,
+            collapsed_diff_file_paths: &self.changed_files_state.collapsed_diff_file_paths,
             review_threads: self.review_state.review_threads(),
             review_composer: self.review_state.review_composer_state.inline_composer(),
         });
@@ -169,18 +180,22 @@ impl AppView {
             .iter()
             .map(|file| file.path.clone())
             .collect::<HashSet<_>>();
-        self.reviewed_file_paths
+        self.changed_files_state
+            .reviewed_file_paths
             .retain(|path| file_paths.contains(path));
-        self.owned_file_paths
+        self.changed_files_state
+            .owned_file_paths
             .retain(|path| file_paths.contains(path));
-        self.expanded_diff_file_paths
+        self.changed_files_state
+            .expanded_diff_file_paths
             .retain(|path| file_paths.contains(path));
-        self.collapsed_diff_file_paths
+        self.changed_files_state
+            .collapsed_diff_file_paths
             .retain(|path| file_paths.contains(path));
     }
 
     pub(super) fn sync_reviewed_file_paths_from_files(&mut self) {
-        self.reviewed_file_paths = self
+        self.changed_files_state.reviewed_file_paths = self
             .detail_state
             .files()
             .iter()
@@ -191,23 +206,29 @@ impl AppView {
     }
 
     fn set_changed_file_reviewed_by_path(&mut self, path: &str, reviewed: bool) {
-        self.expanded_diff_file_paths.remove(path);
-        self.collapsed_diff_file_paths.remove(path);
+        self.changed_files_state
+            .expanded_diff_file_paths
+            .remove(path);
+        self.changed_files_state
+            .collapsed_diff_file_paths
+            .remove(path);
 
         if reviewed {
-            self.reviewed_file_paths.insert(path.to_string());
+            self.changed_files_state
+                .reviewed_file_paths
+                .insert(path.to_string());
             self.detail_state
                 .set_file_viewed_state(path, FileViewedState::Viewed);
         } else {
-            self.reviewed_file_paths.remove(path);
+            self.changed_files_state.reviewed_file_paths.remove(path);
             self.detail_state
                 .set_file_viewed_state(path, FileViewedState::Unviewed);
         }
     }
 
     pub(super) fn reset_changed_file_filters(&mut self) {
-        self.excluded_file_type_filters.clear();
-        self.show_files_owned_by_current_user = false;
+        self.changed_files_state.excluded_file_type_filters.clear();
+        self.changed_files_state.show_files_owned_by_current_user = false;
     }
 
     pub(crate) fn select_file(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -242,20 +263,35 @@ impl AppView {
         };
 
         let path = file.path.clone();
-        let reviewed = self.reviewed_file_paths.contains(&path);
-        let expanded = self.expanded_diff_file_paths.contains(&path)
-            || (!reviewed && !self.collapsed_diff_file_paths.contains(&path));
+        let reviewed = self.changed_files_state.reviewed_file_paths.contains(&path);
+        let expanded = self
+            .changed_files_state
+            .expanded_diff_file_paths
+            .contains(&path)
+            || (!reviewed
+                && !self
+                    .changed_files_state
+                    .collapsed_diff_file_paths
+                    .contains(&path));
 
-        self.expanded_diff_file_paths.remove(&path);
-        self.collapsed_diff_file_paths.remove(&path);
+        self.changed_files_state
+            .expanded_diff_file_paths
+            .remove(&path);
+        self.changed_files_state
+            .collapsed_diff_file_paths
+            .remove(&path);
 
         self.status = if expanded {
             if !reviewed {
-                self.collapsed_diff_file_paths.insert(path.clone());
+                self.changed_files_state
+                    .collapsed_diff_file_paths
+                    .insert(path.clone());
             }
             format!("Collapsed {path}")
         } else {
-            self.expanded_diff_file_paths.insert(path.clone());
+            self.changed_files_state
+                .expanded_diff_file_paths
+                .insert(path.clone());
             format!("Expanded {path}")
         };
 
@@ -268,10 +304,16 @@ impl AppView {
         folder_path: String,
         cx: &mut Context<Self>,
     ) {
-        let status = if self.collapsed_file_tree_folders.remove(&folder_path) {
+        let status = if self
+            .changed_files_state
+            .collapsed_file_tree_folders
+            .remove(&folder_path)
+        {
             format!("Expanded {folder_path}")
         } else {
-            self.collapsed_file_tree_folders.insert(folder_path.clone());
+            self.changed_files_state
+                .collapsed_file_tree_folders
+                .insert(folder_path.clone());
             format!("Collapsed {folder_path}")
         };
 
@@ -309,7 +351,7 @@ impl AppView {
             return;
         }
 
-        let reviewed = !self.reviewed_file_paths.contains(&path);
+        let reviewed = !self.changed_files_state.reviewed_file_paths.contains(&path);
         self.set_changed_file_reviewed_by_path(&path, reviewed);
 
         let github_api = self.github_api.clone();
@@ -338,7 +380,12 @@ impl AppView {
                             return;
                         }
 
-                        if view.reviewed_file_paths.contains(&sync_path) == reviewed {
+                        if view
+                            .changed_files_state
+                            .reviewed_file_paths
+                            .contains(&sync_path)
+                            == reviewed
+                        {
                             view.set_changed_file_reviewed_by_path(&sync_path, !reviewed);
                             view.sync_diff_list_items(cx);
                         }
@@ -371,10 +418,16 @@ impl AppView {
         file_type: String,
         cx: &mut Context<Self>,
     ) {
-        let included = if self.excluded_file_type_filters.remove(&file_type) {
+        let included = if self
+            .changed_files_state
+            .excluded_file_type_filters
+            .remove(&file_type)
+        {
             true
         } else {
-            self.excluded_file_type_filters.insert(file_type.clone());
+            self.changed_files_state
+                .excluded_file_type_filters
+                .insert(file_type.clone());
             false
         };
         let visible_count = self.visible_file_indices(cx).len();
@@ -390,7 +443,7 @@ impl AppView {
     }
 
     pub(crate) fn include_all_changed_file_types(&mut self, cx: &mut Context<Self>) {
-        self.excluded_file_type_filters.clear();
+        self.changed_files_state.excluded_file_type_filters.clear();
         self.ensure_active_file_visible(cx);
         self.sync_diff_list_items(cx);
         let visible_count = self.visible_file_indices(cx).len();
@@ -399,7 +452,7 @@ impl AppView {
     }
 
     pub(crate) fn show_all_changed_files(&mut self, cx: &mut Context<Self>) {
-        self.show_files_owned_by_current_user = false;
+        self.changed_files_state.show_files_owned_by_current_user = false;
         self.ensure_active_file_visible(cx);
         self.sync_diff_list_items(cx);
         let visible_count = self.visible_file_indices(cx).len();
@@ -414,12 +467,13 @@ impl AppView {
             return;
         }
 
-        self.show_files_owned_by_current_user = !self.show_files_owned_by_current_user;
+        self.changed_files_state.show_files_owned_by_current_user =
+            !self.changed_files_state.show_files_owned_by_current_user;
         self.ensure_active_file_visible(cx);
         self.sync_diff_list_items(cx);
         let visible_count = self.visible_file_indices(cx).len();
 
-        self.status = if self.show_files_owned_by_current_user {
+        self.status = if self.changed_files_state.show_files_owned_by_current_user {
             format!("Showing {visible_count} files owned by you")
         } else {
             format!("Showing {visible_count} changed files")
@@ -430,22 +484,22 @@ impl AppView {
     pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {
         let Some(current_user_login) = self.review_state.current_user_login().map(str::to_string)
         else {
-            self.owned_file_paths.clear();
-            self.show_files_owned_by_current_user = false;
+            self.changed_files_state.owned_file_paths.clear();
+            self.changed_files_state.show_files_owned_by_current_user = false;
             self.sync_diff_list_items(cx);
             cx.notify();
             return;
         };
         let Some(repository_path) = self.current_repository_local_path().cloned() else {
-            self.owned_file_paths.clear();
-            self.show_files_owned_by_current_user = false;
+            self.changed_files_state.owned_file_paths.clear();
+            self.changed_files_state.show_files_owned_by_current_user = false;
             self.sync_diff_list_items(cx);
             cx.notify();
             return;
         };
         if self.detail_state.files().is_empty() {
-            self.owned_file_paths.clear();
-            self.show_files_owned_by_current_user = false;
+            self.changed_files_state.owned_file_paths.clear();
+            self.changed_files_state.show_files_owned_by_current_user = false;
             self.sync_diff_list_items(cx);
             cx.notify();
             return;
@@ -470,15 +524,15 @@ impl AppView {
 
                 match result {
                     Ok(paths) => {
-                        view.owned_file_paths = paths;
+                        view.changed_files_state.owned_file_paths = paths;
                     }
                     Err(_) => {
-                        view.owned_file_paths.clear();
+                        view.changed_files_state.owned_file_paths.clear();
                     }
                 }
 
                 if !view.has_owned_file_filter_data() {
-                    view.show_files_owned_by_current_user = false;
+                    view.changed_files_state.show_files_owned_by_current_user = false;
                 }
                 view.ensure_active_file_visible(cx);
                 view.sync_diff_list_items(cx);
