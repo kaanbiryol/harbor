@@ -9,7 +9,7 @@ use harbor_domain::{
 };
 
 use crate::actions::WorkflowAction;
-use crate::date_time::{full_time_label, natural_time_label};
+use crate::date_time::{full_time_label, natural_time_label, short_duration_label};
 use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
 use crate::workspace::AppView;
@@ -684,20 +684,6 @@ fn run_duration_label(run: &WorkflowRun) -> String {
     short_duration_label(duration)
 }
 
-fn short_duration_label(duration: Duration) -> String {
-    if duration.num_hours() > 0 {
-        format!("{}h {}m", duration.num_hours(), duration.num_minutes() % 60)
-    } else if duration.num_minutes() > 0 {
-        format!(
-            "{}m {}s",
-            duration.num_minutes(),
-            duration.num_seconds() % 60
-        )
-    } else {
-        format!("{}s", duration.num_seconds().max(0))
-    }
-}
-
 fn workflow_status_icon(conclusion: Option<WorkflowConclusion>, status: WorkflowStatus) -> Octicon {
     match (status, conclusion) {
         (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => Octicon::CheckCircle,
@@ -812,6 +798,6 @@ mod tests {
 
     #[test]
     fn formats_run_duration_from_start_time() {
-        assert_eq!(run_duration_label(&run()), "1m 0s");
+        assert_eq!(run_duration_label(&run()), "1m");
     }
 }

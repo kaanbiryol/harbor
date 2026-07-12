@@ -6,6 +6,7 @@ use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::{CheckConclusion, CheckRun, CheckStatus, ChecksSummary};
 
 use crate::{
+    date_time::short_duration_label,
     icons::Octicon,
     visual::{Tone, color, tone_colors},
     workspace::AppView,
@@ -603,32 +604,6 @@ fn check_run_duration_label(check_run: &CheckRun) -> Option<String> {
     let completed_at = check_run.completed_at?;
     let duration = completed_at.signed_duration_since(started_at);
     (duration >= Duration::zero()).then(|| short_duration_label(duration))
-}
-
-fn short_duration_label(duration: Duration) -> String {
-    let seconds = duration.num_seconds().max(0);
-
-    if seconds < 60 {
-        return format!("{seconds}s");
-    }
-
-    let minutes = seconds / 60;
-    let seconds = seconds % 60;
-    if minutes < 60 {
-        return if seconds == 0 {
-            format!("{minutes}m")
-        } else {
-            format!("{minutes}m {seconds}s")
-        };
-    }
-
-    let hours = minutes / 60;
-    let minutes = minutes % 60;
-    if minutes == 0 {
-        format!("{hours}h")
-    } else {
-        format!("{hours}h {minutes}m")
-    }
 }
 
 fn check_count_label(count: usize) -> String {

@@ -50,6 +50,32 @@ pub(crate) fn month_day_label(time: DateTime<Utc>) -> String {
     format!("{} {}", time.format("%b"), time.day())
 }
 
+pub(crate) fn short_duration_label(duration: Duration) -> String {
+    let seconds = duration.num_seconds().max(0);
+
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+
+    let minutes = seconds / 60;
+    let seconds = seconds % 60;
+    if minutes < 60 {
+        return if seconds == 0 {
+            format!("{minutes}m")
+        } else {
+            format!("{minutes}m {seconds}s")
+        };
+    }
+
+    let hours = minutes / 60;
+    let minutes = minutes % 60;
+    if minutes == 0 {
+        format!("{hours}h")
+    } else {
+        format!("{hours}h {minutes}m")
+    }
+}
+
 pub(crate) fn full_time_label_with_edit(
     created_at: DateTime<Utc>,
     updated_at: Option<DateTime<Utc>>,
@@ -165,5 +191,13 @@ mod tests {
             .expect("valid timestamp");
 
         assert_eq!(month_day_label(time), "May 10");
+    }
+
+    #[test]
+    fn formats_short_durations_without_zero_units() {
+        assert_eq!(short_duration_label(Duration::seconds(45)), "45s");
+        assert_eq!(short_duration_label(Duration::seconds(75)), "1m 15s");
+        assert_eq!(short_duration_label(Duration::minutes(60)), "1h");
+        assert_eq!(short_duration_label(Duration::minutes(90)), "1h 30m");
     }
 }
