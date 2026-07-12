@@ -51,12 +51,14 @@ impl WorkflowLogParser {
 
     pub fn push(&mut self, text: &str) {
         self.pending.push_str(text);
-        while let Some(newline_index) = self.pending.find('\n') {
-            let line = self.pending[..newline_index]
-                .trim_end_matches('\r')
-                .to_string();
-            self.pending.drain(..=newline_index);
-            self.push_line(line);
+        let Some(complete_len) = self.pending.rfind('\n').map(|index| index + 1) else {
+            return;
+        };
+
+        let mut complete = std::mem::take(&mut self.pending);
+        self.pending = complete.split_off(complete_len);
+        for line in complete.split_terminator('\n') {
+            self.push_line(line.trim_end_matches('\r').to_string());
         }
     }
 
@@ -85,20 +87,31 @@ impl WorkflowLogParser {
 }
 
 fn infer_severity(line: &str) -> LogSeverity {
-    let lower = line.to_lowercase();
-
-    if lower.contains("::error") || lower.contains("[error]") || lower.contains("error:") {
+    if contains_ignore_ascii_case(line, "::error")
+        || contains_ignore_ascii_case(line, "[error]")
+        || contains_ignore_ascii_case(line, "error:")
+    {
         LogSeverity::Error
-    } else if lower.contains("::warning")
-        || lower.contains("[warning]")
-        || lower.contains("warning:")
+    } else if contains_ignore_ascii_case(line, "::warning")
+        || contains_ignore_ascii_case(line, "[warning]")
+        || contains_ignore_ascii_case(line, "warning:")
     {
         LogSeverity::Warning
-    } else if lower.contains("::debug") || lower.contains("[debug]") || lower.contains("trace:") {
+    } else if contains_ignore_ascii_case(line, "::debug")
+        || contains_ignore_ascii_case(line, "[debug]")
+        || contains_ignore_ascii_case(line, "trace:")
+    {
         LogSeverity::Trace
     } else {
         LogSeverity::Info
     }
+}
+
+fn contains_ignore_ascii_case(value: &str, pattern: &str) -> bool {
+    value
+        .as_bytes()
+        .windows(pattern.len())
+        .any(|window| window.eq_ignore_ascii_case(pattern.as_bytes()))
 }
 
 #[cfg(test)]
@@ -136,5 +149,15 @@ mod tests {
         );
         assert_eq!(chunk.warning_line_indices, [1]);
         assert_eq!(chunk.error_line_indices, [2]);
+    }
+
+    #[test]
+    fn classifies_mixed_case_severity_without_normalizing_line_text() {
+        let chunk = parse_workflow_log(42, "ERROR: failed\n[Warning] slow\n::Debug::details\n");
+
+        assert_eq!(chunk.lines[0].severity, LogSeverity::Error);
+        assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
+        assert_eq!(chunk.lines[2].severity, LogSeverity::Trace);
+        assert_eq!(chunk.lines[0].text, "ERROR: failed");
     }
 }

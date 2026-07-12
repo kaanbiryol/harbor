@@ -198,18 +198,18 @@ pub(super) fn workflow_log_text_from_zip(body: &[u8]) -> Result<String> {
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)
             .map_err(|error| GitHubError::Mapping(error.to_string()))?;
-        let text = String::from_utf8_lossy(&bytes).to_string();
-        entries.push((name, text));
+        entries.push((name, bytes));
     }
 
     entries.sort_by(|left, right| left.0.cmp(&right.0));
 
-    let mut output = String::new();
-    for (_, text) in entries {
+    let output_capacity = entries.iter().map(|(_, bytes)| bytes.len() + 1).sum();
+    let mut output = String::with_capacity(output_capacity);
+    for (_, bytes) in entries {
         if !output.is_empty() && !output.ends_with('\n') {
             output.push('\n');
         }
-        output.push_str(&text);
+        output.push_str(&String::from_utf8_lossy(&bytes));
         if !output.ends_with('\n') {
             output.push('\n');
         }
