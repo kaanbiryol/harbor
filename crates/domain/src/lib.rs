@@ -256,19 +256,6 @@ impl ReactionContent {
             Self::Eyes => "eyes",
         }
     }
-
-    pub fn graphql_name(self) -> &'static str {
-        match self {
-            Self::ThumbsUp => "THUMBS_UP",
-            Self::ThumbsDown => "THUMBS_DOWN",
-            Self::Laugh => "LAUGH",
-            Self::Confused => "CONFUSED",
-            Self::Heart => "HEART",
-            Self::Hooray => "HOORAY",
-            Self::Rocket => "ROCKET",
-            Self::Eyes => "EYES",
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

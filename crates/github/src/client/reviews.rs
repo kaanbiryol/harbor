@@ -419,7 +419,7 @@ where
                 json!({
                     "input": {
                         "subjectId": review_comment_node_id,
-                        "content": content.graphql_name(),
+                        "content": graphql_reaction_content(content),
                     }
                 }),
             )
@@ -439,7 +439,7 @@ where
                 json!({
                     "input": {
                         "subjectId": review_comment_node_id,
-                        "content": content.graphql_name(),
+                        "content": graphql_reaction_content(content),
                     }
                 }),
             )
@@ -496,5 +496,18 @@ where
             .await?;
 
         Ok(())
+    }
+}
+
+fn graphql_reaction_content(content: ReactionContent) -> &'static str {
+    match content {
+        ReactionContent::ThumbsUp => "THUMBS_UP",
+        ReactionContent::ThumbsDown => "THUMBS_DOWN",
+        ReactionContent::Laugh => "LAUGH",
+        ReactionContent::Confused => "CONFUSED",
+        ReactionContent::Heart => "HEART",
+        ReactionContent::Hooray => "HOORAY",
+        ReactionContent::Rocket => "ROCKET",
+        ReactionContent::Eyes => "EYES",
     }
 }
