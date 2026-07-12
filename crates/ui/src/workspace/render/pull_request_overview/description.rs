@@ -1,5 +1,6 @@
 use super::*;
 use crate::icons::Octicon;
+use gpui::rgb;
 
 impl AppView {
     pub(super) fn render_description_card(
@@ -23,7 +24,7 @@ impl AppView {
         };
         let edit_button_style = ButtonCustomVariant::new(cx)
             .color(color::row_selected_subtle().into())
-            .foreground(color::text_primary().into())
+            .foreground(rgb(0xffffff).into())
             .hover(color::row_selected().into())
             .active(color::row_selected_active().into());
 
