@@ -1,9 +1,16 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
-use harbor_domain::{ChecksSummary, MergeState, ReviewDecision};
+use harbor_domain::{
+    CheckConclusion, CheckStatus, ChecksSummary, MergeState, ReviewDecision, ReviewThreadState,
+};
+use harbor_logs::parse_workflow_log;
 
-use crate::{test_fixtures::pull_request, workspace::github_service::test_support::FakeGitHubApi};
+use crate::{
+    actions::PanelTab,
+    test_fixtures::{check_run, patched_diff_file, pull_request, review_thread, workflow_run},
+    workspace::github_service::test_support::FakeGitHubApi,
+};
 
 use super::init_workspace_service_test;
 
@@ -100,4 +107,110 @@ async fn selected_metadata_replace_preserves_cached_row_signals(cx: &mut TestApp
         assert_eq!(selected.unresolved_threads, 2);
         assert_eq!(selected.created_at, row_pull_request.created_at);
     });
+}
+
+#[gpui::test]
+async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let first_pull_request = pull_request();
+    let mut second_pull_request = pull_request();
+    second_pull_request.number = 8;
+    second_pull_request.head_sha = "def456".to_string();
+    let (view_entity, cx) = init_workspace_service_test(cx, api);
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![first_pull_request, second_pull_request];
+        view.selection_state.reset_pull_request_index();
+        view.detail_state
+            .replace_diff_files(vec![patched_diff_file()], vec![None]);
+        view.detail_state.replace_check_runs(vec![check_run(
+            CheckStatus::Completed,
+            Some(CheckConclusion::Success),
+        )]);
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
+        view.review_state
+            .replace_loaded_review_threads(vec![review_thread(ReviewThreadState::Unresolved)]);
+        view.detail_state
+            .log_state
+            .set_chunk(Some(parse_workflow_log(42, "build")));
+        view.collapsed_file_tree_folders.insert("src".to_string());
+        view.collapsed_check_groups.insert("build".to_string());
+        view.expanded_diff_file_paths
+            .insert("src/lib.rs".to_string());
+        view.collapsed_diff_file_paths
+            .insert("src/other.rs".to_string());
+        view.reviewed_file_paths.insert("src/lib.rs".to_string());
+        view.excluded_file_type_filters.insert("rs".to_string());
+        view.show_files_owned_by_current_user = true;
+        view.owned_file_paths.insert("src/lib.rs".to_string());
+        view.active_tab = PanelTab::Review;
+
+        view.select_pull_request(1, cx);
+
+        assert_eq!(view.selected_pull_request_index(), 1);
+        assert_eq!(view.active_tab, PanelTab::Overview);
+        assert!(view.detail_state.files().is_empty());
+        assert!(view.detail_state.check_runs().is_empty());
+        assert!(view.detail_state.workflow_runs().is_empty());
+        assert!(view.review_state.review_threads.is_empty());
+        assert!(view.detail_state.log_state.chunk().is_none());
+        assert!(view.collapsed_file_tree_folders.is_empty());
+        assert!(view.collapsed_check_groups.is_empty());
+        assert!(view.expanded_diff_file_paths.is_empty());
+        assert!(view.collapsed_diff_file_paths.is_empty());
+        assert!(view.reviewed_file_paths.is_empty());
+        assert!(view.excluded_file_type_filters.is_empty());
+        assert!(!view.show_files_owned_by_current_user);
+        assert!(view.owned_file_paths.is_empty());
+    });
+}
+
+#[gpui::test]
+async fn selecting_cached_pull_request_restores_detail_without_refetch(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let first_pull_request = pull_request();
+    let mut second_pull_request = pull_request();
+    second_pull_request.number = 8;
+    second_pull_request.head_sha = "def456".to_string();
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![first_pull_request, second_pull_request];
+        view.selection_state.reset_pull_request_index();
+        view.detail_state
+            .replace_diff_files(vec![patched_diff_file()], vec![None]);
+        view.detail_state.replace_check_runs(vec![check_run(
+            CheckStatus::Completed,
+            Some(CheckConclusion::Success),
+        )]);
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
+        view.review_state
+            .replace_loaded_review_threads(vec![review_thread(ReviewThreadState::Unresolved)]);
+        view.detail_state.apply_details_success();
+        view.detail_state.apply_files_success();
+        view.detail_state.apply_checks_success();
+        view.detail_state.apply_workflows_success();
+        view.review_state.apply_reviews_success();
+        view.selection_state.set_diff_position(0, 3);
+        view.active_tab = PanelTab::Review;
+        view.cache_current_pull_request_detail_snapshot();
+
+        view.selection_state.set_pull_request_index(1);
+        view.clear_selected_pull_request_detail_state();
+        view.select_pull_request(0, cx);
+
+        assert_eq!(view.selected_pull_request_index(), 0);
+        assert_eq!(view.active_tab, PanelTab::Review);
+        assert_eq!(view.active_hunk_index(), 3);
+        assert_eq!(view.detail_state.files().len(), 1);
+        assert_eq!(view.detail_state.check_runs().len(), 1);
+        assert_eq!(view.detail_state.workflow_runs().len(), 1);
+        assert_eq!(view.review_state.review_threads.len(), 1);
+        assert_eq!(view.status, "Showing cached PR #7 details");
+    });
+    cx.run_until_parked();
+
+    assert!(api.calls().is_empty());
 }
