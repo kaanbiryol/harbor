@@ -1,7 +1,7 @@
 use gpui::{AnyElement, Context, IntoElement, div, list, prelude::*, px};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
+    button::{Button, ButtonCustomVariant, ButtonVariants},
     input::Input,
 };
 use harbor_domain::PullRequest;

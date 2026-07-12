@@ -124,7 +124,7 @@ pub(super) fn render_repository_workflow_runs(
 }
 
 fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {
-    let (status_label, tone) = workflow_conclusion_tone(run.conclusion, run.status);
+    let (_, tone) = workflow_conclusion_tone(run.conclusion, run.status);
     let colors = tone_colors(tone);
 
     div()
@@ -166,15 +166,7 @@ fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {
                         .child(repository_run_metadata(run)),
                 ),
         )
-        .child(
-            div()
-                .flex_none()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(render_branch_label(run))
-                .child(render_status_pill(status_label, tone)),
-        )
+        .child(render_branch_label(run))
         .child(
             div()
                 .flex_none()
@@ -191,6 +183,7 @@ fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {
 
 fn render_branch_label(run: &WorkflowRun) -> impl IntoElement {
     div()
+        .flex_none()
         .max_w(px(220.0))
         .truncate()
         .rounded_xs()

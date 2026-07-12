@@ -111,7 +111,7 @@ pub(super) fn render_switcher_repository_row(
                 })
                 .child(
                     Button::new(format!("pin-{}", repository.full_name()))
-                        .with_size(px(24.))
+                        .xsmall()
                         .ghost()
                         .icon(pin_icon)
                         .tooltip(if pinned {

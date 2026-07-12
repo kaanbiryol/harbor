@@ -17,7 +17,7 @@ pub(super) fn render_workflow_sidebar(
 ) -> impl IntoElement {
     render_panel_card()
         .flex_none()
-        .w(px(236.0))
+        .w(px(280.0))
         .flex()
         .flex_col()
         .min_h_0()
@@ -118,6 +118,8 @@ fn render_workflow_filter_row(
         .mx_2()
         .my_1()
         .rounded_xs()
+        .min_w_0()
+        .overflow_hidden()
         .px_2()
         .py_2()
         .cursor_pointer()
@@ -139,11 +141,16 @@ fn render_workflow_filter_row(
         .flex()
         .items_start()
         .gap_2()
-        .child(Icon::new(Octicon::Gear).xsmall().text_color(if active {
-            color::accent()
-        } else {
-            color::text_muted()
-        }))
+        .child(
+            div()
+                .flex_none()
+                .pt_1()
+                .child(Icon::new(Octicon::Gear).xsmall().text_color(if active {
+                    color::accent()
+                } else {
+                    color::text_muted()
+                })),
+        )
         .child(
             div()
                 .min_w_0()

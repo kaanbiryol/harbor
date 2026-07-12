@@ -21,6 +21,11 @@ impl AppView {
         } else {
             Some(self.render_pull_request_description(pr, cx))
         };
+        let edit_button_style = ButtonCustomVariant::new(cx)
+            .color(color::row_selected_subtle().into())
+            .foreground(color::text_primary().into())
+            .hover(color::row_selected().into())
+            .active(color::row_selected_active().into());
 
         div()
             .debug_selector(|| "pull-request-overview-description".to_string())
@@ -50,7 +55,10 @@ impl AppView {
                             Button::new("edit-pull-request-description")
                                 .icon(Octicon::Pencil)
                                 .xsmall()
-                                .secondary()
+                                .custom(edit_button_style)
+                                .rounded(px(999.))
+                                .border_1()
+                                .border_color(color::border_strong())
                                 .tooltip("Edit description if your GitHub permissions allow it")
                                 .on_click(cx.listener(|view, _, window, cx| {
                                     view.start_pull_request_description_edit(window, cx);
