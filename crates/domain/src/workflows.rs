@@ -55,13 +55,9 @@ pub struct WorkflowRun {
     pub html_url: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    #[serde(default)]
     pub run_number: Option<u64>,
-    #[serde(default)]
     pub run_attempt: Option<u64>,
-    #[serde(default)]
     pub actor_login: Option<String>,
-    #[serde(default)]
     pub run_started_at: Option<DateTime<Utc>>,
 }
 

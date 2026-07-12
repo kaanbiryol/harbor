@@ -130,11 +130,8 @@ pub struct PullRequest {
     pub review_decision: Option<ReviewDecision>,
     pub merge_state: Option<MergeState>,
     pub labels: Vec<Label>,
-    #[serde(default)]
     pub assignees: Vec<PullRequestPerson>,
-    #[serde(default)]
     pub requested_reviewers: Vec<PullRequestPerson>,
-    #[serde(default)]
     pub requested_teams: Vec<PullRequestTeam>,
     pub checks_summary: ChecksSummary,
     pub unresolved_threads: usize,
@@ -180,7 +177,6 @@ pub struct DiffFile {
     pub deletions: u32,
     pub changes: u32,
     pub patch: Option<String>,
-    #[serde(default)]
     pub viewed_state: FileViewedState,
 }
 
@@ -268,11 +264,8 @@ pub struct ReviewReaction {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReviewComment {
     pub id: String,
-    #[serde(default)]
     pub url: Option<String>,
-    #[serde(default)]
     pub pull_request_review_id: Option<String>,
-    #[serde(default)]
     pub pull_request_review_node_id: Option<String>,
     pub author: String,
     pub author_avatar_url: Option<String>,
