@@ -1,13 +1,16 @@
 mod app_icon;
 mod assets;
 mod fonts;
+mod github_api;
 
 use assets::Assets;
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
-use harbor_ui::{AppView, RealGitHubApi, bind_keys};
+use harbor_ui::{AppView, bind_keys};
 use std::sync::Arc;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
+
+use github_api::RealGitHubApi;
 
 fn main() {
     install_rustls_provider();

@@ -39,7 +39,7 @@ impl AppView {
             window,
             cx,
             false,
-            Arc::new(super::RealGitHubApi::default()),
+            Arc::new(super::github_service::test_support::FakeGitHubApi::default()),
         )
     }
 

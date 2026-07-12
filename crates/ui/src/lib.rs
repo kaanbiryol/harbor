@@ -12,4 +12,4 @@ mod visual;
 mod workspace;
 
 pub use actions::bind_keys;
-pub use workspace::{AppView, GitHubApi, GitHubAuthSource, RealGitHubApi};
+pub use workspace::{AppView, GitHubApi, GitHubAuthSource};

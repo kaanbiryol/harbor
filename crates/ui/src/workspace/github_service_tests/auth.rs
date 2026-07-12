@@ -6,7 +6,7 @@ use crate::{
     test_fixtures::{patched_diff_file, pull_request, workflow_run},
     workspace::{
         GitHubAuthSource, GitHubAuthStatus,
-        github_service::{GitHubAuthApi, test_support::FakeGitHubApi},
+        github_service::{GitHubApi, test_support::FakeGitHubApi},
     },
 };
 

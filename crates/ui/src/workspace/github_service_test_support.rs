@@ -1,5 +1,3 @@
-#[path = "github_service_test_support/actions.rs"]
-mod actions;
 #[path = "github_service_test_support/queues.rs"]
 mod queues;
 
@@ -7,21 +5,19 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestCommit, PullRequestReview,
-    RepoId, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
+    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
+    WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestEnrichment,
     PullRequestListFilter, PullRequestMetadataOptions, PullRequestPage, PullRequestPageCursor,
-    RepositoryList, Result,
+    RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 
 use harbor_sync::PullRequestInboxSource;
 
-use super::{
-    GitHubAuthApi, GitHubPullRequestDetailApi, GitHubRateLimitApi, GitHubRepositoryApi,
-    GitHubReviewApi, GitHubWorkflowApi,
-};
+use super::GitHubApi;
 use crate::workspace::GitHubAuthSource;
 use queues::{FakeQueue, pop_result, push_result};
 
@@ -225,36 +221,6 @@ fn page_from_pull_requests(pull_requests: Vec<PullRequest>) -> PullRequestPage {
     }
 }
 
-impl GitHubRateLimitApi for FakeGitHubApi {
-    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
-        None
-    }
-}
-
-impl GitHubAuthApi for FakeGitHubApi {
-    fn configure_token(&self, _token: String, source: GitHubAuthSource) -> Result<()> {
-        self.record_call(match source {
-            GitHubAuthSource::OAuth => "configure_oauth_token",
-            GitHubAuthSource::GhCli => "configure_gh_cli_token",
-        });
-        Ok(())
-    }
-
-    fn configure_gh_cli(&self) -> Result<()> {
-        self.record_call("configure_gh_cli");
-        Ok(())
-    }
-
-    fn clear_auth(&self) -> Result<()> {
-        self.record_call("clear_auth");
-        Ok(())
-    }
-
-    fn has_auth(&self) -> bool {
-        true
-    }
-}
-
 #[async_trait]
 impl PullRequestInboxSource for FakeGitHubApi {
     fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
@@ -313,7 +279,33 @@ impl PullRequestInboxSource for FakeGitHubApi {
 }
 
 #[async_trait]
-impl GitHubRepositoryApi for FakeGitHubApi {
+impl GitHubApi for FakeGitHubApi {
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        None
+    }
+
+    fn configure_token(&self, _token: String, source: GitHubAuthSource) -> Result<()> {
+        self.record_call(match source {
+            GitHubAuthSource::OAuth => "configure_oauth_token",
+            GitHubAuthSource::GhCli => "configure_gh_cli_token",
+        });
+        Ok(())
+    }
+
+    fn configure_gh_cli(&self) -> Result<()> {
+        self.record_call("configure_gh_cli");
+        Ok(())
+    }
+
+    fn clear_auth(&self) -> Result<()> {
+        self.record_call("clear_auth");
+        Ok(())
+    }
+
+    fn has_auth(&self) -> bool {
+        true
+    }
+
     async fn list_repositories(&self) -> Result<RepositoryList> {
         self.record_call("list_repositories");
         pop_result(&self.repositories, "list_repositories")
@@ -332,10 +324,7 @@ impl GitHubRepositoryApi for FakeGitHubApi {
         self.record_call("list_pull_request_metadata_options");
         pop_result(&self.metadata_options, "list_pull_request_metadata_options")
     }
-}
 
-#[async_trait]
-impl GitHubPullRequestDetailApi for FakeGitHubApi {
     async fn get_pull_request(
         &self,
         _owner: &str,
@@ -409,10 +398,7 @@ impl GitHubPullRequestDetailApi for FakeGitHubApi {
         self.record_call("list_workflow_runs_for_head");
         pop_result(&self.workflow_runs, "list_workflow_runs_for_head")
     }
-}
 
-#[async_trait]
-impl GitHubWorkflowApi for FakeGitHubApi {
     async fn list_workflows(&self, _owner: &str, _repo: &str) -> Result<Vec<Workflow>> {
         self.record_call("list_workflows");
         pop_result(&self.workflows, "list_workflows")
@@ -457,10 +443,7 @@ impl GitHubWorkflowApi for FakeGitHubApi {
         self.record_call("workflow_run_log");
         pop_result(&self.workflow_logs, "workflow_run_log")
     }
-}
 
-#[async_trait]
-impl GitHubReviewApi for FakeGitHubApi {
     async fn current_user(&self) -> Result<String> {
         self.record_call("current_user");
         pop_result(&self.current_user, "current_user")
@@ -508,5 +491,218 @@ impl GitHubReviewApi for FakeGitHubApi {
     ) -> Result<Vec<ReviewThread>> {
         self.record_call("list_review_threads");
         pop_result(&self.review_threads, "list_review_threads")
+    }
+
+    async fn dispatch_workflow(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _workflow_id: u64,
+        _git_ref: &str,
+    ) -> Result<()> {
+        self.record_call("dispatch_workflow");
+        pop_result(&self.dispatch_workflow_results, "dispatch_workflow")
+    }
+
+    async fn rerun_failed_jobs(&self, _owner: &str, _repo: &str, _run_id: u64) -> Result<()> {
+        self.record_call("rerun_failed_jobs");
+        pop_result(&self.rerun_failed_jobs_results, "rerun_failed_jobs")
+    }
+
+    async fn update_pull_request_body(
+        &self,
+        _pull_request_node_id: &str,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("update_pull_request_body");
+        pop_result(
+            &self.update_pull_request_body_results,
+            "update_pull_request_body",
+        )
+    }
+
+    async fn request_pull_request_reviewer(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _reviewer: &str,
+    ) -> Result<()> {
+        self.record_call("request_pull_request_reviewer");
+        pop_result(
+            &self.request_reviewer_results,
+            "request_pull_request_reviewer",
+        )
+    }
+
+    async fn add_pull_request_assignee(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _assignee: &str,
+    ) -> Result<()> {
+        self.record_call("add_pull_request_assignee");
+        pop_result(&self.add_assignee_results, "add_pull_request_assignee")
+    }
+
+    async fn add_pull_request_label(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _label: &str,
+    ) -> Result<()> {
+        self.record_call("add_pull_request_label");
+        pop_result(&self.add_label_results, "add_pull_request_label")
+    }
+
+    async fn create_pull_request_comment(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("create_pull_request_comment");
+        pop_result(
+            &self.create_pull_request_comment_results,
+            "create_pull_request_comment",
+        )
+    }
+
+    async fn approve_pull_request(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _body: Option<&str>,
+    ) -> Result<()> {
+        self.record_call("approve_pull_request");
+        pop_result(&self.approve_results, "approve_pull_request")
+    }
+
+    async fn request_pull_request_changes(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("request_pull_request_changes");
+        pop_result(
+            &self.request_changes_results,
+            "request_pull_request_changes",
+        )
+    }
+
+    async fn merge_pull_request(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _head_sha: &str,
+        _method: MergeMethod,
+    ) -> Result<()> {
+        self.record_call("merge_pull_request");
+        pop_result(&self.merge_results, "merge_pull_request")
+    }
+
+    async fn submit_pull_request_review(
+        &self,
+        _pull_request_review_node_id: &str,
+        _event: SubmitPullRequestReviewEvent,
+        _body: Option<&str>,
+    ) -> Result<()> {
+        self.record_call("submit_pull_request_review");
+        pop_result(&self.submit_review_results, "submit_pull_request_review")
+    }
+
+    async fn create_pull_request_review_comment(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+        _commit_id: &str,
+        _range: &ReviewCommentRange,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("create_pull_request_review_comment");
+        pop_result(
+            &self.create_comment_results,
+            "create_pull_request_review_comment",
+        )
+    }
+
+    async fn start_pull_request_review(
+        &self,
+        _pull_request_node_id: &str,
+        _commit_id: &str,
+        _range: &ReviewCommentRange,
+        _body: &str,
+    ) -> Result<String> {
+        self.record_call("start_pull_request_review");
+        pop_result(&self.start_review_results, "start_pull_request_review")
+    }
+
+    async fn add_pending_review_thread(
+        &self,
+        _pull_request_review_node_id: &str,
+        _range: &ReviewCommentRange,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("add_pending_review_thread");
+        pop_result(&self.pending_thread_results, "add_pending_review_thread")
+    }
+
+    async fn add_review_thread_reply(
+        &self,
+        _thread_id: &str,
+        _pull_request_review_node_id: Option<&str>,
+        _body: &str,
+    ) -> Result<()> {
+        self.record_call("add_review_thread_reply");
+        pop_result(&self.reply_results, "add_review_thread_reply")
+    }
+
+    async fn resolve_review_thread(&self, _thread_id: &str) -> Result<()> {
+        self.record_call("resolve_review_thread");
+        pop_result(&self.resolve_thread_results, "resolve_review_thread")
+    }
+
+    async fn unresolve_review_thread(&self, _thread_id: &str) -> Result<()> {
+        self.record_call("unresolve_review_thread");
+        pop_result(&self.unresolve_thread_results, "unresolve_review_thread")
+    }
+
+    async fn update_review_comment(&self, _comment_id: &str, _body: &str) -> Result<()> {
+        self.record_call("update_review_comment");
+        pop_result(&self.update_comment_results, "update_review_comment")
+    }
+
+    async fn delete_review_comment(&self, _comment_id: &str) -> Result<()> {
+        self.record_call("delete_review_comment");
+        pop_result(&self.delete_comment_results, "delete_review_comment")
+    }
+
+    async fn add_review_comment_reaction(
+        &self,
+        _comment_id: &str,
+        _content: ReactionContent,
+    ) -> Result<()> {
+        self.record_call("add_review_comment_reaction");
+        pop_result(&self.add_reaction_results, "add_review_comment_reaction")
+    }
+
+    async fn remove_review_comment_reaction(
+        &self,
+        _comment_id: &str,
+        _content: ReactionContent,
+    ) -> Result<()> {
+        self.record_call("remove_review_comment_reaction");
+        pop_result(
+            &self.remove_reaction_results,
+            "remove_review_comment_reaction",
+        )
     }
 }

@@ -1,0 +1,566 @@
+use std::sync::{Arc, Mutex};
+
+use async_trait::async_trait;
+use harbor_domain::{
+    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
+    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
+    WorkflowJob, WorkflowRun,
+};
+use harbor_github::{
+    ConditionalFetch, GhCliTransport, GitHubClient, GitHubError, GitHubRateLimitStatus,
+    GitHubTransportSource, HttpCacheValidator, OctocrabTransport, PullRequestEnrichment,
+    PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
+    SubmitPullRequestReviewEvent,
+};
+use harbor_sync::PullRequestInboxSource;
+use harbor_ui::{GitHubApi, GitHubAuthSource};
+
+#[derive(Clone, Debug)]
+pub(crate) struct RealGitHubApi {
+    client: Arc<Mutex<Option<GitHubClient<GitHubTransportSource>>>>,
+    current_user_login: Arc<Mutex<Option<String>>>,
+}
+
+impl Default for RealGitHubApi {
+    fn default() -> Self {
+        Self {
+            client: Arc::new(Mutex::new(None)),
+            current_user_login: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl RealGitHubApi {
+    fn has_configured_client(&self) -> bool {
+        self.client
+            .lock()
+            .map(|client| client.is_some())
+            .unwrap_or(false)
+    }
+}
+
+impl RealGitHubApi {
+    pub(super) fn client(&self) -> Result<GitHubClient<GitHubTransportSource>> {
+        self.client
+            .lock()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?
+            .clone()
+            .ok_or(GitHubError::Unauthenticated)
+    }
+
+    pub(super) fn cached_current_user_login(&self) -> Result<Option<String>> {
+        self.current_user_login
+            .lock()
+            .map(|login| login.clone())
+            .map_err(|error| GitHubError::Transport(error.to_string()))
+    }
+
+    pub(super) fn cache_current_user_login(&self, login: String) -> Result<()> {
+        self.current_user_login
+            .lock()
+            .map(|mut cached_login| {
+                *cached_login = Some(login);
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))
+    }
+
+    fn clear_current_user_login(&self) -> Result<()> {
+        self.current_user_login
+            .lock()
+            .map(|mut login| {
+                *login = None;
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))
+    }
+}
+
+#[async_trait]
+impl PullRequestInboxSource for RealGitHubApi {
+    fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
+        self.client
+            .lock()
+            .ok()
+            .and_then(|client| client.as_ref().map(GitHubClient::latest_rate_limits))
+            .unwrap_or_default()
+    }
+
+    async fn list_repository_pull_request_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage> {
+        self.client()?
+            .list_repository_pull_request_page(repository, filter, cursor, page_size)
+            .await
+    }
+
+    async fn count_repository_pull_requests(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+    ) -> Result<usize> {
+        self.client()?
+            .count_repository_pull_requests(repository, filter)
+            .await
+    }
+
+    async fn list_repository_pull_requests_light_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+        validator: Option<HttpCacheValidator>,
+    ) -> Result<ConditionalFetch<PullRequestPage>> {
+        self.client()?
+            .list_repository_pull_requests_light_page(
+                repository,
+                filter,
+                cursor,
+                page_size,
+                validator.as_ref(),
+            )
+            .await
+    }
+
+    async fn enrich_pull_requests_by_node_ids(
+        &self,
+        node_ids: &[String],
+    ) -> Result<Vec<PullRequestEnrichment>> {
+        self.client()?
+            .enrich_pull_requests_by_node_ids(node_ids)
+            .await
+    }
+}
+
+#[async_trait]
+impl GitHubApi for RealGitHubApi {
+    fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
+        self.client
+            .lock()
+            .ok()
+            .and_then(|client| client.as_ref().and_then(GitHubClient::latest_rate_limit))
+    }
+
+    fn configure_token(&self, token: String, _source: GitHubAuthSource) -> Result<()> {
+        let transport = OctocrabTransport::with_token(token)?;
+        let mut client = self
+            .client
+            .lock()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        *client = Some(GitHubClient::new(GitHubTransportSource::Token(transport)));
+        self.clear_current_user_login()?;
+        Ok(())
+    }
+
+    fn configure_gh_cli(&self) -> Result<()> {
+        let mut client = self
+            .client
+            .lock()
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        *client = Some(GitHubClient::new(GitHubTransportSource::GhCli(
+            GhCliTransport::default(),
+        )));
+        self.clear_current_user_login()?;
+        Ok(())
+    }
+
+    fn clear_auth(&self) -> Result<()> {
+        self.client
+            .lock()
+            .map(|mut client| {
+                *client = None;
+            })
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        self.clear_current_user_login()?;
+        Ok(())
+    }
+
+    fn has_auth(&self) -> bool {
+        self.has_configured_client()
+    }
+
+    async fn list_repositories(&self) -> Result<RepositoryList> {
+        self.client()?.list_repositories().await
+    }
+
+    async fn get_repository(&self, repository: &RepoId) -> Result<RepoId> {
+        self.client()?.get_repository(repository).await
+    }
+
+    async fn list_pull_request_metadata_options(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<harbor_github::PullRequestMetadataOptions> {
+        self.client()?
+            .list_pull_request_metadata_options(owner, repo)
+            .await
+    }
+
+    async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest> {
+        self.client()?.get_pull_request(owner, repo, number).await
+    }
+
+    async fn list_pull_request_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<DiffFile>> {
+        self.client()?
+            .list_pull_request_files(owner, repo, number)
+            .await
+    }
+
+    async fn list_pull_request_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestCommit>> {
+        self.client()?
+            .list_pull_request_commits(owner, repo, number)
+            .await
+    }
+
+    async fn mark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()> {
+        self.client()?
+            .mark_pull_request_file_viewed(pull_request_node_id, path)
+            .await
+    }
+
+    async fn unmark_pull_request_file_viewed(
+        &self,
+        pull_request_node_id: &str,
+        path: &str,
+    ) -> Result<()> {
+        self.client()?
+            .unmark_pull_request_file_viewed(pull_request_node_id, path)
+            .await
+    }
+
+    async fn list_check_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<CheckRun>> {
+        self.client()?.list_check_runs(owner, repo, head_sha).await
+    }
+
+    async fn list_workflow_runs_for_head(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.client()?
+            .list_workflow_runs_for_head(owner, repo, head_sha)
+            .await
+    }
+
+    async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>> {
+        self.client()?.list_workflows(owner, repo).await
+    }
+
+    async fn list_repository_workflow_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.client()?
+            .list_repository_workflow_runs(owner, repo)
+            .await
+    }
+
+    async fn list_workflow_runs_for_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.client()?
+            .list_workflow_runs_for_workflow(owner, repo, workflow_id)
+            .await
+    }
+
+    async fn list_workflow_jobs_for_run(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+    ) -> Result<Vec<WorkflowJob>> {
+        self.client()?
+            .list_workflow_jobs_for_run(owner, repo, run_id)
+            .await
+    }
+
+    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+        self.client()?.workflow_run_log(owner, repo, run_id).await
+    }
+
+    async fn dispatch_workflow(
+        &self,
+        owner: &str,
+        repo: &str,
+        workflow_id: u64,
+        git_ref: &str,
+    ) -> Result<()> {
+        self.client()?
+            .dispatch_workflow(owner, repo, workflow_id, git_ref)
+            .await
+    }
+
+    async fn rerun_failed_jobs(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
+        self.client()?.rerun_failed_jobs(owner, repo, run_id).await
+    }
+
+    async fn current_user(&self) -> Result<String> {
+        if let Some(login) = self.cached_current_user_login()? {
+            return Ok(login);
+        }
+
+        let login = self.client()?.current_user().await?;
+        self.cache_current_user_login(login.clone())?;
+
+        Ok(login)
+    }
+
+    async fn list_pull_request_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestReview>> {
+        self.client()?
+            .list_pull_request_reviews(owner, repo, number)
+            .await
+    }
+
+    async fn list_pull_request_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestComment>> {
+        self.client()?
+            .list_pull_request_comments(owner, repo, number)
+            .await
+    }
+
+    async fn pull_request_review_comment_count(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        review_id: &str,
+    ) -> Result<usize> {
+        self.client()?
+            .pull_request_review_comment_count(owner, repo, number, review_id)
+            .await
+    }
+
+    async fn list_review_threads(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<ReviewThread>> {
+        self.client()?
+            .list_review_threads(owner, repo, number)
+            .await
+    }
+
+    async fn submit_pull_request_review(
+        &self,
+        pull_request_review_node_id: &str,
+        event: SubmitPullRequestReviewEvent,
+        body: Option<&str>,
+    ) -> Result<()> {
+        self.client()?
+            .submit_pull_request_review(pull_request_review_node_id, event, body)
+            .await
+    }
+
+    async fn create_pull_request_review_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        commit_id: &str,
+        range: &ReviewCommentRange,
+        body: &str,
+    ) -> Result<()> {
+        self.client()?
+            .create_pull_request_review_comment(owner, repo, number, commit_id, range, body)
+            .await
+    }
+
+    async fn start_pull_request_review(
+        &self,
+        pull_request_node_id: &str,
+        commit_id: &str,
+        range: &ReviewCommentRange,
+        body: &str,
+    ) -> Result<String> {
+        self.client()?
+            .start_pull_request_review(pull_request_node_id, commit_id, range, body)
+            .await
+    }
+
+    async fn add_pending_review_thread(
+        &self,
+        pull_request_review_node_id: &str,
+        range: &ReviewCommentRange,
+        body: &str,
+    ) -> Result<()> {
+        self.client()?
+            .add_pending_review_thread(pull_request_review_node_id, range, body)
+            .await
+    }
+
+    async fn add_review_thread_reply(
+        &self,
+        thread_id: &str,
+        pull_request_review_node_id: Option<&str>,
+        body: &str,
+    ) -> Result<()> {
+        self.client()?
+            .add_review_thread_reply(thread_id, pull_request_review_node_id, body)
+            .await
+    }
+
+    async fn resolve_review_thread(&self, thread_id: &str) -> Result<()> {
+        self.client()?.resolve_review_thread(thread_id).await
+    }
+
+    async fn unresolve_review_thread(&self, thread_id: &str) -> Result<()> {
+        self.client()?.unresolve_review_thread(thread_id).await
+    }
+
+    async fn update_review_comment(&self, comment_id: &str, body: &str) -> Result<()> {
+        self.client()?.update_review_comment(comment_id, body).await
+    }
+
+    async fn delete_review_comment(&self, comment_id: &str) -> Result<()> {
+        self.client()?.delete_review_comment(comment_id).await
+    }
+
+    async fn add_review_comment_reaction(
+        &self,
+        comment_id: &str,
+        content: ReactionContent,
+    ) -> Result<()> {
+        self.client()?
+            .add_review_comment_reaction(comment_id, content)
+            .await
+    }
+
+    async fn remove_review_comment_reaction(
+        &self,
+        comment_id: &str,
+        content: ReactionContent,
+    ) -> Result<()> {
+        self.client()?
+            .remove_review_comment_reaction(comment_id, content)
+            .await
+    }
+
+    async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()> {
+        self.client()?
+            .update_pull_request_body(pull_request_node_id, body)
+            .await
+    }
+
+    async fn request_pull_request_reviewer(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        reviewer: &str,
+    ) -> Result<()> {
+        self.client()?
+            .request_pull_request_reviewer(owner, repo, number, reviewer)
+            .await
+    }
+
+    async fn add_pull_request_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        assignee: &str,
+    ) -> Result<()> {
+        self.client()?
+            .add_pull_request_assignee(owner, repo, number, assignee)
+            .await
+    }
+
+    async fn add_pull_request_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        label: &str,
+    ) -> Result<()> {
+        self.client()?
+            .add_pull_request_label(owner, repo, number, label)
+            .await
+    }
+
+    async fn create_pull_request_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()> {
+        self.client()?
+            .create_pull_request_comment(owner, repo, number, body)
+            .await
+    }
+
+    async fn approve_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: Option<&str>,
+    ) -> Result<()> {
+        self.client()?
+            .approve_pull_request(owner, repo, number, body)
+            .await
+    }
+
+    async fn request_pull_request_changes(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &str,
+    ) -> Result<()> {
+        self.client()?
+            .request_pull_request_changes(owner, repo, number, body)
+            .await
+    }
+
+    async fn merge_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        head_sha: &str,
+        method: MergeMethod,
+    ) -> Result<()> {
+        self.client()?
+            .merge_pull_request(owner, repo, number, head_sha, method)
+            .await
+    }
+}
