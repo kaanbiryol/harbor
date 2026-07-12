@@ -1,6 +1,7 @@
 mod changes;
 mod inbox;
 mod policy;
+mod pull_request_detail;
 
 pub use changes::{PullRequestChangeEvent, PullRequestChangeKind, detect_pull_request_changes};
 pub use inbox::{
@@ -11,4 +12,8 @@ pub use inbox::{
 pub use policy::{
     ActivityState, SyncBackoff, SyncDecision, SyncPolicy, SyncReason, SyncSignals, SyncState,
     SyncTarget, checks_have_running_or_pending_work, workflow_runs_have_running_work,
+};
+pub use pull_request_detail::{
+    PullRequestCiSource, PullRequestDetailRefresh, refresh_pull_request_check_runs,
+    refresh_pull_request_workflow_runs,
 };

@@ -12,7 +12,7 @@ use harbor_github::{
     PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
-use harbor_sync::PullRequestInboxSource;
+use harbor_sync::{PullRequestCiSource, PullRequestInboxSource};
 use harbor_ui::{GitHubApi, GitHubAuthSource};
 
 #[derive(Clone, Debug)]
@@ -136,6 +136,29 @@ impl PullRequestInboxSource for RealGitHubApi {
 }
 
 #[async_trait]
+impl PullRequestCiSource for RealGitHubApi {
+    async fn list_check_runs(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<CheckRun>> {
+        self.client()?.list_check_runs(owner, repo, head_sha).await
+    }
+
+    async fn list_workflow_runs_for_head(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.client()?
+            .list_workflow_runs_for_head(owner, repo, head_sha)
+            .await
+    }
+}
+
+#[async_trait]
 impl GitHubApi for RealGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         self.client
@@ -243,26 +266,6 @@ impl GitHubApi for RealGitHubApi {
     ) -> Result<()> {
         self.client()?
             .unmark_pull_request_file_viewed(pull_request_node_id, path)
-            .await
-    }
-
-    async fn list_check_runs(
-        &self,
-        owner: &str,
-        repo: &str,
-        head_sha: &str,
-    ) -> Result<Vec<CheckRun>> {
-        self.client()?.list_check_runs(owner, repo, head_sha).await
-    }
-
-    async fn list_workflow_runs_for_head(
-        &self,
-        owner: &str,
-        repo: &str,
-        head_sha: &str,
-    ) -> Result<Vec<WorkflowRun>> {
-        self.client()?
-            .list_workflow_runs_for_head(owner, repo, head_sha)
             .await
     }
 

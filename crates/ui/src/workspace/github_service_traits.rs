@@ -1,19 +1,18 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
-    PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
-    WorkflowJob, WorkflowRun,
+    DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit, PullRequestReview,
+    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     GitHubRateLimitStatus, PullRequestMetadataOptions, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
-use harbor_sync::PullRequestInboxSource;
+use harbor_sync::{PullRequestCiSource, PullRequestInboxSource};
 
 use crate::workspace::GitHubAuthSource;
 
 #[async_trait]
-pub trait GitHubApi: PullRequestInboxSource + Send + Sync {
+pub trait GitHubApi: PullRequestCiSource + PullRequestInboxSource + Send + Sync {
     fn configure_token(&self, token: String, source: GitHubAuthSource) -> Result<()>;
     fn configure_gh_cli(&self) -> Result<()>;
     fn clear_auth(&self) -> Result<()>;
@@ -58,20 +57,6 @@ pub trait GitHubApi: PullRequestInboxSource + Send + Sync {
         pull_request_node_id: &str,
         path: &str,
     ) -> Result<()>;
-
-    async fn list_check_runs(
-        &self,
-        owner: &str,
-        repo: &str,
-        head_sha: &str,
-    ) -> Result<Vec<CheckRun>>;
-
-    async fn list_workflow_runs_for_head(
-        &self,
-        owner: &str,
-        repo: &str,
-        head_sha: &str,
-    ) -> Result<Vec<WorkflowRun>>;
 
     async fn list_workflows(&self, owner: &str, repo: &str) -> Result<Vec<Workflow>>;
 

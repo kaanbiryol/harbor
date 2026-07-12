@@ -1,6 +1,8 @@
 use gpui::Context;
 use harbor_domain::checks_summary_from_runs;
-use harbor_sync::SyncTarget;
+use harbor_sync::{
+    SyncTarget, refresh_pull_request_check_runs, refresh_pull_request_workflow_runs,
+};
 
 use crate::{
     actions::PanelTab,
@@ -26,35 +28,18 @@ impl AppView {
         let store = self.repository_state.store();
         self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
-            let owner = load.owner;
-            let name = load.name;
             let number = load.number;
             let head_sha = load.head_sha;
 
             async move |this, cx| {
-                let result = if head_sha.is_empty() {
-                    Ok(Vec::new())
-                } else {
-                    github_api.list_check_runs(&owner, &name, &head_sha).await
-                };
-                let cache_result = match (&store, result.as_ref()) {
-                    (Some(store), Ok(check_runs)) => store
-                        .save_pull_request_check_runs(&repo, number, &head_sha, check_runs)
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (Some(store), Err(error)) => store
-                        .record_sync_failure(
-                            &harbor_storage::detail_target_key(
-                                &repo,
-                                number,
-                                harbor_storage::PullRequestDetailSection::CheckRuns,
-                            ),
-                            &error.to_string(),
-                        )
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (None, _) => Ok(()),
-                };
+                let refresh = refresh_pull_request_check_runs(
+                    github_api.as_ref(),
+                    store.as_ref(),
+                    &repo,
+                    number,
+                    &head_sha,
+                )
+                .await;
 
                 this.update_or_log(
                     cx,
@@ -64,10 +49,10 @@ impl AppView {
                             return;
                         }
 
-                        if let Err(error) = cache_result {
+                        if let Some(error) = refresh.cache_error {
                             view.repository_state.set_error(error);
                         }
-                        match result {
+                        match refresh.result {
                             Ok(check_runs) => {
                                 view.mark_sync_success(SyncTarget::SelectedPullRequestChecks);
                                 let count = check_runs.len();
@@ -114,37 +99,18 @@ impl AppView {
         let store = self.repository_state.store();
         self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
-            let owner = load.owner;
-            let name = load.name;
             let number = load.number;
             let head_sha = load.head_sha;
 
             async move |this, cx| {
-                let result = if head_sha.is_empty() {
-                    Ok(Vec::new())
-                } else {
-                    github_api
-                        .list_workflow_runs_for_head(&owner, &name, &head_sha)
-                        .await
-                };
-                let cache_result = match (&store, result.as_ref()) {
-                    (Some(store), Ok(workflow_runs)) => store
-                        .save_pull_request_workflow_runs(&repo, number, &head_sha, workflow_runs)
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (Some(store), Err(error)) => store
-                        .record_sync_failure(
-                            &harbor_storage::detail_target_key(
-                                &repo,
-                                number,
-                                harbor_storage::PullRequestDetailSection::WorkflowRuns,
-                            ),
-                            &error.to_string(),
-                        )
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (None, _) => Ok(()),
-                };
+                let refresh = refresh_pull_request_workflow_runs(
+                    github_api.as_ref(),
+                    store.as_ref(),
+                    &repo,
+                    number,
+                    &head_sha,
+                )
+                .await;
 
                 this.update_or_log(
                     cx,
@@ -154,10 +120,10 @@ impl AppView {
                             return;
                         }
 
-                        if let Err(error) = cache_result {
+                        if let Some(error) = refresh.cache_error {
                             view.repository_state.set_error(error);
                         }
-                        match result {
+                        match refresh.result {
                             Ok(workflow_runs) => {
                                 view.mark_sync_success(SyncTarget::SelectedPullRequestWorkflows);
                                 let count = workflow_runs.len();

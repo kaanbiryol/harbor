@@ -15,7 +15,7 @@ use harbor_github::{
     RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 
-use harbor_sync::PullRequestInboxSource;
+use harbor_sync::{PullRequestCiSource, PullRequestInboxSource};
 
 use super::GitHubApi;
 use crate::workspace::GitHubAuthSource;
@@ -279,6 +279,29 @@ impl PullRequestInboxSource for FakeGitHubApi {
 }
 
 #[async_trait]
+impl PullRequestCiSource for FakeGitHubApi {
+    async fn list_check_runs(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _head_sha: &str,
+    ) -> Result<Vec<CheckRun>> {
+        self.record_call("list_check_runs");
+        pop_result(&self.check_runs, "list_check_runs")
+    }
+
+    async fn list_workflow_runs_for_head(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _head_sha: &str,
+    ) -> Result<Vec<WorkflowRun>> {
+        self.record_call("list_workflow_runs_for_head");
+        pop_result(&self.workflow_runs, "list_workflow_runs_for_head")
+    }
+}
+
+#[async_trait]
 impl GitHubApi for FakeGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         None
@@ -377,26 +400,6 @@ impl GitHubApi for FakeGitHubApi {
             &self.unmark_file_viewed_results,
             "unmark_pull_request_file_viewed",
         )
-    }
-
-    async fn list_check_runs(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _head_sha: &str,
-    ) -> Result<Vec<CheckRun>> {
-        self.record_call("list_check_runs");
-        pop_result(&self.check_runs, "list_check_runs")
-    }
-
-    async fn list_workflow_runs_for_head(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _head_sha: &str,
-    ) -> Result<Vec<WorkflowRun>> {
-        self.record_call("list_workflow_runs_for_head");
-        pop_result(&self.workflow_runs, "list_workflow_runs_for_head")
     }
 
     async fn list_workflows(&self, _owner: &str, _repo: &str) -> Result<Vec<Workflow>> {
