@@ -49,7 +49,7 @@ impl AppView {
             return;
         }
 
-        self.actions_list_state.scroll_to(ListOffset {
+        self.panel_list_state.action_runs.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
         });

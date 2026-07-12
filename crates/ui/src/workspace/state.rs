@@ -4,6 +4,10 @@ mod detail;
 mod inbox;
 #[path = "state/notification.rs"]
 mod notification;
+#[path = "state/overview.rs"]
+mod overview;
+#[path = "state/panel_lists.rs"]
+mod panel_lists;
 #[path = "state/repository.rs"]
 mod repository;
 #[path = "state/repository_actions.rs"]
@@ -24,6 +28,8 @@ mod workflow_log;
 pub(crate) use detail::{PullRequestDetailLoadedState, PullRequestDetailUiState};
 pub(crate) use inbox::{PullRequestInboxState, PullRequestRowEnrichmentKey};
 pub(crate) use notification::NotificationState;
+pub(crate) use overview::{OverviewMarkdownState, OverviewUiState};
+pub(crate) use panel_lists::PanelListState;
 pub(crate) use repository::RepositoryUiState;
 pub(crate) use repository_actions::RepositoryActionsUiState;
 #[cfg(test)]

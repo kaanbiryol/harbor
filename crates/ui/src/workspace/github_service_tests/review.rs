@@ -29,8 +29,8 @@ async fn refresh_review_data_keeps_reviews_when_threads_fail(cx: &mut TestAppCon
     cx.run_until_parked();
 
     view_entity.read_with(cx, |view, _| {
-        assert_eq!(view.review_state.pull_request_reviews, vec![review]);
-        assert!(view.review_state.review_threads.is_empty());
+        assert_eq!(view.review_state.pull_request_reviews(), &[review]);
+        assert!(view.review_state.review_threads().is_empty());
         assert!(
             view.review_state
                 .reviews_error()
@@ -73,8 +73,8 @@ async fn refresh_review_data_keeps_threads_when_reviews_fail(cx: &mut TestAppCon
     cx.run_until_parked();
 
     view_entity.read_with(cx, |view, _| {
-        assert!(view.review_state.pull_request_reviews.is_empty());
-        assert_eq!(view.review_state.review_threads, vec![thread]);
+        assert!(view.review_state.pull_request_reviews().is_empty());
+        assert_eq!(view.review_state.review_threads(), &[thread]);
         assert!(
             view.review_state
                 .reviews_error()

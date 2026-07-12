@@ -114,7 +114,7 @@ impl AppView {
 
         if !self
             .review_state
-            .review_threads
+            .review_threads()
             .iter()
             .any(|thread| thread.id == thread_id)
         {

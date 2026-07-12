@@ -24,9 +24,9 @@ mod actions;
 mod optimistic_comments;
 
 pub(crate) struct ReviewRuntimeState {
-    pub(crate) pull_request_reviews: Vec<PullRequestReview>,
-    pub(crate) pull_request_comments: Vec<PullRequestComment>,
-    pub(crate) review_threads: Vec<ReviewThread>,
+    pull_request_reviews: Vec<PullRequestReview>,
+    pull_request_comments: Vec<PullRequestComment>,
+    review_threads: Vec<ReviewThread>,
     pub(crate) review_composer_state: ReviewComposerState,
     pending_review: Option<PendingReviewSession>,
     is_submitting_review_comment: bool,
@@ -46,7 +46,7 @@ pub(crate) struct ReviewRuntimeState {
     review_comment_action_error: Option<ReviewCommentUiError>,
     review_reaction_error: Option<ReviewCommentUiError>,
     pending_review_error: Option<String>,
-    pub(crate) current_user_login: Option<String>,
+    current_user_login: Option<String>,
     local_review_comment_sequence: u64,
     review_data_generation: u64,
 }
@@ -88,6 +88,26 @@ impl ReviewRuntimeState {
 
     pub(crate) fn reset_reviews_load(&mut self) {
         self.reviews_load.reset();
+    }
+
+    pub(crate) fn pull_request_reviews(&self) -> &[PullRequestReview] {
+        &self.pull_request_reviews
+    }
+
+    pub(crate) fn pull_request_comments(&self) -> &[PullRequestComment] {
+        &self.pull_request_comments
+    }
+
+    pub(crate) fn review_threads(&self) -> &[ReviewThread] {
+        &self.review_threads
+    }
+
+    pub(crate) fn current_user_login(&self) -> Option<&str> {
+        self.current_user_login.as_deref()
+    }
+
+    pub(crate) fn set_current_user_login(&mut self, login: Option<String>) {
+        self.current_user_login = login;
     }
 
     pub(crate) fn mark_reviews_stale(&mut self) {

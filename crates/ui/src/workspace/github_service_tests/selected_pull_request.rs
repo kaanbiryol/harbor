@@ -65,7 +65,7 @@ async fn ignores_stale_pull_request_detail_results_after_selection_changes(
         assert_eq!(view.selected_pull_request_index(), 1);
         assert_eq!(view.pull_requests[1].title, "Selected detail");
         assert!(view.detail_state.files().is_empty());
-        assert!(view.review_state.review_threads.is_empty());
+        assert!(view.review_state.review_threads().is_empty());
     });
 }
 
@@ -153,7 +153,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         assert!(view.detail_state.files().is_empty());
         assert!(view.detail_state.check_runs().is_empty());
         assert!(view.detail_state.workflow_runs().is_empty());
-        assert!(view.review_state.review_threads.is_empty());
+        assert!(view.review_state.review_threads().is_empty());
         assert!(view.detail_state.log_state.chunk().is_none());
         assert!(view.collapsed_file_tree_folders.is_empty());
         assert!(view.collapsed_check_groups.is_empty());
@@ -208,7 +208,7 @@ async fn selecting_cached_pull_request_restores_detail_without_refetch(cx: &mut 
         assert_eq!(view.detail_state.files().len(), 1);
         assert_eq!(view.detail_state.check_runs().len(), 1);
         assert_eq!(view.detail_state.workflow_runs().len(), 1);
-        assert_eq!(view.review_state.review_threads.len(), 1);
+        assert_eq!(view.review_state.review_threads().len(), 1);
         assert_eq!(view.status, "Showing cached PR #7 details");
     });
     cx.run_until_parked();

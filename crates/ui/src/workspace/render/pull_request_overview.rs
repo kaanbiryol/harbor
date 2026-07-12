@@ -28,7 +28,7 @@ use crate::{
         review_thread_diff_preview,
     },
     visual::{Tone, color, tone_colors},
-    workspace::{AppView, ReviewRuntimeState},
+    workspace::{AppView, ReviewRuntimeState, state::OverviewMarkdownState},
 };
 
 const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
@@ -55,16 +55,16 @@ impl AppView {
                 .into_any_element();
         };
         let panel_items = overview_panel_items(
-            &self.review_state.pull_request_reviews,
-            &self.review_state.pull_request_comments,
-            &self.review_state.review_threads,
+            self.review_state.pull_request_reviews(),
+            self.review_state.pull_request_comments(),
+            self.review_state.review_threads(),
             self.review_state.reviews_loading(),
             self.review_state.reviews_error(),
         );
         let panel_item_keys = panel_items.iter().map(OverviewPanelItem::key).collect();
         sync_overview_list_items(
-            &self.overview_list_state,
-            &mut self.overview_list_item_keys,
+            &self.overview_state.list_state,
+            &mut self.overview_state.list_item_keys,
             panel_item_keys,
         );
         let panel_items_for_render = panel_items.clone();
@@ -93,7 +93,7 @@ impl AppView {
                             .min_w_0()
                             .child(
                                 list(
-                                    self.overview_list_state.clone(),
+                                    self.overview_state.list_state.clone(),
                                     cx.processor(move |view, index: usize, _window, cx| {
                                         let Some(item) = panel_items_for_render.get(index) else {
                                             return div().into_any_element();
@@ -115,7 +115,7 @@ impl AppView {
                                                 .unwrap_or_else(|| div().into_any_element()),
                                             OverviewPanelItem::Comment { id } => view
                                                 .review_state
-                                                .pull_request_comments
+                                                .pull_request_comments()
                                                 .iter()
                                                 .find(|comment| comment.id == *id)
                                                 .cloned()
@@ -135,7 +135,7 @@ impl AppView {
                                                 .unwrap_or_else(|| div().into_any_element()),
                                             OverviewPanelItem::Review { id } => view
                                                 .review_state
-                                                .pull_request_reviews
+                                                .pull_request_reviews()
                                                 .iter()
                                                 .find(|review| review.id == *id)
                                                 .cloned()
@@ -162,14 +162,15 @@ impl AppView {
                                                 .unwrap_or_else(|| div().into_any_element()),
                                             OverviewPanelItem::Thread { id } => view
                                                 .review_state
-                                                .review_threads
+                                                .review_threads()
                                                 .iter()
                                                 .find(|thread| thread.id == *id)
                                                 .cloned()
                                                 .map(|thread| {
                                                     let expanded = overview_thread_expanded(
                                                         thread.state,
-                                                        view.overview_thread_expansion_overrides
+                                                        view.overview_state
+                                                            .thread_expansion_overrides
                                                             .get(&thread.id)
                                                             .copied(),
                                                     );
@@ -223,7 +224,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Entity<gpui_component::text::TextViewState> {
         let source = review_markdown_body(body);
-        if let Some(entry) = self.overview_markdown_states.get_mut(&key) {
+        if let Some(entry) = self.overview_state.markdown_states.get_mut(&key) {
             if entry.source != source {
                 entry.source.clone_from(&source);
                 entry
@@ -234,9 +235,9 @@ impl AppView {
         }
 
         let state = cx.new(|cx| gpui_component::text::TextViewState::markdown(&source, cx));
-        self.overview_markdown_states.insert(
+        self.overview_state.markdown_states.insert(
             key,
-            super::super::OverviewMarkdownState {
+            OverviewMarkdownState {
                 source,
                 state: state.clone(),
             },
@@ -257,7 +258,7 @@ impl AppView {
     fn toggle_overview_thread_expansion(&mut self, thread_id: &str, cx: &mut Context<Self>) {
         let Some(thread) = self
             .review_state
-            .review_threads
+            .review_threads()
             .iter()
             .find(|thread| thread.id == thread_id)
         else {
@@ -265,11 +266,13 @@ impl AppView {
         };
         let expanded = overview_thread_expanded(
             thread.state,
-            self.overview_thread_expansion_overrides
+            self.overview_state
+                .thread_expansion_overrides
                 .get(thread_id)
                 .copied(),
         );
-        self.overview_thread_expansion_overrides
+        self.overview_state
+            .thread_expansion_overrides
             .insert(thread_id.to_string(), !expanded);
         self.remeasure_overview_thread_item(thread_id);
         cx.notify();
@@ -277,9 +280,9 @@ impl AppView {
 
     pub(crate) fn remeasure_overview_thread_item(&self, thread_id: &str) {
         let panel_items = overview_panel_items(
-            &self.review_state.pull_request_reviews,
-            &self.review_state.pull_request_comments,
-            &self.review_state.review_threads,
+            self.review_state.pull_request_reviews(),
+            self.review_state.pull_request_comments(),
+            self.review_state.review_threads(),
             self.review_state.reviews_loading(),
             self.review_state.reviews_error(),
         );
@@ -287,13 +290,15 @@ impl AppView {
             return;
         };
 
-        self.overview_list_state.remeasure_items(index..index + 1);
+        self.overview_state
+            .list_state
+            .remeasure_items(index..index + 1);
     }
 
     pub(crate) fn remeasure_overview_thread_item_for_comment(&self, comment_id: &str) {
         let Some(thread_id) = self
             .review_state
-            .review_threads
+            .review_threads()
             .iter()
             .find(|thread| {
                 thread
@@ -313,21 +318,21 @@ impl AppView {
         &mut self,
         update: impl FnOnce(&mut ReviewRuntimeState) -> R,
     ) -> R {
-        let previous_reviews = self.review_state.pull_request_reviews.clone();
-        let previous_comments = self.review_state.pull_request_comments.clone();
-        let previous_threads = self.review_state.review_threads.clone();
+        let previous_reviews = self.review_state.pull_request_reviews().to_vec();
+        let previous_comments = self.review_state.pull_request_comments().to_vec();
+        let previous_threads = self.review_state.review_threads().to_vec();
         let result = update(&mut self.review_state);
         let panel_items = overview_panel_items(
-            &self.review_state.pull_request_reviews,
-            &self.review_state.pull_request_comments,
-            &self.review_state.review_threads,
+            self.review_state.pull_request_reviews(),
+            self.review_state.pull_request_comments(),
+            self.review_state.review_threads(),
             self.review_state.reviews_loading(),
             self.review_state.reviews_error(),
         );
         let panel_item_keys = panel_items.iter().map(OverviewPanelItem::key).collect();
         sync_overview_list_items(
-            &self.overview_list_state,
-            &mut self.overview_list_item_keys,
+            &self.overview_state.list_state,
+            &mut self.overview_state.list_item_keys,
             panel_item_keys,
         );
 
@@ -337,7 +342,7 @@ impl AppView {
                     previous_comments.iter().find(|comment| comment.id == *id)
                         != self
                             .review_state
-                            .pull_request_comments
+                            .pull_request_comments()
                             .iter()
                             .find(|comment| comment.id == *id)
                 }
@@ -345,7 +350,7 @@ impl AppView {
                     previous_reviews.iter().find(|review| review.id == *id)
                         != self
                             .review_state
-                            .pull_request_reviews
+                            .pull_request_reviews()
                             .iter()
                             .find(|review| review.id == *id)
                 }
@@ -353,7 +358,7 @@ impl AppView {
                     previous_threads.iter().find(|thread| thread.id == *id)
                         != self
                             .review_state
-                            .review_threads
+                            .review_threads()
                             .iter()
                             .find(|thread| thread.id == *id)
                 }
@@ -362,7 +367,9 @@ impl AppView {
                 | OverviewPanelItem::Composer => false,
             };
             if changed {
-                self.overview_list_state.remeasure_items(index..index + 1);
+                self.overview_state
+                    .list_state
+                    .remeasure_items(index..index + 1);
             }
         }
 
@@ -473,9 +480,8 @@ impl AppView {
         let commenter = PullRequestPerson {
             login: self
                 .review_state
-                .current_user_login
-                .clone()
-                .unwrap_or_else(|| pr.author.clone()),
+                .current_user_login()
+                .map_or_else(|| pr.author.clone(), str::to_string),
             avatar_url: None,
         };
 
@@ -1704,7 +1710,7 @@ mod tests {
                 assert_eq!(first.entity_id(), reused.entity_id());
                 assert_eq!(first.entity_id(), updated.entity_id());
                 assert_eq!(
-                    view.overview_markdown_states["comment:1"].source,
+                    view.overview_state.markdown_states["comment:1"].source,
                     "updated body"
                 );
             });

@@ -45,7 +45,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
         ]
     );
     view_entity.read_with(cx, |view, _| {
-        assert_eq!(view.review_state.review_threads, vec![thread]);
+        assert_eq!(view.review_state.review_threads(), &[thread]);
     });
 
     view_entity.update(cx, |view, cx| {
@@ -118,7 +118,7 @@ async fn overview_loads_review_activity_for_its_timeline(cx: &mut TestAppContext
         ]
     );
     view_entity.read_with(cx, |view, _| {
-        assert_eq!(view.review_state.review_threads, vec![thread]);
+        assert_eq!(view.review_state.review_threads(), &[thread]);
     });
 }
 

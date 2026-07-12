@@ -124,7 +124,7 @@ impl AppView {
             reviewed_file_paths: &self.reviewed_file_paths,
             expanded_diff_file_paths: &self.expanded_diff_file_paths,
             collapsed_diff_file_paths: &self.collapsed_diff_file_paths,
-            review_threads: &self.review_state.review_threads,
+            review_threads: self.review_state.review_threads(),
             review_composer: self.review_state.review_composer_state.inline_composer(),
         });
         sync_diff_list_state(&self.diff_list_state, &mut self.diff_list_items, next_items);
@@ -429,7 +429,8 @@ impl AppView {
     }
 
     pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {
-        let Some(current_user_login) = self.review_state.current_user_login.clone() else {
+        let Some(current_user_login) = self.review_state.current_user_login().map(str::to_string)
+        else {
             self.owned_file_paths.clear();
             self.show_files_owned_by_current_user = false;
             self.sync_diff_list_items(cx);

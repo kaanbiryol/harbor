@@ -44,9 +44,7 @@ impl AppView {
 
     pub(super) fn clear_review_data_state(&mut self) {
         self.review_state.clear_review_data();
-        self.overview_list_item_keys.clear();
-        self.overview_markdown_states.clear();
-        self.overview_thread_expansion_overrides.clear();
+        self.overview_state.clear_content();
     }
 
     pub(super) fn clear_changed_file_state(&mut self) {
@@ -113,23 +111,25 @@ impl AppView {
     }
 
     pub(super) fn reset_panel_list_scrolls(&mut self) {
-        self.overview_list_state.scroll_to(ListOffset {
+        self.overview_state.list_state.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
         });
-        self.review_list_state.scroll_to(ListOffset {
+        self.panel_list_state.review.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
         });
-        self.checks_list_state.scroll_to(ListOffset {
+        self.panel_list_state.checks.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
         });
-        self.actions_workflow_list_state.scroll_to(ListOffset {
-            item_ix: 0,
-            offset_in_item: px(0.0),
-        });
-        self.actions_list_state.scroll_to(ListOffset {
+        self.panel_list_state
+            .action_workflows
+            .scroll_to(ListOffset {
+                item_ix: 0,
+                offset_in_item: px(0.0),
+            });
+        self.panel_list_state.action_runs.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
         });
@@ -158,7 +158,7 @@ impl AppView {
         self.clear_log_content();
         self.clear_log_error();
         self.set_log_loading(false);
-        self.review_state.current_user_login = None;
+        self.review_state.set_current_user_login(None);
         self.diff_list_items.clear();
         self.active_tab = PanelTab::Overview;
         self.pull_request_switcher_selection = 0;

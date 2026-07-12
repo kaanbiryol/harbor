@@ -43,7 +43,8 @@ async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext)
             .replace_diff_files(vec![patched_diff_file()], Vec::new());
         view.detail_state
             .replace_workflow_runs(vec![workflow_run()]);
-        view.review_state.current_user_login = Some("octocat".to_string());
+        view.review_state
+            .set_current_user_login(Some("octocat".to_string()));
         view.pull_request_inbox.start_loading();
 
         view.show_github_sign_in_required();
@@ -52,7 +53,7 @@ async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext)
         assert!(view.current_repository().is_none());
         assert!(view.detail_state.files().is_empty());
         assert!(view.detail_state.workflow_runs().is_empty());
-        assert_eq!(view.review_state.current_user_login, None);
+        assert_eq!(view.review_state.current_user_login(), None);
         assert!(!view.pull_request_inbox.is_loading());
         assert_eq!(
             view.status,

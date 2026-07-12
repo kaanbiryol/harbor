@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
 use gpui_component::{ActiveTheme, input::InputState};
@@ -20,10 +17,10 @@ use super::{
     github_service::GitHubApi,
     notifications::NativeNotificationSink,
     state::{
-        NotificationState, PullRequestDetailUiState, PullRequestInboxState,
-        PullRequestSelectionState, RepositoryActionsUiState, RepositoryUiState,
-        ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
-        WorkspaceTasks,
+        NotificationState, OverviewUiState, PanelListState, PullRequestDetailUiState,
+        PullRequestInboxState, PullRequestSelectionState, RepositoryActionsUiState,
+        RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState,
+        WorkflowLogState, WorkspaceTasks,
     },
 };
 
@@ -248,19 +245,18 @@ impl AppView {
             file_list_scroll: UniformListScrollHandle::new(),
             diff_list_state: ListState::new(0, ListAlignment::Top, px(DIFF_LIST_OVERDRAW)),
             diff_list_items: Vec::new(),
-            overview_list_state: ListState::new(0, ListAlignment::Top, px(OVERVIEW_LIST_OVERDRAW)),
-            overview_list_item_keys: Vec::new(),
-            overview_markdown_states: HashMap::new(),
-            overview_thread_expansion_overrides: HashMap::new(),
-            review_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
-            commits_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
-            checks_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
-            actions_workflow_list_state: ListState::new(
+            overview_state: OverviewUiState::new(ListState::new(
                 0,
                 ListAlignment::Top,
-                px(PANEL_LIST_OVERDRAW),
+                px(OVERVIEW_LIST_OVERDRAW),
+            )),
+            panel_list_state: PanelListState::new(
+                ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+                ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+                ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+                ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
+                ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             ),
-            actions_list_state: ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             selection_state: PullRequestSelectionState::default(),
             active_tab: PanelTab::Overview,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),

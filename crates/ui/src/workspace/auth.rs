@@ -289,7 +289,7 @@ impl AppView {
                                 login: Some(login.clone()),
                                 source,
                             };
-                            view.review_state.current_user_login = Some(login);
+                            view.review_state.set_current_user_login(Some(login));
                             cx.notify();
                         }
                     }

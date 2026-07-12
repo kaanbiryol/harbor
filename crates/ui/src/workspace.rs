@@ -42,17 +42,13 @@ mod switchers;
 mod sync_loop;
 mod workflow_log_loaders;
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use gpui::{
     Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
     UniformListScrollHandle, px,
 };
-use gpui_component::{input::InputState, text::TextViewState};
+use gpui_component::input::InputState;
 use harbor_domain::{PullRequest, RepoId, WorkflowRun};
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
@@ -84,10 +80,10 @@ pub(crate) use reviews::{
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
 use state::{
-    NotificationState, PullRequestDetailUiState, PullRequestInboxState,
-    PullRequestRowEnrichmentKey, PullRequestSelectionState, RepositoryActionsUiState,
-    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
-    WorkspaceTasks,
+    NotificationState, OverviewUiState, PanelListState, PullRequestDetailUiState,
+    PullRequestInboxState, PullRequestRowEnrichmentKey, PullRequestSelectionState,
+    RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
+    SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
@@ -147,11 +143,6 @@ const DIFF_LIST_OVERDRAW: f32 = 240.0;
 const PANEL_LIST_OVERDRAW: f32 = 160.0;
 const OVERVIEW_LIST_OVERDRAW: f32 = 64.0;
 
-struct OverviewMarkdownState {
-    source: String,
-    state: Entity<TextViewState>,
-}
-
 pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
@@ -173,15 +164,8 @@ pub struct AppView {
     file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
     diff_list_items: Vec<DiffListItem>,
-    overview_list_state: ListState,
-    overview_list_item_keys: Vec<String>,
-    overview_markdown_states: HashMap<String, OverviewMarkdownState>,
-    overview_thread_expansion_overrides: HashMap<String, bool>,
-    review_list_state: ListState,
-    commits_list_state: ListState,
-    checks_list_state: ListState,
-    actions_workflow_list_state: ListState,
-    actions_list_state: ListState,
+    overview_state: OverviewUiState,
+    panel_list_state: PanelListState,
     selection_state: PullRequestSelectionState,
     active_tab: PanelTab,
     pull_request_inbox: PullRequestInboxState,
@@ -251,7 +235,7 @@ impl AppView {
         };
 
         self.checks_filter = filter;
-        self.checks_list_state.scroll_to(ListOffset {
+        self.panel_list_state.checks.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),
         });

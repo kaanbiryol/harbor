@@ -33,7 +33,7 @@ impl AppView {
         };
         let previous_state = self
             .review_state
-            .review_threads
+            .review_threads()
             .iter()
             .find(|thread| thread.id == thread_id)
             .map(|thread| thread.state);

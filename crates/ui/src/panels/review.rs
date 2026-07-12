@@ -153,7 +153,7 @@ pub(crate) fn render_review_panel(
                             ReviewPanelItem::Thread { thread_id } => {
                                 let Some(thread) = view
                                     .review_state
-                                    .review_threads
+                                    .review_threads()
                                     .iter()
                                     .find(|thread| thread.id == *thread_id)
                                 else {
@@ -196,14 +196,14 @@ pub(crate) fn render_review_panel(
                             }
                             ReviewPanelItem::Review { review_id } => view
                                 .review_state
-                                .pull_request_reviews
+                                .pull_request_reviews()
                                 .iter()
                                 .find(|review| review.id == *review_id)
                                 .map(|review| render_pull_request_review_row(review, index))
                                 .unwrap_or_else(|| div().into_any_element()),
                             ReviewPanelItem::Comment { comment_id } => view
                                 .review_state
-                                .pull_request_comments
+                                .pull_request_comments()
                                 .iter()
                                 .find(|comment| comment.id == *comment_id)
                                 .map(|comment| render_pull_request_comment_row(comment, index))

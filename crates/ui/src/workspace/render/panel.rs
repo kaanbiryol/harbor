@@ -139,7 +139,7 @@ impl AppView {
                                     reviewed_file_paths: &self.reviewed_file_paths,
                                     expanded_diff_file_paths: &self.expanded_diff_file_paths,
                                     collapsed_diff_file_paths: &self.collapsed_diff_file_paths,
-                                    review_threads: &self.review_state.review_threads,
+                                    review_threads: self.review_state.review_threads(),
                                     review_composer: self
                                         .review_state
                                         .review_composer_state
@@ -156,12 +156,12 @@ impl AppView {
                         }
                         PanelTab::Review => render_review_panel(
                             ReviewPanelRenderInput {
-                                reviews: &self.review_state.pull_request_reviews,
-                                comments: &self.review_state.pull_request_comments,
-                                threads: &self.review_state.review_threads,
+                                reviews: self.review_state.pull_request_reviews(),
+                                comments: self.review_state.pull_request_comments(),
+                                threads: self.review_state.review_threads(),
                                 is_loading: self.review_state.reviews_loading(),
                                 error: self.review_state.reviews_error(),
-                                review_list_state: self.review_list_state.clone(),
+                                review_list_state: self.panel_list_state.review.clone(),
                             },
                             cx,
                         )
@@ -174,7 +174,7 @@ impl AppView {
                                 active_filter: self.checks_filter(),
                                 is_loading: self.detail_state.checks_loading(),
                                 error: self.detail_state.checks_error(),
-                                list_state: self.checks_list_state.clone(),
+                                list_state: self.panel_list_state.checks.clone(),
                             },
                             cx,
                         )
@@ -184,7 +184,7 @@ impl AppView {
                                 commits: self.detail_state.commits(),
                                 is_loading: self.detail_state.commits_loading(),
                                 error: self.detail_state.commits_error(),
-                                list_state: self.commits_list_state.clone(),
+                                list_state: self.panel_list_state.commits.clone(),
                             },
                             cx,
                         )
@@ -217,8 +217,8 @@ impl AppView {
                                 selected_pr_workflows_error: self.detail_state.workflows_error(),
                                 action_error: self.action_runtime.workflow_action_error(),
                                 is_running_action: self.action_runtime.workflow_action_running(),
-                                workflow_list_state: self.actions_workflow_list_state.clone(),
-                                run_list_state: self.actions_list_state.clone(),
+                                workflow_list_state: self.panel_list_state.action_workflows.clone(),
+                                run_list_state: self.panel_list_state.action_runs.clone(),
                             },
                             cx,
                         )

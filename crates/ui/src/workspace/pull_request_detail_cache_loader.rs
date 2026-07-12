@@ -135,9 +135,9 @@ impl AppView {
                         }
 
                         if let Some((reviews, comments, threads)) = cached.review_data
-                            && view.review_state.pull_request_reviews.is_empty()
-                            && view.review_state.pull_request_comments.is_empty()
-                            && view.review_state.review_threads.is_empty()
+                            && view.review_state.pull_request_reviews().is_empty()
+                            && view.review_state.pull_request_comments().is_empty()
+                            && view.review_state.review_threads().is_empty()
                         {
                             view.replace_reviews_and_loaded_threads(reviews, comments, threads);
                             view.sync_diff_list_items(cx);

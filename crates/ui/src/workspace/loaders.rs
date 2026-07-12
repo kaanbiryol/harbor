@@ -110,15 +110,18 @@ impl AppView {
             .reset_for_repository(repo.clone());
         if !same_repository {
             self.tasks.cancel_repository_actions_tasks();
-            self.actions_workflow_list_state
+            self.panel_list_state
+                .action_workflows
                 .scroll_to(gpui::ListOffset {
                     item_ix: 0,
                     offset_in_item: gpui::px(0.0),
                 });
-            self.actions_list_state.scroll_to(gpui::ListOffset {
-                item_ix: 0,
-                offset_in_item: gpui::px(0.0),
-            });
+            self.panel_list_state
+                .action_runs
+                .scroll_to(gpui::ListOffset {
+                    item_ix: 0,
+                    offset_in_item: gpui::px(0.0),
+                });
         }
 
         if !same_inbox {
