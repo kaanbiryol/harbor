@@ -1,18 +1,45 @@
-use sqlx::Row;
+use std::collections::HashSet;
+
+use sqlx::{Row, Sqlite, Transaction};
 
 use crate::{Result, SqliteStore};
 
+const INITIAL_SCHEMA_VERSION: i64 = 1;
+const REPOSITORY_STATE_VERSION: i64 = 2;
+
 impl SqliteStore {
     pub(super) async fn migrate(&self) -> Result<()> {
+        let mut transaction = self.pool.begin().await?;
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
                 version INTEGER PRIMARY KEY,
                 applied_at INTEGER NOT NULL
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await?;
 
+        let applied_versions = sqlx::query("SELECT version FROM schema_migrations")
+            .fetch_all(&mut *transaction)
+            .await?
+            .into_iter()
+            .map(|row| row.get::<i64, _>("version"))
+            .collect::<HashSet<_>>();
+
+        if !applied_versions.contains(&INITIAL_SCHEMA_VERSION) {
+            Self::apply_initial_schema(&mut transaction).await?;
+            Self::record_schema_migration(&mut transaction, INITIAL_SCHEMA_VERSION).await?;
+        }
+        if !applied_versions.contains(&REPOSITORY_STATE_VERSION) {
+            Self::apply_repository_state_migration(&mut transaction).await?;
+            Self::record_schema_migration(&mut transaction, REPOSITORY_STATE_VERSION).await?;
+        }
+
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    async fn apply_initial_schema(transaction: &mut Transaction<'_, Sqlite>) -> Result<()> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS recent_repositories (
                 owner TEXT NOT NULL,
@@ -25,50 +52,8 @@ impl SqliteStore {
                 PRIMARY KEY (owner, name)
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
-        let columns = sqlx::query("PRAGMA table_info(recent_repositories)")
-            .fetch_all(&self.pool)
-            .await?;
-        let has_local_path = columns
-            .iter()
-            .any(|row| row.get::<String, _>("name") == "local_path");
-        let has_last_seen_at = columns
-            .iter()
-            .any(|row| row.get::<String, _>("name") == "last_seen_at");
-        let has_last_seen_position = columns
-            .iter()
-            .any(|row| row.get::<String, _>("name") == "last_seen_position");
-
-        if !has_local_path {
-            sqlx::query("ALTER TABLE recent_repositories ADD COLUMN local_path TEXT")
-                .execute(&self.pool)
-                .await?;
-        }
-        if !has_last_seen_at {
-            sqlx::query(
-                "ALTER TABLE recent_repositories ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0",
-            )
-            .execute(&self.pool)
-            .await?;
-        }
-        if !has_last_seen_position {
-            sqlx::query(
-                "ALTER TABLE recent_repositories
-                 ADD COLUMN last_seen_position INTEGER NOT NULL DEFAULT 0",
-            )
-            .execute(&self.pool)
-            .await?;
-        }
-
-        sqlx::query(
-            "DELETE FROM recent_repositories
-             WHERE pinned = 0 AND local_path IS NULL",
-        )
-        .execute(&self.pool)
-        .await?;
-
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS last_selected_repository (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -77,9 +62,8 @@ impl SqliteStore {
                 updated_at INTEGER NOT NULL
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS pull_request_inbox_cache (
                 owner TEXT NOT NULL,
@@ -94,9 +78,8 @@ impl SqliteStore {
                 PRIMARY KEY (owner, name, mode, number)
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS pull_request_detail_cache (
                 owner TEXT NOT NULL,
@@ -110,39 +93,8 @@ impl SqliteStore {
                 PRIMARY KEY (owner, name, number, head_sha, section)
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
-        let inbox_columns = sqlx::query("PRAGMA table_info(pull_request_inbox_cache)")
-            .fetch_all(&self.pool)
-            .await?;
-        if !inbox_columns
-            .iter()
-            .any(|row| row.get::<String, _>("name") == "cache_version")
-        {
-            sqlx::query(
-                "ALTER TABLE pull_request_inbox_cache
-                 ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
-            )
-            .execute(&self.pool)
-            .await?;
-        }
-
-        let detail_columns = sqlx::query("PRAGMA table_info(pull_request_detail_cache)")
-            .fetch_all(&self.pool)
-            .await?;
-        if !detail_columns
-            .iter()
-            .any(|row| row.get::<String, _>("name") == "cache_version")
-        {
-            sqlx::query(
-                "ALTER TABLE pull_request_detail_cache
-                 ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
-            )
-            .execute(&self.pool)
-            .await?;
-        }
-
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS sync_target_state (
                 target_key TEXT PRIMARY KEY,
@@ -152,9 +104,8 @@ impl SqliteStore {
                 stale INTEGER NOT NULL DEFAULT 0
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS http_cache_validators (
                 request_key TEXT PRIMARY KEY,
@@ -163,9 +114,8 @@ impl SqliteStore {
                 updated_at INTEGER NOT NULL
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
@@ -173,25 +123,90 @@ impl SqliteStore {
                 updated_at INTEGER NOT NULL
             )",
         )
-        .execute(&self.pool)
+        .execute(&mut **transaction)
         .await?;
-
-        self.record_schema_migration(1).await?;
-        self.record_schema_migration(2).await?;
 
         Ok(())
     }
 
-    async fn record_schema_migration(&self, version: i64) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO schema_migrations (version, applied_at)
-             VALUES (?1, unixepoch())
-             ON CONFLICT(version) DO NOTHING",
+    async fn apply_repository_state_migration(
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<()> {
+        Self::add_column_if_missing(
+            transaction,
+            "recent_repositories",
+            "local_path",
+            "ALTER TABLE recent_repositories ADD COLUMN local_path TEXT",
         )
-        .bind(version)
-        .execute(&self.pool)
+        .await?;
+        Self::add_column_if_missing(
+            transaction,
+            "recent_repositories",
+            "last_seen_at",
+            "ALTER TABLE recent_repositories ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        Self::add_column_if_missing(
+            transaction,
+            "recent_repositories",
+            "last_seen_position",
+            "ALTER TABLE recent_repositories ADD COLUMN last_seen_position INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        Self::add_column_if_missing(
+            transaction,
+            "pull_request_inbox_cache",
+            "cache_version",
+            "ALTER TABLE pull_request_inbox_cache ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
+        )
+        .await?;
+        Self::add_column_if_missing(
+            transaction,
+            "pull_request_detail_cache",
+            "cache_version",
+            "ALTER TABLE pull_request_detail_cache ADD COLUMN cache_version INTEGER NOT NULL DEFAULT 1",
+        )
         .await?;
 
+        sqlx::query(
+            "DELETE FROM recent_repositories
+             WHERE pinned = 0 AND local_path IS NULL",
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn add_column_if_missing(
+        transaction: &mut Transaction<'_, Sqlite>,
+        table: &str,
+        column: &str,
+        migration: &str,
+    ) -> Result<()> {
+        let columns = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(&mut **transaction)
+            .await?;
+        if !columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == column)
+        {
+            sqlx::query(migration).execute(&mut **transaction).await?;
+        }
+        Ok(())
+    }
+
+    async fn record_schema_migration(
+        transaction: &mut Transaction<'_, Sqlite>,
+        version: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO schema_migrations (version, applied_at)
+             VALUES (?1, unixepoch())",
+        )
+        .bind(version)
+        .execute(&mut **transaction)
+        .await?;
         Ok(())
     }
 }
