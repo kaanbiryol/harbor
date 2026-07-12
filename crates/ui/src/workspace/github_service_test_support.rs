@@ -15,7 +15,7 @@ use harbor_github::{
     RepositoryList, Result, SubmitPullRequestReviewEvent,
 };
 
-use harbor_sync::{PullRequestCiSource, PullRequestInboxSource};
+use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
 use super::GitHubApi;
 use crate::workspace::GitHubAuthSource;
@@ -302,6 +302,29 @@ impl PullRequestCiSource for FakeGitHubApi {
 }
 
 #[async_trait]
+impl PullRequestContentSource for FakeGitHubApi {
+    async fn get_pull_request(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+    ) -> Result<PullRequest> {
+        self.record_call("get_pull_request");
+        pop_result(&self.pull_request_details, "get_pull_request")
+    }
+
+    async fn list_pull_request_files(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _number: u64,
+    ) -> Result<Vec<DiffFile>> {
+        self.record_call("list_pull_request_files");
+        pop_result(&self.files, "list_pull_request_files")
+    }
+}
+
+#[async_trait]
 impl GitHubApi for FakeGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         None
@@ -346,26 +369,6 @@ impl GitHubApi for FakeGitHubApi {
     ) -> Result<PullRequestMetadataOptions> {
         self.record_call("list_pull_request_metadata_options");
         pop_result(&self.metadata_options, "list_pull_request_metadata_options")
-    }
-
-    async fn get_pull_request(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _number: u64,
-    ) -> Result<PullRequest> {
-        self.record_call("get_pull_request");
-        pop_result(&self.pull_request_details, "get_pull_request")
-    }
-
-    async fn list_pull_request_files(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _number: u64,
-    ) -> Result<Vec<DiffFile>> {
-        self.record_call("list_pull_request_files");
-        pop_result(&self.files, "list_pull_request_files")
     }
 
     async fn list_pull_request_commits(

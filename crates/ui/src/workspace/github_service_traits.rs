@@ -1,18 +1,20 @@
 use async_trait::async_trait;
 use harbor_domain::{
-    DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit, PullRequestReview,
-    ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
+    MergeMethod, PullRequestComment, PullRequestCommit, PullRequestReview, ReactionContent, RepoId,
+    ReviewCommentRange, ReviewThread, Workflow, WorkflowJob, WorkflowRun,
 };
 use harbor_github::{
     GitHubRateLimitStatus, PullRequestMetadataOptions, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
-use harbor_sync::{PullRequestCiSource, PullRequestInboxSource};
+use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
 use crate::workspace::GitHubAuthSource;
 
 #[async_trait]
-pub trait GitHubApi: PullRequestCiSource + PullRequestInboxSource + Send + Sync {
+pub trait GitHubApi:
+    PullRequestCiSource + PullRequestContentSource + PullRequestInboxSource + Send + Sync
+{
     fn configure_token(&self, token: String, source: GitHubAuthSource) -> Result<()>;
     fn configure_gh_cli(&self) -> Result<()>;
     fn clear_auth(&self) -> Result<()>;
@@ -29,15 +31,6 @@ pub trait GitHubApi: PullRequestCiSource + PullRequestInboxSource + Send + Sync 
         owner: &str,
         repo: &str,
     ) -> Result<PullRequestMetadataOptions>;
-
-    async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest>;
-
-    async fn list_pull_request_files(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<DiffFile>>;
 
     async fn list_pull_request_commits(
         &self,

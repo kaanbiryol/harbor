@@ -12,7 +12,7 @@ use harbor_github::{
     PullRequestListFilter, PullRequestPage, PullRequestPageCursor, RepositoryList, Result,
     SubmitPullRequestReviewEvent,
 };
-use harbor_sync::{PullRequestCiSource, PullRequestInboxSource};
+use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 use harbor_ui::{GitHubApi, GitHubAuthSource};
 
 #[derive(Clone, Debug)]
@@ -159,6 +159,24 @@ impl PullRequestCiSource for RealGitHubApi {
 }
 
 #[async_trait]
+impl PullRequestContentSource for RealGitHubApi {
+    async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest> {
+        self.client()?.get_pull_request(owner, repo, number).await
+    }
+
+    async fn list_pull_request_files(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<DiffFile>> {
+        self.client()?
+            .list_pull_request_files(owner, repo, number)
+            .await
+    }
+}
+
+#[async_trait]
 impl GitHubApi for RealGitHubApi {
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
         self.client
@@ -220,21 +238,6 @@ impl GitHubApi for RealGitHubApi {
     ) -> Result<harbor_github::PullRequestMetadataOptions> {
         self.client()?
             .list_pull_request_metadata_options(owner, repo)
-            .await
-    }
-
-    async fn get_pull_request(&self, owner: &str, repo: &str, number: u64) -> Result<PullRequest> {
-        self.client()?.get_pull_request(owner, repo, number).await
-    }
-
-    async fn list_pull_request_files(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<DiffFile>> {
-        self.client()?
-            .list_pull_request_files(owner, repo, number)
             .await
     }
 

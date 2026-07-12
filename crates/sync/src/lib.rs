@@ -14,6 +14,7 @@ pub use policy::{
     SyncTarget, checks_have_running_or_pending_work, workflow_runs_have_running_work,
 };
 pub use pull_request_detail::{
-    PullRequestCiSource, PullRequestDetailRefresh, refresh_pull_request_check_runs,
+    PullRequestCiSource, PullRequestContentSource, PullRequestDetailRefresh,
+    refresh_pull_request_check_runs, refresh_pull_request_files, refresh_pull_request_metadata,
     refresh_pull_request_workflow_runs,
 };

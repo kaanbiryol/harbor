@@ -1,7 +1,7 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use gpui_component::ActiveTheme;
 use harbor_domain::{DiffFile, RepoId};
-use harbor_sync::SyncTarget;
+use harbor_sync::{SyncTarget, refresh_pull_request_files, refresh_pull_request_metadata};
 
 use crate::{
     diff::{ParsedDiff, parse_files, parse_unified_diff_with_syntax},
@@ -29,30 +29,16 @@ impl AppView {
         let store = self.repository_state.store();
         self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
-            let owner = load.owner;
-            let name = load.name;
             let number = load.number;
 
             async move |this, cx| {
-                let result = github_api.get_pull_request(&owner, &name, number).await;
-                let cache_result = match (&store, result.as_ref()) {
-                    (Some(store), Ok(detail)) => store
-                        .save_pull_request_metadata(detail)
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (Some(store), Err(error)) => store
-                        .record_sync_failure(
-                            &harbor_storage::detail_target_key(
-                                &repo,
-                                number,
-                                harbor_storage::PullRequestDetailSection::Metadata,
-                            ),
-                            &error.to_string(),
-                        )
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (None, _) => Ok(()),
-                };
+                let refresh = refresh_pull_request_metadata(
+                    github_api.as_ref(),
+                    store.as_ref(),
+                    &repo,
+                    number,
+                )
+                .await;
 
                 this.update_or_log(
                     cx,
@@ -62,10 +48,10 @@ impl AppView {
                             return;
                         }
 
-                        if let Err(error) = cache_result {
+                        if let Some(error) = refresh.cache_error {
                             view.repository_state.set_error(error);
                         }
-                        match result {
+                        match refresh.result {
                             Ok(detail) => {
                                 view.mark_sync_success(SyncTarget::SelectedPullRequestMetadata);
                                 view.replace_selected_pull_request_preserving_row_fields(detail);
@@ -101,17 +87,20 @@ impl AppView {
         let store = self.repository_state.store();
         self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
-            let owner = load.owner;
-            let name = load.name;
             let number = load.number;
             let head_sha = load.head_sha;
             let highlight_theme = cx.theme().highlight_theme.clone();
 
             async move |this, cx| {
-                let result = match github_api
-                    .list_pull_request_files(&owner, &name, number)
-                    .await
-                {
+                let refresh = refresh_pull_request_files(
+                    github_api.as_ref(),
+                    store.as_ref(),
+                    &repo,
+                    number,
+                    &head_sha,
+                )
+                .await;
+                let result = match refresh.result {
                     Ok(files) => Ok(cx
                         .background_spawn(async move {
                             let diffs = parse_files(&files);
@@ -119,24 +108,6 @@ impl AppView {
                         })
                         .await),
                     Err(error) => Err(error),
-                };
-                let cache_result = match (&store, result.as_ref()) {
-                    (Some(store), Ok((files, _))) => store
-                        .save_pull_request_files(&repo, number, &head_sha, files)
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (Some(store), Err(error)) => store
-                        .record_sync_failure(
-                            &harbor_storage::detail_target_key(
-                                &repo,
-                                number,
-                                harbor_storage::PullRequestDetailSection::Files,
-                            ),
-                            &error.to_string(),
-                        )
-                        .await
-                        .map_err(|error| error.to_string()),
-                    (None, _) => Ok(()),
                 };
                 let update_repo = repo.clone();
 
@@ -149,7 +120,7 @@ impl AppView {
                                 &update_repo,
                                 number,
                                 result,
-                                cache_result,
+                                refresh.cache_error,
                                 cx,
                             )
                         },
@@ -207,14 +178,14 @@ impl AppView {
         repository: &RepoId,
         number: u64,
         result: PullRequestFilesResult,
-        cache_result: std::result::Result<(), String>,
+        cache_error: Option<String>,
         cx: &mut Context<Self>,
     ) -> Option<Vec<DiffFile>> {
         if !selected_pull_request_matches(self, repository, number) {
             return None;
         }
 
-        if let Err(error) = cache_result {
+        if let Some(error) = cache_error {
             self.repository_state.set_error(error);
         }
         let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
