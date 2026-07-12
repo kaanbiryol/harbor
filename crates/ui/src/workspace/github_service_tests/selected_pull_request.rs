@@ -163,6 +163,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         assert!(view.excluded_file_type_filters.is_empty());
         assert!(!view.show_files_owned_by_current_user);
         assert!(view.owned_file_paths.is_empty());
+        assert!(view.diff_list_items.is_empty());
     });
 }
 

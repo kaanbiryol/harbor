@@ -209,10 +209,6 @@ impl ActionRuntimeState {
         self.pull_request_metadata_action.clear_error();
         self.pull_request_metadata_field = None;
     }
-
-    pub(crate) fn clear_pull_request_action_error(&mut self) {
-        self.pull_request_action.clear_error();
-    }
 }
 
 #[cfg(test)]

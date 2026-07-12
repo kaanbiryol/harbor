@@ -294,31 +294,10 @@ impl AppView {
             return;
         }
 
-        self.reset_diff_selection();
-        self.collapsed_file_tree_folders.clear();
-        self.expanded_diff_file_paths.clear();
-        self.collapsed_diff_file_paths.clear();
-        self.reviewed_file_paths.clear();
-        self.reset_changed_file_filters();
-        self.owned_file_paths.clear();
-        self.clear_detail_loaded_state();
-        self.detail_state.clear_workflow_jobs();
-        self.clear_log_content();
-        self.clear_review_data_state();
-        self.review_state.clear_reviews_error();
-        self.clear_log_error();
-        self.action_runtime.clear_pull_request_action_error();
-        self.review_state.clear_submission_errors();
-        self.sync_diff_list_items(cx);
         self.pr_list_scroll.scroll_to_item(
             self.selected_pull_request_list_position(),
             ScrollStrategy::Center,
         );
-        self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.reset_diff_list_scroll();
-        self.reset_panel_list_scrolls();
-        self.status = format!("Selected {}", self.selected_pr_label());
-
         self.load_selected_pull_request(cx);
     }
 

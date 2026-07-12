@@ -116,7 +116,7 @@ impl AppView {
             return;
         }
 
-        self.reset_selected_pull_request_detail_state(load.number);
+        self.reset_selected_pull_request_detail_state(load.number, cx);
         let defer_review_load_until_cache = should_defer_review_load_until_cache(
             fetch_policy,
             self.repository_state.store().is_some(),
@@ -197,13 +197,14 @@ impl AppView {
         }
     }
 
-    fn reset_selected_pull_request_detail_state(&mut self, number: u64) {
+    fn reset_selected_pull_request_detail_state(&mut self, number: u64, cx: &mut Context<Self>) {
+        self.tasks.clear_pull_request_detail_tasks();
         self.set_detail_loading(false);
         self.clear_detail_errors();
         self.clear_log_error();
         self.clear_action_errors();
-        self.tasks.clear_pull_request_detail_tasks();
         self.clear_selected_pull_request_detail_state();
+        self.sync_diff_list_items(cx);
         self.status = format!("Loading PR #{number} details and changed files");
     }
 
