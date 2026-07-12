@@ -76,7 +76,7 @@ pub(crate) struct PullRequestDetailSnapshot {
     log_chunk: Option<LogChunk>,
     current_user_login: Option<String>,
     changed_files_state: ChangedFilesUiState,
-    collapsed_check_groups: HashSet<String>,
+    expanded_check_groups: HashSet<String>,
     active_file: usize,
     active_hunk: usize,
     active_tab: PanelTab,
@@ -193,7 +193,7 @@ impl AppView {
             log_chunk: self.detail_state.log_state.chunk().cloned(),
             current_user_login: self.review_state.current_user_login().map(str::to_string),
             changed_files_state: self.changed_files_state.clone(),
-            collapsed_check_groups: self.checks_state.collapsed_groups.clone(),
+            expanded_check_groups: self.checks_state.expanded_groups.clone(),
             active_file: self.active_file_index(),
             active_hunk: self.active_hunk_index(),
             active_tab: self.active_tab,
@@ -290,7 +290,7 @@ impl AppView {
             .log_state
             .set_chunk(snapshot.log_chunk.clone());
         self.changed_files_state = snapshot.changed_files_state.clone();
-        self.checks_state.collapsed_groups = snapshot.collapsed_check_groups.clone();
+        self.checks_state.expanded_groups = snapshot.expanded_check_groups.clone();
         self.selection_state.restore_diff_position(
             snapshot.active_file,
             snapshot.active_hunk,

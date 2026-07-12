@@ -70,12 +70,12 @@ pub(super) enum CheckPanelRow {
 
 pub(super) fn check_panel_rows(
     check_runs: &[CheckRun],
-    collapsed_groups: &HashSet<String>,
+    expanded_groups: &HashSet<String>,
     active_filter: CheckRunFilter,
 ) -> Vec<CheckPanelRow> {
     let mut rows = Vec::new();
 
-    for group in check_run_groups(check_runs, collapsed_groups, active_filter) {
+    for group in check_run_groups(check_runs, expanded_groups, active_filter) {
         rows.push(CheckPanelRow::Group(group.clone()));
         if group.expanded {
             rows.extend(
@@ -92,7 +92,7 @@ pub(super) fn check_panel_rows(
 
 fn check_run_groups(
     check_runs: &[CheckRun],
-    collapsed_groups: &HashSet<String>,
+    expanded_groups: &HashSet<String>,
     active_filter: CheckRunFilter,
 ) -> Vec<CheckRunGroup> {
     let mut indices_by_group = BTreeMap::<String, Vec<usize>>::new();
@@ -112,7 +112,7 @@ fn check_run_groups(
         .into_iter()
         .map(|(name, check_indices)| {
             let summary = checks_summary_for_indices(check_runs, &check_indices);
-            let expanded = !collapsed_groups.contains(&name);
+            let expanded = expanded_groups.contains(&name);
 
             CheckRunGroup {
                 name,

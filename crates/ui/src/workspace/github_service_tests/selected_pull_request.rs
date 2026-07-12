@@ -138,7 +138,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
             .collapsed_file_tree_folders
             .insert("src".to_string());
         view.checks_state
-            .collapsed_groups
+            .expanded_groups
             .insert("build".to_string());
         view.changed_files_state
             .expanded_diff_file_paths
@@ -172,7 +172,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
                 .collapsed_file_tree_folders
                 .is_empty()
         );
-        assert!(view.checks_state.collapsed_groups.is_empty());
+        assert!(view.checks_state.expanded_groups.is_empty());
         assert!(view.changed_files_state.expanded_diff_file_paths.is_empty());
         assert!(
             view.changed_files_state

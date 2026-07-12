@@ -214,8 +214,8 @@ impl AppView {
         self.selection_state.pull_request_index()
     }
 
-    pub(crate) fn collapsed_check_groups(&self) -> &HashSet<String> {
-        &self.checks_state.collapsed_groups
+    pub(crate) fn expanded_check_groups(&self) -> &HashSet<String> {
+        &self.checks_state.expanded_groups
     }
 
     pub(crate) fn checks_filter(&self) -> CheckRunFilter {
@@ -239,13 +239,11 @@ impl AppView {
     }
 
     pub(crate) fn toggle_check_group(&mut self, group_name: String, cx: &mut Context<Self>) {
-        self.status = if self.checks_state.collapsed_groups.remove(&group_name) {
-            format!("Expanded {group_name} checks")
-        } else {
-            self.checks_state
-                .collapsed_groups
-                .insert(group_name.clone());
+        self.status = if self.checks_state.expanded_groups.remove(&group_name) {
             format!("Collapsed {group_name} checks")
+        } else {
+            self.checks_state.expanded_groups.insert(group_name.clone());
+            format!("Expanded {group_name} checks")
         };
         cx.notify();
     }

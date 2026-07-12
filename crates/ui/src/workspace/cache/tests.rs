@@ -31,7 +31,7 @@ fn detail_snapshot() -> PullRequestDetailSnapshot {
         log_chunk: None,
         current_user_login: None,
         changed_files_state: ChangedFilesUiState::default(),
-        collapsed_check_groups: HashSet::new(),
+        expanded_check_groups: HashSet::new(),
         active_file: 0,
         active_hunk: 0,
         active_tab: PanelTab::Diff,

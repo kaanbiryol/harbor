@@ -29,7 +29,7 @@ use model::{CheckPanelRow, CheckRunGroup, check_panel_rows, check_run_display_na
 pub(crate) struct CheckPanelRenderInput<'a> {
     pub(crate) summary: ChecksSummary,
     pub(crate) check_runs: &'a [CheckRun],
-    pub(crate) collapsed_groups: &'a HashSet<String>,
+    pub(crate) expanded_groups: &'a HashSet<String>,
     pub(crate) active_filter: CheckRunFilter,
     pub(crate) is_loading: bool,
     pub(crate) error: Option<&'a str>,
@@ -43,13 +43,13 @@ pub(crate) fn render_checks_panel(
     let CheckPanelRenderInput {
         summary,
         check_runs,
-        collapsed_groups,
+        expanded_groups,
         active_filter,
         is_loading,
         error,
         list_state,
     } = input;
-    let rows = check_panel_rows(check_runs, collapsed_groups, active_filter);
+    let rows = check_panel_rows(check_runs, expanded_groups, active_filter);
     sync_virtual_list_item_count(&list_state, rows.len());
     let rows_for_render = rows.clone();
 
@@ -106,6 +106,9 @@ pub(crate) fn render_checks_panel(
                     cx,
                 )),
         )
+        .when(summary.total > 0, |element| {
+            element.child(render_check_completion_summary(summary))
+        })
         .when(is_loading, |element| {
             element.child(render_empty_panel_card("Loading check runs..."))
         })
@@ -214,6 +217,31 @@ fn render_check_filter_pill(
         .child(label)
 }
 
+fn render_check_completion_summary(summary: ChecksSummary) -> impl IntoElement {
+    let [passed, skipped, complete] = check_completion_summary_labels(summary);
+
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_xs()
+        .child(render_check_outcome_label(passed, Tone::Success))
+        .child(div().text_color(color::text_disabled()).child("·"))
+        .child(render_check_outcome_label(skipped, Tone::Neutral))
+        .child(div().text_color(color::text_disabled()).child("·"))
+        .child(render_check_outcome_label(complete, Tone::Neutral))
+}
+
+fn check_completion_summary_labels(summary: ChecksSummary) -> [String; 3] {
+    let completed = summary.total.saturating_sub(summary.pending);
+
+    [
+        format!("{} passed", summary.passed),
+        format!("{} skipped", summary.skipped),
+        format!("{completed} of {} complete", summary.total),
+    ]
+}
+
 fn render_check_group_header(group: CheckRunGroup, cx: &mut Context<AppView>) -> impl IntoElement {
     let chevron = if group.expanded {
         Octicon::ChevronDown
@@ -224,6 +252,7 @@ fn render_check_group_header(group: CheckRunGroup, cx: &mut Context<AppView>) ->
     let toggle_group_name = group.name.clone();
     let group_id = group.check_indices.first().copied().unwrap_or(0);
     let (_, summary_tone) = check_group_summary_label(group.summary);
+    let summary_icon = check_group_status_icon(group.summary);
 
     div()
         .id(("check-group", group_id))
@@ -252,7 +281,7 @@ fn render_check_group_header(group: CheckRunGroup, cx: &mut Context<AppView>) ->
                 .items_center()
                 .gap_2()
                 .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
-                .child(render_check_tone_dot(summary_tone))
+                .child(render_check_status_icon(summary_icon, summary_tone))
                 .child(
                     div()
                         .min_w_0()
@@ -312,6 +341,7 @@ pub(crate) fn render_check_run(check_index: usize, check_run: &CheckRun) -> impl
     let click_url = check_url.clone();
     let display_name = check_run_display_name(check_run);
     let (_, tone) = check_conclusion_label(check_run.conclusion, check_run.status);
+    let status_icon = check_status_icon(check_run.conclusion, check_run.status);
 
     div()
         .id(("check-run", check_index))
@@ -345,7 +375,7 @@ pub(crate) fn render_check_run(check_index: usize, check_run: &CheckRun) -> impl
                 .items_center()
                 .gap_2()
                 .child(div().w(px(16.0)).flex_none())
-                .child(render_check_tone_dot(tone))
+                .child(render_check_status_icon(status_icon, tone))
                 .child(
                     div()
                         .min_w_0()
@@ -428,14 +458,47 @@ fn check_result_count_label(count: usize, label: &str, total: usize) -> String {
     }
 }
 
-fn render_check_tone_dot(tone: Tone) -> impl IntoElement {
+fn render_check_status_icon(icon: Octicon, tone: Tone) -> impl IntoElement {
     let colors = tone_colors(tone);
 
     div()
-        .size(px(7.0))
+        .w(px(16.0))
         .flex_none()
-        .rounded_full()
-        .bg(colors.text)
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(Icon::new(icon).small().text_color(colors.text))
+}
+
+fn check_group_status_icon(summary: ChecksSummary) -> Octicon {
+    if summary.failed > 0 {
+        Octicon::XCircle
+    } else if summary.pending > 0 {
+        Octicon::Sync
+    } else if summary.passed > 0 {
+        Octicon::CheckCircle
+    } else {
+        Octicon::Clock
+    }
+}
+
+fn check_status_icon(conclusion: Option<CheckConclusion>, status: CheckStatus) -> Octicon {
+    match (status, conclusion) {
+        (CheckStatus::Completed, Some(CheckConclusion::Success)) => Octicon::CheckCircle,
+        (CheckStatus::Completed, Some(CheckConclusion::Skipped | CheckConclusion::Neutral)) => {
+            Octicon::Clock
+        }
+        (
+            CheckStatus::Completed,
+            Some(CheckConclusion::TimedOut | CheckConclusion::ActionRequired),
+        ) => Octicon::Alert,
+        (
+            CheckStatus::Completed,
+            Some(CheckConclusion::Cancelled | CheckConclusion::Failure) | None,
+        ) => Octicon::XCircle,
+        (CheckStatus::InProgress, _) => Octicon::Sync,
+        (CheckStatus::Queued, _) => Octicon::Clock,
+    }
 }
 
 fn render_check_outcome_label(label: impl Into<String>, tone: Tone) -> impl IntoElement {
@@ -496,7 +559,7 @@ mod tests {
     use crate::test_fixtures::check_run;
 
     #[test]
-    fn groups_checks_by_name_prefix() {
+    fn groups_checks_by_name_prefix_and_collapses_them_by_default() {
         let checks = vec![
             named_check(
                 "ci / unit",
@@ -517,19 +580,15 @@ mod tests {
         assert_eq!(
             row_labels(&rows),
             vec![
-                "group:ci:2:open",
-                "check:0",
-                "check:1",
-                "group:other checks:1:open",
-                "check:3",
-                "group:security:1:open",
-                "check:2",
+                "group:ci:2:closed",
+                "group:other checks:1:closed",
+                "group:security:1:closed",
             ]
         );
     }
 
     #[test]
-    fn hides_checks_for_collapsed_groups() {
+    fn shows_checks_for_expanded_groups() {
         let checks = vec![
             named_check(
                 "ci / unit",
@@ -542,11 +601,14 @@ mod tests {
                 Some(CheckConclusion::Failure),
             ),
         ];
-        let collapsed_groups = HashSet::from(["ci".to_string()]);
+        let expanded_groups = HashSet::from(["ci".to_string()]);
 
-        let rows = check_panel_rows(&checks, &collapsed_groups, CheckRunFilter::All);
+        let rows = check_panel_rows(&checks, &expanded_groups, CheckRunFilter::All);
 
-        assert_eq!(row_labels(&rows), vec!["group:ci:2:closed"]);
+        assert_eq!(
+            row_labels(&rows),
+            vec!["group:ci:2:open", "check:0", "check:1"]
+        );
     }
 
     #[test]
@@ -583,11 +645,12 @@ mod tests {
             named_check("external", CheckStatus::Queued, None),
         ];
 
-        let rows = check_panel_rows(&checks, &HashSet::new(), CheckRunFilter::Failed);
+        let expanded_groups = HashSet::from(["ci".to_string(), "other checks".to_string()]);
+        let rows = check_panel_rows(&checks, &expanded_groups, CheckRunFilter::Failed);
 
         assert_eq!(row_labels(&rows), vec!["group:ci:1:open", "check:1"]);
 
-        let rows = check_panel_rows(&checks, &HashSet::new(), CheckRunFilter::Pending);
+        let rows = check_panel_rows(&checks, &expanded_groups, CheckRunFilter::Pending);
 
         assert_eq!(
             row_labels(&rows),
@@ -639,6 +702,56 @@ mod tests {
             check_group_summary_label(summary),
             ("3 passed".to_string(), Tone::Success)
         );
+    }
+
+    #[test]
+    fn formats_compact_completion_summary() {
+        let summary = ChecksSummary {
+            total: 12,
+            passed: 2,
+            pending: 0,
+            skipped: 10,
+            failed: 0,
+        };
+
+        assert_eq!(
+            check_completion_summary_labels(summary),
+            ["2 passed", "10 skipped", "12 of 12 complete"]
+        );
+
+        let summary = ChecksSummary {
+            total: 12,
+            passed: 2,
+            pending: 3,
+            skipped: 7,
+            failed: 0,
+        };
+
+        assert_eq!(
+            check_completion_summary_labels(summary),
+            ["2 passed", "7 skipped", "9 of 12 complete"]
+        );
+    }
+
+    #[test]
+    fn uses_actions_status_icons_for_check_runs() {
+        assert_eq!(
+            check_status_icon(CheckConclusion::Success.into(), CheckStatus::Completed),
+            Octicon::CheckCircle
+        );
+        assert_eq!(
+            check_status_icon(CheckConclusion::Failure.into(), CheckStatus::Completed),
+            Octicon::XCircle
+        );
+        assert_eq!(
+            check_status_icon(CheckConclusion::TimedOut.into(), CheckStatus::Completed),
+            Octicon::Alert
+        );
+        assert_eq!(
+            check_status_icon(None, CheckStatus::InProgress),
+            Octicon::Sync
+        );
+        assert_eq!(check_status_icon(None, CheckStatus::Queued), Octicon::Clock);
     }
 
     #[test]

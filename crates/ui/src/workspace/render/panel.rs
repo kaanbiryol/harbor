@@ -195,7 +195,7 @@ impl AppView {
                             CheckPanelRenderInput {
                                 summary: pr.map(|pr| pr.checks_summary).unwrap_or_default(),
                                 check_runs: self.detail_state.check_runs(),
-                                collapsed_groups: self.collapsed_check_groups(),
+                                expanded_groups: self.expanded_check_groups(),
                                 active_filter: self.checks_filter(),
                                 is_loading: self.detail_state.checks_loading(),
                                 error: self.detail_state.checks_error(),
