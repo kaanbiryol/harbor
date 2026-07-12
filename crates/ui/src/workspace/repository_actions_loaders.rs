@@ -34,7 +34,7 @@ impl AppView {
     }
 
     pub(crate) fn refresh_repository_actions(&mut self, cx: &mut Context<Self>) {
-        self.tasks.clear_repository_actions_tasks();
+        self.tasks.cancel_repository_actions_tasks();
         self.repository_actions_state.mark_workflows_stale();
         self.repository_actions_state.mark_runs_stale();
         self.load_repository_actions_if_needed(cx);

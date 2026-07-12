@@ -221,7 +221,7 @@ impl AppView {
             return false;
         };
 
-        self.tasks.clear_pull_request_detail_tasks();
+        self.tasks.cancel_selected_pull_request_tasks();
         self.set_detail_loading(false);
         self.set_log_loading(false);
         self.clear_detail_errors();
@@ -321,8 +321,8 @@ impl AppView {
             .select_repository(key.repository.clone());
         self.pull_request_inbox.set_mode(key.mode);
         self.pull_request_inbox.set_page_info(snapshot.page_info);
-        self.tasks.clear_pull_request_list_task();
-        self.tasks.clear_pull_request_detail_tasks();
+        self.tasks.cancel_pull_request_list_task();
+        self.tasks.cancel_selected_pull_request_tasks();
         self.pull_request_inbox.reset_load();
         self.set_detail_loading(false);
         self.set_log_loading(false);

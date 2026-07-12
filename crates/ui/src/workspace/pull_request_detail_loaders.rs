@@ -198,7 +198,7 @@ impl AppView {
     }
 
     fn reset_selected_pull_request_detail_state(&mut self, number: u64, cx: &mut Context<Self>) {
-        self.tasks.clear_pull_request_detail_tasks();
+        self.tasks.cancel_selected_pull_request_tasks();
         self.set_detail_loading(false);
         self.clear_detail_errors();
         self.clear_log_error();

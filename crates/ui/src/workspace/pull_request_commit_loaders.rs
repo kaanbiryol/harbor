@@ -18,7 +18,7 @@ impl AppView {
 
         self.detail_state.start_commits_load();
         let github_api = self.github_api.clone();
-        self.tasks.push_pull_request_detail_task(cx.spawn({
+        self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;

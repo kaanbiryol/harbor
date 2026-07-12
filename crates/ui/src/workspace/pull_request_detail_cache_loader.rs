@@ -74,7 +74,7 @@ impl AppView {
         });
 
         self.tasks
-            .push_pull_request_detail_task(cx.spawn(async move |this, cx| {
+            .push_selected_pull_request_task(cx.spawn(async move |this, cx| {
                 let result = task.await;
 
                 this.update_or_log(

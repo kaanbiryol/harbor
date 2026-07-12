@@ -24,7 +24,7 @@ impl AppView {
         self.detail_state.start_checks_load();
         let github_api = self.github_api.clone();
         let store = self.repository_state.store();
-        self.tasks.push_pull_request_detail_task(cx.spawn({
+        self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;
@@ -112,7 +112,7 @@ impl AppView {
         self.detail_state.start_workflows_load();
         let github_api = self.github_api.clone();
         let store = self.repository_state.store();
-        self.tasks.push_pull_request_detail_task(cx.spawn({
+        self.tasks.push_selected_pull_request_task(cx.spawn({
             let repo = load.repo;
             let owner = load.owner;
             let name = load.name;

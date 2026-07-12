@@ -69,7 +69,7 @@ impl AppView {
         let existing_pending_review = self.review_state.pending_review_cloned();
         let github_api = self.github_api.clone();
         let store = self.repository_state.store();
-        self.tasks.push_pull_request_detail_task(cx.spawn(async move |this, cx| {
+        self.tasks.push_selected_pull_request_task(cx.spawn(async move |this, cx| {
             let current_user_result = match cached_current_user_login {
                 Some(login) => Ok(login),
                 None => github_api.current_user().await,

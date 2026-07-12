@@ -136,9 +136,9 @@ impl AppView {
     }
 
     pub(super) fn clear_authenticated_github_content(&mut self) {
-        self.tasks.clear_pull_request_list_task();
-        self.tasks.clear_pull_request_detail_tasks();
-        self.tasks.clear_repository_actions_tasks();
+        self.tasks.cancel_pull_request_list_task();
+        self.tasks.cancel_selected_pull_request_tasks();
+        self.tasks.cancel_repository_actions_tasks();
         self.repository_state.clear_visible_repositories();
         self.repository_actions_state.clear();
         self.repository_state.finish_loading();

@@ -109,7 +109,7 @@ impl AppView {
         self.repository_actions_state
             .reset_for_repository(repo.clone());
         if !same_repository {
-            self.tasks.clear_repository_actions_tasks();
+            self.tasks.cancel_repository_actions_tasks();
             self.actions_workflow_list_state
                 .scroll_to(gpui::ListOffset {
                     item_ix: 0,
@@ -159,7 +159,7 @@ impl AppView {
             self.clear_detail_errors();
             self.clear_log_error();
             self.clear_action_errors();
-            self.tasks.clear_pull_request_detail_tasks();
+            self.tasks.cancel_selected_pull_request_tasks();
             self.clear_review_data_state();
             self.clear_review_submission_errors();
             self.collapsed_file_tree_folders.clear();

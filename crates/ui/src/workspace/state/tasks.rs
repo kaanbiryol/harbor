@@ -2,8 +2,8 @@ use gpui::Task;
 
 #[derive(Default)]
 pub(crate) struct WorkspaceTasks {
-    pr_list_task: Option<Task<()>>,
-    pr_detail_tasks: Vec<Task<()>>,
+    pull_request_list_task: Option<Task<()>>,
+    selected_pull_request_tasks: Vec<Task<()>>,
     repository_actions_tasks: Vec<Task<()>>,
     repository_task: Option<Task<()>>,
     local_task: Option<Task<()>>,
@@ -13,28 +13,28 @@ pub(crate) struct WorkspaceTasks {
 }
 
 impl WorkspaceTasks {
-    pub(crate) fn clear_pull_request_detail_tasks(&mut self) {
-        self.pr_detail_tasks.clear();
+    pub(crate) fn cancel_selected_pull_request_tasks(&mut self) {
+        self.selected_pull_request_tasks.clear();
     }
 
-    pub(crate) fn clear_repository_actions_tasks(&mut self) {
+    pub(crate) fn cancel_repository_actions_tasks(&mut self) {
         self.repository_actions_tasks.clear();
     }
 
     pub(crate) fn set_pull_request_list_task(&mut self, task: Task<()>) {
-        self.pr_list_task = Some(task);
+        self.pull_request_list_task = Some(task);
     }
 
-    pub(crate) fn push_pull_request_detail_task(&mut self, task: Task<()>) {
-        self.pr_detail_tasks.push(task);
+    pub(crate) fn push_selected_pull_request_task(&mut self, task: Task<()>) {
+        self.selected_pull_request_tasks.push(task);
     }
 
     pub(crate) fn push_repository_actions_task(&mut self, task: Task<()>) {
         self.repository_actions_tasks.push(task);
     }
 
-    pub(crate) fn clear_pull_request_list_task(&mut self) {
-        self.pr_list_task = None;
+    pub(crate) fn cancel_pull_request_list_task(&mut self) {
+        self.pull_request_list_task = None;
     }
 
     pub(crate) fn set_repository_task(&mut self, task: Task<()>) {
