@@ -14,13 +14,18 @@ const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
 mod activity;
 #[path = "pull_request_overview/description.rs"]
 mod description;
+#[path = "pull_request_overview/events.rs"]
+mod events;
 #[path = "pull_request_overview/model.rs"]
 mod model;
+#[path = "pull_request_overview/readiness.rs"]
+mod readiness;
 #[path = "pull_request_overview/sidebar.rs"]
 mod sidebar;
 #[path = "pull_request_overview/timeline.rs"]
 mod timeline;
 
+use events::*;
 use model::*;
 use sidebar::*;
 use timeline::*;

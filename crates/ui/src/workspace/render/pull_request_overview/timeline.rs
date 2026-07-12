@@ -7,16 +7,10 @@ use gpui_component::{
     spinner::Spinner,
     tooltip::Tooltip,
 };
-use harbor_domain::{
-    PullRequestComment, PullRequestPerson, PullRequestReview, PullRequestReviewState, ReviewThread,
-    ReviewThreadState,
-};
+use harbor_domain::{PullRequestPerson, PullRequestReviewState, ReviewThread, ReviewThreadState};
 
 use crate::{
-    date_time::{
-        full_time_label, full_time_label_with_edit, natural_time_label,
-        natural_time_label_with_edit,
-    },
+    date_time::{full_time_label_with_edit, natural_time_label_with_edit},
     icons::Octicon,
     panels::{
         ReviewCommentActionsMenuState, ReviewDiffPreview, render_review_comment_actions_menu,
@@ -33,143 +27,6 @@ use crate::{
 };
 
 use super::{model::OverviewTimelineMessage, render_person_avatar_with_size};
-
-pub(super) fn render_overview_comment_event(
-    comment: &PullRequestComment,
-    index: usize,
-    markdown: AnyElement,
-) -> AnyElement {
-    let person = PullRequestPerson {
-        login: comment.author.clone(),
-        avatar_url: comment.author_avatar_url.clone(),
-    };
-    let time_label = natural_time_label_with_edit(comment.created_at, comment.updated_at);
-    let time_tooltip = full_time_label_with_edit(comment.created_at, comment.updated_at);
-
-    render_timeline_row(
-        render_person_avatar_with_size(&person, 24.0),
-        div()
-            .id(("overview-comment", index))
-            .w_full()
-            .min_w_0()
-            .rounded_sm()
-            .border_1()
-            .border_color(color::border())
-            .bg(color::content_background())
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(color::border_subtle())
-                    .text_xs()
-                    .child(
-                        div()
-                            .font_semibold()
-                            .text_color(color::text_primary())
-                            .child(comment.author.clone()),
-                    )
-                    .child(div().text_color(color::text_muted()).child("commented"))
-                    .child(render_timeline_time(
-                        format!("overview-comment-time-{}", comment.id),
-                        time_label,
-                        time_tooltip,
-                    )),
-            )
-            .child(
-                div()
-                    .px_3()
-                    .py_3()
-                    .text_sm()
-                    .text_color(color::text_secondary())
-                    .child(markdown),
-            )
-            .into_any_element(),
-        true,
-    )
-}
-
-pub(super) fn render_overview_review_event(
-    review: &PullRequestReview,
-    index: usize,
-    markdown: Option<AnyElement>,
-) -> AnyElement {
-    let selector = format!("overview-review-{}", review.id);
-    let (action, status, tone) = overview_review_state(review.state);
-    let time_label = review
-        .submitted_at
-        .map(natural_time_label)
-        .unwrap_or_else(|| "not submitted".to_string());
-    let time_tooltip = review.submitted_at.map(full_time_label);
-    let colors = tone_colors(tone);
-
-    render_timeline_row(
-        render_timeline_icon(Octicon::Eye, tone),
-        div()
-            .debug_selector(move || selector.clone())
-            .id(("overview-review", index))
-            .w_full()
-            .min_w_0()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(
-                div()
-                    .min_h(px(24.0))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .text_xs()
-                            .child(
-                                div()
-                                    .font_semibold()
-                                    .text_color(color::text_primary())
-                                    .child(review.author.clone()),
-                            )
-                            .child(div().text_color(color::text_secondary()).child(action))
-                            .child(
-                                div()
-                                    .id(format!("overview-review-time-{}", review.id))
-                                    .text_color(color::text_muted())
-                                    .when_some(time_tooltip, |element, tooltip| {
-                                        element.tooltip(move |window, cx| {
-                                            Tooltip::new(tooltip.clone()).build(window, cx)
-                                        })
-                                    })
-                                    .child(time_label),
-                            ),
-                    )
-                    .child(render_status_pill(status, tone)),
-            )
-            .when_some(markdown, |element, markdown| {
-                element.child(
-                    div()
-                        .rounded_sm()
-                        .border_1()
-                        .border_color(color::border())
-                        .bg(colors.background)
-                        .px_3()
-                        .py_2()
-                        .text_sm()
-                        .text_color(color::text_secondary())
-                        .child(markdown),
-                )
-            })
-            .into_any_element(),
-        true,
-    )
-}
 
 pub(super) struct OverviewThreadRenderState<'a> {
     pub(super) thread: &'a ReviewThread,
@@ -618,7 +475,9 @@ pub(super) fn overview_thread_expanded(
     override_expanded.unwrap_or(state == ReviewThreadState::Unresolved)
 }
 
-fn overview_review_state(state: PullRequestReviewState) -> (&'static str, &'static str, Tone) {
+pub(super) fn overview_review_state(
+    state: PullRequestReviewState,
+) -> (&'static str, &'static str, Tone) {
     match state {
         PullRequestReviewState::Pending => ("started a review", "pending", Tone::Warning),
         PullRequestReviewState::Commented => ("reviewed changes", "commented", Tone::Info),
@@ -723,7 +582,7 @@ fn render_timeline_row_with_node_offset(
         .into_any_element()
 }
 
-fn render_timeline_icon(icon: Octicon, tone: Tone) -> AnyElement {
+pub(super) fn render_timeline_icon(icon: Octicon, tone: Tone) -> AnyElement {
     let colors = tone_colors(tone);
 
     div()
@@ -739,7 +598,7 @@ fn render_timeline_icon(icon: Octicon, tone: Tone) -> AnyElement {
         .into_any_element()
 }
 
-fn render_timeline_time(id: String, label: String, tooltip: String) -> impl IntoElement {
+pub(super) fn render_timeline_time(id: String, label: String, tooltip: String) -> impl IntoElement {
     div()
         .id(id)
         .text_color(color::text_muted())
