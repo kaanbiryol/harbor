@@ -1,8 +1,11 @@
+use std::ops::Range;
+
 use gpui::{Entity, IntoElement, prelude::*, px, rems};
 use gpui_component::{
     highlighter::LanguageRegistry,
     text::{TextView, TextViewState, TextViewStyle},
 };
+use markdown::{ParseOptions, mdast::Node};
 
 #[derive(Clone, Copy)]
 struct MarkdownFence {
@@ -74,6 +77,28 @@ fn review_markdown_style() -> TextViewStyle {
 }
 
 fn normalize_review_markdown(markdown: &str) -> String {
+    let block_html_ranges = block_html_ranges(markdown);
+    if block_html_ranges.is_empty() {
+        return normalize_review_markdown_segment(markdown);
+    }
+
+    let mut normalized = String::with_capacity(markdown.len());
+    let mut segment_start = 0;
+
+    for range in block_html_ranges {
+        normalized.push_str(&normalize_review_markdown_segment(
+            &markdown[segment_start..range.start],
+        ));
+        normalized.push_str(&markdown[range.clone()]);
+        segment_start = range.end;
+    }
+    normalized.push_str(&normalize_review_markdown_segment(
+        &markdown[segment_start..],
+    ));
+    normalized
+}
+
+fn normalize_review_markdown_segment(markdown: &str) -> String {
     let mut normalized = String::with_capacity(markdown.len());
     let mut fence = None;
 
@@ -86,6 +111,41 @@ fn normalize_review_markdown(markdown: &str) -> String {
     }
 
     normalized
+}
+
+fn block_html_ranges(markdown: &str) -> Vec<Range<usize>> {
+    if !markdown.contains('<') {
+        return Vec::new();
+    }
+
+    let root = match markdown::to_mdast(markdown, &ParseOptions::gfm()) {
+        Ok(Node::Root(root)) => root,
+        Ok(_) => return Vec::new(),
+        Err(error) => {
+            tracing::warn!(%error, "failed to parse review markdown before preserving html blocks");
+            return Vec::new();
+        }
+    };
+    let mut ranges = Vec::new();
+
+    for node in root.children {
+        let Node::Html(html) = node else {
+            continue;
+        };
+        let Some(position) = html.position else {
+            continue;
+        };
+        let range = position.start.offset..position.end.offset;
+        if range.start <= range.end
+            && range.end <= markdown.len()
+            && markdown.is_char_boundary(range.start)
+            && markdown.is_char_boundary(range.end)
+        {
+            ranges.push(range);
+        }
+    }
+
+    ranges
 }
 
 fn normalize_review_markdown_line(line: &str, fence: &mut Option<MarkdownFence>) -> String {
@@ -319,6 +379,28 @@ mod tests {
             ),
             "[rule](https://example.com/rule) small print"
         );
+    }
+
+    #[test]
+    fn preserves_linked_picture_html_with_image_dimensions() {
+        let body = concat!(
+            "<div><a href=\"https://cursor.com/agents/run\"><picture>",
+            "<source media=\"(prefers-color-scheme: dark)\" ",
+            "srcset=\"https://cursor.com/open-dark.png\">",
+            "<source media=\"(prefers-color-scheme: light)\" ",
+            "srcset=\"https://cursor.com/open-light.png\">",
+            "<img alt=\"Open in Web\" width=\"114\" height=\"28\" ",
+            "src=\"https://cursor.com/open-dark.png\"></picture></a>&nbsp;",
+            "<a href=\"https://cursor.com/automations/run\"><picture>",
+            "<img alt=\"View Automation\" width=\"141\" height=\"28\" ",
+            "src=\"https://cursor.com/automation-dark.png\"></picture></a>&nbsp;</div>",
+        );
+
+        let normalized = review_markdown_body(body);
+
+        assert_eq!(normalized, body);
+        assert!(normalized.contains("width=\"114\" height=\"28\""));
+        assert!(normalized.contains("width=\"141\" height=\"28\""));
     }
 
     #[test]
