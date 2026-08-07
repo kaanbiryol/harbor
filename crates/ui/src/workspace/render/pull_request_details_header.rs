@@ -140,7 +140,7 @@ impl AppView {
             .child(
                 div()
                     .flex()
-                    .flex_wrap()
+                    .min_w_0()
                     .items_start()
                     .justify_between()
                     .gap_3()

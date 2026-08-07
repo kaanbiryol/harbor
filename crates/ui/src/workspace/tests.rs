@@ -7,7 +7,8 @@ use crate::{
     workspace::github_service::test_support::FakeGitHubApi,
 };
 use gpui::{
-    AppContext, Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px,
+    AppContext, Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext,
+    VisualTestContext, point, px, size,
 };
 use gpui_component::{Root, Theme, ThemeMode};
 use harbor_domain::{
@@ -336,16 +337,26 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
-    let (_, cx) = cx.add_window_view(|window, cx| {
+    let window = cx.open_window(size(px(1012.), px(700.)), |window, cx| {
         let view = cx
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
         view.update(cx, |view, cx| {
-            view.pull_requests = vec![pull_request()];
+            let mut pull_request = pull_request();
+            pull_request.title =
+                "Keep a deliberately long pull request title compact across narrow workspace layouts"
+                    .to_string();
+            pull_request.head_ref =
+                "test/verify-long-pull-request-header-layout-across-narrow-workspaces".to_string();
+            view.pull_requests = vec![pull_request];
             view.active_tab = PanelTab::Diff;
+            view.pull_request_inbox.set_visible(false);
             cx.notify();
         });
         Root::new(view, window, cx)
     });
+    let mut visual_context = VisualTestContext::from_window(window.into(), cx);
+    visual_context.run_until_parked();
+    let cx = &mut visual_context;
 
     cx.refresh().expect("test window should refresh");
 
