@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use gpui::{Task, UniformListScrollHandle};
 use harbor_logs::LogChunk;
 
 pub(crate) struct WorkflowLogState {
-    chunk: Option<LogChunk>,
+    chunk: Option<Arc<LogChunk>>,
     task: Option<Task<()>>,
     pub(crate) list_scroll: UniformListScrollHandle,
     is_loading: bool,
@@ -21,11 +23,15 @@ impl WorkflowLogState {
     }
 
     pub(crate) fn chunk(&self) -> Option<&LogChunk> {
-        self.chunk.as_ref()
+        self.chunk.as_deref()
     }
 
-    pub(crate) fn set_chunk(&mut self, chunk: Option<LogChunk>) {
+    pub(crate) fn restore_chunk(&mut self, chunk: Option<Arc<LogChunk>>) {
         self.chunk = chunk;
+    }
+
+    pub(crate) fn shared_chunk(&self) -> Option<Arc<LogChunk>> {
+        self.chunk.clone()
     }
 
     pub(crate) fn set_task(&mut self, task: Task<()>) {
@@ -67,7 +73,7 @@ impl WorkflowLogState {
     }
 
     pub(crate) fn apply_log_success(&mut self, chunk: LogChunk) {
-        self.chunk = Some(chunk);
+        self.chunk = Some(Arc::new(chunk));
         self.is_loading = false;
     }
 

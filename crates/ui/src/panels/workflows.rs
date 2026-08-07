@@ -11,8 +11,8 @@ use crate::visual::color;
 use crate::workspace::AppView;
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_key_hint, render_panel_card,
-    render_panel_header, sync_virtual_list_item_count,
+    render_empty_panel_card, render_error_panel_card, render_panel_card, render_panel_header,
+    sync_virtual_list_item_count,
 };
 
 #[path = "workflows/runs.rs"]
@@ -238,17 +238,6 @@ fn render_selected_pull_request_workflow_actions(
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.run_workflow_action(WorkflowAction::RerunFailedJobs, cx);
                                 })),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .text_xs()
-                                .text_color(color::text_muted())
-                                .child(render_key_hint("b"))
-                                .child(div().child("/"))
-                                .child(render_key_hint("shift+r")),
                         ),
                 ),
         )

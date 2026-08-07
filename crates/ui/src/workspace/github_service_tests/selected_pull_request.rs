@@ -133,7 +133,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
             .replace_loaded_review_threads(vec![review_thread(ReviewThreadState::Unresolved)]);
         view.detail_state
             .log_state
-            .set_chunk(Some(parse_workflow_log(42, "build")));
+            .apply_log_success(parse_workflow_log(42, "build"));
         view.changed_files_state
             .collapsed_file_tree_folders
             .insert("src".to_string());

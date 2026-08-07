@@ -16,8 +16,8 @@ use crate::{
 };
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_key_hint, render_panel_card,
-    render_panel_header, render_status_pill,
+    render_empty_panel_card, render_error_panel_card, render_panel_card, render_panel_header,
+    render_status_pill,
     workflows::{render_workflow_conclusion, workflow_conclusion_tone, workflow_run_label},
 };
 
@@ -136,7 +136,7 @@ pub(crate) fn render_logs_panel(
             !is_loading && run.is_some() && error.is_none() && log_chunk.is_none(),
             |element| {
                 element.child(render_empty_panel_card(
-                    "Press l or load logs to fetch the workflow log output",
+                    "Load logs to fetch the workflow log output",
                 ))
             },
         )
@@ -148,7 +148,6 @@ fn render_logs_target_card(run: Option<&WorkflowRun>) -> impl IntoElement {
         .py_2()
         .flex()
         .items_center()
-        .justify_between()
         .gap_3()
         .text_xs()
         .text_color(color::text_muted())
@@ -157,13 +156,6 @@ fn render_logs_target_card(run: Option<&WorkflowRun>) -> impl IntoElement {
                     run.map(workflow_run_label)
                         .unwrap_or_else(|| "no workflow run".to_string())
                 )))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_1()
-                .child(render_key_hint("l")),
-        )
 }
 
 pub(crate) fn render_workflow_job(job: &WorkflowJob) -> impl IntoElement {

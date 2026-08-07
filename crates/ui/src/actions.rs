@@ -14,8 +14,6 @@ actions!(
         SelectNextPullRequest,
         /// Selects the previous pull request in the current list.
         SelectPreviousPullRequest,
-        /// Opens the selected pull request details.
-        OpenSelectedPullRequest,
         /// Advances to the next workspace panel tab.
         CyclePanelTab,
         /// Selects the overview panel tab.
@@ -60,12 +58,6 @@ actions!(
         MergePullRequestWithMergeCommit,
         /// Rebases and merges the selected pull request.
         RebasePullRequest,
-        /// Opens logs for the selected workflow run.
-        OpenLogs,
-        /// Dispatches the selected workflow build.
-        TriggerBuild,
-        /// Reruns failed jobs for the selected workflow run.
-        RerunFailedJobs,
         /// Focuses filtering for the current list.
         FilterCurrentList,
         /// Selects the next changed file.

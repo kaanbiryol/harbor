@@ -29,6 +29,7 @@ async fn cached_detail_restore_preserves_diff_position_without_refetch(cx: &mut 
             ],
             vec![None, None],
         );
+        let cached_files = view.detail_state.shared_files();
         mark_detail_sections_loaded(view);
         view.selection_state.set_diff_position(1, 4);
         view.active_tab = PanelTab::Diff;
@@ -42,6 +43,10 @@ async fn cached_detail_restore_preserves_diff_position_without_refetch(cx: &mut 
         view.active_tab = PanelTab::Review;
 
         assert!(view.restore_selected_pull_request_detail_snapshot(cx));
+        assert!(Arc::ptr_eq(
+            &cached_files,
+            &view.detail_state.shared_files()
+        ));
         assert_eq!(
             view.detail_state
                 .files()

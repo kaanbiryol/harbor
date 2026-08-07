@@ -7,7 +7,7 @@ use crate::{
         ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest,
         MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenRequestChangesCommentDialog,
         PanelTab, PullRequestAction, PullRequestActionRequest, RebasePullRequest, RequestChanges,
-        RerunFailedJobs, TriggerBuild, WorkflowAction, WorkflowActionRequest,
+        WorkflowAction, WorkflowActionRequest,
     },
     panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
     workspace::{AppView, ReviewActionCommentTarget, async_updates::AppViewAsyncUpdateExt},
@@ -478,23 +478,5 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Rebase), window, cx);
-    }
-
-    pub(super) fn trigger_build(
-        &mut self,
-        _: &TriggerBuild,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.run_workflow_action(WorkflowAction::DispatchBuild, cx);
-    }
-
-    pub(super) fn rerun_failed(
-        &mut self,
-        _: &RerunFailedJobs,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.run_workflow_action(WorkflowAction::RerunFailedJobs, cx);
     }
 }

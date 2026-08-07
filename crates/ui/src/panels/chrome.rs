@@ -89,20 +89,6 @@ pub(crate) fn render_metric_pill(
     render_status_pill(format!("{label} {value}"), tone)
 }
 
-pub(crate) fn render_key_hint(label: impl Into<String>) -> impl IntoElement {
-    div()
-        .rounded_xs()
-        .border_1()
-        .border_color(color::border_strong())
-        .bg(color::input_background())
-        .px_1()
-        .py_0p5()
-        .text_xs()
-        .font_medium()
-        .text_color(color::text_secondary())
-        .child(label.into())
-}
-
 pub(crate) fn sync_virtual_list_item_count(list_state: &ListState, item_count: usize) {
     let current_item_count = list_state.item_count();
     if current_item_count == item_count {

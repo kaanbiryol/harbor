@@ -28,10 +28,13 @@ zip_path="$target_dir/Harbor-${version}-macos.zip"
 cargo build -p harbor-app --bin harbor --release --locked
 
 rm -rf "$app_dir" "$zip_path"
-mkdir -p "$macos_dir" "$resources_dir" "$licenses_dir/ibm-plex-sans"
+mkdir -p "$macos_dir" "$resources_dir" "$licenses_dir/ibm-plex-sans" "$licenses_dir/lilex"
 cp "$repo_root/target/release/harbor" "$executable_path"
 cp "$repo_root/crates/app/assets/harbor.icns" "$resources_dir/harbor.icns"
+cp "$repo_root/LICENSE" "$resources_dir/LICENSE"
+cp "$repo_root/THIRD_PARTY_NOTICES.md" "$resources_dir/THIRD_PARTY_NOTICES.md"
 cp "$repo_root/crates/ui/assets/fonts/ibm-plex-sans/license.txt" "$licenses_dir/ibm-plex-sans/license.txt"
+cp "$repo_root/crates/ui/assets/fonts/lilex/license.txt" "$licenses_dir/lilex/license.txt"
 chmod 755 "$executable_path"
 
 cat >"$contents_dir/Info.plist" <<PLIST

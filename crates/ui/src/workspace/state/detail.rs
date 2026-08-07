@@ -21,12 +21,12 @@ use crate::{
 };
 
 pub(crate) struct PullRequestDetailUiState {
-    files: Vec<DiffFile>,
-    diffs: Vec<Option<ParsedDiff>>,
-    check_runs: Vec<CheckRun>,
-    commits: Vec<PullRequestCommit>,
-    workflow_runs: Vec<WorkflowRun>,
-    workflow_jobs: Vec<WorkflowJob>,
+    files: Arc<Vec<DiffFile>>,
+    diffs: Arc<Vec<Option<ParsedDiff>>>,
+    check_runs: Arc<Vec<CheckRun>>,
+    commits: Arc<Vec<PullRequestCommit>>,
+    workflow_runs: Arc<Vec<WorkflowRun>>,
+    workflow_jobs: Arc<Vec<WorkflowJob>>,
     pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, Arc<PullRequestDetailSnapshot>>,
     pull_request_detail_cache_order: VecDeque<PullRequestDetailCacheKey>,
     details_load: LoadStatus,
@@ -56,12 +56,12 @@ impl PullRequestDetailUiState {
         log_state: WorkflowLogState,
     ) -> Self {
         Self {
-            files,
-            diffs,
-            check_runs: Vec::new(),
-            commits: Vec::new(),
-            workflow_runs: Vec::new(),
-            workflow_jobs: Vec::new(),
+            files: Arc::new(files),
+            diffs: Arc::new(diffs),
+            check_runs: Arc::new(Vec::new()),
+            commits: Arc::new(Vec::new()),
+            workflow_runs: Arc::new(Vec::new()),
+            workflow_jobs: Arc::new(Vec::new()),
             pull_request_detail_cache: HashMap::new(),
             pull_request_detail_cache_order: VecDeque::new(),
             details_load: LoadStatus::Idle,
@@ -112,7 +112,10 @@ impl PullRequestDetailUiState {
     ) {
         if let Some(snapshot) = self.pull_request_detail_cache.get_mut(key) {
             let snapshot = Arc::make_mut(snapshot);
-            remove_review_comment_from_threads(&mut snapshot.review_threads, comment_id);
+            remove_review_comment_from_threads(
+                Arc::make_mut(&mut snapshot.review_threads),
+                comment_id,
+            );
             snapshot.pull_request.unresolved_threads =
                 unresolved_review_thread_count(&snapshot.review_threads);
         }
@@ -156,31 +159,51 @@ impl PullRequestDetailUiState {
         files: Vec<DiffFile>,
         diffs: Vec<Option<ParsedDiff>>,
     ) {
+        self.files = Arc::new(files);
+        self.diffs = Arc::new(diffs);
+    }
+
+    pub(crate) fn restore_diff_files(
+        &mut self,
+        files: Arc<Vec<DiffFile>>,
+        diffs: Arc<Vec<Option<ParsedDiff>>>,
+    ) {
         self.files = files;
         self.diffs = diffs;
     }
 
     pub(crate) fn files(&self) -> &[DiffFile] {
-        &self.files
+        self.files.as_slice()
+    }
+
+    pub(crate) fn shared_files(&self) -> Arc<Vec<DiffFile>> {
+        self.files.clone()
     }
 
     pub(crate) fn set_file_viewed_state(&mut self, path: &str, viewed_state: FileViewedState) {
-        if let Some(file) = self.files.iter_mut().find(|file| file.path == path) {
+        if let Some(file) = Arc::make_mut(&mut self.files)
+            .iter_mut()
+            .find(|file| file.path == path)
+        {
             file.viewed_state = viewed_state;
         }
     }
 
     pub(crate) fn diffs(&self) -> &[Option<ParsedDiff>] {
-        &self.diffs
+        self.diffs.as_slice()
+    }
+
+    pub(crate) fn shared_diffs(&self) -> Arc<Vec<Option<ParsedDiff>>> {
+        self.diffs.clone()
     }
 
     pub(crate) fn clear_diff_files(&mut self) {
-        self.files.clear();
-        self.diffs.clear();
+        self.files = Arc::new(Vec::new());
+        self.diffs = Arc::new(Vec::new());
     }
 
     pub(crate) fn replace_parsed_diff(&mut self, file_index: usize, diff: ParsedDiff) -> bool {
-        let Some(slot) = self.diffs.get_mut(file_index) else {
+        let Some(slot) = Arc::make_mut(&mut self.diffs).get_mut(file_index) else {
             return false;
         };
 
@@ -189,49 +212,81 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn replace_check_runs(&mut self, check_runs: Vec<CheckRun>) {
+        self.check_runs = Arc::new(check_runs);
+    }
+
+    pub(crate) fn restore_check_runs(&mut self, check_runs: Arc<Vec<CheckRun>>) {
         self.check_runs = check_runs;
     }
 
     pub(crate) fn check_runs(&self) -> &[CheckRun] {
-        &self.check_runs
+        self.check_runs.as_slice()
+    }
+
+    pub(crate) fn shared_check_runs(&self) -> Arc<Vec<CheckRun>> {
+        self.check_runs.clone()
     }
 
     pub(crate) fn clear_check_runs(&mut self) {
-        self.check_runs.clear();
+        self.check_runs = Arc::new(Vec::new());
     }
 
     pub(crate) fn replace_commits(&mut self, commits: Vec<PullRequestCommit>) {
+        self.commits = Arc::new(commits);
+    }
+
+    pub(crate) fn restore_commits(&mut self, commits: Arc<Vec<PullRequestCommit>>) {
         self.commits = commits;
     }
     pub(crate) fn commits(&self) -> &[PullRequestCommit] {
-        &self.commits
+        self.commits.as_slice()
+    }
+
+    pub(crate) fn shared_commits(&self) -> Arc<Vec<PullRequestCommit>> {
+        self.commits.clone()
     }
     pub(crate) fn clear_commits(&mut self) {
-        self.commits.clear();
+        self.commits = Arc::new(Vec::new());
     }
 
     pub(crate) fn replace_workflow_runs(&mut self, workflow_runs: Vec<WorkflowRun>) {
+        self.workflow_runs = Arc::new(workflow_runs);
+    }
+
+    pub(crate) fn restore_workflow_runs(&mut self, workflow_runs: Arc<Vec<WorkflowRun>>) {
         self.workflow_runs = workflow_runs;
     }
 
     pub(crate) fn workflow_runs(&self) -> &[WorkflowRun] {
-        &self.workflow_runs
+        self.workflow_runs.as_slice()
+    }
+
+    pub(crate) fn shared_workflow_runs(&self) -> Arc<Vec<WorkflowRun>> {
+        self.workflow_runs.clone()
     }
 
     pub(crate) fn clear_workflow_runs(&mut self) {
-        self.workflow_runs.clear();
+        self.workflow_runs = Arc::new(Vec::new());
     }
 
     pub(crate) fn replace_workflow_jobs(&mut self, workflow_jobs: Vec<WorkflowJob>) {
+        self.workflow_jobs = Arc::new(workflow_jobs);
+    }
+
+    pub(crate) fn restore_workflow_jobs(&mut self, workflow_jobs: Arc<Vec<WorkflowJob>>) {
         self.workflow_jobs = workflow_jobs;
     }
 
     pub(crate) fn workflow_jobs(&self) -> &[WorkflowJob] {
-        &self.workflow_jobs
+        self.workflow_jobs.as_slice()
+    }
+
+    pub(crate) fn shared_workflow_jobs(&self) -> Arc<Vec<WorkflowJob>> {
+        self.workflow_jobs.clone()
     }
 
     pub(crate) fn clear_workflow_jobs(&mut self) {
-        self.workflow_jobs.clear();
+        self.workflow_jobs = Arc::new(Vec::new());
     }
 
     pub(crate) fn loaded_sections(&self, reviews_loaded: bool) -> PullRequestDetailLoadedState {

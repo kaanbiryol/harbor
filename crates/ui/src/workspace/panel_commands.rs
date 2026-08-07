@@ -205,17 +205,6 @@ impl AppView {
         self.load_pull_requests(repository, cx);
     }
 
-    pub(super) fn open_logs(&mut self, _: &OpenLogs, _: &mut Window, cx: &mut Context<Self>) {
-        if self.selected_pull_request().is_some() {
-            self.active_tab = PanelTab::Logs;
-            self.load_active_panel_data_if_needed(cx);
-            cx.notify();
-        } else {
-            self.status = "Select a pull request before opening logs".to_string();
-            cx.notify();
-        }
-    }
-
     pub(super) fn filter_current_list(
         &mut self,
         _: &FilterCurrentList,

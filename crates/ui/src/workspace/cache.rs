@@ -62,18 +62,18 @@ impl PullRequestDetailCacheKey {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PullRequestDetailSnapshot {
     pub(super) pull_request: PullRequest,
-    files: Vec<DiffFile>,
-    diffs: Vec<Option<ParsedDiff>>,
-    check_runs: Vec<CheckRun>,
-    commits: Vec<PullRequestCommit>,
-    workflow_runs: Vec<WorkflowRun>,
-    workflow_jobs: Vec<WorkflowJob>,
-    pull_request_reviews: Vec<PullRequestReview>,
-    pull_request_comments: Vec<PullRequestComment>,
-    pub(super) review_threads: Vec<ReviewThread>,
+    files: Arc<Vec<DiffFile>>,
+    diffs: Arc<Vec<Option<ParsedDiff>>>,
+    check_runs: Arc<Vec<CheckRun>>,
+    commits: Arc<Vec<PullRequestCommit>>,
+    workflow_runs: Arc<Vec<WorkflowRun>>,
+    workflow_jobs: Arc<Vec<WorkflowJob>>,
+    pull_request_reviews: Arc<Vec<PullRequestReview>>,
+    pull_request_comments: Arc<Vec<PullRequestComment>>,
+    pub(super) review_threads: Arc<Vec<ReviewThread>>,
     detail_loaded: PullRequestDetailLoadedState,
     pub(super) pending_review: Option<PendingReviewSession>,
-    log_chunk: Option<LogChunk>,
+    log_chunk: Option<Arc<LogChunk>>,
     current_user_login: Option<String>,
     changed_files_state: ChangedFilesUiState,
     expanded_check_groups: HashSet<String>,
@@ -177,20 +177,20 @@ impl AppView {
     fn pull_request_detail_snapshot(&self, pull_request: PullRequest) -> PullRequestDetailSnapshot {
         PullRequestDetailSnapshot {
             pull_request,
-            files: self.detail_state.files().to_vec(),
-            diffs: self.detail_state.diffs().to_vec(),
-            check_runs: self.detail_state.check_runs().to_vec(),
-            commits: self.detail_state.commits().to_vec(),
-            workflow_runs: self.detail_state.workflow_runs().to_vec(),
-            workflow_jobs: self.detail_state.workflow_jobs().to_vec(),
-            pull_request_reviews: self.review_state.pull_request_reviews().to_vec(),
-            pull_request_comments: self.review_state.pull_request_comments().to_vec(),
-            review_threads: self.review_state.review_threads().to_vec(),
+            files: self.detail_state.shared_files(),
+            diffs: self.detail_state.shared_diffs(),
+            check_runs: self.detail_state.shared_check_runs(),
+            commits: self.detail_state.shared_commits(),
+            workflow_runs: self.detail_state.shared_workflow_runs(),
+            workflow_jobs: self.detail_state.shared_workflow_jobs(),
+            pull_request_reviews: self.review_state.shared_pull_request_reviews(),
+            pull_request_comments: self.review_state.shared_pull_request_comments(),
+            review_threads: self.review_state.shared_review_threads(),
             detail_loaded: self
                 .detail_state
                 .loaded_sections(self.review_state.reviews_finished()),
             pending_review: self.review_state.pending_review_cloned(),
-            log_chunk: self.detail_state.log_state.chunk().cloned(),
+            log_chunk: self.detail_state.log_state.shared_chunk(),
             current_user_login: self.review_state.current_user_login().map(str::to_string),
             changed_files_state: self.changed_files_state.clone(),
             expanded_check_groups: self.checks_state.expanded_groups.clone(),
@@ -268,14 +268,14 @@ impl AppView {
     ) {
         self.replace_selected_pull_request_preserving_row_fields(snapshot.pull_request.clone());
         self.detail_state
-            .replace_diff_files(snapshot.files.clone(), snapshot.diffs.clone());
+            .restore_diff_files(snapshot.files.clone(), snapshot.diffs.clone());
         self.detail_state
-            .replace_check_runs(snapshot.check_runs.clone());
-        self.detail_state.replace_commits(snapshot.commits.clone());
+            .restore_check_runs(snapshot.check_runs.clone());
+        self.detail_state.restore_commits(snapshot.commits.clone());
         self.detail_state
-            .replace_workflow_runs(snapshot.workflow_runs.clone());
+            .restore_workflow_runs(snapshot.workflow_runs.clone());
         self.detail_state
-            .replace_workflow_jobs(snapshot.workflow_jobs.clone());
+            .restore_workflow_jobs(snapshot.workflow_jobs.clone());
         self.detail_state
             .restore_loaded_sections(snapshot.detail_loaded);
         self.review_state.restore_review_snapshot(
@@ -288,7 +288,7 @@ impl AppView {
         );
         self.detail_state
             .log_state
-            .set_chunk(snapshot.log_chunk.clone());
+            .restore_chunk(snapshot.log_chunk.clone());
         self.changed_files_state = snapshot.changed_files_state.clone();
         self.checks_state.expanded_groups = snapshot.expanded_check_groups.clone();
         self.selection_state.restore_diff_position(

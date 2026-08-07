@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use harbor_domain::{
     PullRequestComment, PullRequestReview, ReactionContent, ReviewComment, ReviewThread,
@@ -24,9 +24,9 @@ mod actions;
 mod optimistic_comments;
 
 pub(crate) struct ReviewRuntimeState {
-    pull_request_reviews: Vec<PullRequestReview>,
-    pull_request_comments: Vec<PullRequestComment>,
-    review_threads: Vec<ReviewThread>,
+    pull_request_reviews: Arc<Vec<PullRequestReview>>,
+    pull_request_comments: Arc<Vec<PullRequestComment>>,
+    review_threads: Arc<Vec<ReviewThread>>,
     pub(crate) review_composer_state: ReviewComposerState,
     pending_review: Option<PendingReviewSession>,
     is_submitting_review_comment: bool,
@@ -58,9 +58,9 @@ impl ReviewRuntimeState {
         review_composer_state: ReviewComposerState,
     ) -> Self {
         Self {
-            pull_request_reviews,
-            pull_request_comments: Vec::new(),
-            review_threads,
+            pull_request_reviews: Arc::new(pull_request_reviews),
+            pull_request_comments: Arc::new(Vec::new()),
+            review_threads: Arc::new(review_threads),
             review_composer_state,
             pending_review: None,
             is_submitting_review_comment: false,
@@ -91,15 +91,27 @@ impl ReviewRuntimeState {
     }
 
     pub(crate) fn pull_request_reviews(&self) -> &[PullRequestReview] {
-        &self.pull_request_reviews
+        self.pull_request_reviews.as_slice()
+    }
+
+    pub(crate) fn shared_pull_request_reviews(&self) -> Arc<Vec<PullRequestReview>> {
+        self.pull_request_reviews.clone()
     }
 
     pub(crate) fn pull_request_comments(&self) -> &[PullRequestComment] {
-        &self.pull_request_comments
+        self.pull_request_comments.as_slice()
+    }
+
+    pub(crate) fn shared_pull_request_comments(&self) -> Arc<Vec<PullRequestComment>> {
+        self.pull_request_comments.clone()
     }
 
     pub(crate) fn review_threads(&self) -> &[ReviewThread] {
-        &self.review_threads
+        self.review_threads.as_slice()
+    }
+
+    pub(crate) fn shared_review_threads(&self) -> Arc<Vec<ReviewThread>> {
+        self.review_threads.clone()
     }
 
     pub(crate) fn current_user_login(&self) -> Option<&str> {
@@ -201,18 +213,18 @@ impl ReviewRuntimeState {
     }
 
     pub(crate) fn clear_review_data(&mut self) {
-        self.pull_request_reviews.clear();
-        self.pull_request_comments.clear();
-        self.review_threads.clear();
+        self.pull_request_reviews = Arc::new(Vec::new());
+        self.pull_request_comments = Arc::new(Vec::new());
+        self.review_threads = Arc::new(Vec::new());
         self.clear_composer_and_action_state();
         self.pending_review = None;
     }
 
     pub(crate) fn restore_review_snapshot(
         &mut self,
-        pull_request_reviews: Vec<PullRequestReview>,
-        pull_request_comments: Vec<PullRequestComment>,
-        review_threads: Vec<ReviewThread>,
+        pull_request_reviews: Arc<Vec<PullRequestReview>>,
+        pull_request_comments: Arc<Vec<PullRequestComment>>,
+        review_threads: Arc<Vec<ReviewThread>>,
         pending_review: Option<PendingReviewSession>,
         current_user_login: Option<String>,
         reviews_loaded: bool,
@@ -245,8 +257,8 @@ impl ReviewRuntimeState {
             existing_pending_review.as_ref(),
             pending_review_comment_count,
         );
-        self.pull_request_reviews = reviews;
-        self.pull_request_comments = pull_request_comments;
+        self.pull_request_reviews = Arc::new(reviews);
+        self.pull_request_comments = Arc::new(pull_request_comments);
         self.apply_loaded_review_threads(review_threads)
     }
 
@@ -254,7 +266,7 @@ impl ReviewRuntimeState {
         &mut self,
         pull_request_comments: Vec<PullRequestComment>,
     ) {
-        self.pull_request_comments = pull_request_comments;
+        self.pull_request_comments = Arc::new(pull_request_comments);
     }
 
     pub(crate) fn replace_loaded_review_threads(
@@ -270,13 +282,13 @@ impl ReviewRuntimeState {
         pull_request_comments: Vec<PullRequestComment>,
         review_threads: Vec<ReviewThread>,
     ) -> usize {
-        self.pull_request_reviews = reviews;
-        self.pull_request_comments = pull_request_comments;
+        self.pull_request_reviews = Arc::new(reviews);
+        self.pull_request_comments = Arc::new(pull_request_comments);
         self.apply_loaded_review_threads(review_threads)
     }
 
     pub(crate) fn clear_pull_request_reviews(&mut self) {
-        self.pull_request_reviews.clear();
+        self.pull_request_reviews = Arc::new(Vec::new());
     }
 
     fn apply_loaded_review_threads(&mut self, mut review_threads: Vec<ReviewThread>) -> usize {
@@ -288,7 +300,10 @@ impl ReviewRuntimeState {
             apply_review_reaction_overrides(&mut review_threads, &self.review_reaction_overrides);
         self.remove_review_thread_state_overrides(settled_thread_state_overrides);
         self.remove_review_reaction_overrides(settled_reaction_overrides);
-        self.review_threads = merge_optimistic_review_threads(review_threads, &self.review_threads);
+        self.review_threads = Arc::new(merge_optimistic_review_threads(
+            review_threads,
+            self.review_threads.as_slice(),
+        ));
         self.unresolved_thread_count()
     }
 
@@ -297,8 +312,7 @@ impl ReviewRuntimeState {
     }
 
     pub(crate) fn set_review_thread_state(&mut self, thread_id: &str, state: ReviewThreadState) {
-        if let Some(thread) = self
-            .review_threads
+        if let Some(thread) = Arc::make_mut(&mut self.review_threads)
             .iter_mut()
             .find(|thread| thread.id == thread_id)
         {
@@ -314,14 +328,14 @@ impl ReviewRuntimeState {
     }
 
     pub(crate) fn review_comment_mut(&mut self, comment_id: &str) -> Option<&mut ReviewComment> {
-        self.review_threads
+        Arc::make_mut(&mut self.review_threads)
             .iter_mut()
             .flat_map(|thread| thread.comments.iter_mut())
             .find(|comment| comment.id == comment_id)
     }
 
     pub(crate) fn remove_review_comment(&mut self, comment_id: &str) {
-        remove_review_comment_from_threads(&mut self.review_threads, comment_id);
+        remove_review_comment_from_threads(Arc::make_mut(&mut self.review_threads), comment_id);
     }
 
     pub(crate) fn rollback_pending_review_comment_count(
