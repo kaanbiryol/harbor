@@ -20,6 +20,7 @@ harbor-sync = { path = "../sync" }
 markdown.workspace = true
 notify-rust = "4"
 tracing.workspace = true
+tree-sitter-swift.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

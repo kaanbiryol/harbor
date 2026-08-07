@@ -1,4 +1,5 @@
 use gpui::{AppContext, Context};
+use gpui_component::ActiveTheme;
 use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReviewThread,
     WorkflowRun, checks_summary_from_runs,
@@ -39,6 +40,7 @@ impl AppView {
         };
 
         let detail_key = load.detail_key();
+        let highlight_theme = cx.theme().highlight_theme.clone();
         let task = cx.background_spawn({
             let repo = load.repo.clone();
             let head_sha = load.head_sha.clone();
@@ -77,88 +79,107 @@ impl AppView {
             cx.spawn(async move |this, cx| {
                 let result = task.await;
 
-                this.update_or_log(
-                    cx,
-                    "failed to update cached pull request detail state",
-                    move |view, cx| {
-                        if !selected_pull_request_matches(view, &detail_key) {
-                            return;
-                        }
+                let update_detail_key = detail_key.clone();
+                let files_for_syntax = this
+                    .update_or_log(
+                        cx,
+                        "failed to update cached pull request detail state",
+                        move |view, cx| {
+                            if !selected_pull_request_matches(view, &update_detail_key) {
+                                return None;
+                            }
 
-                        let Ok(cached) = result else {
-                            if defer_review_load_until_cache {
+                            let Ok(cached) = result else {
+                                if defer_review_load_until_cache {
+                                    view.review_state.reset_reviews_load();
+                                    view.load_active_panel_data_if_needed(cx);
+                                    cx.notify();
+                                }
+                                return None;
+                            };
+                            let mut applied_any = false;
+                            let mut applied_review_data = false;
+                            let mut files_for_syntax = None;
+
+                            if let Some(metadata) = cached.metadata
+                                && !view.detail_state.details_loaded()
+                            {
+                                view.replace_selected_pull_request_preserving_row_fields(metadata);
+                                applied_any = true;
+                            }
+
+                            if let Some((files, diffs)) = cached.files
+                                && view.detail_state.files().is_empty()
+                            {
+                                files_for_syntax = Some(files.clone());
+                                view.detail_state.replace_diff_files(files, diffs);
+                                view.sync_reviewed_file_paths_from_files();
+                                view.ensure_active_file_visible(cx);
+                                view.sync_diff_list_items(cx);
+                                applied_any = true;
+                            }
+
+                            if let Some(check_runs) = cached.check_runs
+                                && view.detail_state.check_runs().is_empty()
+                            {
+                                let summary = checks_summary_from_runs(&check_runs);
+                                view.detail_state.replace_check_runs(check_runs);
+                                if let Some(selected) = view
+                                    .pull_requests
+                                    .get_mut(view.selection_state.pull_request_index())
+                                {
+                                    selected.checks_summary = summary;
+                                }
+                                applied_any = true;
+                            }
+
+                            if let Some(workflow_runs) = cached.workflow_runs
+                                && view.detail_state.workflow_runs().is_empty()
+                            {
+                                view.detail_state.replace_workflow_runs(workflow_runs);
+                                applied_any = true;
+                            }
+
+                            if let Some((reviews, comments, threads)) = cached.review_data
+                                && view.review_state.pull_request_reviews().is_empty()
+                                && view.review_state.pull_request_comments().is_empty()
+                                && view.review_state.review_threads().is_empty()
+                            {
+                                view.replace_reviews_and_loaded_threads(reviews, comments, threads);
+                                view.sync_diff_list_items(cx);
+                                view.review_state.apply_reviews_success();
+                                view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
+                                view.refresh_owned_file_filters(cx);
+                                applied_any = true;
+                                applied_review_data = true;
+                            }
+
+                            if defer_review_load_until_cache && !applied_review_data {
                                 view.review_state.reset_reviews_load();
                                 view.load_active_panel_data_if_needed(cx);
+                            }
+
+                            if applied_any {
+                                view.status = format!("Showing cached PR #{} details", load.number);
                                 cx.notify();
                             }
-                            return;
-                        };
-                        let mut applied_any = false;
-                        let mut applied_review_data = false;
 
-                        if let Some(metadata) = cached.metadata
-                            && !view.detail_state.details_loaded()
-                        {
-                            view.replace_selected_pull_request_preserving_row_fields(metadata);
-                            applied_any = true;
-                        }
+                            files_for_syntax
+                        },
+                    )
+                    .flatten();
 
-                        if let Some((files, diffs)) = cached.files
-                            && view.detail_state.files().is_empty()
-                        {
-                            view.detail_state.replace_diff_files(files, diffs);
-                            view.sync_reviewed_file_paths_from_files();
-                            view.ensure_active_file_visible(cx);
-                            view.sync_diff_list_items(cx);
-                            applied_any = true;
-                        }
-
-                        if let Some(check_runs) = cached.check_runs
-                            && view.detail_state.check_runs().is_empty()
-                        {
-                            let summary = checks_summary_from_runs(&check_runs);
-                            view.detail_state.replace_check_runs(check_runs);
-                            if let Some(selected) = view
-                                .pull_requests
-                                .get_mut(view.selection_state.pull_request_index())
-                            {
-                                selected.checks_summary = summary;
-                            }
-                            applied_any = true;
-                        }
-
-                        if let Some(workflow_runs) = cached.workflow_runs
-                            && view.detail_state.workflow_runs().is_empty()
-                        {
-                            view.detail_state.replace_workflow_runs(workflow_runs);
-                            applied_any = true;
-                        }
-
-                        if let Some((reviews, comments, threads)) = cached.review_data
-                            && view.review_state.pull_request_reviews().is_empty()
-                            && view.review_state.pull_request_comments().is_empty()
-                            && view.review_state.review_threads().is_empty()
-                        {
-                            view.replace_reviews_and_loaded_threads(reviews, comments, threads);
-                            view.sync_diff_list_items(cx);
-                            view.review_state.apply_reviews_success();
-                            view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
-                            view.refresh_owned_file_filters(cx);
-                            applied_any = true;
-                            applied_review_data = true;
-                        }
-
-                        if defer_review_load_until_cache && !applied_review_data {
-                            view.review_state.reset_reviews_load();
-                            view.load_active_panel_data_if_needed(cx);
-                        }
-
-                        if applied_any {
-                            view.status = format!("Showing cached PR #{} details", load.number);
-                            cx.notify();
-                        }
-                    },
-                );
+                if let Some(files) = files_for_syntax {
+                    Self::highlight_diff_files_progressively(
+                        &this,
+                        cx,
+                        detail_key,
+                        None,
+                        files,
+                        highlight_theme,
+                    )
+                    .await;
+                }
             }),
         );
     }

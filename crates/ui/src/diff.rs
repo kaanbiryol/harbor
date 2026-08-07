@@ -66,6 +66,7 @@ fn apply_syntax_highlighting(
     let Some(language) = language_for_file(file) else {
         return;
     };
+    ensure_language_queries(language);
     if LanguageRegistry::singleton().language(language).is_none() {
         return;
     }
@@ -75,6 +76,27 @@ fn apply_syntax_highlighting(
 
     apply_syntax_highlighting_for_side(diff, language, SyntaxSide::Old, highlight_theme);
     apply_syntax_highlighting_for_side(diff, language, SyntaxSide::New, highlight_theme);
+}
+
+fn ensure_language_queries(language: &str) {
+    if language != "swift" {
+        return;
+    }
+
+    let registry = LanguageRegistry::singleton();
+    let Some(mut config) = registry.language(language) else {
+        return;
+    };
+    if !config.highlights.is_empty() {
+        return;
+    }
+
+    config.highlights = tree_sitter_swift::HIGHLIGHTS_QUERY
+        .replace(" @spell", "")
+        .into();
+    config.injections = tree_sitter_swift::INJECTIONS_QUERY.to_string().into();
+    config.locals = tree_sitter_swift::LOCALS_QUERY.to_string().into();
+    registry.register(language, &config);
 }
 
 fn apply_syntax_highlighting_for_side(
@@ -342,6 +364,38 @@ mod tests {
         assert!(!lines[0].syntax_highlights.is_empty());
         assert!(lines[1].syntax_highlights.is_empty());
         assert!(!lines[2].syntax_highlights.is_empty());
+    }
+
+    #[test]
+    fn attaches_syntax_highlights_to_swift_diff_lines() {
+        let file = DiffFile {
+            path: "Sources/RentBranchListView.swift".to_string(),
+            previous_path: None,
+            status: FileStatus::Modified,
+            additions: 2,
+            deletions: 1,
+            changes: 3,
+            patch: None,
+            viewed_state: FileViewedState::Unviewed,
+        };
+        let parsed = parse_unified_diff_with_syntax(
+            &file,
+            "@@ -237 +237,2 @@\n-DSButton(\"Show offers\", action: onShowOffers)\n+// TODO: Localize\n+DSButton(\"Show offers\", action: onShowOffers)\n",
+            &HighlightTheme::default_dark(),
+        );
+
+        let highlight_counts = parsed.hunks[0]
+            .lines
+            .iter()
+            .map(|line| line.syntax_highlights.len())
+            .collect::<Vec<_>>();
+        assert!(
+            matches!(
+                highlight_counts.as_slice(),
+                [removed, _, added] if *removed > 0 && *added > 0
+            ),
+            "expected Swift code lines to contain highlights, got {highlight_counts:?}"
+        );
     }
 
     #[test]

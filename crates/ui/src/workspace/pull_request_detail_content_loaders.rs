@@ -1,5 +1,7 @@
-use gpui::{AppContext, Context, ScrollStrategy};
-use gpui_component::ActiveTheme;
+use std::sync::Arc;
+
+use gpui::{AppContext, AsyncApp, Context, ScrollStrategy, WeakEntity};
+use gpui_component::{ActiveTheme, highlighter::HighlightTheme};
 use harbor_domain::DiffFile;
 use harbor_sync::{SyncTarget, refresh_pull_request_files, refresh_pull_request_metadata};
 
@@ -13,6 +15,15 @@ use crate::{
 };
 
 type PullRequestFilesResult = harbor_github::Result<(Vec<DiffFile>, Vec<Option<ParsedDiff>>)>;
+
+struct DiffSyntaxUpdate {
+    detail_key: PullRequestDetailCacheKey,
+    commit_sha: Option<String>,
+    file_index: usize,
+    file_path: String,
+    expected_patch: String,
+    highlighted_diff: ParsedDiff,
+}
 
 impl AppView {
     pub(super) fn spawn_pull_request_metadata_loader(
@@ -138,44 +149,15 @@ impl AppView {
                         return;
                     };
 
-                    let mut syntax_updated = false;
-                    for (file_index, file) in files_for_syntax.into_iter().enumerate() {
-                        let file_path = file.path.clone();
-                        let Some(patch) = file.patch.clone() else {
-                            continue;
-                        };
-                        let highlight_theme = highlight_theme.clone();
-                        let highlighted_diff = cx
-                            .background_spawn(async move {
-                                parse_unified_diff_with_syntax(&file, &patch, &highlight_theme)
-                            })
-                            .await;
-
-                        let update_detail_key = detail_key.clone();
-                        syntax_updated |= this
-                            .update_or_log(
-                                cx,
-                                "failed to update pull request syntax highlight state",
-                                move |view, cx| {
-                                    view.apply_pull_request_file_syntax(
-                                        &update_detail_key,
-                                        file_index,
-                                        &file_path,
-                                        highlighted_diff,
-                                        cx,
-                                    )
-                                },
-                            )
-                            .unwrap_or(false);
-                    }
-
-                    if syntax_updated {
-                        this.update_or_log(
-                            cx,
-                            "failed to cache pull request syntax highlight state",
-                            |view, _| view.cache_current_pull_request_detail_snapshot(),
-                        );
-                    }
+                    Self::highlight_diff_files_progressively(
+                        &this,
+                        cx,
+                        detail_key,
+                        None,
+                        files_for_syntax,
+                        highlight_theme,
+                    )
+                    .await;
                 }
             }),
         );
@@ -242,35 +224,95 @@ impl AppView {
         files_for_syntax
     }
 
+    pub(super) async fn highlight_diff_files_progressively(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        detail_key: PullRequestDetailCacheKey,
+        commit_sha: Option<String>,
+        files: Vec<DiffFile>,
+        highlight_theme: Arc<HighlightTheme>,
+    ) {
+        let mut syntax_updated = false;
+
+        for (file_index, file) in files.into_iter().enumerate() {
+            let file_path = file.path.clone();
+            let Some(patch) = file.patch.clone() else {
+                continue;
+            };
+            let expected_patch = patch.clone();
+            let highlight_theme = highlight_theme.clone();
+            let highlighted_diff = cx
+                .background_spawn(async move {
+                    parse_unified_diff_with_syntax(&file, &patch, &highlight_theme)
+                })
+                .await;
+            let update = DiffSyntaxUpdate {
+                detail_key: detail_key.clone(),
+                commit_sha: commit_sha.clone(),
+                file_index,
+                file_path,
+                expected_patch,
+                highlighted_diff,
+            };
+
+            let Some(updated) = this
+                .update_or_log(
+                    cx,
+                    "failed to update pull request syntax highlight state",
+                    move |view, cx| view.apply_pull_request_file_syntax(update, cx),
+                )
+                .flatten()
+            else {
+                return;
+            };
+            syntax_updated |= updated;
+        }
+
+        if syntax_updated && commit_sha.is_none() {
+            this.update_or_log(
+                cx,
+                "failed to cache pull request syntax highlight state",
+                move |view, _| {
+                    if view.diff_syntax_target_matches(&detail_key, None) {
+                        view.cache_current_pull_request_detail_snapshot();
+                    }
+                },
+            );
+        }
+    }
+
     fn apply_pull_request_file_syntax(
         &mut self,
-        detail_key: &PullRequestDetailCacheKey,
-        file_index: usize,
-        file_path: &str,
-        highlighted_diff: ParsedDiff,
+        update: DiffSyntaxUpdate,
         cx: &mut Context<Self>,
-    ) -> bool {
-        if !selected_pull_request_matches(self, detail_key) {
-            return false;
+    ) -> Option<bool> {
+        if !self.diff_syntax_target_matches(&update.detail_key, update.commit_sha.as_deref()) {
+            return None;
         }
-        if self
-            .detail_state
-            .files()
-            .get(file_index)
-            .map(|file| file.path.as_str())
-            != Some(file_path)
+        let file = self.detail_state.files().get(update.file_index)?;
+        if file.path != update.file_path
+            || file.patch.as_deref() != Some(update.expected_patch.as_str())
         {
-            return false;
+            return None;
         }
 
         if self
             .detail_state
-            .replace_parsed_diff(file_index, highlighted_diff)
+            .replace_parsed_diff(update.file_index, update.highlighted_diff)
         {
             cx.notify();
-            true
+            Some(true)
         } else {
-            false
+            None
         }
+    }
+
+    fn diff_syntax_target_matches(
+        &self,
+        detail_key: &PullRequestDetailCacheKey,
+        commit_sha: Option<&str>,
+    ) -> bool {
+        selected_pull_request_matches(self, detail_key)
+            && self.active_commit_sha.as_deref() == commit_sha
     }
 }

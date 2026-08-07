@@ -1,4 +1,5 @@
 use gpui::{AppContext, Context};
+use gpui_component::ActiveTheme;
 
 use crate::{actions::PanelTab, diff::parse_files};
 
@@ -38,6 +39,7 @@ impl AppView {
         let owner = pull_request.repo.owner;
         let name = pull_request.repo.name;
         let short_sha: String = sha.chars().take(7).collect();
+        let highlight_theme = cx.theme().highlight_theme.clone();
 
         self.active_tab = PanelTab::Diff;
         self.active_commit_sha = Some(sha.clone());
@@ -59,28 +61,51 @@ impl AppView {
                     }
                     Err(error) => Err(error),
                 };
-                this.update_or_log(cx, "failed to show commit diff", move |view, cx| {
-                    if !selected_pull_request_matches(view, &detail_key) {
-                        return;
-                    }
-                    match result {
-                        Ok((files, diffs)) => {
-                            view.detail_state.replace_diff_files(files, diffs);
-                            view.detail_state.apply_files_success();
-                            view.reset_diff_selection();
-                            view.reset_changed_file_filters();
-                            view.sync_reviewed_file_paths_from_files();
-                            view.sync_diff_list_items(cx);
-                            view.reset_diff_list_scroll();
-                            view.status = format!("Showing commit {short_sha}");
+                let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
+                let update_detail_key = detail_key.clone();
+                let update_sha = sha.clone();
+                let applied =
+                    this.update_or_log(cx, "failed to show commit diff", move |view, cx| {
+                        if !selected_pull_request_matches(view, &update_detail_key)
+                            || view.active_commit_sha.as_deref() != Some(update_sha.as_str())
+                        {
+                            return false;
                         }
-                        Err(error) => {
-                            view.detail_state.apply_files_failure(error.to_string());
-                            view.status = format!("Failed to load commit {short_sha}");
+                        match result {
+                            Ok((files, diffs)) => {
+                                view.detail_state.replace_diff_files(files, diffs);
+                                view.detail_state.apply_files_success();
+                                view.reset_diff_selection();
+                                view.reset_changed_file_filters();
+                                view.sync_reviewed_file_paths_from_files();
+                                view.sync_diff_list_items(cx);
+                                view.reset_diff_list_scroll();
+                                view.status = format!("Showing commit {short_sha}");
+                                cx.notify();
+                                true
+                            }
+                            Err(error) => {
+                                view.detail_state.apply_files_failure(error.to_string());
+                                view.status = format!("Failed to load commit {short_sha}");
+                                cx.notify();
+                                false
+                            }
                         }
-                    }
-                    cx.notify();
-                });
+                    });
+                if applied != Some(true) {
+                    return;
+                }
+                if let Some(files) = files_for_syntax {
+                    Self::highlight_diff_files_progressively(
+                        &this,
+                        cx,
+                        detail_key,
+                        Some(sha),
+                        files,
+                        highlight_theme,
+                    )
+                    .await;
+                }
             }),
         );
         cx.notify();

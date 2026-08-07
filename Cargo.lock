@@ -2937,6 +2937,7 @@ dependencies = [
  "markdown",
  "notify-rust",
  "tracing",
+ "tree-sitter-swift",
 ]
 
 [[package]]
