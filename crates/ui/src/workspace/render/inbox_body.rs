@@ -1,9 +1,10 @@
-use gpui::{AnyElement, Context, IntoElement, div, prelude::*, uniform_list};
-use gpui_component::{Sizable, spinner::Spinner};
+use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px, uniform_list};
+use gpui_component::skeleton::Skeleton;
 
 use crate::{
-    panels::render_pull_request_row,
-    visual::color,
+    icons::Octicon,
+    panels::{render_empty_state, render_pull_request_row},
+    visual::{color, layout},
     workspace::{AppView, PullRequestInboxMode},
 };
 
@@ -51,11 +52,7 @@ impl AppView {
         );
         let show_filtered_empty =
             rows_available && has_active_filters && visible_pull_request_indices.is_empty();
-        let empty_message = if self.repository_state.has_configured_repo() {
-            current_mode.empty_message()
-        } else {
-            "Choose a repository from the header"
-        };
+        let has_repository = self.repository_state.has_configured_repo();
         let show_page_footer = rows_available
             && (self.pull_request_inbox.has_next_page()
                 || self.pull_request_inbox.is_loading_more()
@@ -68,21 +65,7 @@ impl AppView {
 
         match body_state {
             PullRequestInboxBodyState::LoadingEmpty => {
-                body.push(
-                    div()
-                        .flex_1()
-                        .px_3()
-                        .py_3()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .gap_2()
-                        .text_sm()
-                        .text_color(color::text_muted())
-                        .child(Spinner::new().small())
-                        .child(format!("Loading {}…", current_mode.status_label()))
-                        .into_any_element(),
-                );
+                body.push(render_pull_request_inbox_loading());
             }
             PullRequestInboxBodyState::ErrorRows => {
                 body.push(
@@ -114,30 +97,23 @@ impl AppView {
                 );
             }
             PullRequestInboxBodyState::Empty => {
-                body.push(
-                    div()
-                        .flex_1()
-                        .px_3()
-                        .py_3()
-                        .text_sm()
-                        .text_color(color::text_muted())
-                        .child(empty_message)
-                        .into_any_element(),
-                );
+                body.push(render_pull_request_inbox_empty_state(
+                    current_mode,
+                    has_repository,
+                ));
             }
             PullRequestInboxBodyState::Rows => {}
         }
 
         if show_filtered_empty {
             body.push(
-                div()
-                    .flex_1()
-                    .px_3()
-                    .py_3()
-                    .text_sm()
-                    .text_color(color::text_muted())
-                    .child("No loaded pull requests match filters")
-                    .into_any_element(),
+                render_empty_state(
+                    Octicon::Search,
+                    "No matching pull requests",
+                    "Adjust or clear the active filters to see more results.",
+                )
+                .debug_selector(|| "pull-request-inbox-filtered-empty-state".to_string())
+                .into_any_element(),
             );
         }
 
@@ -208,6 +184,119 @@ impl AppView {
 
         body
     }
+}
+
+fn render_pull_request_inbox_empty_state(
+    mode: PullRequestInboxMode,
+    has_repository: bool,
+) -> AnyElement {
+    let (icon, title, description) = if !has_repository {
+        (
+            Octicon::FileDirectory,
+            "No repository selected",
+            "Choose a repository from the title bar to load pull requests.",
+        )
+    } else {
+        match mode {
+            PullRequestInboxMode::Open => (
+                Octicon::GitPullRequest,
+                "No open pull requests",
+                "This repository does not have any open pull requests.",
+            ),
+            PullRequestInboxMode::Closed => (
+                Octicon::CheckCircle,
+                "No closed pull requests",
+                "Closed pull requests will appear here.",
+            ),
+            PullRequestInboxMode::NeedsReview => (
+                Octicon::CheckCircle,
+                "Nothing to review",
+                "You're all caught up. No pull requests currently need your review.",
+            ),
+        }
+    };
+
+    render_empty_state(icon, title, description)
+        .debug_selector(|| "pull-request-inbox-empty-state".to_string())
+        .into_any_element()
+}
+
+fn render_pull_request_inbox_loading() -> AnyElement {
+    div()
+        .debug_selector(|| "pull-request-inbox-loading".to_string())
+        .flex_1()
+        .min_h_0()
+        .w_full()
+        .overflow_hidden()
+        .children((0..12).map(render_pull_request_inbox_skeleton_row))
+        .into_any_element()
+}
+
+fn render_pull_request_inbox_skeleton_row(index: usize) -> AnyElement {
+    let metadata_widths = [112.0, 148.0, 124.0, 136.0];
+
+    div()
+        .debug_selector(move || format!("pull-request-inbox-loading-row-{index}"))
+        .h(px(layout::PULL_REQUEST_ROW_HEIGHT))
+        .w_full()
+        .min_w_0()
+        .flex()
+        .overflow_hidden()
+        .border_1()
+        .border_color(color::border_subtle())
+        .child(
+            div()
+                .h_full()
+                .w(px(2.0))
+                .flex_none()
+                .bg(color::border_subtle()),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .justify_center()
+                .gap_2()
+                .overflow_hidden()
+                .px_3()
+                .py_2()
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            pull_request_inbox_skeleton()
+                                .w(px(32.0))
+                                .h(px(10.0))
+                                .rounded_sm(),
+                        )
+                        .child(
+                            pull_request_inbox_skeleton()
+                                .flex_1()
+                                .h(px(12.0))
+                                .rounded_sm(),
+                        )
+                        .when(index % 3 != 2, |element| {
+                            element.child(pull_request_inbox_skeleton().size(px(24.0)).rounded_xs())
+                        }),
+                )
+                .child(
+                    pull_request_inbox_skeleton()
+                        .w(px(metadata_widths[index % metadata_widths.len()]))
+                        .h(px(9.0))
+                        .rounded_sm(),
+                ),
+        )
+        .into_any_element()
+}
+
+fn pull_request_inbox_skeleton() -> Skeleton {
+    Skeleton::new().bg(color::border_strong())
 }
 
 #[cfg(test)]

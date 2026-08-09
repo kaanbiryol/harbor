@@ -1,6 +1,7 @@
 use gpui::{Div, IntoElement, ListState, div, prelude::*, px};
-use gpui_component::{Sizable, StyledExt, spinner::Spinner};
+use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 
+use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
 
 pub(crate) fn render_panel_header(
@@ -43,11 +44,50 @@ pub(crate) fn render_panel_card() -> Div {
         .bg(color::content_background())
 }
 
-pub(crate) fn render_empty_panel_card(message: impl Into<String>) -> impl IntoElement {
-    render_panel_card()
-        .p_3()
-        .text_color(color::text_muted())
-        .child(message.into())
+pub(crate) fn render_empty_state(
+    icon: Octicon,
+    title: impl Into<String>,
+    description: impl Into<String>,
+) -> Div {
+    div()
+        .flex_1()
+        .min_h_0()
+        .w_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap_2()
+        .px_5()
+        .py_8()
+        .text_center()
+        .child(
+            div()
+                .mb_2()
+                .size(px(44.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .border_1()
+                .border_color(color::border_strong())
+                .bg(color::row_selected_subtle())
+                .child(Icon::new(icon).large().text_color(color::accent())),
+        )
+        .child(
+            div()
+                .text_lg()
+                .font_semibold()
+                .text_color(color::text_primary())
+                .child(title.into()),
+        )
+        .child(
+            div()
+                .max_w(px(420.0))
+                .text_sm()
+                .text_color(color::text_muted())
+                .child(description.into()),
+        )
 }
 
 pub(crate) fn render_loading_panel_card(message: impl Into<String>) -> impl IntoElement {

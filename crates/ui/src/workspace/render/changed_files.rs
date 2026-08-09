@@ -5,7 +5,9 @@ use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 
 use crate::{
     icons::Octicon,
-    panels::{render_changed_file_row, render_changed_folder_row, render_status_pill},
+    panels::{
+        render_changed_file_row, render_changed_folder_row, render_empty_state, render_status_pill,
+    },
     visual::{Tone, color, layout},
     workspace::{AppView, ChangedFileTreeRow},
 };
@@ -47,12 +49,24 @@ impl AppView {
         }
 
         if self.detail_state.files().is_empty() {
-            return render_changed_files_message("No changed files", color::text_muted());
+            return render_empty_state(
+                Octicon::File,
+                "No changed files",
+                "This pull request does not contain any file changes.",
+            )
+            .debug_selector(|| "changed-files-empty-state".to_string())
+            .into_any_element();
         }
 
         let tree_rows = self.changed_file_tree_rows(cx);
         if tree_rows.is_empty() {
-            return render_changed_files_message("No files match filter", color::text_muted());
+            return render_empty_state(
+                Octicon::Search,
+                "No matching files",
+                "Adjust or clear the changed-file filters to see more results.",
+            )
+            .debug_selector(|| "changed-files-filtered-empty-state".to_string())
+            .into_any_element();
         }
 
         self.render_changed_files_list(tree_rows, cx)

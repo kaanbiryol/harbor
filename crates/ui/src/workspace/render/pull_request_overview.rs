@@ -8,7 +8,12 @@ use gpui_component::{
 };
 use harbor_domain::PullRequest;
 
-use crate::{panels::overview_markdown_body, visual::color, workspace::AppView};
+use crate::{
+    icons::Octicon,
+    panels::{overview_markdown_body, render_empty_state},
+    visual::color,
+    workspace::AppView,
+};
 
 const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
 
@@ -39,10 +44,39 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(pr) = pr else {
-            return div()
-                .text_sm()
-                .text_color(color::text_muted())
-                .child("Select a pull request to see its overview")
+            let has_repository = self.repository_state.has_configured_repo();
+            let (icon, title, description) = if has_repository {
+                (
+                    Octicon::GitPullRequest,
+                    "No pull request selected",
+                    "Select a pull request from the list to view its overview, changes, reviews, and checks.",
+                )
+            } else {
+                (
+                    Octicon::FileDirectory,
+                    "No repository selected",
+                    "Choose a repository from the title bar to load its pull requests.",
+                )
+            };
+
+            return render_empty_state(icon, title, description)
+                .debug_selector(|| "pull-request-empty-state".to_string())
+                .when(has_repository, |element| {
+                    element.child(
+                        div().pt_2().child(
+                            Button::new("refresh-empty-pull-request-inbox")
+                                .icon(Octicon::Sync)
+                                .label("refresh")
+                                .small()
+                                .outline()
+                                .loading(self.pull_request_inbox.is_loading())
+                                .disabled(self.pull_request_inbox.is_loading())
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    view.reload_pull_request_inbox(cx);
+                                })),
+                        ),
+                    )
+                })
                 .into_any_element();
         };
         let Some(detail_key) = self.selected_pull_request_detail_key() else {

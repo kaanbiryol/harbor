@@ -16,7 +16,7 @@ use crate::{
 };
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
     render_panel_header, render_status_pill,
     workflows::{render_workflow_conclusion, workflow_conclusion_tone, workflow_run_label},
 };
@@ -74,9 +74,14 @@ pub(crate) fn render_logs_panel(
             element.child(render_error_panel_card(error))
         })
         .when(!is_loading && run.is_none(), |element| {
-            element.child(render_empty_panel_card(
-                "No workflow run found for this PR head",
-            ))
+            element.child(
+                render_empty_state(
+                    Octicon::Terminal,
+                    "No workflow run available",
+                    "No workflow run was found for this pull request head.",
+                )
+                .debug_selector(|| "logs-no-run-empty-state".to_string()),
+            )
         })
         .when(!jobs.is_empty(), |element| {
             element
@@ -136,9 +141,14 @@ pub(crate) fn render_logs_panel(
         .when(
             !is_loading && run.is_some() && error.is_none() && log_chunk.is_none(),
             |element| {
-                element.child(render_empty_panel_card(
-                    "Load logs to fetch the workflow log output",
-                ))
+                element.child(
+                    render_empty_state(
+                        Octicon::Terminal,
+                        "Logs not loaded",
+                        "Load logs to fetch the workflow output for this run.",
+                    )
+                    .debug_selector(|| "logs-not-loaded-empty-state".to_string()),
+                )
             },
         )
 }

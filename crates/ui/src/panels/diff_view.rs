@@ -43,6 +43,8 @@ use row_render::render_diff_list_item;
 pub(super) use row_render::render_line_number;
 use row_state::DiffRowRenderState;
 
+use super::render_empty_state;
+
 const MIN_LINE_NUMBER_WIDTH: f32 = 32.0;
 const LINE_NUMBER_PADDING: f32 = 10.0;
 const LINE_NUMBER_DIGIT_WIDTH: f32 = 9.5;
@@ -133,24 +135,20 @@ pub(crate) fn render_diff_panel(
     }
 
     if input.visible_file_indices.is_empty() {
-        return div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h_0()
-            .child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::text_muted())
-                    .child(if input.files.is_empty() {
-                        "No changed files to preview"
-                    } else {
-                        "No changed files match the current filters"
-                    }),
+        let (title, description) = if input.files.is_empty() {
+            (
+                "No changed files",
+                "This pull request does not contain any file changes to preview.",
             )
+        } else {
+            (
+                "No matching files",
+                "Adjust or clear the changed-file filters to see more results.",
+            )
+        };
+
+        return render_empty_state(Octicon::File, title, description)
+            .debug_selector(|| "diff-empty-state".to_string())
             .into_any_element();
     }
 

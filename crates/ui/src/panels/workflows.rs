@@ -12,7 +12,7 @@ use crate::visual::color;
 use crate::workspace::AppView;
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_panel_card, render_panel_header,
+    render_empty_state, render_error_panel_card, render_panel_card, render_panel_header,
     sync_virtual_list_item_count,
 };
 
@@ -99,9 +99,14 @@ pub(crate) fn render_actions_panel(
         .gap_2()
         .child(render_panel_header("Actions", metadata))
         .when(repository.is_none(), |element| {
-            element.child(render_empty_panel_card(
-                "Select a repository before loading Actions",
-            ))
+            element.child(
+                render_empty_state(
+                    Octicon::Gear,
+                    "No repository selected",
+                    "Choose a repository before loading GitHub Actions workflows and runs.",
+                )
+                .debug_selector(|| "actions-empty-state".to_string()),
+            )
         })
         .when_some(repository, |element, repository| {
             element

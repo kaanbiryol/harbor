@@ -21,8 +21,8 @@ use crate::{
 use super::review_markdown::{render_review_markdown_body, review_markdown_body};
 use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_loading_panel_card,
-    render_metric_pill, render_status_pill, sync_virtual_list_item_count,
+    render_empty_state, render_error_panel_card, render_loading_panel_card, render_metric_pill,
+    render_status_pill, sync_virtual_list_item_count,
 };
 
 #[path = "review/diff_preview.rs"]
@@ -134,9 +134,14 @@ pub(crate) fn render_review_panel(
         .when(
             !is_loading && error.is_none() && !has_review_items,
             |element| {
-                element.child(render_empty_panel_card(
-                    "No review comments found for this pull request",
-                ))
+                element.child(
+                    render_empty_state(
+                        Octicon::CommentDiscussion,
+                        "No review activity",
+                        "Review comments and code discussion threads will appear here.",
+                    )
+                    .debug_selector(|| "review-empty-state".to_string()),
+                )
             },
         )
         .when(has_review_items, |element| {

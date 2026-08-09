@@ -2,10 +2,10 @@ use gpui::{Context, IntoElement, ListState, div, list, prelude::*};
 use gpui_component::StyledExt;
 use harbor_domain::PullRequestCommit;
 
-use crate::{date_time::natural_time_label, visual::color, workspace::AppView};
+use crate::{date_time::natural_time_label, icons::Octicon, visual::color, workspace::AppView};
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
     render_panel_header, render_review_avatar, sync_virtual_list_item_count,
 };
 
@@ -49,9 +49,14 @@ pub(crate) fn render_commits_panel(
         .when(
             !is_loading && error.is_none() && commits.is_empty(),
             |element| {
-                element.child(render_empty_panel_card(
-                    "No commits found for this pull request",
-                ))
+                element.child(
+                    render_empty_state(
+                        Octicon::CodeSquare,
+                        "No commits found",
+                        "This pull request does not have any commits to display.",
+                    )
+                    .debug_selector(|| "commits-empty-state".to_string()),
+                )
             },
         )
         .when(!commits.is_empty(), |element| {

@@ -4,6 +4,7 @@ use super::*;
 use crate::{
     actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher},
     test_fixtures::{pull_request, review_thread, test_time},
+    visual::layout,
     workspace::github_service::test_support::FakeGitHubApi,
 };
 use gpui::{
@@ -26,6 +27,62 @@ fn defaults_pull_request_inbox_to_open_mode() {
         PullRequestInboxMode::Closed.empty_message(),
         "No closed pull requests"
     );
+}
+
+#[gpui::test]
+async fn pull_request_inbox_uses_skeleton_rows_while_initial_list_loads(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view_entity = Some(view.clone());
+        view.update(cx, |view, cx| {
+            view.pull_request_inbox.start_loading();
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    assert!(cx.debug_bounds("pull-request-inbox-loading").is_some());
+    let loading_row = cx
+        .debug_bounds("pull-request-inbox-loading-row-0")
+        .expect("pull request skeleton row should render");
+    assert_eq!(loading_row.size.height, px(layout::PULL_REQUEST_ROW_HEIGHT));
+
+    view_entity
+        .expect("test AppView should be created")
+        .update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.pull_request_inbox.apply_success();
+            cx.notify();
+        });
+    cx.refresh()
+        .expect("test window should refresh after pull requests load");
+    assert!(cx.debug_bounds("pull-request-inbox-loading").is_none());
+}
+
+#[gpui::test]
+async fn empty_workspace_and_inbox_render_guided_empty_states(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    assert!(cx.debug_bounds("pull-request-inbox-empty-state").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_some());
 }
 
 #[gpui::test]

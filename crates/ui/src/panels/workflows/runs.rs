@@ -12,7 +12,7 @@ use crate::visual::{Tone, color, tone_colors};
 use crate::workspace::AppView;
 
 use super::super::{
-    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
     render_status_pill,
 };
 
@@ -104,7 +104,16 @@ pub(super) fn render_repository_workflow_runs(
         })
         .when(
             !is_loading && error.is_none() && workflow_runs.is_empty(),
-            |element| element.child(render_empty_panel_card("No workflow runs found")),
+            |element| {
+                element.child(
+                    render_empty_state(
+                        Octicon::Clock,
+                        "No workflow runs found",
+                        "Runs for the selected workflow will appear here.",
+                    )
+                    .debug_selector(|| "workflow-runs-empty-state".to_string()),
+                )
+            },
         )
         .when(!workflow_runs.is_empty(), |element| {
             element.child(

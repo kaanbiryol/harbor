@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
     render_panel_header, sync_virtual_list_item_count,
 };
 
@@ -118,14 +118,28 @@ pub(crate) fn render_checks_panel(
         .when(
             !is_loading && error.is_none() && check_runs.is_empty(),
             |element| {
-                element.child(render_empty_panel_card(
-                    "No check runs found for this PR head",
-                ))
+                element.child(
+                    render_empty_state(
+                        Octicon::CheckCircle,
+                        "No checks reported",
+                        "GitHub has not reported any check runs for this pull request head.",
+                    )
+                    .debug_selector(|| "checks-empty-state".to_string()),
+                )
             },
         )
         .when(
             !is_loading && error.is_none() && !check_runs.is_empty() && rows.is_empty(),
-            |element| element.child(render_empty_panel_card(active_filter.empty_message())),
+            |element| {
+                element.child(
+                    render_empty_state(
+                        Octicon::Search,
+                        active_filter.empty_message(),
+                        "Choose another check filter to see the available runs.",
+                    )
+                    .debug_selector(|| "checks-filtered-empty-state".to_string()),
+                )
+            },
         )
         .when(!check_runs.is_empty() && !rows.is_empty(), |element| {
             element.child(
