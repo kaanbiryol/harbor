@@ -17,7 +17,7 @@ impl PullRequestInboxRefreshIntent {
     }
 
     pub(super) fn resets_detail_state(self) -> bool {
-        self != Self::LightRefresh
+        matches!(self, Self::PreferCache | Self::SwitchMode)
     }
 
     pub(super) fn force_enrichment(self) -> bool {

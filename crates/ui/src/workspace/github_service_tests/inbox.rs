@@ -289,7 +289,9 @@ async fn inbox_refresh_failure_keeps_existing_rows(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn manual_inbox_refresh_can_force_enrichment(cx: &mut TestAppContext) {
+async fn manual_inbox_refresh_forces_enrichment_without_clearing_selected_details(
+    cx: &mut TestAppContext,
+) {
     let api = Arc::new(FakeGitHubApi::default());
     let pull_request = pull_request();
     api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
@@ -304,6 +306,9 @@ async fn manual_inbox_refresh_can_force_enrichment(cx: &mut TestAppContext) {
             .select_repository(pull_request.repo.clone());
         view.pull_requests = vec![pull_request.clone()];
         view.selection_state.reset_pull_request_index();
+        view.detail_state.apply_details_success();
+        view.detail_state.apply_commits_success();
+        view.review_state.apply_reviews_success();
         view.refresh_pull_requests(pull_request.repo, cx);
     });
     cx.run_until_parked();
@@ -315,6 +320,11 @@ async fn manual_inbox_refresh_can_force_enrichment(cx: &mut TestAppContext) {
             "enrich_pull_requests_by_node_ids"
         ]
     );
+    view_entity.read_with(cx, |view, _| {
+        assert!(view.detail_state.details_ready());
+        assert!(view.detail_state.commits_finished());
+        assert!(view.review_state.reviews_finished());
+    });
 }
 
 #[gpui::test]

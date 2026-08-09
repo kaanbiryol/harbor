@@ -144,6 +144,7 @@ impl AppView {
             PullRequestDetailLoadScope::ActivePanel => self.load_active_panel_data_if_needed(cx),
             PullRequestDetailLoadScope::Full => {
                 self.spawn_pull_request_checks_loader(load.clone(), cx);
+                self.spawn_pull_request_commits_loader(load.clone(), cx);
                 self.spawn_pull_request_workflows_loader(load.clone(), cx);
                 self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
             }

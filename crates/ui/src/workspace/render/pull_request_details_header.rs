@@ -3,7 +3,6 @@ use gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
-    spinner::Spinner,
 };
 use harbor_domain::{MergeMethod, PullRequest};
 
@@ -180,17 +179,6 @@ impl AppView {
                                                 cx.notify();
                                             }))
                                             .child(format!("#{} {}", pr.number, pr.title)),
-                                    )
-                                    .child(
-                                        div()
-                                            .flex_none()
-                                            .size(px(16.0))
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .when(self.detail_state.details_loading(), |element| {
-                                                element.child(Spinner::new().small())
-                                            }),
                                     )
                                     .child(div().flex_none().child(render_copy_button(
                                         format!("copy-pr-link-{}", pr.number),

@@ -37,6 +37,28 @@ async fn selected_metadata_refresh_does_not_refetch_files(cx: &mut TestAppContex
 }
 
 #[gpui::test]
+async fn full_refresh_finishes_commits_required_by_overview(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        view.active_tab = PanelTab::Overview;
+        view.refresh_selected_pull_request(cx);
+    });
+    cx.run_until_parked();
+
+    assert!(
+        api.calls()
+            .contains(&"list_pull_request_commits".to_string())
+    );
+    view_entity.read_with(cx, |view, _| {
+        assert!(view.detail_state.commits_finished());
+    });
+}
+
+#[gpui::test]
 async fn commit_diff_files_receive_syntax_highlights(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
     let mut file = patched_diff_file();
