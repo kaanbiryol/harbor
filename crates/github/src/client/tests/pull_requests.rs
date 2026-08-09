@@ -117,13 +117,14 @@ fn queries_repository_pull_request_filters() {
         assert!(calls[0].0.contains("HarborRepositoryPullRequests"));
         assert!(calls[0].0.contains("first: $first"));
         assert!(calls[0].0.contains("statusCheckRollup"));
-        assert!(!calls[0].0.contains("labels(first:"));
+        assert!(calls[0].0.contains("labels(first: 20) @include"));
         assert_eq!(
             calls[0].1,
             json!({
                 "searchQuery": query,
                 "first": 100,
                 "after": null,
+                "includeLabels": false,
             })
         );
     }
@@ -180,8 +181,60 @@ fn paginates_repository_pull_requests() {
     );
     assert_eq!(calls[0].1["after"], Value::Null);
     assert_eq!(calls[0].1["first"], 100);
+    assert_eq!(calls[0].1["includeLabels"], false);
     assert_eq!(calls[1].1["after"], "cursor-1");
     assert_eq!(calls[1].1["first"], 100);
+    assert_eq!(calls[1].1["includeLabels"], false);
+}
+
+#[test]
+fn searches_repository_pull_requests_without_loading_the_inbox() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "search": {
+                "issueCount": 1,
+                "pageInfo": {
+                    "hasNextPage": true,
+                    "endCursor": "search-cursor"
+                },
+                "nodes": []
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    let page = smol::block_on(client.search_repository_pull_request_page(
+        &RepoId::new("acme", "app"),
+        PullRequestListFilter::Open,
+        "authentication in:title label:\"security\"",
+        None,
+        25,
+    ))
+    .unwrap();
+
+    assert_eq!(page.total_count, Some(1));
+    assert_eq!(
+        page.next_cursor,
+        Some(PullRequestPageCursor::GraphQl("search-cursor".to_string()))
+    );
+    let calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].1,
+        json!({
+            "searchQuery": "repo:acme/app is:pr is:open archived:false (authentication in:title label:\"security\") sort:created-desc",
+            "first": 25,
+            "after": null,
+            "includeLabels": true,
+        })
+    );
 }
 
 #[test]

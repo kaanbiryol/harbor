@@ -16,7 +16,8 @@ use super::{
         MARK_FILE_AS_VIEWED_MUTATION, PULL_REQUEST_ENRICHMENT_QUERY,
         PULL_REQUEST_FILE_VIEWED_STATES_QUERY, REPOSITORY_PULL_REQUEST_COUNT_QUERY,
         REPOSITORY_PULL_REQUESTS_QUERY, UNMARK_FILE_AS_VIEWED_MUTATION,
-        UPDATE_PULL_REQUEST_MUTATION, repository_pull_requests_query,
+        UPDATE_PULL_REQUEST_MUTATION, repository_pull_request_search_query,
+        repository_pull_requests_query,
     },
 };
 
@@ -92,6 +93,39 @@ where
         cursor: Option<PullRequestPageCursor>,
         page_size: usize,
     ) -> Result<PullRequestPage> {
+        self.request_repository_pull_request_page(
+            repository_pull_requests_query(repository, filter),
+            cursor,
+            page_size,
+            false,
+        )
+        .await
+    }
+
+    pub async fn search_repository_pull_request_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        query: &str,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage> {
+        self.request_repository_pull_request_page(
+            repository_pull_request_search_query(repository, filter, query),
+            cursor,
+            page_size,
+            true,
+        )
+        .await
+    }
+
+    async fn request_repository_pull_request_page(
+        &self,
+        search_query: String,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+        include_labels: bool,
+    ) -> Result<PullRequestPage> {
         let after = match cursor {
             Some(PullRequestPageCursor::GraphQl(cursor)) => Some(cursor),
             Some(PullRequestPageCursor::RestPage(_)) => {
@@ -106,9 +140,10 @@ where
             .graphql(
                 REPOSITORY_PULL_REQUESTS_QUERY,
                 json!({
-                    "searchQuery": repository_pull_requests_query(repository, filter),
+                    "searchQuery": search_query,
                     "first": page_size.clamp(1, 100),
                     "after": after,
+                    "includeLabels": include_labels,
                 }),
             )
             .await?;

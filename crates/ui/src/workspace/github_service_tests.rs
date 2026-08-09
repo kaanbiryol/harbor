@@ -29,6 +29,8 @@ mod inbox;
 mod loading;
 #[path = "github_service_tests/review.rs"]
 mod review;
+#[path = "github_service_tests/search.rs"]
+mod search;
 #[path = "github_service_tests/selected_pull_request.rs"]
 mod selected_pull_request;
 

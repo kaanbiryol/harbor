@@ -23,6 +23,15 @@ pub trait PullRequestInboxSource: Send + Sync {
         page_size: usize,
     ) -> Result<PullRequestPage>;
 
+    async fn search_repository_pull_request_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        query: &str,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage>;
+
     async fn count_repository_pull_requests(
         &self,
         repository: &RepoId,

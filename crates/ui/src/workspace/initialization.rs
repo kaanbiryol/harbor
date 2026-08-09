@@ -18,9 +18,10 @@ use super::{
     notifications::NativeNotificationSink,
     state::{
         ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
-        PullRequestDetailUiState, PullRequestInboxState, PullRequestSelectionState,
-        RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
-        SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+        PullRequestDetailUiState, PullRequestInboxState, PullRequestSearchState,
+        PullRequestSelectionState, RepositoryActionsUiState, RepositoryUiState,
+        ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
+        WorkspaceTasks,
     },
 };
 
@@ -136,7 +137,7 @@ impl AppView {
         });
         let pull_request_search_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Search loaded pull requests...")
+                .placeholder("Search pull requests on GitHub...")
                 .clean_on_escape()
         });
         let mut subscriptions = vec![
@@ -276,6 +277,7 @@ impl AppView {
             pull_request_inbox: PullRequestInboxState::visible_by_default(),
             prefetch_inbox_counts: start_startup_tasks,
             pull_request_inbox_search_open: false,
+            pull_request_search_state: PullRequestSearchState::default(),
             pull_request_filter_popover_open: false,
             pull_request_filters: PullRequestFilters::default(),
             file_filter_popover_open: false,

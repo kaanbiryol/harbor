@@ -26,6 +26,7 @@ mod pull_request_detail_loaders;
 mod pull_request_filters;
 mod pull_request_inbox_refresh;
 mod pull_request_metadata_actions;
+mod pull_request_search;
 mod render;
 mod repository_actions_loaders;
 mod repository_loaders;
@@ -82,9 +83,9 @@ pub(crate) use reviews::{
 use state::{
     ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
     PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
-    PullRequestSelectionState, RepositoryActionsTaskKind, RepositoryActionsUiState,
-    RepositoryUiState, ReviewComposerState, ReviewRuntimeState, SelectedPullRequestTaskKind,
-    SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    PullRequestSearchState, PullRequestSelectionState, RepositoryActionsTaskKind,
+    RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
+    SelectedPullRequestTaskKind, SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
@@ -173,6 +174,7 @@ pub struct AppView {
     pull_request_inbox: PullRequestInboxState,
     prefetch_inbox_counts: bool,
     pull_request_inbox_search_open: bool,
+    pull_request_search_state: PullRequestSearchState,
     pull_request_filter_popover_open: bool,
     pull_request_filters: PullRequestFilters,
     file_filter_popover_open: bool,
@@ -289,6 +291,9 @@ impl AppView {
         if self.pull_request_inbox.mode() == mode {
             return;
         }
+
+        self.pull_request_inbox_search_open = false;
+        self.clear_pull_request_search();
 
         if let Some(repository) = self.repository_state.configured_repo_cloned() {
             self.switch_pull_request_inbox_mode(repository, mode, cx);

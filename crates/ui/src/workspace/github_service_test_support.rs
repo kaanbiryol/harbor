@@ -26,16 +26,25 @@ use queues::{FakeQueue, pop_result, push_result};
 
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
 type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>;
+type FakePullRequestSearchRequest = (
+    PullRequestListFilter,
+    String,
+    Option<PullRequestPageCursor>,
+    usize,
+);
+type FakePullRequestSearchRequests = Arc<Mutex<Vec<FakePullRequestSearchRequest>>>;
 
 #[derive(Clone, Default)]
 pub(crate) struct FakeGitHubApi {
     signed_out: Arc<AtomicBool>,
     calls: Arc<Mutex<Vec<String>>>,
     light_pull_request_requests: FakeLightPullRequestRequests,
+    pull_request_search_requests: FakePullRequestSearchRequests,
     repositories: FakeQueue<RepositoryList>,
     repository_lookups: FakeQueue<RepoId>,
     metadata_options: FakeQueue<PullRequestMetadataOptions>,
     pull_request_pages: FakeQueue<PullRequestPage>,
+    pull_request_search_pages: FakeQueue<PullRequestPage>,
     pull_request_counts: FakeQueue<usize>,
     light_pull_request_pages: FakeQueue<ConditionalFetch<PullRequestPage>>,
     pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
@@ -115,6 +124,10 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_pull_request_count(&self, result: Result<usize>) {
         push_result(&self.pull_request_counts, result);
+    }
+
+    pub(crate) fn push_pull_request_search_page(&self, result: Result<PullRequestPage>) {
+        push_result(&self.pull_request_search_pages, result);
     }
 
     pub(crate) fn push_pull_request_enrichments(&self, result: Result<Vec<PullRequestEnrichment>>) {
@@ -225,6 +238,13 @@ impl FakeGitHubApi {
             .clone()
     }
 
+    pub(crate) fn pull_request_search_requests(&self) -> Vec<FakePullRequestSearchRequest> {
+        self.pull_request_search_requests
+            .lock()
+            .expect("fake GitHub API request mutex should not be poisoned")
+            .clone()
+    }
+
     fn record_call(&self, name: &str) {
         self.calls
             .lock()
@@ -256,6 +276,25 @@ impl PullRequestInboxSource for FakeGitHubApi {
     ) -> Result<PullRequestPage> {
         self.record_call("list_repository_pull_requests");
         pop_result(&self.pull_request_pages, "list_repository_pull_requests")
+    }
+
+    async fn search_repository_pull_request_page(
+        &self,
+        _repository: &RepoId,
+        filter: PullRequestListFilter,
+        query: &str,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage> {
+        self.record_call("search_repository_pull_requests");
+        self.pull_request_search_requests
+            .lock()
+            .expect("fake GitHub API request mutex should not be poisoned")
+            .push((filter, query.to_string(), cursor, page_size));
+        pop_result(
+            &self.pull_request_search_pages,
+            "search_repository_pull_requests",
+        )
     }
 
     async fn count_repository_pull_requests(

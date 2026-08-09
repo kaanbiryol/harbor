@@ -6,7 +6,12 @@ use crate::{GitHubError, Result};
 use super::{PullRequestListFilter, SubmitPullRequestReviewEvent};
 
 pub(super) const REPOSITORY_PULL_REQUESTS_QUERY: &str = r#"
-query HarborRepositoryPullRequests($searchQuery: String!, $first: Int!, $after: String) {
+query HarborRepositoryPullRequests(
+  $searchQuery: String!,
+  $first: Int!,
+  $after: String,
+  $includeLabels: Boolean!
+) {
   search(query: $searchQuery, type: ISSUE, first: $first, after: $after) {
     issueCount
     pageInfo {
@@ -55,6 +60,12 @@ query HarborRepositoryPullRequests($searchQuery: String!, $first: Int!, $after: 
         assignees(first: 20) {
           nodes {
             login
+          }
+        }
+        labels(first: 20) @include(if: $includeLabels) {
+          nodes {
+            name
+            color
           }
         }
       }
@@ -527,15 +538,30 @@ pub(super) fn repository_pull_requests_query(
     repository: &RepoId,
     filter: PullRequestListFilter,
 ) -> String {
+    repository_pull_request_search_query(repository, filter, "")
+}
+
+pub(super) fn repository_pull_request_search_query(
+    repository: &RepoId,
+    filter: PullRequestListFilter,
+    query: &str,
+) -> String {
     let mode = match filter {
         PullRequestListFilter::Open => "is:open archived:false",
         PullRequestListFilter::Closed => "is:closed archived:false",
         PullRequestListFilter::NeedsReview => "is:open archived:false review-requested:@me",
     };
 
+    let query = query.trim();
+    let search = if query.is_empty() {
+        String::new()
+    } else {
+        format!(" ({query})")
+    };
+
     format!(
-        "repo:{} is:pr {mode} sort:created-desc",
-        repository.full_name()
+        "repo:{} is:pr {mode}{search} sort:created-desc",
+        repository.full_name(),
     )
 }
 

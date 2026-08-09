@@ -22,6 +22,7 @@ pub(crate) enum RepositoryActionsTaskKind {
 #[derive(Default)]
 pub(crate) struct WorkspaceTasks {
     pull_request_list_task: Option<Task<()>>,
+    pull_request_search_task: Option<Task<()>>,
     selected_pull_request_tasks: HashMap<SelectedPullRequestTaskKind, Task<()>>,
     repository_actions_tasks: HashMap<RepositoryActionsTaskKind, Task<()>>,
     repository_task: Option<Task<()>>,
@@ -44,6 +45,10 @@ impl WorkspaceTasks {
         self.pull_request_list_task = Some(task);
     }
 
+    pub(crate) fn set_pull_request_search_task(&mut self, task: Task<()>) {
+        self.pull_request_search_task = Some(task);
+    }
+
     pub(crate) fn set_selected_pull_request_task(
         &mut self,
         kind: SelectedPullRequestTaskKind,
@@ -62,6 +67,10 @@ impl WorkspaceTasks {
 
     pub(crate) fn cancel_pull_request_list_task(&mut self) {
         self.pull_request_list_task = None;
+    }
+
+    pub(crate) fn cancel_pull_request_search_task(&mut self) {
+        self.pull_request_search_task = None;
     }
 
     pub(crate) fn set_repository_task(&mut self, task: Task<()>) {

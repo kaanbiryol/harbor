@@ -95,6 +95,19 @@ impl PullRequestInboxSource for GitHubSession {
             .await
     }
 
+    async fn search_repository_pull_request_page(
+        &self,
+        repository: &RepoId,
+        filter: PullRequestListFilter,
+        query: &str,
+        cursor: Option<PullRequestPageCursor>,
+        page_size: usize,
+    ) -> Result<PullRequestPage> {
+        self.client()?
+            .search_repository_pull_request_page(repository, filter, query, cursor, page_size)
+            .await
+    }
+
     async fn count_repository_pull_requests(
         &self,
         repository: &RepoId,

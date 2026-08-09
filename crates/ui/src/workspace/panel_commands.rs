@@ -160,6 +160,7 @@ impl AppView {
         self.repository_state.repository_switcher_open = false;
         self.file_filter_popover_open = false;
         self.review_action_comment_target = None;
+        self.clear_pull_request_search();
         self.pull_request_search_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
             input.focus(window, cx);

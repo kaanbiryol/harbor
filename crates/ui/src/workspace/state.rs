@@ -12,6 +12,8 @@ mod notification;
 mod overview;
 #[path = "state/panel_lists.rs"]
 mod panel_lists;
+#[path = "state/pull_request_search.rs"]
+mod pull_request_search;
 #[path = "state/repository.rs"]
 mod repository;
 #[path = "state/repository_actions.rs"]
@@ -36,6 +38,7 @@ pub(crate) use inbox::{PullRequestInboxState, PullRequestRowEnrichmentKey};
 pub(crate) use notification::NotificationState;
 pub(crate) use overview::{OverviewMarkdownState, OverviewUiState};
 pub(crate) use panel_lists::PanelListState;
+pub(crate) use pull_request_search::PullRequestSearchState;
 pub(crate) use repository::RepositoryUiState;
 pub(crate) use repository_actions::RepositoryActionsUiState;
 #[cfg(test)]

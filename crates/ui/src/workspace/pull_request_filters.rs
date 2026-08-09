@@ -123,6 +123,18 @@ impl PullRequestFilters {
             && self.matches_assignees(pull_request)
     }
 
+    pub(crate) fn github_search_query(&self) -> String {
+        [
+            github_qualifier_group("author", &self.authors),
+            github_qualifier_group("label", &self.labels),
+            github_qualifier_group("assignee", &self.assignees),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
+    }
+
     fn values(&self, facet: PullRequestFilterFacet) -> &HashSet<String> {
         match facet {
             PullRequestFilterFacet::Author => &self.authors,
@@ -158,6 +170,28 @@ impl PullRequestFilters {
                 .iter()
                 .any(|assignee| self.assignees.contains(&assignee.login))
     }
+}
+
+fn github_qualifier_group(qualifier: &str, values: &HashSet<String>) -> Option<String> {
+    if values.is_empty() {
+        return None;
+    }
+
+    let mut values = values.iter().collect::<Vec<_>>();
+    values.sort_by_cached_key(|value| value.to_lowercase());
+    let qualifiers = values
+        .into_iter()
+        .map(|value| {
+            let value = value.replace('\\', "\\\\").replace('"', "\\\"");
+            format!("{qualifier}:\"{value}\"")
+        })
+        .collect::<Vec<_>>();
+
+    Some(if qualifiers.len() == 1 {
+        qualifiers.into_iter().next().unwrap_or_default()
+    } else {
+        format!("({})", qualifiers.join(" OR "))
+    })
 }
 
 impl AppView {
@@ -284,6 +318,9 @@ impl AppView {
         } else {
             "Cleared pull request filters".to_string()
         };
+        if !self.current_pull_request_search_query(cx).is_empty() {
+            self.schedule_pull_request_search(cx);
+        }
         cx.notify();
     }
 }
@@ -396,6 +433,22 @@ mod tests {
                 .map(|option| (option.value, option.count))
                 .collect::<Vec<_>>(),
             vec![("mona".to_string(), 2), ("octocat".to_string(), 1)]
+        );
+    }
+
+    #[test]
+    fn builds_stable_github_search_qualifiers_with_or_within_facets() {
+        let mut filters = PullRequestFilters::default();
+        filters.toggle(PullRequestFilterFacet::Author, "octocat".to_string());
+        filters.toggle(
+            PullRequestFilterFacet::Label,
+            "needs \"review\"".to_string(),
+        );
+        filters.toggle(PullRequestFilterFacet::Label, "bug".to_string());
+
+        assert_eq!(
+            filters.github_search_query(),
+            "author:\"octocat\" (label:\"bug\" OR label:\"needs \\\"review\\\"\")"
         );
     }
 

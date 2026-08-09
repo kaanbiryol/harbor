@@ -105,6 +105,11 @@ impl AppView {
             .is_some_and(|current_key| current_key == &key);
         let same_repository = self.repository_state.configured_repo() == Some(&repo);
 
+        if !same_inbox {
+            self.pull_request_inbox_search_open = false;
+            self.clear_pull_request_search();
+        }
+
         self.cache_current_pull_request_inbox_snapshot();
         self.repository_actions_state
             .reset_for_repository(repo.clone());

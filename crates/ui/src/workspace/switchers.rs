@@ -13,6 +13,12 @@ pub(crate) enum RepositorySwitcherChoice {
     Typed(RepoId),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PullRequestSwitcherResult {
+    pub(crate) inbox_index: Option<usize>,
+    pub(crate) pull_request: PullRequest,
+}
+
 impl RepositorySwitcherChoice {
     pub(crate) fn repository(&self) -> &RepoId {
         match self {
@@ -87,6 +93,38 @@ impl AppView {
             .unwrap_or_default()
     }
 
+    pub(crate) fn pull_request_switcher_results(&self, cx: &App) -> Vec<PullRequestSwitcherResult> {
+        let search_query = self.current_pull_request_search_query(cx);
+        if !search_query.is_empty() {
+            if self.pull_request_search_state.query() == search_query
+                && self.pull_request_search_state.is_loaded()
+            {
+                return self
+                    .pull_request_search_state
+                    .results()
+                    .iter()
+                    .cloned()
+                    .map(|pull_request| PullRequestSwitcherResult {
+                        inbox_index: self.pull_requests.iter().position(|loaded| {
+                            loaded.repo == pull_request.repo && loaded.number == pull_request.number
+                        }),
+                        pull_request,
+                    })
+                    .collect();
+            }
+
+            return Vec::new();
+        }
+
+        self.filtered_switcher_pull_requests(cx)
+            .into_iter()
+            .map(|(inbox_index, pull_request)| PullRequestSwitcherResult {
+                inbox_index: Some(inbox_index),
+                pull_request,
+            })
+            .collect()
+    }
+
     pub(crate) fn reset_repository_switcher_selection(&mut self, cx: &App) {
         let current_repository = self.current_repository().cloned();
         let choices = self.repository_switcher_choices(cx);
@@ -100,10 +138,16 @@ impl AppView {
     }
 
     pub(crate) fn reset_pull_request_switcher_selection(&mut self, cx: &App) {
-        let pull_requests = self.filtered_switcher_pull_requests(cx);
+        let pull_requests = self.pull_request_switcher_results(cx);
+        let selected_pull_request = self.selected_pull_request();
         self.pull_request_switcher_selection = pull_requests
             .iter()
-            .position(|(index, _)| *index == self.selected_pull_request_index())
+            .position(|result| {
+                selected_pull_request.is_some_and(|selected| {
+                    selected.repo == result.pull_request.repo
+                        && selected.number == result.pull_request.number
+                })
+            })
             .unwrap_or(0);
     }
 
@@ -126,7 +170,7 @@ impl AppView {
         delta: isize,
         cx: &mut Context<Self>,
     ) {
-        let len = self.filtered_switcher_pull_requests(cx).len();
+        let len = self.pull_request_switcher_results(cx).len();
         self.pull_request_switcher_selection =
             next_switcher_index(self.pull_request_switcher_selection, len, delta);
         cx.notify();
@@ -161,8 +205,8 @@ impl AppView {
     }
 
     pub(crate) fn accept_pull_request_switcher_selection(&mut self, cx: &mut Context<Self>) {
-        let pull_requests = self.filtered_switcher_pull_requests(cx);
-        let Some((index, _)) = pull_requests
+        let pull_requests = self.pull_request_switcher_results(cx);
+        let Some(result) = pull_requests
             .get(
                 self.pull_request_switcher_selection
                     .min(pull_requests.len().saturating_sub(1)),
@@ -178,9 +222,23 @@ impl AppView {
             return;
         };
 
+        self.select_pull_request_switcher_result(result, cx);
+    }
+
+    pub(crate) fn select_pull_request_switcher_result(
+        &mut self,
+        result: PullRequestSwitcherResult,
+        cx: &mut Context<Self>,
+    ) {
+        let index = result.inbox_index.unwrap_or_else(|| {
+            self.pull_requests.push(result.pull_request);
+            self.pull_requests.len() - 1
+        });
+
         self.select_pull_request(index, cx);
         self.pull_request_inbox_search_open = false;
         self.pull_request_filter_popover_open = false;
+        self.clear_pull_request_search();
         cx.notify();
     }
 
@@ -201,6 +259,7 @@ impl AppView {
                     self.repository_state.repository_switcher_selection = 0;
                 } else if is_pull_request_input {
                     self.pull_request_switcher_selection = 0;
+                    self.schedule_pull_request_search(cx);
                 }
 
                 cx.notify();
