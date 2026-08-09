@@ -8,6 +8,8 @@ use harbor_domain::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OverviewPanelItem {
+    Description,
+    ActivityHeader,
     Commit { sha: String },
     Comment { id: String },
     Review { id: String },
@@ -19,6 +21,8 @@ pub(super) enum OverviewPanelItem {
 impl OverviewPanelItem {
     pub(super) fn key(&self) -> String {
         match self {
+            Self::Description => "description".to_string(),
+            Self::ActivityHeader => "activity:header".to_string(),
             Self::Commit { sha } => format!("commit:{sha}"),
             Self::Comment { id } => format!("comment:{id}"),
             Self::Review { id } => format!("review:{id}"),
@@ -132,7 +136,9 @@ pub(super) fn overview_panel_items(
     error: Option<&str>,
 ) -> Vec<OverviewPanelItem> {
     let timeline_items = overview_timeline_items(commits, reviews, comments, threads);
-    let mut items = Vec::with_capacity(timeline_items.len() + 2);
+    let mut items = Vec::with_capacity(timeline_items.len() + 4);
+    items.push(OverviewPanelItem::Description);
+    items.push(OverviewPanelItem::ActivityHeader);
 
     if let Some(error) = error {
         items.push(OverviewPanelItem::Message(OverviewTimelineMessage::Error(

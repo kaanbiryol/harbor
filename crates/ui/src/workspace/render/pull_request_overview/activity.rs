@@ -136,6 +136,7 @@ impl AppView {
 
         for (index, item) in panel_items.iter().enumerate() {
             let changed = match item {
+                OverviewPanelItem::Description | OverviewPanelItem::ActivityHeader => false,
                 OverviewPanelItem::Commit { .. } => false,
                 OverviewPanelItem::Comment { id } => {
                     previous_comments.iter().find(|comment| comment.id == *id)

@@ -90,6 +90,20 @@ impl AppView {
                     };
 
                     match item {
+                        OverviewPanelItem::Description => view
+                            .selected_pull_request()
+                            .cloned()
+                            .map(|pull_request| {
+                                div()
+                                    .w_full()
+                                    .pb_3()
+                                    .child(view.render_description_card(&pull_request, cx))
+                                    .into_any_element()
+                            })
+                            .unwrap_or_else(|| div().into_any_element()),
+                        OverviewPanelItem::ActivityHeader => {
+                            render_overview_activity_header(activity_loading).into_any_element()
+                        }
                         OverviewPanelItem::Commit { sha } => view
                             .detail_state
                             .commits()
@@ -161,12 +175,21 @@ impl AppView {
             .size_full()
             .into_any_element()
         } else {
-            render_overview_activity_loading()
-        };
-        let description = if overview_ready {
-            self.render_description_card(pr, cx)
-        } else {
-            render_overview_skeleton_card("pull-request-overview-description-loading", 56.0)
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex_none()
+                        .mb_3()
+                        .child(render_overview_skeleton_card(
+                            "pull-request-overview-description-loading",
+                            56.0,
+                        )),
+                )
+                .child(render_overview_activity_loading())
+                .into_any_element()
         };
         let sidebar = if overview_ready {
             div()
@@ -210,23 +233,11 @@ impl AppView {
                             .flex_1()
                             .min_h_0()
                             .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(div().flex_none().mb_3().child(description))
                             .child(
                                 div()
                                     .debug_selector(|| "pull-request-overview-activity".to_string())
-                                    .flex_1()
-                                    .min_h_0()
-                                    .min_w_0()
-                                    .flex()
-                                    .flex_col()
-                                    .when(overview_ready, |element| {
-                                        element.child(render_overview_activity_header(
-                                            activity_loading,
-                                        ))
-                                    })
-                                    .child(div().flex_1().min_h_0().child(activity_body)),
+                                    .size_full()
+                                    .child(activity_body),
                             ),
                     )
                     .child(sidebar),
@@ -529,7 +540,7 @@ mod tests {
         let thread = review_thread(ReviewThreadState::Unresolved);
         let items = overview_panel_items(&[], &[], &[], &[thread], None);
 
-        assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(0));
+        assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(2));
         assert_eq!(overview_thread_item_index(&items, "missing"), None);
     }
 
@@ -561,13 +572,21 @@ mod tests {
     }
 
     #[test]
-    fn activity_rows_only_contain_activity_content() {
+    fn overview_rows_include_description_and_activity_in_one_list() {
         let keys = overview_panel_items(&[], &[], &[], &[], None)
             .iter()
             .map(OverviewPanelItem::key)
             .collect::<Vec<_>>();
 
-        assert_eq!(keys, vec!["activity:empty", "composer"]);
+        assert_eq!(
+            keys,
+            vec![
+                "description",
+                "activity:header",
+                "activity:empty",
+                "composer"
+            ]
+        );
     }
 
     #[gpui::test]

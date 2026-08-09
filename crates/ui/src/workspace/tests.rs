@@ -499,6 +499,63 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
 }
 
 #[gpui::test]
+async fn overview_description_and_activity_scroll_together(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.detail_state.apply_details_success();
+            view.detail_state.replace_commits(
+                (0..24)
+                    .map(|index| PullRequestCommit {
+                        sha: format!("commit-{index}"),
+                        message: format!("Timeline commit {index}"),
+                        author: "octocat".to_string(),
+                        author_avatar_url: None,
+                        authored_at: Some(test_time()),
+                    })
+                    .collect(),
+            );
+            view.detail_state.apply_commits_success();
+            view.review_state.apply_reviews_success();
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    let timeline = cx
+        .debug_bounds("pull-request-overview-timeline")
+        .expect("overview timeline should render");
+    let description_before_scroll = cx
+        .debug_bounds("pull-request-overview-description")
+        .expect("overview description should render");
+
+    cx.simulate_event(ScrollWheelEvent {
+        position: timeline.center(),
+        delta: ScrollDelta::Pixels(point(px(0.0), px(-400.0))),
+        ..Default::default()
+    });
+    cx.refresh()
+        .expect("test window should refresh after scrolling the timeline");
+
+    let description_after_scroll = cx.debug_bounds("pull-request-overview-description");
+    assert!(
+        description_after_scroll.is_none_or(|description| {
+            description.origin.y < description_before_scroll.origin.y
+        }),
+        "scrolling activity should also move the description"
+    );
+}
+
+#[gpui::test]
 async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
