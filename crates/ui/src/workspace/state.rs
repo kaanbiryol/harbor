@@ -60,16 +60,24 @@ mod tests {
             PullRequestDetailUiState::new(Vec::new(), Vec::new(), WorkflowLogState::new());
 
         assert!(state.should_load_details());
+        assert!(!state.details_ready());
         state.start_details_load();
         assert!(state.details_loading());
+        assert!(!state.details_ready());
         assert!(!state.should_load_details());
 
         state.apply_details_failure("metadata failed");
         assert_eq!(state.details_error(), Some("metadata failed"));
+        assert!(state.details_ready());
         assert!(!state.should_load_details());
 
         state.reset_for_selection();
+        assert!(!state.details_ready());
         assert!(state.should_load_details());
+
+        state.start_details_load();
+        state.mark_details_available();
+        assert!(state.details_ready());
 
         state.restore_loaded_sections(PullRequestDetailLoadedState {
             details: true,

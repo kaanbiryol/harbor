@@ -29,6 +29,7 @@ pub(crate) struct PullRequestDetailUiState {
     workflow_jobs: Arc<Vec<WorkflowJob>>,
     pull_request_detail_cache: HashMap<PullRequestDetailCacheKey, Arc<PullRequestDetailSnapshot>>,
     pull_request_detail_cache_order: VecDeque<PullRequestDetailCacheKey>,
+    details_available: bool,
     details_load: LoadStatus,
     files_load: LoadStatus,
     checks_load: LoadStatus,
@@ -64,6 +65,7 @@ impl PullRequestDetailUiState {
             workflow_jobs: Arc::new(Vec::new()),
             pull_request_detail_cache: HashMap::new(),
             pull_request_detail_cache_order: VecDeque::new(),
+            details_available: false,
             details_load: LoadStatus::Idle,
             files_load: LoadStatus::Idle,
             checks_load: LoadStatus::Idle,
@@ -74,6 +76,7 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn reset_for_selection(&mut self) {
+        self.details_available = false;
         self.details_load.reset();
         self.files_load.reset();
         self.checks_load.reset();
@@ -147,6 +150,7 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn restore_loaded_sections(&mut self, sections: PullRequestDetailLoadedState) {
+        self.details_available = sections.details;
         self.details_load = load_status_from_loaded(sections.details);
         self.files_load = load_status_from_loaded(sections.files);
         self.checks_load = load_status_from_loaded(sections.checks);
@@ -371,7 +375,12 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn apply_details_success(&mut self) {
+        self.details_available = true;
         self.details_load.succeed();
+    }
+
+    pub(crate) fn mark_details_available(&mut self) {
+        self.details_available = true;
     }
 
     pub(crate) fn apply_files_success(&mut self) {
@@ -416,8 +425,8 @@ impl PullRequestDetailUiState {
         self.details_load.is_loaded()
     }
 
-    pub(crate) fn details_finished(&self) -> bool {
-        self.details_load.is_finished()
+    pub(crate) fn details_ready(&self) -> bool {
+        self.details_available || self.details_load.is_finished()
     }
 
     pub(crate) fn files_loading(&self) -> bool {

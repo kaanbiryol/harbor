@@ -3,6 +3,7 @@ use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonCustomVariant, ButtonVariants},
     input::Input,
+    skeleton::Skeleton,
     spinner::Spinner,
 };
 use harbor_domain::PullRequest;
@@ -48,15 +49,14 @@ impl AppView {
             return render_overview_activity_loading();
         };
         self.overview_state.prepare_pull_request(detail_key);
-        let description_ready =
-            self.overview_state.is_ready() || self.detail_state.details_finished();
-        let initial_load_finished = description_ready
+        let metadata_ready = self.overview_state.is_ready() || self.detail_state.details_ready();
+        let initial_load_finished = metadata_ready
             && self.detail_state.commits_finished()
             && self.review_state.reviews_finished();
         if !self.overview_state.is_ready() && initial_load_finished {
             self.overview_state.mark_ready();
         }
-        let activity_ready = self.overview_state.is_ready();
+        let overview_ready = self.overview_state.is_ready();
         let activity_loading =
             self.review_state.reviews_loading() || self.detail_state.commits_loading();
         let panel_items = overview_panel_items(
@@ -75,7 +75,7 @@ impl AppView {
             panel_item_keys,
         );
         let panel_items_for_render = panel_items.clone();
-        let activity_body = if activity_ready {
+        let activity_body = if overview_ready {
             list(
                 self.overview_state.list_state.clone(),
                 cx.processor(move |view, index: usize, _window, cx| {
@@ -160,7 +160,30 @@ impl AppView {
         } else {
             render_overview_activity_loading()
         };
-        let description = description_ready.then(|| self.render_description_card(pr, cx));
+        let description = if overview_ready {
+            self.render_description_card(pr, cx)
+        } else {
+            render_overview_skeleton_card("pull-request-overview-description-loading", 56.0)
+        };
+        let sidebar = if overview_ready {
+            div()
+                .id("pull-request-overview-sidebar-scroll")
+                .debug_selector(|| "pull-request-overview-sidebar".to_string())
+                .w(px(OVERVIEW_SIDEBAR_WIDTH))
+                .h_full()
+                .min_h_0()
+                .flex_none()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .overflow_y_scroll()
+                .child(self.render_merge_readiness_card(pr, cx))
+                .child(self.render_people_card(pr, cx))
+                .child(self.render_labels_card(pr, cx))
+                .into_any_element()
+        } else {
+            render_overview_sidebar_loading()
+        };
 
         div()
             .debug_selector(|| "pull-request-overview-panel".to_string())
@@ -186,60 +209,124 @@ impl AppView {
                             .min_w_0()
                             .flex()
                             .flex_col()
-                            .when_some(description, |element, description| {
-                                element.child(div().flex_none().mb_3().child(description))
-                            })
-                            .when(description_ready, |element| {
-                                element.child(
-                                    div()
-                                        .debug_selector(|| {
-                                            "pull-request-overview-activity".to_string()
-                                        })
-                                        .flex_1()
-                                        .min_h_0()
-                                        .min_w_0()
-                                        .flex()
-                                        .flex_col()
-                                        .when(activity_ready, |element| {
-                                            element.child(render_overview_activity_header(
-                                                activity_loading,
-                                            ))
-                                        })
-                                        .child(div().flex_1().min_h_0().child(activity_body)),
-                                )
-                            }),
+                            .child(div().flex_none().mb_3().child(description))
+                            .child(
+                                div()
+                                    .debug_selector(|| "pull-request-overview-activity".to_string())
+                                    .flex_1()
+                                    .min_h_0()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .when(overview_ready, |element| {
+                                        element.child(render_overview_activity_header(
+                                            activity_loading,
+                                        ))
+                                    })
+                                    .child(div().flex_1().min_h_0().child(activity_body)),
+                            ),
                     )
-                    .child(
-                        div()
-                            .id("pull-request-overview-sidebar-scroll")
-                            .debug_selector(|| "pull-request-overview-sidebar".to_string())
-                            .w(px(OVERVIEW_SIDEBAR_WIDTH))
-                            .h_full()
-                            .min_h_0()
-                            .flex_none()
-                            .flex()
-                            .flex_col()
-                            .gap_3()
-                            .overflow_y_scroll()
-                            .child(self.render_merge_readiness_card(pr, cx))
-                            .child(self.render_people_card(pr, cx))
-                            .child(self.render_labels_card(pr, cx)),
-                    ),
+                    .child(sidebar),
             )
             .into_any_element()
     }
+}
+
+fn render_overview_sidebar_loading() -> AnyElement {
+    div()
+        .debug_selector(|| "pull-request-overview-sidebar-loading".to_string())
+        .w(px(OVERVIEW_SIDEBAR_WIDTH))
+        .h_full()
+        .min_h_0()
+        .flex_none()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .overflow_hidden()
+        .child(render_overview_skeleton_card(
+            "pull-request-overview-status-loading",
+            210.0,
+        ))
+        .child(render_overview_skeleton_card(
+            "pull-request-overview-people-loading",
+            88.0,
+        ))
+        .child(render_overview_skeleton_card(
+            "pull-request-overview-labels-loading",
+            44.0,
+        ))
+        .into_any_element()
+}
+
+fn render_overview_skeleton_card(selector: &'static str, body_height: f32) -> AnyElement {
+    div()
+        .debug_selector(move || selector.to_string())
+        .w_full()
+        .rounded_sm()
+        .border_1()
+        .border_color(color::border())
+        .bg(color::content_background())
+        .p_3()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .child(Skeleton::new().w_1_3().h(px(14.0)).rounded_sm())
+        .child(
+            Skeleton::new()
+                .secondary()
+                .w_full()
+                .h(px(body_height))
+                .rounded_sm(),
+        )
+        .into_any_element()
 }
 
 fn render_overview_activity_loading() -> AnyElement {
     div()
         .debug_selector(|| "pull-request-overview-activity-loading".to_string())
         .w_full()
-        .h(px(28.0))
         .flex_none()
         .flex()
+        .flex_col()
+        .gap_2()
+        .child(render_overview_activity_skeleton_row(
+            "pull-request-overview-activity-loading-row-1",
+            false,
+        ))
+        .child(render_overview_activity_skeleton_row(
+            "pull-request-overview-activity-loading-row-2",
+            true,
+        ))
+        .into_any_element()
+}
+
+fn render_overview_activity_skeleton_row(selector: &'static str, compact: bool) -> AnyElement {
+    let body = Skeleton::new().secondary().h(px(10.0)).rounded_sm();
+    let body = if compact { body.w_1_2() } else { body.w_2_3() };
+
+    div()
+        .debug_selector(move || selector.to_string())
+        .w_full()
+        .h(px(52.0))
+        .rounded_sm()
+        .border_1()
+        .border_color(color::border_subtle())
+        .bg(color::content_background())
+        .p_3()
+        .flex()
         .items_center()
-        .justify_center()
-        .child(Spinner::new().small())
+        .gap_3()
+        .child(Skeleton::new().size(px(24.0)).rounded_full())
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(Skeleton::new().w_1_3().h(px(10.0)).rounded_sm())
+                .child(body),
+        )
         .into_any_element()
 }
 

@@ -105,6 +105,7 @@ impl AppView {
                                 && !view.detail_state.details_loaded()
                             {
                                 view.replace_selected_pull_request_preserving_row_fields(metadata);
+                                view.detail_state.mark_details_available();
                                 applied_any = true;
                             }
 

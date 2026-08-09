@@ -75,7 +75,7 @@ async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn overview_only_gates_activity_until_initial_data_finishes(cx: &mut TestAppContext) {
+async fn overview_uses_skeletons_until_initial_data_finishes(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
@@ -94,15 +94,25 @@ async fn overview_only_gates_activity_until_initial_data_finishes(cx: &mut TestA
     });
 
     cx.refresh().expect("test window should refresh");
-    let description = cx
-        .debug_bounds("pull-request-overview-description")
-        .expect("overview description should render while activity loads");
+    let description_loading = cx
+        .debug_bounds("pull-request-overview-description-loading")
+        .expect("description skeleton should render while overview loads");
     let activity_loading = cx
         .debug_bounds("pull-request-overview-activity-loading")
         .expect("activity loader should render");
-    assert!(activity_loading.size.height <= px(28.0));
-    assert!(activity_loading.origin.y >= description.origin.y + description.size.height);
-    assert!(activity_loading.origin.y <= description.origin.y + description.size.height + px(16.0));
+    assert!(activity_loading.size.height > px(28.0));
+    assert!(activity_loading.size.height <= px(112.0));
+    assert!(
+        activity_loading.origin.y >= description_loading.origin.y + description_loading.size.height
+    );
+    assert!(
+        activity_loading.origin.y
+            <= description_loading.origin.y + description_loading.size.height + px(16.0)
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-loading-row-1")
+            .is_some()
+    );
     assert!(
         cx.debug_bounds("pull-request-overview-activity-header")
             .is_none()
@@ -110,9 +120,13 @@ async fn overview_only_gates_activity_until_initial_data_finishes(cx: &mut TestA
     assert!(cx.debug_bounds("pull-request-overview-panel").is_some());
     assert!(
         cx.debug_bounds("pull-request-overview-description")
+            .is_none()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-sidebar-loading")
             .is_some()
     );
-    assert!(cx.debug_bounds("pull-request-overview-sidebar").is_some());
+    assert!(cx.debug_bounds("pull-request-overview-sidebar").is_none());
     assert!(
         cx.debug_bounds("pull-request-overview-comment-input")
             .is_none()
@@ -120,9 +134,7 @@ async fn overview_only_gates_activity_until_initial_data_finishes(cx: &mut TestA
 }
 
 #[gpui::test]
-async fn overview_reveals_description_before_activity_after_pull_request_switch(
-    cx: &mut TestAppContext,
-) {
+async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
@@ -175,13 +187,26 @@ async fn overview_reveals_description_before_activity_after_pull_request_switch(
         cx.debug_bounds("pull-request-overview-description")
             .is_none()
     );
-    assert!(cx.debug_bounds("pull-request-overview-activity").is_none());
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-loading")
+            .is_some()
+    );
+    assert!(cx.debug_bounds("pull-request-overview-activity").is_some());
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-loading-row-1")
+            .is_some()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-sidebar-loading")
+            .is_some()
+    );
+    assert!(cx.debug_bounds("pull-request-merge-readiness").is_none());
 
     view_entity.update(cx, |view, cx| {
         view.pull_requests[1].body = Some(
             "## Second description\n\nThis content arrives with pull request metadata.".to_string(),
         );
-        view.detail_state.apply_details_success();
+        view.detail_state.mark_details_available();
         cx.notify();
     });
 
@@ -192,9 +217,18 @@ async fn overview_reveals_description_before_activity_after_pull_request_switch(
             .is_some()
     );
     assert!(
+        cx.debug_bounds("pull-request-overview-description-loading")
+            .is_none()
+    );
+    assert!(
         cx.debug_bounds("pull-request-overview-activity-header")
             .is_some()
     );
+    assert!(
+        cx.debug_bounds("pull-request-overview-sidebar-loading")
+            .is_none()
+    );
+    assert!(cx.debug_bounds("pull-request-merge-readiness").is_some());
 }
 
 #[gpui::test]

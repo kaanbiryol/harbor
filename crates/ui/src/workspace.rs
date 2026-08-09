@@ -277,6 +277,7 @@ impl AppView {
             ScrollStrategy::Center,
         );
         self.load_selected_pull_request(cx);
+        cx.notify();
     }
 
     pub(crate) fn select_pull_request_inbox_mode(
