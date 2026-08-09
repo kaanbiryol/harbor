@@ -260,6 +260,10 @@ impl AppView {
                                     true,
                                     cx,
                                 );
+                                if enrichment_error.is_none() {
+                                    view.pull_request_inbox
+                                        .mark_rows_enriched(&key, &view.pull_requests);
+                                }
                                 view.status = enrichment_error
                                     .map(|error| format!("{status}; rich refresh failed: {error}"))
                                     .unwrap_or(status);

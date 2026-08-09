@@ -404,6 +404,32 @@ fn enriches_pull_requests_by_node_ids() {
 }
 
 #[test]
+fn enriches_twenty_five_pull_requests_in_one_request() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "nodes": []
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+    let node_ids = (1..=25)
+        .map(|number| format!("pr-node-{number}"))
+        .collect::<Vec<_>>();
+
+    smol::block_on(client.enrich_pull_requests_by_node_ids(&node_ids)).unwrap();
+
+    let calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, json!({ "ids": node_ids }));
+}
+
+#[test]
 fn lists_pull_request_files_with_viewer_viewed_state() {
     let transport = RecordingTransport::default();
     *transport

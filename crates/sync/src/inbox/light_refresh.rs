@@ -79,7 +79,7 @@ where
 
     merge_light_pull_request_rows(previous_pull_requests, &mut pull_requests);
 
-    let node_ids = pull_request_enrichment_node_ids(&pull_requests, force_enrichment);
+    let node_ids = pull_request_enrichment_node_ids(&pull_requests);
     let enrichment_error = if node_ids.is_empty() {
         None
     } else {

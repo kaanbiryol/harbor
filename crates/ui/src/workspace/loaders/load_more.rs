@@ -73,6 +73,10 @@ impl AppView {
                                 enrichment_error,
                             }) => {
                                 view.pull_request_inbox.apply_load_more_success();
+                                if enrichment_error.is_none() {
+                                    view.pull_request_inbox
+                                        .mark_rows_enriched(&key, &pull_requests);
+                                }
                                 let appended_count = append_pull_request_page(
                                     &mut view.pull_requests,
                                     pull_requests,

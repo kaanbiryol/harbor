@@ -23,6 +23,7 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
         value: vec![pull_request.clone()],
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![enrichment(&pull_request)]));
     enqueue_successful_detail_load(&api, &pull_request);
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -38,10 +39,15 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
         assert_eq!(view.pull_request_inbox.load_error(), None);
         assert!(!view.pull_request_inbox.is_loading());
     });
+    view_entity.update(cx, |view, cx| {
+        view.prefetch_visible_pull_request_row_enrichments(0..1, cx);
+    });
+    cx.run_until_parked();
     assert_eq!(
         api.calls(),
         vec![
             "list_repository_pull_requests_light",
+            "enrich_pull_requests_by_node_ids",
             "get_pull_request",
             "list_pull_request_files",
             "current_user",
@@ -51,7 +57,67 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
             "list_pull_request_commits"
         ]
     );
-    assert_eq!(api.light_pull_request_requests(), vec![(None, 10, false)]);
+    assert_eq!(api.light_pull_request_requests(), vec![(None, 25, false)]);
+}
+
+#[gpui::test]
+async fn open_inbox_loads_and_enriches_twenty_five_rows_in_two_requests(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let pull_requests = (1..=25)
+        .map(|number| {
+            let mut pull_request = pull_request();
+            pull_request.number = number;
+            pull_request.node_id = format!("pr-node-{number}");
+            pull_request
+        })
+        .collect::<Vec<_>>();
+    let enrichments = pull_requests
+        .iter()
+        .map(|pull_request| PullRequestEnrichment {
+            node_id: pull_request.node_id.clone(),
+            review_decision: pull_request.review_decision,
+            merge_state: pull_request.merge_state,
+            checks_summary: ChecksSummary {
+                total: 1,
+                passed: 0,
+                failed: 1,
+                pending: 0,
+                skipped: 0,
+            },
+        })
+        .collect();
+    api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
+        value: pull_requests.clone(),
+        validator: None,
+    }));
+    api.push_pull_request_enrichments(Ok(enrichments));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state
+            .select_repository(pull_requests[0].repo.clone());
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = pull_requests.clone();
+        view.refresh_pull_requests_light(pull_requests[0].repo.clone(), cx);
+    });
+    cx.run_until_parked();
+
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.pull_requests.len(), 25);
+        assert!(
+            view.pull_requests
+                .iter()
+                .all(|pull_request| pull_request.checks_summary.failed == 1)
+        );
+    });
+    assert_eq!(
+        api.calls(),
+        vec![
+            "list_repository_pull_requests_light",
+            "enrich_pull_requests_by_node_ids"
+        ]
+    );
+    assert_eq!(api.light_pull_request_requests(), vec![(None, 25, false)]);
 }
 
 #[gpui::test]
@@ -69,6 +135,7 @@ async fn load_more_pull_requests_appends_next_page(cx: &mut TestAppContext) {
         },
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![enrichment(&first_pull_request)]));
     enqueue_successful_detail_load(&api, &first_pull_request);
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -90,6 +157,7 @@ async fn load_more_pull_requests_appends_next_page(cx: &mut TestAppContext) {
         },
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![enrichment(&second_pull_request)]));
     view_entity.update(cx, |view, cx| {
         view.load_more_pull_requests(cx);
     });
@@ -129,6 +197,7 @@ async fn switching_inbox_mode_without_snapshot_does_not_reuse_visible_rows(
         },
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![enrichment(&closed_pull_request)]));
     enqueue_successful_detail_load(&api, &closed_pull_request);
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -159,7 +228,7 @@ async fn switching_inbox_mode_without_snapshot_does_not_reuse_visible_rows(
         assert_eq!(view.pull_requests[0].state, PullRequestState::Closed);
         assert_eq!(view.pull_request_inbox.total_count(), Some(1));
     });
-    assert_eq!(api.light_pull_request_requests(), vec![(None, 10, false)]);
+    assert_eq!(api.light_pull_request_requests(), vec![(None, 25, false)]);
     assert!(
         !api.calls()
             .iter()
@@ -180,6 +249,7 @@ async fn prefetches_all_inbox_counts_on_repository_load_without_loading_items(
         value: vec![pull_request.clone()],
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![enrichment(&pull_request)]));
     enqueue_successful_detail_load(&api, &pull_request);
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -389,6 +459,6 @@ fn enrichment(pull_request: &PullRequest) -> PullRequestEnrichment {
         node_id: pull_request.node_id.clone(),
         review_decision: pull_request.review_decision,
         merge_state: pull_request.merge_state,
-        checks_summary: Default::default(),
+        checks_summary: pull_request.checks_summary,
     }
 }

@@ -273,6 +273,12 @@ async fn repository_load_restores_in_memory_snapshot_before_refresh(cx: &mut Tes
         value: vec![refreshed_pull_request.clone()],
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![harbor_github::PullRequestEnrichment {
+        node_id: refreshed_pull_request.node_id.clone(),
+        review_decision: refreshed_pull_request.review_decision,
+        merge_state: refreshed_pull_request.merge_state,
+        checks_summary: refreshed_pull_request.checks_summary,
+    }]));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
     view_entity.update(cx, |view, cx| {
@@ -313,7 +319,8 @@ async fn repository_load_restores_in_memory_snapshot_before_refresh(cx: &mut Tes
         api.calls(),
         vec![
             "list_pull_request_commits",
-            "list_repository_pull_requests_light"
+            "list_repository_pull_requests_light",
+            "enrich_pull_requests_by_node_ids"
         ]
     );
 }

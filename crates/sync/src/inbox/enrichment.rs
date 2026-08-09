@@ -34,14 +34,7 @@ pub(super) fn merge_light_pull_request_rows(previous: &[PullRequest], current: &
     }
 }
 
-pub(super) fn pull_request_enrichment_node_ids(
-    current: &[PullRequest],
-    force_enrichment: bool,
-) -> Vec<String> {
-    if !force_enrichment {
-        return Vec::new();
-    }
-
+pub(super) fn pull_request_enrichment_node_ids(current: &[PullRequest]) -> Vec<String> {
     current
         .iter()
         .filter(|pull_request| !pull_request.node_id.is_empty())

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use gpui::TestAppContext;
-use harbor_github::ConditionalFetch;
+use harbor_github::{ConditionalFetch, PullRequestEnrichment};
 use harbor_sync::{SyncState, SyncTarget};
 
 use crate::{
@@ -20,6 +20,12 @@ async fn focus_catch_up_uses_light_inbox_refresh_only(cx: &mut TestAppContext) {
         value: vec![pull_request.clone()],
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![PullRequestEnrichment {
+        node_id: pull_request.node_id.clone(),
+        review_decision: pull_request.review_decision,
+        merge_state: pull_request.merge_state,
+        checks_summary: pull_request.checks_summary,
+    }]));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
     view_entity.update(cx, |view, cx| {
@@ -38,7 +44,13 @@ async fn focus_catch_up_uses_light_inbox_refresh_only(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
 
-    assert_eq!(api.calls(), vec!["list_repository_pull_requests_light"]);
+    assert_eq!(
+        api.calls(),
+        vec![
+            "list_repository_pull_requests_light",
+            "enrich_pull_requests_by_node_ids"
+        ]
+    );
 }
 
 #[gpui::test]

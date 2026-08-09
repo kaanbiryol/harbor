@@ -136,6 +136,12 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
         value: vec![pull_request.clone()],
         validator: None,
     }));
+    api.push_pull_request_enrichments(Ok(vec![harbor_github::PullRequestEnrichment {
+        node_id: pull_request.node_id.clone(),
+        review_decision: pull_request.review_decision,
+        merge_state: pull_request.merge_state,
+        checks_summary: pull_request.checks_summary,
+    }]));
     enqueue_successful_detail_load(&api, &pull_request);
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -154,6 +160,7 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
         vec![
             "get_repository",
             "list_repository_pull_requests_light",
+            "enrich_pull_requests_by_node_ids",
             "get_pull_request",
             "list_pull_request_files",
             "current_user",

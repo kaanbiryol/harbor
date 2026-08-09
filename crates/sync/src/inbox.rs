@@ -19,7 +19,7 @@ mod light_refresh;
 pub use cache::cache_pull_request_inbox_refresh;
 use light_refresh::refresh_light_pull_request_inbox;
 
-pub const PULL_REQUEST_INBOX_PAGE_SIZE: usize = 10;
+pub const PULL_REQUEST_INBOX_PAGE_SIZE: usize = 25;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InboxRefreshKind {

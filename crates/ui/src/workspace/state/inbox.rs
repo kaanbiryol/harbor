@@ -164,6 +164,17 @@ impl PullRequestInboxState {
         self.row_enrichment_attempts.clear();
     }
 
+    pub(crate) fn mark_rows_enriched(
+        &mut self,
+        inbox: &PullRequestInboxCacheKey,
+        pull_requests: &[PullRequest],
+    ) {
+        self.row_enrichment_attempts
+            .extend(pull_requests.iter().filter_map(|pull_request| {
+                PullRequestRowEnrichmentKey::new(inbox.clone(), pull_request)
+            }));
+    }
+
     pub(crate) fn insert_snapshot(
         &mut self,
         key: PullRequestInboxCacheKey,
