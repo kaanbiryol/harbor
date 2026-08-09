@@ -541,6 +541,9 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
     let tabs = cx
         .debug_bounds("pull-request-panel-tabs")
         .expect("pull request tabs should render");
+    let metadata = cx
+        .debug_bounds("pull-request-header-metadata")
+        .expect("pull request metadata should render");
 
     assert_eq!(header.origin.x, details.origin.x);
     assert!(header.size.width > details.size.width);
@@ -562,6 +565,62 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
         tabs.origin.y + tabs.size.height <= panel.origin.y,
         "tabs should render in the header above the active panel"
     );
+    assert!(
+        tabs.origin.y <= metadata.origin.y + metadata.size.height + px(2.0),
+        "tabs should stay close to the pull request metadata"
+    );
+}
+
+#[gpui::test]
+async fn panel_tab_height_stays_stable_when_counts_load(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view_entity = Some(view.clone());
+        view.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    let initial_height = cx
+        .debug_bounds("pull-request-panel-tabs")
+        .expect("pull request tabs should render")
+        .size
+        .height;
+
+    view_entity
+        .expect("test AppView should be created")
+        .update(cx, |view, cx| {
+            view.pull_requests[0].unresolved_threads = 1;
+            view.detail_state.replace_commits(vec![PullRequestCommit {
+                sha: "abc123".to_string(),
+                message: "Add stable tab count layout".to_string(),
+                author: "octocat".to_string(),
+                author_avatar_url: None,
+                authored_at: Some(test_time()),
+            }]);
+            view.detail_state.apply_commits_success();
+            cx.notify();
+        });
+    cx.refresh()
+        .expect("test window should refresh after counts load");
+    let loaded_height = cx
+        .debug_bounds("pull-request-panel-tabs")
+        .expect("pull request tabs should remain rendered")
+        .size
+        .height;
+
+    assert_eq!(initial_height, loaded_height);
 }
 
 #[gpui::test]

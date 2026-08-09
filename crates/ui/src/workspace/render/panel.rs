@@ -29,6 +29,7 @@ impl AppView {
         div()
             .debug_selector(|| "pull-request-panel-tabs".to_string())
             .flex_none()
+            .h_10()
             .flex()
             .items_center()
             .gap_1()

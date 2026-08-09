@@ -141,7 +141,7 @@ impl AppView {
 
         let header_content = div()
             .px_3()
-            .py_2()
+            .pt_2()
             .child(
                 div()
                     .flex()
