@@ -10,7 +10,7 @@ use crate::{
     github::{avatar_initial, avatar_url},
     icons::Octicon,
     panels::{
-        MergeReadiness, PullRequestReadiness, ReviewReadiness,
+        ImmediateTooltip, MergeReadiness, PullRequestReadiness, ReviewReadiness,
         merge_readiness as classify_merge_readiness,
         pull_request_readiness as classify_pull_request_readiness,
         review_readiness as classify_review_readiness,
@@ -202,14 +202,15 @@ impl AppView {
                             }
                         }
                     })
-                    .trigger(
+                    .trigger(ImmediateTooltip::new(
+                        format!("open-add-{field_name}-tooltip"),
+                        format!("Add {field_name}"),
                         Button::new(format!("open-add-{field_name}"))
                             .icon(Octicon::Plus)
                             .small()
                             .compact()
-                            .outline()
-                            .tooltip(format!("Add {field_name}")),
-                    )
+                            .outline(),
+                    ))
                     .content(move |_, _window, popover_cx| {
                         let popover = popover_cx.entity().clone();
                         let mut content = div()

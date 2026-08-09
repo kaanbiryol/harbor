@@ -5,7 +5,7 @@ use gpui_component::{
     popover::Popover,
 };
 
-use crate::{icons::Octicon, visual::color, workspace::AppView};
+use crate::{icons::Octicon, panels::ImmediateTooltip, visual::color, workspace::AppView};
 
 use super::{
     changed_file_filter_rows::{file_filter_list_height, render_file_filter_row},
@@ -48,14 +48,19 @@ impl AppView {
                 let button = Button::new("changed-file-filters")
                     .icon(Octicon::Sliders)
                     .small()
-                    .compact()
-                    .tooltip("Filter changed files");
+                    .compact();
 
-                if has_active_filter {
+                let button = if has_active_filter {
                     button.outline()
                 } else {
                     button.ghost()
-                }
+                };
+
+                ImmediateTooltip::new(
+                    "changed-file-filters-tooltip",
+                    "Filter changed files",
+                    button,
+                )
             })
             .content(move |_, window, _popover_cx| {
                 let reset_view = view.clone();

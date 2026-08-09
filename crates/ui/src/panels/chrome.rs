@@ -1,8 +1,63 @@
-use gpui::{Div, IntoElement, ListState, div, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
+use gpui::{Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*, px};
+use gpui_component::{Icon, Selectable, Sizable, StyledExt, spinner::Spinner, tooltip::Tooltip};
 
 use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
+
+#[derive(IntoElement)]
+pub(crate) struct ImmediateTooltip<T>
+where
+    T: IntoElement + 'static,
+{
+    id: ElementId,
+    label: SharedString,
+    trigger: T,
+}
+
+impl<T> ImmediateTooltip<T>
+where
+    T: IntoElement + 'static,
+{
+    pub(crate) fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        trigger: T,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            trigger,
+        }
+    }
+}
+
+impl<T> Selectable for ImmediateTooltip<T>
+where
+    T: IntoElement + Selectable + 'static,
+{
+    fn selected(mut self, selected: bool) -> Self {
+        self.trigger = self.trigger.selected(selected);
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        self.trigger.is_selected()
+    }
+}
+
+impl<T> RenderOnce for ImmediateTooltip<T>
+where
+    T: IntoElement + 'static,
+{
+    fn render(self, _: &mut gpui::Window, _: &mut gpui::App) -> impl IntoElement {
+        let label = self.label;
+
+        div()
+            .id(self.id)
+            .child(self.trigger)
+            .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
+    }
+}
 
 pub(crate) fn render_panel_header(
     title: impl Into<String>,

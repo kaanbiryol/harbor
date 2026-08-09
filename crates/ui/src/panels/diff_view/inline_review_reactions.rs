@@ -8,6 +8,7 @@ use harbor_domain::{ReactionContent, ReviewComment};
 
 use crate::{
     icons::Octicon,
+    panels::ImmediateTooltip,
     visual::color,
     workspace::{AppView, ReviewReactionAction, review_reaction},
 };
@@ -125,7 +126,9 @@ fn render_add_reaction_popover(
     Popover::new(format!("add-reaction-{comment_id}"))
         .appearance(false)
         .anchor(Anchor::TopRight)
-        .trigger(
+        .trigger(ImmediateTooltip::new(
+            format!("add-reaction-trigger-{comment_id}-tooltip"),
+            "Add reaction",
             Button::new(format!("add-reaction-trigger-{comment_id}"))
                 .debug_selector({
                     let selector = format!("add-reaction-trigger-{comment_id}");
@@ -134,9 +137,8 @@ fn render_add_reaction_popover(
                 .icon(Octicon::Plus)
                 .xsmall()
                 .compact()
-                .ghost()
-                .tooltip("Add reaction"),
-        )
+                .ghost(),
+        ))
         .content({
             let view_entity = view_entity.clone();
             move |_, _window, popover_cx| {

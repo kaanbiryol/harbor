@@ -10,6 +10,7 @@ use crate::{
     actions::SignOutOfGitHub,
     github::avatar_url,
     icons::Octicon,
+    panels::ImmediateTooltip,
     visual::color,
     workspace::{AppView, GitHubAuthSource, GitHubAuthStatus},
 };
@@ -43,22 +44,29 @@ impl AppView {
     }
 }
 
-fn render_github_auth_trigger(status: &GitHubAuthStatus) -> Button {
-    match status {
-        GitHubAuthStatus::SignedIn { login, .. } => Button::new("github-account")
-            .ghost()
-            .small()
-            .compact()
-            .rounded(px(999.0))
-            .tooltip("GitHub account")
-            .child(render_github_account_avatar(login.as_deref(), 20.0)),
-        _ => Button::new("github-auth")
-            .ghost()
-            .small()
-            .compact()
-            .icon(Octicon::MarkGithub)
-            .child(status.label()),
-    }
+fn render_github_auth_trigger(status: &GitHubAuthStatus) -> ImmediateTooltip<Button> {
+    let (button, tooltip) = match status {
+        GitHubAuthStatus::SignedIn { login, .. } => (
+            Button::new("github-account")
+                .ghost()
+                .small()
+                .compact()
+                .rounded(px(999.0))
+                .child(render_github_account_avatar(login.as_deref(), 20.0)),
+            "GitHub account",
+        ),
+        _ => (
+            Button::new("github-auth")
+                .ghost()
+                .small()
+                .compact()
+                .icon(Octicon::MarkGithub)
+                .child(status.label()),
+            status.label(),
+        ),
+    };
+
+    ImmediateTooltip::new("github-auth-tooltip", tooltip, button)
 }
 
 fn render_github_auth_popover(status: GitHubAuthStatus, view: Entity<AppView>) -> AnyElement {

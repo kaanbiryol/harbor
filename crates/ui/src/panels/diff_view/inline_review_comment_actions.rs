@@ -8,7 +8,7 @@ use gpui_component::{
 };
 use harbor_domain::ReviewComment;
 
-use crate::{icons::Octicon, visual::color, workspace::AppView};
+use crate::{icons::Octicon, panels::ImmediateTooltip, visual::color, workspace::AppView};
 
 pub(crate) struct ReviewCommentActionsMenuState {
     pub(crate) comment_id: String,
@@ -42,7 +42,9 @@ pub(crate) fn render_review_comment_actions_menu(
     Popover::new(format!("comment-actions-{comment_id}"))
         .appearance(false)
         .anchor(Anchor::TopRight)
-        .trigger(
+        .trigger(ImmediateTooltip::new(
+            format!("comment-actions-trigger-{comment_id}-tooltip"),
+            "Comment actions",
             Button::new(format!("comment-actions-trigger-{comment_id}"))
                 .icon(Octicon::KebabHorizontal)
                 .xsmall()
@@ -51,9 +53,8 @@ pub(crate) fn render_review_comment_actions_menu(
                 .debug_selector({
                     let selector = format!("inline-review-comment-actions-{comment_id}");
                     move || selector.clone()
-                })
-                .tooltip("Comment actions"),
-        )
+                }),
+        ))
         .content(move |_, _window, popover_cx| {
             let popover: Entity<PopoverState> = popover_cx.entity().clone();
             let comment_url = comment_url.clone();

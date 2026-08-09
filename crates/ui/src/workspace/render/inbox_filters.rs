@@ -7,6 +7,7 @@ use gpui_component::{
 
 use crate::{
     icons::Octicon,
+    panels::ImmediateTooltip,
     visual::color,
     workspace::{
         AppView, PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections,
@@ -56,14 +57,15 @@ impl AppView {
                     .small()
                     .compact()
                     .icon(Octicon::Sliders)
-                    .tooltip(tooltip)
                     .disabled(!has_current_repository || !has_pull_requests);
 
-                if has_active_filter {
+                let button = if has_active_filter {
                     button.outline()
                 } else {
                     button.ghost()
-                }
+                };
+
+                ImmediateTooltip::new("filter-pull-request-inbox-tooltip", tooltip, button)
             })
             .content(move |_, window, _popover_cx| {
                 let menu_max_height = (window.viewport_size().height - px(16.))
