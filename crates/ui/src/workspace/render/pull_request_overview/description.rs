@@ -1,8 +1,38 @@
 use super::*;
 use crate::icons::Octicon;
+use crate::workspace::PullRequestDetailCacheKey;
 use gpui::rgb;
 
 impl AppView {
+    pub(super) fn prepare_pull_request_description(
+        &mut self,
+        pr: &PullRequest,
+        detail_key: PullRequestDetailCacheKey,
+        cx: &mut Context<Self>,
+    ) {
+        if self.overview_state.description_ready() || self.overview_state.description_preparing() {
+            return;
+        }
+
+        let Some(body) = pull_request_description_body(pr) else {
+            self.overview_state.mark_description_ready(&detail_key);
+            return;
+        };
+        let markdown = overview_markdown_body(body);
+        let state = self.ensure_overview_markdown_state(
+            pull_request_description_markdown_key(pr.number),
+            &markdown,
+            cx,
+        );
+        let subscription = cx.observe(&state, move |view, _, cx| {
+            if view.overview_state.mark_description_ready(&detail_key) {
+                cx.notify();
+            }
+        });
+        self.overview_state
+            .set_description_markdown_subscription(subscription);
+    }
+
     pub(super) fn render_description_card(
         &mut self,
         pr: &PullRequest,
@@ -119,12 +149,7 @@ impl AppView {
         pr: &PullRequest,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(body) = pr
-            .body
-            .as_deref()
-            .map(str::trim)
-            .filter(|body| !body.is_empty())
-        else {
+        let Some(body) = pull_request_description_body(pr) else {
             return div()
                 .text_sm()
                 .text_color(color::text_muted())
@@ -132,7 +157,7 @@ impl AppView {
                 .into_any_element();
         };
         let markdown = self.render_overview_markdown(
-            format!("pull-request-description-{}", pr.number),
+            pull_request_description_markdown_key(pr.number),
             &overview_markdown_body(body),
             cx,
         );
@@ -145,4 +170,15 @@ impl AppView {
             .child(markdown)
             .into_any_element()
     }
+}
+
+fn pull_request_description_body(pr: &PullRequest) -> Option<&str> {
+    pr.body
+        .as_deref()
+        .map(str::trim)
+        .filter(|body| !body.is_empty())
+}
+
+fn pull_request_description_markdown_key(number: u64) -> String {
+    format!("pull-request-description-{number}")
 }

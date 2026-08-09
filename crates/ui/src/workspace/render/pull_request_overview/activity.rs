@@ -22,7 +22,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Entity<gpui_component::text::TextViewState> {
         let source = review_markdown_body(body);
-        if let Some(entry) = self.overview_state.markdown_states.get_mut(&key) {
+        if let Some(entry) = self.overview_state.markdown_state_mut(&key) {
             if entry.source != source {
                 entry.source.clone_from(&source);
                 entry
@@ -33,7 +33,7 @@ impl AppView {
         }
 
         let state = cx.new(|cx| gpui_component::text::TextViewState::markdown(&source, cx));
-        self.overview_state.markdown_states.insert(
+        self.overview_state.insert_markdown_state(
             key,
             OverviewMarkdownState {
                 source,
@@ -68,14 +68,10 @@ impl AppView {
         };
         let expanded = overview_thread_expanded(
             thread.state,
-            self.overview_state
-                .thread_expansion_overrides
-                .get(thread_id)
-                .copied(),
+            self.overview_state.thread_expansion_override(thread_id),
         );
         self.overview_state
-            .thread_expansion_overrides
-            .insert(thread_id.to_string(), !expanded);
+            .set_thread_expansion_override(thread_id.to_string(), !expanded);
         self.remeasure_overview_thread_item(thread_id);
         cx.notify();
     }

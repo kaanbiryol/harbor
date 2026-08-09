@@ -48,11 +48,17 @@ impl AppView {
         let Some(detail_key) = self.selected_pull_request_detail_key() else {
             return render_overview_activity_loading();
         };
-        self.overview_state.prepare_pull_request(detail_key);
-        let metadata_ready = self.overview_state.is_ready() || self.detail_state.details_ready();
-        let initial_load_finished = metadata_ready
+        let initial_data_finished = self.detail_state.details_ready()
             && self.detail_state.commits_finished()
             && self.review_state.reviews_finished();
+        self.overview_state
+            .prepare_pull_request(detail_key.clone(), initial_data_finished);
+        let metadata_ready = self.overview_state.is_ready() || self.detail_state.details_ready();
+        if metadata_ready && !self.overview_state.description_ready() {
+            self.prepare_pull_request_description(pr, detail_key, cx);
+        }
+        let initial_load_finished =
+            initial_data_finished && self.overview_state.description_ready();
         if !self.overview_state.is_ready() && initial_load_finished {
             self.overview_state.mark_ready();
         }
@@ -138,10 +144,7 @@ impl AppView {
                             .map(|thread| {
                                 let expanded = overview_thread_expanded(
                                     thread.state,
-                                    view.overview_state
-                                        .thread_expansion_overrides
-                                        .get(&thread.id)
-                                        .copied(),
+                                    view.overview_state.thread_expansion_override(&thread.id),
                                 );
                                 view.render_overview_thread_event(&thread, index, expanded, cx)
                             })
@@ -590,8 +593,8 @@ mod tests {
                 assert_eq!(first.entity_id(), reused.entity_id());
                 assert_eq!(first.entity_id(), updated.entity_id());
                 assert_eq!(
-                    view.overview_state.markdown_states["comment:1"].source,
-                    "updated body"
+                    view.overview_state.markdown_state_source("comment:1"),
+                    Some("updated body")
                 );
             });
             Root::new(view, window, cx)

@@ -151,6 +151,7 @@ impl AppView {
         self.clear_detail_errors();
         self.clear_action_errors();
         self.clear_review_data_state();
+        self.overview_state.clear_cached_content();
         self.clear_review_submission_errors();
         self.clear_log_content();
         self.clear_log_error();

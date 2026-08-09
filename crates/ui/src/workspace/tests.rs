@@ -162,6 +162,9 @@ async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut Te
     });
 
     cx.refresh().expect("test window should refresh");
+    cx.run_until_parked();
+    cx.refresh()
+        .expect("test window should refresh after description parsing");
     assert!(
         cx.debug_bounds("pull-request-overview-description")
             .is_some()
@@ -173,6 +176,8 @@ async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut Te
 
     let view_entity = view_entity.expect("test AppView should be created");
     view_entity.update(cx, |view, cx| {
+        view.cache_current_pull_request_detail_snapshot();
+        view.overview_state.cache_current_content();
         view.selection_state.set_pull_request_index(1);
         view.clear_selected_pull_request_detail_state();
         view.detail_state.start_details_load();
@@ -206,12 +211,24 @@ async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut Te
         view.pull_requests[1].body = Some(
             "## Second description\n\nThis content arrives with pull request metadata.".to_string(),
         );
-        view.detail_state.mark_details_available();
+        view.detail_state.apply_details_success();
         cx.notify();
     });
 
     cx.refresh()
         .expect("test window should refresh after metadata loads");
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-loading")
+            .is_some()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_none()
+    );
+
+    cx.run_until_parked();
+    cx.refresh()
+        .expect("test window should refresh after description parsing");
     assert!(
         cx.debug_bounds("pull-request-overview-description")
             .is_some()
@@ -224,11 +241,57 @@ async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut Te
         cx.debug_bounds("pull-request-overview-activity-header")
             .is_some()
     );
+    let description = cx
+        .debug_bounds("pull-request-overview-description")
+        .expect("parsed description should render before activity");
+    let activity_header = cx
+        .debug_bounds("pull-request-overview-activity-header")
+        .expect("activity should render after description parsing");
+    assert!(
+        activity_header.origin.y >= description.origin.y + description.size.height,
+        "activity should start below the fully laid out description"
+    );
     assert!(
         cx.debug_bounds("pull-request-overview-sidebar-loading")
             .is_none()
     );
     assert!(cx.debug_bounds("pull-request-merge-readiness").is_some());
+
+    view_entity.update(cx, |view, cx| {
+        view.select_pull_request(0, cx);
+    });
+    cx.refresh()
+        .expect("cached overview should render without another parsing turn");
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-loading")
+            .is_none()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_some()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_some()
+    );
+
+    view_entity.update(cx, |view, cx| {
+        view.select_pull_request(1, cx);
+    });
+    cx.refresh()
+        .expect("second cached overview should render without another parsing turn");
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-loading")
+            .is_none()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_some()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_some()
+    );
 }
 
 #[gpui::test]
@@ -305,6 +368,9 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
     });
 
     cx.refresh().expect("test window should refresh");
+    cx.run_until_parked();
+    cx.refresh()
+        .expect("test window should refresh after description parsing");
     assert!(cx.debug_bounds("pull-request-overview-panel").is_some());
     let description = cx
         .debug_bounds("pull-request-overview-description")
