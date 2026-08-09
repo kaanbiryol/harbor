@@ -197,7 +197,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                                             .bg(color::row_selected_subtle())
                                             .px_1()
                                             .text_color(color::accent())
-                                            .child("syncing"),
+                                            .child("Syncing…"),
                                     )
                                 }),
                         )

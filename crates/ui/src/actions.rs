@@ -187,10 +187,17 @@ impl PanelTab {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WorkflowAction {
     DispatchBuild,
     RerunFailedJobs,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PullRequestActionKind {
+    Comment,
+    Review,
+    Merge,
 }
 
 #[derive(Clone, Debug)]
@@ -331,6 +338,14 @@ pub(crate) enum PullRequestActionRequest {
 }
 
 impl PullRequestActionRequest {
+    pub(crate) fn kind(&self) -> PullRequestActionKind {
+        match self {
+            Self::Comment { .. } => PullRequestActionKind::Comment,
+            Self::Approve { .. } | Self::RequestChanges { .. } => PullRequestActionKind::Review,
+            Self::Merge { .. } => PullRequestActionKind::Merge,
+        }
+    }
+
     pub(crate) fn number(&self) -> u64 {
         match self {
             Self::Comment { number, .. }

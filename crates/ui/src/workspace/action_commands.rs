@@ -92,7 +92,7 @@ impl AppView {
             }
         };
 
-        self.action_runtime.start_workflow_action();
+        self.action_runtime.start_workflow_action(action);
         self.status = request.start_status();
         cx.notify();
         let github_api = self.github_api.clone();
@@ -252,7 +252,8 @@ impl AppView {
             }
         };
 
-        self.action_runtime.start_pull_request_action();
+        self.action_runtime
+            .start_pull_request_action(request.kind());
         self.status = request.start_status();
         cx.notify();
         let github_api = self.github_api.clone();

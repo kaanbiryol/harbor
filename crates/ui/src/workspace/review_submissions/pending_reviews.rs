@@ -65,7 +65,8 @@ impl AppView {
         };
 
         self.review_state.start_pending_review_submission();
-        self.action_runtime.start_pull_request_action();
+        self.action_runtime
+            .start_pull_request_action(crate::actions::PullRequestActionKind::Review);
         self.status = format!("Submitting pending review on PR #{}", pr.number);
         cx.notify();
         let github_api = self.github_api.clone();

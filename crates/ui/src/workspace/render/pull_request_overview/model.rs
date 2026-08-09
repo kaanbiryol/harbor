@@ -8,7 +8,6 @@ use harbor_domain::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OverviewPanelItem {
-    Description,
     Commit { sha: String },
     Comment { id: String },
     Review { id: String },
@@ -20,14 +19,12 @@ pub(super) enum OverviewPanelItem {
 impl OverviewPanelItem {
     pub(super) fn key(&self) -> String {
         match self {
-            Self::Description => "description".to_string(),
             Self::Commit { sha } => format!("commit:{sha}"),
             Self::Comment { id } => format!("comment:{id}"),
             Self::Review { id } => format!("review:{id}"),
             Self::Thread { id } => format!("thread:{id}"),
-            Self::Message(OverviewTimelineMessage::Loading) => "message:loading".to_string(),
-            Self::Message(OverviewTimelineMessage::Empty) => "message:empty".to_string(),
-            Self::Message(OverviewTimelineMessage::Error(_)) => "message:error".to_string(),
+            Self::Message(OverviewTimelineMessage::Empty) => "activity:empty".to_string(),
+            Self::Message(OverviewTimelineMessage::Error(_)) => "activity:error".to_string(),
             Self::Composer => "composer".to_string(),
         }
     }
@@ -35,7 +32,6 @@ impl OverviewPanelItem {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OverviewTimelineMessage {
-    Loading,
     Empty,
     Error(String),
 }
@@ -133,12 +129,10 @@ pub(super) fn overview_panel_items(
     reviews: &[PullRequestReview],
     comments: &[PullRequestComment],
     threads: &[ReviewThread],
-    loading: bool,
     error: Option<&str>,
 ) -> Vec<OverviewPanelItem> {
     let timeline_items = overview_timeline_items(commits, reviews, comments, threads);
-    let mut items = Vec::with_capacity(timeline_items.len() + 3);
-    items.push(OverviewPanelItem::Description);
+    let mut items = Vec::with_capacity(timeline_items.len() + 2);
 
     if let Some(error) = error {
         items.push(OverviewPanelItem::Message(OverviewTimelineMessage::Error(
@@ -147,11 +141,7 @@ pub(super) fn overview_panel_items(
     }
 
     if timeline_items.is_empty() && error.is_none() {
-        items.push(OverviewPanelItem::Message(if loading {
-            OverviewTimelineMessage::Loading
-        } else {
-            OverviewTimelineMessage::Empty
-        }));
+        items.push(OverviewPanelItem::Message(OverviewTimelineMessage::Empty));
     } else {
         items.extend(timeline_items.into_iter().map(|item| match item {
             OverviewTimelineItem::Commit(commit) => OverviewPanelItem::Commit {

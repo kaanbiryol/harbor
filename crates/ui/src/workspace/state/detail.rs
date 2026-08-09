@@ -416,6 +416,10 @@ impl PullRequestDetailUiState {
         self.details_load.is_loaded()
     }
 
+    pub(crate) fn details_finished(&self) -> bool {
+        self.details_load.is_finished()
+    }
+
     pub(crate) fn files_loading(&self) -> bool {
         self.files_load.is_loading()
     }
@@ -429,6 +433,10 @@ impl PullRequestDetailUiState {
 
     pub(crate) fn commits_loaded(&self) -> bool {
         self.commits_load.is_loaded()
+    }
+
+    pub(crate) fn commits_finished(&self) -> bool {
+        self.commits_load.is_finished()
     }
 
     pub(crate) fn workflows_loading(&self) -> bool {

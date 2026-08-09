@@ -13,8 +13,8 @@ use crate::{
 };
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_panel_card, render_panel_header,
-    sync_virtual_list_item_count,
+    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_panel_header, sync_virtual_list_item_count,
 };
 
 const CHECK_GROUP_HEADER_HEIGHT: f32 = 42.0;
@@ -109,8 +109,8 @@ pub(crate) fn render_checks_panel(
         .when(summary.total > 0, |element| {
             element.child(render_check_completion_summary(summary))
         })
-        .when(is_loading, |element| {
-            element.child(render_empty_panel_card("Loading check runs..."))
+        .when(is_loading && check_runs.is_empty(), |element| {
+            element.child(render_loading_panel_card("Loading checks…"))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

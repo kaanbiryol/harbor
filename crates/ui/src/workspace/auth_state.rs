@@ -38,7 +38,7 @@ pub(crate) enum GitHubCliAvailability {
 impl GitHubCliAvailability {
     pub(crate) fn unavailable_reason(&self) -> Option<&str> {
         match self {
-            Self::Checking => Some("Checking GitHub CLI..."),
+            Self::Checking => Some("Checking GitHub CLI…"),
             Self::Available => None,
             Self::Unavailable(reason) => Some(reason.as_str()),
         }

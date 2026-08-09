@@ -22,6 +22,8 @@ impl AppView {
             .value()
             .trim()
             .is_empty();
+        let action_running = self.action_runtime.pull_request_action_kind()
+            == Some(crate::actions::PullRequestActionKind::Review);
         let submit_disabled = self.action_runtime.pull_request_action_running()
             || (target.requires_body() && body_empty);
         let input = self.review_action_comment_input.clone();
@@ -109,7 +111,7 @@ impl AppView {
                                     .label(target.submit_label())
                                     .small()
                                     .primary()
-                                    .loading(self.action_runtime.pull_request_action_running())
+                                    .loading(action_running)
                                     .disabled(submit_disabled)
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.submit_review_action_comment_dialog(window, cx);

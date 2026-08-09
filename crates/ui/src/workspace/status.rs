@@ -1,4 +1,4 @@
-use crate::actions::PullRequestMetadataField;
+use crate::actions::{PullRequestActionKind, PullRequestMetadataField, WorkflowAction};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) enum LoadStatus {
@@ -94,59 +94,84 @@ impl ActionStatus {
 #[derive(Default)]
 pub(crate) struct ActionRuntimeState {
     workflow_action: ActionStatus,
+    workflow_action_kind: Option<WorkflowAction>,
     pull_request_action: ActionStatus,
+    pull_request_action_kind: Option<PullRequestActionKind>,
     pull_request_description_action: ActionStatus,
     pull_request_metadata_action: ActionStatus,
     pull_request_metadata_field: Option<PullRequestMetadataField>,
 }
 
 impl ActionRuntimeState {
+    pub(crate) fn is_any_running(&self) -> bool {
+        self.workflow_action.is_running()
+            || self.pull_request_action.is_running()
+            || self.pull_request_description_action.is_running()
+            || self.pull_request_metadata_action.is_running()
+    }
+
     pub(crate) fn workflow_action_running(&self) -> bool {
         self.workflow_action.is_running()
+    }
+
+    pub(crate) fn workflow_action_kind(&self) -> Option<WorkflowAction> {
+        self.workflow_action_kind
     }
 
     pub(crate) fn workflow_action_error(&self) -> Option<&str> {
         self.workflow_action.error()
     }
 
-    pub(crate) fn start_workflow_action(&mut self) {
+    pub(crate) fn start_workflow_action(&mut self, action: WorkflowAction) {
+        self.workflow_action_kind = Some(action);
         self.workflow_action.start();
     }
 
     pub(crate) fn finish_workflow_action_success(&mut self) {
         self.workflow_action.succeed();
+        self.workflow_action_kind = None;
     }
 
     pub(crate) fn finish_workflow_action_failure(&mut self, error: impl Into<String>) {
         self.workflow_action.fail(error);
+        self.workflow_action_kind = None;
     }
 
     pub(crate) fn set_workflow_action_error(&mut self, error: impl Into<String>) {
         self.workflow_action.fail(error);
+        self.workflow_action_kind = None;
     }
 
     pub(crate) fn pull_request_action_running(&self) -> bool {
         self.pull_request_action.is_running()
     }
 
+    pub(crate) fn pull_request_action_kind(&self) -> Option<PullRequestActionKind> {
+        self.pull_request_action_kind
+    }
+
     pub(crate) fn pull_request_action_error(&self) -> Option<&str> {
         self.pull_request_action.error()
     }
 
-    pub(crate) fn start_pull_request_action(&mut self) {
+    pub(crate) fn start_pull_request_action(&mut self, kind: PullRequestActionKind) {
+        self.pull_request_action_kind = Some(kind);
         self.pull_request_action.start();
     }
 
     pub(crate) fn finish_pull_request_action(&mut self) {
         self.pull_request_action.succeed();
+        self.pull_request_action_kind = None;
     }
 
     pub(crate) fn finish_pull_request_action_failure(&mut self, error: impl Into<String>) {
         self.pull_request_action.fail(error);
+        self.pull_request_action_kind = None;
     }
 
     pub(crate) fn set_pull_request_action_error(&mut self, error: impl Into<String>) {
         self.pull_request_action.fail(error);
+        self.pull_request_action_kind = None;
     }
 
     pub(crate) fn pull_request_description_action_running(&self) -> bool {
@@ -204,7 +229,9 @@ impl ActionRuntimeState {
 
     pub(crate) fn clear_errors(&mut self) {
         self.workflow_action.clear_error();
+        self.workflow_action_kind = None;
         self.pull_request_action.clear_error();
+        self.pull_request_action_kind = None;
         self.pull_request_description_action.clear_error();
         self.pull_request_metadata_action.clear_error();
         self.pull_request_metadata_field = None;
@@ -255,16 +282,24 @@ mod tests {
         assert!(!state.workflow_action_running());
         assert_eq!(state.workflow_action_error(), Some("missing workflow"));
 
-        state.start_workflow_action();
+        state.start_workflow_action(WorkflowAction::DispatchBuild);
         assert!(state.workflow_action_running());
+        assert_eq!(
+            state.workflow_action_kind(),
+            Some(WorkflowAction::DispatchBuild)
+        );
         assert_eq!(state.workflow_action_error(), None);
 
         state.finish_workflow_action_failure("dispatch failed");
         assert!(!state.workflow_action_running());
         assert_eq!(state.workflow_action_error(), Some("dispatch failed"));
 
-        state.start_pull_request_action();
+        state.start_pull_request_action(PullRequestActionKind::Merge);
         assert!(state.pull_request_action_running());
+        assert_eq!(
+            state.pull_request_action_kind(),
+            Some(PullRequestActionKind::Merge)
+        );
         assert_eq!(state.pull_request_action_error(), None);
 
         state.finish_pull_request_action();

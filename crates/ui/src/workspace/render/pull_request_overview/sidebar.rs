@@ -248,7 +248,7 @@ impl AppView {
                                     .text_xs()
                                     .text_color(color::text_muted())
                                     .child(Spinner::new().small())
-                                    .child("Loading..."),
+                                    .child("Loading choices…"),
                             );
                         } else if let Some(choices_error) = choices_error.clone() {
                             content = content.child(

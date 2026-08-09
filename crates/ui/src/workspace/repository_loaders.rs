@@ -57,7 +57,7 @@ impl AppView {
                             && view.pull_requests.is_empty()
                         {
                             view.status = if repository_count == 0 {
-                                "Fetching repositories from GitHub...".to_string()
+                                "Loading repositories…".to_string()
                             } else {
                                 format!(
                                     "Loaded {repository_count} pinned repositories. Choose one from the header or type owner/repo"

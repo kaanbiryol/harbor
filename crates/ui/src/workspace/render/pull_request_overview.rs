@@ -3,6 +3,7 @@ use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonCustomVariant, ButtonVariants},
     input::Input,
+    spinner::Spinner,
 };
 use harbor_domain::PullRequest;
 
@@ -43,12 +44,26 @@ impl AppView {
                 .child("Select a pull request to see its overview")
                 .into_any_element();
         };
+        let Some(detail_key) = self.selected_pull_request_detail_key() else {
+            return render_overview_activity_loading();
+        };
+        self.overview_state.prepare_pull_request(detail_key);
+        let description_ready =
+            self.overview_state.is_ready() || self.detail_state.details_finished();
+        let initial_load_finished = description_ready
+            && self.detail_state.commits_finished()
+            && self.review_state.reviews_finished();
+        if !self.overview_state.is_ready() && initial_load_finished {
+            self.overview_state.mark_ready();
+        }
+        let activity_ready = self.overview_state.is_ready();
+        let activity_loading =
+            self.review_state.reviews_loading() || self.detail_state.commits_loading();
         let panel_items = overview_panel_items(
             self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
-            self.review_state.reviews_loading() || self.detail_state.commits_loading(),
             self.review_state
                 .reviews_error()
                 .or_else(|| self.detail_state.commits_error()),
@@ -60,6 +75,92 @@ impl AppView {
             panel_item_keys,
         );
         let panel_items_for_render = panel_items.clone();
+        let activity_body = if activity_ready {
+            list(
+                self.overview_state.list_state.clone(),
+                cx.processor(move |view, index: usize, _window, cx| {
+                    let Some(item) = panel_items_for_render.get(index) else {
+                        return div().into_any_element();
+                    };
+
+                    match item {
+                        OverviewPanelItem::Commit { sha } => view
+                            .detail_state
+                            .commits()
+                            .iter()
+                            .find(|commit| commit.sha == *sha)
+                            .cloned()
+                            .map(|commit| render_overview_commit_event(&commit, index, cx))
+                            .unwrap_or_else(|| div().into_any_element()),
+                        OverviewPanelItem::Comment { id } => view
+                            .review_state
+                            .pull_request_comments()
+                            .iter()
+                            .find(|comment| comment.id == *id)
+                            .cloned()
+                            .map(|comment| {
+                                let markdown = view.render_overview_markdown(
+                                    format!("overview-comment-body-{}", comment.id),
+                                    &comment.body,
+                                    cx,
+                                );
+                                render_overview_comment_event(&comment, index, markdown)
+                            })
+                            .unwrap_or_else(|| div().into_any_element()),
+                        OverviewPanelItem::Review { id } => view
+                            .review_state
+                            .pull_request_reviews()
+                            .iter()
+                            .find(|review| review.id == *id)
+                            .cloned()
+                            .map(|review| {
+                                let markdown = review
+                                    .body
+                                    .as_deref()
+                                    .map(str::trim)
+                                    .filter(|body| !body.is_empty())
+                                    .map(|body| {
+                                        view.render_overview_markdown(
+                                            format!("overview-review-body-{}", review.id),
+                                            body,
+                                            cx,
+                                        )
+                                    });
+                                render_overview_review_event(&review, index, markdown)
+                            })
+                            .unwrap_or_else(|| div().into_any_element()),
+                        OverviewPanelItem::Thread { id } => view
+                            .review_state
+                            .review_threads()
+                            .iter()
+                            .find(|thread| thread.id == *id)
+                            .cloned()
+                            .map(|thread| {
+                                let expanded = overview_thread_expanded(
+                                    thread.state,
+                                    view.overview_state
+                                        .thread_expansion_overrides
+                                        .get(&thread.id)
+                                        .copied(),
+                                );
+                                view.render_overview_thread_event(&thread, index, expanded, cx)
+                            })
+                            .unwrap_or_else(|| div().into_any_element()),
+                        OverviewPanelItem::Message(message) => render_timeline_message(message),
+                        OverviewPanelItem::Composer => view
+                            .selected_pull_request()
+                            .cloned()
+                            .map(|pr| view.render_overview_comment_composer(&pr, cx))
+                            .unwrap_or_else(|| div().into_any_element()),
+                    }
+                }),
+            )
+            .size_full()
+            .into_any_element()
+        } else {
+            render_overview_activity_loading()
+        };
+        let description = description_ready.then(|| self.render_description_card(pr, cx));
 
         div()
             .debug_selector(|| "pull-request-overview-panel".to_string())
@@ -83,119 +184,30 @@ impl AppView {
                             .flex_1()
                             .min_h_0()
                             .min_w_0()
-                            .child(
-                                list(
-                                    self.overview_state.list_state.clone(),
-                                    cx.processor(move |view, index: usize, _window, cx| {
-                                        let Some(item) = panel_items_for_render.get(index) else {
-                                            return div().into_any_element();
-                                        };
-
-                                        match item {
-                                            OverviewPanelItem::Description => view
-                                                .selected_pull_request()
-                                                .cloned()
-                                                .map(|pr| {
-                                                    div()
-                                                        .w_full()
-                                                        .pb_3()
-                                                        .child(
-                                                            view.render_description_card(&pr, cx),
-                                                        )
-                                                        .into_any_element()
-                                                })
-                                                .unwrap_or_else(|| div().into_any_element()),
-                                            OverviewPanelItem::Commit { sha } => view
-                                                .detail_state
-                                                .commits()
-                                                .iter()
-                                                .find(|commit| commit.sha == *sha)
-                                                .cloned()
-                                                .map(|commit| {
-                                                    render_overview_commit_event(&commit, index, cx)
-                                                })
-                                                .unwrap_or_else(|| div().into_any_element()),
-                                            OverviewPanelItem::Comment { id } => view
-                                                .review_state
-                                                .pull_request_comments()
-                                                .iter()
-                                                .find(|comment| comment.id == *id)
-                                                .cloned()
-                                                .map(|comment| {
-                                                    let markdown = view.render_overview_markdown(
-                                                        format!(
-                                                            "overview-comment-body-{}",
-                                                            comment.id
-                                                        ),
-                                                        &comment.body,
-                                                        cx,
-                                                    );
-                                                    render_overview_comment_event(
-                                                        &comment, index, markdown,
-                                                    )
-                                                })
-                                                .unwrap_or_else(|| div().into_any_element()),
-                                            OverviewPanelItem::Review { id } => view
-                                                .review_state
-                                                .pull_request_reviews()
-                                                .iter()
-                                                .find(|review| review.id == *id)
-                                                .cloned()
-                                                .map(|review| {
-                                                    let markdown = review
-                                                        .body
-                                                        .as_deref()
-                                                        .map(str::trim)
-                                                        .filter(|body| !body.is_empty())
-                                                        .map(|body| {
-                                                            view.render_overview_markdown(
-                                                                format!(
-                                                                    "overview-review-body-{}",
-                                                                    review.id
-                                                                ),
-                                                                body,
-                                                                cx,
-                                                            )
-                                                        });
-                                                    render_overview_review_event(
-                                                        &review, index, markdown,
-                                                    )
-                                                })
-                                                .unwrap_or_else(|| div().into_any_element()),
-                                            OverviewPanelItem::Thread { id } => view
-                                                .review_state
-                                                .review_threads()
-                                                .iter()
-                                                .find(|thread| thread.id == *id)
-                                                .cloned()
-                                                .map(|thread| {
-                                                    let expanded = overview_thread_expanded(
-                                                        thread.state,
-                                                        view.overview_state
-                                                            .thread_expansion_overrides
-                                                            .get(&thread.id)
-                                                            .copied(),
-                                                    );
-                                                    view.render_overview_thread_event(
-                                                        &thread, index, expanded, cx,
-                                                    )
-                                                })
-                                                .unwrap_or_else(|| div().into_any_element()),
-                                            OverviewPanelItem::Message(message) => {
-                                                render_timeline_message(message)
-                                            }
-                                            OverviewPanelItem::Composer => view
-                                                .selected_pull_request()
-                                                .cloned()
-                                                .map(|pr| {
-                                                    view.render_overview_comment_composer(&pr, cx)
-                                                })
-                                                .unwrap_or_else(|| div().into_any_element()),
-                                        }
-                                    }),
+                            .flex()
+                            .flex_col()
+                            .when_some(description, |element, description| {
+                                element.child(div().flex_none().mb_3().child(description))
+                            })
+                            .when(description_ready, |element| {
+                                element.child(
+                                    div()
+                                        .debug_selector(|| {
+                                            "pull-request-overview-activity".to_string()
+                                        })
+                                        .flex_1()
+                                        .min_h_0()
+                                        .min_w_0()
+                                        .flex()
+                                        .flex_col()
+                                        .when(activity_ready, |element| {
+                                            element.child(render_overview_activity_header(
+                                                activity_loading,
+                                            ))
+                                        })
+                                        .child(div().flex_1().min_h_0().child(activity_body)),
                                 )
-                                .size_full(),
-                            ),
+                            }),
                     )
                     .child(
                         div()
@@ -218,6 +230,45 @@ impl AppView {
     }
 }
 
+fn render_overview_activity_loading() -> AnyElement {
+    div()
+        .debug_selector(|| "pull-request-overview-activity-loading".to_string())
+        .w_full()
+        .h(px(28.0))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(Spinner::new().small())
+        .into_any_element()
+}
+
+fn render_overview_activity_header(loading: bool) -> impl IntoElement {
+    div()
+        .debug_selector(|| "pull-request-overview-activity-header".to_string())
+        .w_full()
+        .h(px(28.0))
+        .pb_2()
+        .flex()
+        .items_center()
+        .justify_between()
+        .child(
+            div()
+                .text_sm()
+                .font_medium()
+                .text_color(color::text_primary())
+                .child("Activity"),
+        )
+        .child(
+            div()
+                .size(px(16.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .when(loading, |element| element.child(Spinner::new().small())),
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
@@ -229,9 +280,10 @@ mod tests {
     };
 
     use super::{
-        OverviewTimelineItem, merge_readiness, overview_panel_items, overview_review_visible,
-        overview_thread_expanded, overview_thread_item_index, overview_timeline_items,
-        parse_label_color, pull_request_readiness, sync_overview_list_items,
+        OverviewPanelItem, OverviewTimelineItem, merge_readiness, overview_panel_items,
+        overview_review_visible, overview_thread_expanded, overview_thread_item_index,
+        overview_timeline_items, parse_label_color, pull_request_readiness,
+        sync_overview_list_items,
     };
     use crate::test_fixtures::{pull_request, review_thread, test_time};
     use crate::visual::Tone;
@@ -385,27 +437,25 @@ mod tests {
     #[test]
     fn finds_thread_index_in_virtual_overview_items() {
         let thread = review_thread(ReviewThreadState::Unresolved);
-        let items = overview_panel_items(&[], &[], &[], &[thread], false, None);
+        let items = overview_panel_items(&[], &[], &[], &[thread], None);
 
-        assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(1));
+        assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(0));
         assert_eq!(overview_thread_item_index(&items, "missing"), None);
     }
 
     #[test]
     fn preserves_scroll_anchor_when_timeline_item_is_inserted_above() {
-        let list_state = ListState::new(4, ListAlignment::Top, px(160.0));
+        let list_state = ListState::new(3, ListAlignment::Top, px(160.0));
         list_state.scroll_to(ListOffset {
-            item_ix: 2,
+            item_ix: 1,
             offset_in_item: px(18.0),
         });
         let mut previous_keys = vec![
-            "description".to_string(),
             "comment:1".to_string(),
             "thread:1".to_string(),
             "composer".to_string(),
         ];
         let next_keys = vec![
-            "description".to_string(),
             "review:1".to_string(),
             "comment:1".to_string(),
             "thread:1".to_string(),
@@ -415,31 +465,19 @@ mod tests {
         sync_overview_list_items(&list_state, &mut previous_keys, next_keys.clone());
 
         assert_eq!(previous_keys, next_keys);
-        assert_eq!(list_state.item_count(), 5);
-        assert_eq!(list_state.logical_scroll_top().item_ix, 3);
+        assert_eq!(list_state.item_count(), 4);
+        assert_eq!(list_state.logical_scroll_top().item_ix, 2);
         assert_eq!(list_state.logical_scroll_top().offset_in_item, px(18.0));
     }
 
     #[test]
-    fn keeps_overview_at_top_when_loading_placeholder_is_replaced() {
-        let list_state = ListState::new(3, ListAlignment::Top, px(160.0));
-        let mut previous_keys = vec![
-            "description".to_string(),
-            "message:loading".to_string(),
-            "composer".to_string(),
-        ];
-        let next_keys = vec![
-            "description".to_string(),
-            "comment:1".to_string(),
-            "review:1".to_string(),
-            "thread:1".to_string(),
-            "composer".to_string(),
-        ];
+    fn activity_rows_only_contain_activity_content() {
+        let keys = overview_panel_items(&[], &[], &[], &[], None)
+            .iter()
+            .map(OverviewPanelItem::key)
+            .collect::<Vec<_>>();
 
-        sync_overview_list_items(&list_state, &mut previous_keys, next_keys);
-
-        assert_eq!(list_state.logical_scroll_top().item_ix, 0);
-        assert_eq!(list_state.logical_scroll_top().offset_in_item, px(0.0));
+        assert_eq!(keys, vec!["activity:empty", "composer"]);
     }
 
     #[gpui::test]

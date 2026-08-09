@@ -4,7 +4,6 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::InputState,
     list::ListItem,
-    spinner::Spinner,
     tooltip::Tooltip,
 };
 use harbor_domain::{PullRequestPerson, PullRequestReviewState, ReviewThread, ReviewThreadState};
@@ -491,11 +490,6 @@ pub(super) fn overview_review_state(
 
 pub(super) fn render_timeline_message(message: &OverviewTimelineMessage) -> AnyElement {
     let (node, label, text_color) = match message {
-        OverviewTimelineMessage::Loading => (
-            Spinner::new().small().into_any_element(),
-            "Loading activity...".to_string(),
-            color::text_muted(),
-        ),
         OverviewTimelineMessage::Empty => (
             Icon::new(Octicon::CommentDiscussion)
                 .xsmall()

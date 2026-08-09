@@ -21,8 +21,8 @@ use crate::{
 use super::review_markdown::{render_review_markdown_body, review_markdown_body};
 use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_metric_pill, render_status_pill,
-    sync_virtual_list_item_count,
+    render_empty_panel_card, render_error_panel_card, render_loading_panel_card,
+    render_metric_pill, render_status_pill, sync_virtual_list_item_count,
 };
 
 #[path = "review/diff_preview.rs"]
@@ -126,7 +126,7 @@ pub(crate) fn render_review_panel(
                 .child(render_metric_pill("outdated", outdated, Tone::Neutral)),
         )
         .when(is_loading && !has_review_items, |element| {
-            element.child(render_empty_panel_card("Loading review comments..."))
+            element.child(render_loading_panel_card("Loading review comments…"))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

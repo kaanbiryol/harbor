@@ -3,13 +3,15 @@ use gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
+    spinner::Spinner,
 };
 use harbor_domain::{MergeMethod, PullRequest};
 
 use crate::{
     actions::{
         MergePullRequest, MergePullRequestWithMergeCommit, OpenApproveCommentDialog,
-        OpenRequestChangesCommentDialog, PullRequestAction, RebasePullRequest,
+        OpenRequestChangesCommentDialog, PullRequestAction, PullRequestActionKind,
+        RebasePullRequest,
     },
     panels::{merge_blocker, review_action_blocker},
     visual::{color, layout},
@@ -23,6 +25,9 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let pull_request_action_running = self.action_runtime.pull_request_action_running();
+        let pull_request_action_kind = self.action_runtime.pull_request_action_kind();
+        let review_action_running = pull_request_action_kind == Some(PullRequestActionKind::Review);
+        let merge_action_running = pull_request_action_kind == Some(PullRequestActionKind::Merge);
         let review_action_blocker = review_action_blocker(pr);
         let merge_blocker = merge_blocker(pr);
         let review_action_disabled = pull_request_action_running || review_action_blocker.is_some();
@@ -52,7 +57,7 @@ impl AppView {
                         Button::new("approve-pr-primary")
                             .label("approve")
                             .small()
-                            .loading(pull_request_action_running)
+                            .loading(review_action_running)
                             .disabled(review_action_disabled)
                             .on_click(cx.listener(|view, _, window, cx| {
                                 view.run_pull_request_action(
@@ -65,7 +70,7 @@ impl AppView {
                     .small()
                     .compact()
                     .tooltip(approve_tooltip)
-                    .loading(pull_request_action_running)
+                    .loading(review_action_running)
                     .disabled(review_action_disabled)
                     .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
                         menu.menu_with_disabled(
@@ -90,7 +95,7 @@ impl AppView {
                 let button = Button::new("merge-pr-primary")
                     .label(merge_method_button_label(MergeMethod::Squash))
                     .small()
-                    .loading(pull_request_action_running)
+                    .loading(merge_action_running)
                     .disabled(merge_action_disabled)
                     .on_click(cx.listener(|view, _, window, cx| {
                         view.run_pull_request_action(
@@ -104,7 +109,7 @@ impl AppView {
                     .small()
                     .compact()
                     .tooltip(merge_tooltip)
-                    .loading(pull_request_action_running)
+                    .loading(merge_action_running)
                     .disabled(merge_action_disabled)
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                         menu.menu_with_check_and_disabled(
@@ -176,6 +181,17 @@ impl AppView {
                                             }))
                                             .child(format!("#{} {}", pr.number, pr.title)),
                                     )
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .size(px(16.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .when(self.detail_state.details_loading(), |element| {
+                                                element.child(Spinner::new().small())
+                                            }),
+                                    )
                                     .child(div().flex_none().child(render_copy_button(
                                         format!("copy-pr-link-{}", pr.number),
                                         "Copy pull request link",
@@ -240,15 +256,6 @@ impl AppView {
                                         cx,
                                     )),
                             )
-                            .when(self.detail_state.details_loading(), |element| {
-                                element.child(
-                                    div()
-                                        .pt_2()
-                                        .text_xs()
-                                        .text_color(color::text_muted())
-                                        .child("Loading latest PR details..."),
-                                )
-                            })
                             .when_some(
                                 self.detail_state.details_error().map(str::to_string),
                                 |element, error| {

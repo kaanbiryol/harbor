@@ -1,5 +1,5 @@
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt};
+use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 use harbor_domain::{Workflow, WorkflowState};
 
 use crate::icons::Octicon;
@@ -31,14 +31,18 @@ pub(super) fn render_workflow_sidebar(
                 .font_medium()
                 .child("Workflows"),
         )
-        .when(is_loading, |element| {
+        .when(is_loading && workflows.is_empty(), |element| {
             element.child(
                 div()
                     .px_3()
                     .py_2()
+                    .flex()
+                    .items_center()
+                    .gap_2()
                     .text_xs()
                     .text_color(color::text_muted())
-                    .child("Loading workflows..."),
+                    .child(Spinner::new().small())
+                    .child("Loading workflows…"),
             )
         })
         .when_some(error.map(str::to_string), |element, error| {

@@ -31,7 +31,7 @@ impl AppView {
 
         let (title, message, button, show_icon, show_spinner, is_error) = match self.auth_status() {
             GitHubAuthStatus::Loading => (
-                Some("Checking GitHub".to_string()),
+                Some("Checking GitHub sign-in…".to_string()),
                 Some("Harbor will load repositories after it finds saved GitHub auth.".to_string()),
                 None,
                 true,
@@ -53,8 +53,8 @@ impl AppView {
                     )
                 } else {
                     (
-                        Some("Connecting to GitHub".to_string()),
-                        Some("Waiting for GitHub to return the token.".to_string()),
+                        Some("Waiting for GitHub…".to_string()),
+                        Some("GitHub is completing sign-in.".to_string()),
                         Some(("Show code", AuthGateButton::ShowDeviceCode)),
                         true,
                         true,
@@ -83,7 +83,7 @@ impl AppView {
             GitHubAuthStatus::SignedOut => unreachable!("signed-out auth gate is rendered above"),
             GitHubAuthStatus::SignedIn { .. } => (
                 Some("Signed in to GitHub".to_string()),
-                Some("Loading repositories...".to_string()),
+                Some("Loading repositories…".to_string()),
                 None,
                 true,
                 true,

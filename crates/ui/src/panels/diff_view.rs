@@ -104,7 +104,12 @@ pub(crate) fn render_diff_panel(
                     .bg(color::content_background())
                     .p_3()
                     .text_color(color::text_muted())
-                    .child("Loading diff..."),
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap_2()
+                    .child(gpui_component::spinner::Spinner::new().small())
+                    .child("Loading diff…"),
             )
             .into_any_element();
     }

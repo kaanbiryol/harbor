@@ -1,4 +1,5 @@
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, uniform_list};
+use gpui_component::{Sizable, spinner::Spinner};
 
 use crate::{
     panels::render_pull_request_row,
@@ -66,7 +67,23 @@ impl AppView {
         let mut body = Vec::new();
 
         match body_state {
-            PullRequestInboxBodyState::LoadingEmpty => {}
+            PullRequestInboxBodyState::LoadingEmpty => {
+                body.push(
+                    div()
+                        .flex_1()
+                        .px_3()
+                        .py_3()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .gap_2()
+                        .text_sm()
+                        .text_color(color::text_muted())
+                        .child(Spinner::new().small())
+                        .child(format!("Loading {}…", current_mode.status_label()))
+                        .into_any_element(),
+                );
+            }
             PullRequestInboxBodyState::ErrorRows => {
                 body.push(
                     div()

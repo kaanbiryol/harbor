@@ -86,7 +86,6 @@ impl AppView {
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
-            self.review_state.reviews_loading(),
             self.review_state.reviews_error(),
         );
         let Some(index) = overview_thread_item_index(&panel_items, thread_id) else {
@@ -130,7 +129,6 @@ impl AppView {
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
-            self.review_state.reviews_loading(),
             self.review_state.reviews_error(),
         );
         let panel_item_keys = panel_items.iter().map(OverviewPanelItem::key).collect();
@@ -167,9 +165,7 @@ impl AppView {
                             .iter()
                             .find(|thread| thread.id == *id)
                 }
-                OverviewPanelItem::Description
-                | OverviewPanelItem::Message(_)
-                | OverviewPanelItem::Composer => false,
+                OverviewPanelItem::Message(_) | OverviewPanelItem::Composer => false,
             };
             if changed {
                 self.overview_state
@@ -277,7 +273,8 @@ impl AppView {
     ) -> AnyElement {
         let input = self.overview_comment_input.clone();
         let input_empty = input.read(cx).value().trim().is_empty();
-        let action_running = self.action_runtime.pull_request_action_running();
+        let action_running = self.action_runtime.pull_request_action_kind()
+            == Some(crate::actions::PullRequestActionKind::Comment);
         let action_error = self
             .action_runtime
             .pull_request_action_error()

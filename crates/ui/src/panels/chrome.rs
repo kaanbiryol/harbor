@@ -1,5 +1,5 @@
 use gpui::{Div, IntoElement, ListState, div, prelude::*, px};
-use gpui_component::StyledExt;
+use gpui_component::{Sizable, StyledExt, spinner::Spinner};
 
 use crate::visual::{Tone, color, tone_colors};
 
@@ -47,6 +47,17 @@ pub(crate) fn render_empty_panel_card(message: impl Into<String>) -> impl IntoEl
     render_panel_card()
         .p_3()
         .text_color(color::text_muted())
+        .child(message.into())
+}
+
+pub(crate) fn render_loading_panel_card(message: impl Into<String>) -> impl IntoElement {
+    render_panel_card()
+        .p_3()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_color(color::text_muted())
+        .child(Spinner::new().small())
         .child(message.into())
 }
 

@@ -254,7 +254,7 @@ impl AppView {
                                     .workflows_loading(),
                                 selected_pr_workflows_error: self.detail_state.workflows_error(),
                                 action_error: self.action_runtime.workflow_action_error(),
-                                is_running_action: self.action_runtime.workflow_action_running(),
+                                running_action: self.action_runtime.workflow_action_kind(),
                                 workflow_list_state: self.panel_list_state.action_workflows.clone(),
                                 run_list_state: self.panel_list_state.action_runs.clone(),
                             },

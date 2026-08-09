@@ -12,7 +12,8 @@ use crate::visual::{Tone, color, tone_colors};
 use crate::workspace::AppView;
 
 use super::super::{
-    render_empty_panel_card, render_error_panel_card, render_panel_card, render_status_pill,
+    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_status_pill,
 };
 
 pub(super) struct RepositoryWorkflowRunsRenderInput<'a> {
@@ -95,8 +96,8 @@ pub(super) fn render_repository_workflow_runs(
                     Tone::Neutral,
                 )),
         )
-        .when(is_loading, |element| {
-            element.child(render_empty_panel_card("Loading workflow runs..."))
+        .when(is_loading && workflow_runs.is_empty(), |element| {
+            element.child(render_loading_panel_card("Loading workflow runs…"))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

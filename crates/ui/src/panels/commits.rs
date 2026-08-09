@@ -5,8 +5,8 @@ use harbor_domain::PullRequestCommit;
 use crate::{date_time::natural_time_label, visual::color, workspace::AppView};
 
 use super::{
-    render_empty_panel_card, render_error_panel_card, render_panel_card, render_panel_header,
-    render_review_avatar, sync_virtual_list_item_count,
+    render_empty_panel_card, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_panel_header, render_review_avatar, sync_virtual_list_item_count,
 };
 
 pub(crate) struct CommitsPanelRenderInput<'a> {
@@ -40,8 +40,8 @@ pub(crate) fn render_commits_panel(
             "Commits",
             Some(format!("{} commits", commits.len())),
         ))
-        .when(is_loading, |element| {
-            element.child(render_empty_panel_card("Loading commits..."))
+        .when(is_loading && commits.is_empty(), |element| {
+            element.child(render_loading_panel_card("Loading commits…"))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

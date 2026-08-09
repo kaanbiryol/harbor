@@ -248,7 +248,7 @@ impl AppView {
     pub(super) fn show_github_sign_in_required(&mut self) {
         self.clear_authenticated_github_content();
         self.status = match &self.auth_status {
-            GitHubAuthStatus::Loading => "Checking GitHub sign in...".to_string(),
+            GitHubAuthStatus::Loading => "Checking GitHub sign-in…".to_string(),
             GitHubAuthStatus::SigningIn { .. } => {
                 "Finish GitHub sign in in your browser".to_string()
             }

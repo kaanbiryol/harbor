@@ -2,6 +2,7 @@ use gpui::{App, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::
 use gpui_component::{
     Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    spinner::Spinner,
 };
 use harbor_domain::RepoId;
 
@@ -23,8 +24,12 @@ pub(super) fn render_switcher_loading_row(label: &'static str) -> impl IntoEleme
     div()
         .px_2()
         .py_2()
+        .flex()
+        .items_center()
+        .gap_2()
         .text_sm()
-        .text_color(color::accent())
+        .text_color(color::text_muted())
+        .child(Spinner::new().small())
         .child(label)
 }
 

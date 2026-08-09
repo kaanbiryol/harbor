@@ -25,8 +25,18 @@ impl AppView {
         } else {
             "Show pull request inbox"
         };
-        let status_label = self
-            .selected_pull_request()
+        let is_busy = self.repository_state.is_loading()
+            || self.pull_request_inbox.is_loading()
+            || self.pull_request_inbox.is_loading_more()
+            || self.detail_state.is_any_loading()
+            || self.review_state.reviews_loading()
+            || self.repository_actions_state.workflows_loading()
+            || self.repository_actions_state.runs_loading()
+            || self.repository_actions_state.is_loading_more_runs()
+            || self.action_runtime.is_any_running();
+        let status_label = (!is_busy)
+            .then(|| self.selected_pull_request())
+            .flatten()
             .map(|pr| {
                 format!(
                     "{} files changed · {} reviewed · {} unresolved",

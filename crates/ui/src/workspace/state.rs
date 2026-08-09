@@ -80,6 +80,7 @@ mod tests {
             reviews: true,
         });
         assert!(state.details_loaded());
+        assert!(state.commits_finished());
         assert!(!state.should_load_checks());
         assert_eq!(
             state.loaded_sections(true),

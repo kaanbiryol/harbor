@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, Context, IntoElement, Rgba, SharedString, div, prelude::*, px, uniform_list,
 };
-use gpui_component::{Icon, Sizable, StyledExt};
+use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 
 use crate::{
     icons::Octicon,
@@ -21,10 +21,25 @@ fn render_changed_files_message(message: impl Into<SharedString>, text_color: Rg
         .into_any_element()
 }
 
+fn render_changed_files_loading() -> AnyElement {
+    div()
+        .flex_1()
+        .px_3()
+        .py_3()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_sm()
+        .text_color(color::text_muted())
+        .child(Spinner::new().small())
+        .child("Loading changed files…")
+        .into_any_element()
+}
+
 impl AppView {
     pub(super) fn render_changed_files_body(&self, cx: &mut Context<Self>) -> AnyElement {
-        if self.detail_state.files_loading() {
-            return render_changed_files_message("Loading changed files...", color::text_muted());
+        if self.detail_state.files_loading() && self.detail_state.files().is_empty() {
+            return render_changed_files_loading();
         }
 
         if let Some(error) = self.detail_state.files_error() {
@@ -133,6 +148,10 @@ impl AppView {
                                 Icon::new(Octicon::File)
                                     .xsmall()
                                     .text_color(color::text_muted()),
+                            )
+                            .when(
+                                self.detail_state.files_loading() && total_count > 0,
+                                |element| element.child(Spinner::new().small()),
                             )
                             .child(
                                 div()

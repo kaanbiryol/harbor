@@ -75,6 +75,129 @@ async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn overview_only_gates_activity_until_initial_data_finishes(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            view.pull_requests = vec![pull_request()];
+            view.detail_state.apply_details_success();
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    let description = cx
+        .debug_bounds("pull-request-overview-description")
+        .expect("overview description should render while activity loads");
+    let activity_loading = cx
+        .debug_bounds("pull-request-overview-activity-loading")
+        .expect("activity loader should render");
+    assert!(activity_loading.size.height <= px(28.0));
+    assert!(activity_loading.origin.y >= description.origin.y + description.size.height);
+    assert!(activity_loading.origin.y <= description.origin.y + description.size.height + px(16.0));
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_none()
+    );
+    assert!(cx.debug_bounds("pull-request-overview-panel").is_some());
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_some()
+    );
+    assert!(cx.debug_bounds("pull-request-overview-sidebar").is_some());
+    assert!(
+        cx.debug_bounds("pull-request-overview-comment-input")
+            .is_none()
+    );
+}
+
+#[gpui::test]
+async fn overview_reveals_description_before_activity_after_pull_request_switch(
+    cx: &mut TestAppContext,
+) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view_entity = Some(view.clone());
+        view.update(cx, |view, cx| {
+            let mut first_pull_request = pull_request();
+            first_pull_request.body = Some("First description".to_string());
+            let mut second_pull_request = pull_request();
+            second_pull_request.number = 8;
+            second_pull_request.head_sha = "def456".to_string();
+            view.pull_requests = vec![first_pull_request, second_pull_request];
+            view.detail_state.apply_details_success();
+            view.detail_state.apply_commits_success();
+            view.review_state.apply_reviews_success();
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_some()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_some()
+    );
+
+    let view_entity = view_entity.expect("test AppView should be created");
+    view_entity.update(cx, |view, cx| {
+        view.selection_state.set_pull_request_index(1);
+        view.clear_selected_pull_request_detail_state();
+        view.detail_state.start_details_load();
+        view.detail_state.apply_commits_success();
+        view.review_state.apply_reviews_success();
+        cx.notify();
+    });
+
+    cx.refresh()
+        .expect("test window should refresh after switching pull requests");
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_none()
+    );
+    assert!(cx.debug_bounds("pull-request-overview-activity").is_none());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests[1].body = Some(
+            "## Second description\n\nThis content arrives with pull request metadata.".to_string(),
+        );
+        view.detail_state.apply_details_success();
+        cx.notify();
+    });
+
+    cx.refresh()
+        .expect("test window should refresh after metadata loads");
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_some()
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_some()
+    );
+}
+
+#[gpui::test]
 async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
@@ -95,6 +218,7 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
                 color: Some("34d399".to_string()),
             }];
             view.pull_requests = vec![pull_request];
+            view.detail_state.apply_details_success();
             view.detail_state.replace_commits(vec![PullRequestCommit {
                 sha: "abc123".to_string(),
                 message: "Add commit count".to_string(),
@@ -139,6 +263,7 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
                 Some("octocat".to_string()),
                 None,
             );
+            view.review_state.apply_reviews_success();
             view.active_tab = PanelTab::Overview;
             cx.notify();
         });
@@ -150,6 +275,10 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
     let description = cx
         .debug_bounds("pull-request-overview-description")
         .expect("overview description should render");
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_some()
+    );
     assert!(cx.debug_bounds("pull-request-overview-sidebar").is_some());
     assert!(cx.debug_bounds("pull-request-overview-timeline").is_some());
     assert!(cx.debug_bounds("overview-review-review-1").is_some());
@@ -289,6 +418,9 @@ async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
                 })
                 .collect();
             view.pull_requests = vec![pull_request];
+            view.detail_state.apply_details_success();
+            view.detail_state.apply_commits_success();
+            view.review_state.apply_reviews_success();
             view.active_tab = PanelTab::Overview;
             cx.notify();
         });

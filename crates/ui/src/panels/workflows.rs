@@ -2,6 +2,7 @@ use gpui::{Context, IntoElement, ListState, div, prelude::*};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    spinner::Spinner,
 };
 use harbor_domain::{PullRequest, RepoId, Workflow, WorkflowRun};
 
@@ -44,7 +45,7 @@ pub(crate) struct ActionsPanelRenderInput<'a> {
     pub(crate) selected_pr_workflows_loading: bool,
     pub(crate) selected_pr_workflows_error: Option<&'a str>,
     pub(crate) action_error: Option<&'a str>,
-    pub(crate) is_running_action: bool,
+    pub(crate) running_action: Option<WorkflowAction>,
     pub(crate) workflow_list_state: ListState,
     pub(crate) run_list_state: ListState,
 }
@@ -71,7 +72,7 @@ pub(crate) fn render_actions_panel(
         selected_pr_workflows_loading,
         selected_pr_workflows_error,
         action_error,
-        is_running_action,
+        running_action,
         workflow_list_state,
         run_list_state,
     } = input;
@@ -110,7 +111,7 @@ pub(crate) fn render_actions_panel(
                     selected_pr_workflows_loading,
                     selected_pr_workflows_error,
                     action_error,
-                    is_running_action,
+                    running_action,
                     cx,
                 ))
                 .child(
@@ -153,7 +154,7 @@ fn render_selected_pull_request_workflow_actions(
     is_loading: bool,
     error: Option<&str>,
     action_error: Option<&str>,
-    is_running_action: bool,
+    running_action: Option<WorkflowAction>,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
     let rerun_target = workflow_runs
@@ -165,12 +166,12 @@ fn render_selected_pull_request_workflow_actions(
         && !is_loading
         && error.is_none()
         && rerun_target.is_some()
-        && !is_running_action;
+        && running_action.is_none();
     let can_dispatch = pr.is_some()
         && !is_loading
         && error.is_none()
         && dispatch_target.is_some()
-        && !is_running_action;
+        && running_action.is_none();
 
     render_panel_card()
         .px_3()
@@ -221,7 +222,7 @@ fn render_selected_pull_request_workflow_actions(
                                 .label("trigger build")
                                 .small()
                                 .primary()
-                                .loading(is_running_action)
+                                .loading(running_action == Some(WorkflowAction::DispatchBuild))
                                 .disabled(!can_dispatch)
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.run_workflow_action(WorkflowAction::DispatchBuild, cx);
@@ -233,7 +234,7 @@ fn render_selected_pull_request_workflow_actions(
                                 .label("rerun failed")
                                 .small()
                                 .outline()
-                                .loading(is_running_action)
+                                .loading(running_action == Some(WorkflowAction::RerunFailedJobs))
                                 .disabled(!can_rerun)
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.run_workflow_action(WorkflowAction::RerunFailedJobs, cx);
@@ -241,12 +242,16 @@ fn render_selected_pull_request_workflow_actions(
                         ),
                 ),
         )
-        .when(is_loading, |element| {
+        .when(is_loading && workflow_runs.is_empty(), |element| {
             element.child(
                 div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
                     .text_xs()
                     .text_color(color::text_muted())
-                    .child("Loading selected PR workflow runs..."),
+                    .child(Spinner::new().small())
+                    .child("Loading workflow runs…"),
             )
         })
         .when_some(error.map(str::to_string), |element, error| {

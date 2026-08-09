@@ -142,9 +142,7 @@ impl AppView {
                 }
 
                 if is_loading_repositories {
-                    menu = menu.child(render_switcher_loading_row(
-                        "Fetching repositories from GitHub...",
-                    ));
+                    menu = menu.child(render_switcher_loading_row("Loading repositories…"));
                 }
 
                 if choices.is_empty() {

@@ -145,7 +145,7 @@ impl AppView {
             self.repository_state.repository_switcher_selection,
         ) else {
             self.status = if self.repository_state.is_loading() {
-                "Fetching repositories from GitHub...".to_string()
+                "Loading repositories…".to_string()
             } else {
                 "Type owner/repo to open a repository".to_string()
             };

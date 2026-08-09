@@ -314,7 +314,7 @@ impl AppView {
         match storage {
             Ok(store) => {
                 self.repository_state.set_store(store);
-                self.status = "Loading saved workspace state...".to_string();
+                self.status = "Loading saved workspace state…".to_string();
                 self.load_github_credentials(cx);
                 self.load_repository_preferences(cx);
             }
