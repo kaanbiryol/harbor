@@ -55,6 +55,7 @@ pub struct PullRequestEnrichment {
     pub review_decision: Option<ReviewDecision>,
     pub merge_state: Option<MergeState>,
     pub checks_summary: ChecksSummary,
+    pub merge_capabilities: PullRequestMergeCapabilities,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,6 +106,23 @@ impl MergeMethod {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub enum MergeQueueState {
+    #[default]
+    Unknown,
+    Disabled,
+    Enabled,
+    Queued,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestMergeCapabilities {
+    pub queue_state: MergeQueueState,
+    pub auto_merge_enabled: bool,
+    pub viewer_can_queue: bool,
+    pub viewer_can_merge_as_admin: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChecksSummary {
     pub total: usize,
     pub passed: usize,
@@ -129,6 +147,8 @@ pub struct PullRequest {
     pub head_sha: String,
     pub review_decision: Option<ReviewDecision>,
     pub merge_state: Option<MergeState>,
+    #[serde(default)]
+    pub merge_capabilities: PullRequestMergeCapabilities,
     pub labels: Vec<Label>,
     pub assignees: Vec<PullRequestPerson>,
     pub requested_reviewers: Vec<PullRequestPerson>,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui::TestAppContext;
-use harbor_domain::PullRequestComment;
+use harbor_domain::{MergeQueueState, PullRequestComment, PullRequestMergeCapabilities};
 
 use crate::{
     actions::{PullRequestAction, PullRequestMetadataField, WorkflowAction},
@@ -257,4 +257,32 @@ async fn pull_request_action_reports_success_and_failure_from_service(cx: &mut T
         );
         assert!(view.status.contains("approval failed"));
     });
+}
+
+#[gpui::test]
+async fn merge_when_ready_uses_merge_queue_action(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    api.push_merge_pull_request_when_ready(Ok(()));
+    let (view, cx) = init_workspace_service_test(cx, api.clone());
+
+    view.update_in(cx, |view, window, cx| {
+        let mut pull_request = pull_request();
+        pull_request.merge_capabilities = PullRequestMergeCapabilities {
+            queue_state: MergeQueueState::Enabled,
+            viewer_can_queue: true,
+            ..Default::default()
+        };
+        view.pull_requests = vec![pull_request];
+        view.selection_state.reset_pull_request_index();
+        view.run_pull_request_action(PullRequestAction::MergeWhenReady, window, cx);
+        assert_eq!(view.status, "Setting PR #7 to merge when ready");
+    });
+    cx.run_until_parked();
+
+    view.read_with(cx, |view, _| {
+        assert!(!view.action_runtime.pull_request_action_running());
+        assert_eq!(view.action_runtime.pull_request_action_error(), None);
+        assert_eq!(view.status, "PR #7 will merge when ready");
+    });
+    assert_eq!(api.calls(), vec!["merge_pull_request_when_ready"]);
 }

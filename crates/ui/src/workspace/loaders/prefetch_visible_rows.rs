@@ -136,6 +136,10 @@ impl AppView {
                 pull_request.checks_summary = enrichment.checks_summary;
                 changed = true;
             }
+            if pull_request.merge_capabilities != enrichment.merge_capabilities {
+                pull_request.merge_capabilities = enrichment.merge_capabilities;
+                changed = true;
+            }
         }
 
         changed

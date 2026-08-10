@@ -32,6 +32,7 @@ query HarborRepositoryPullRequests(
         }
         repository {
           name
+          viewerPermission
           owner {
             login
           }
@@ -43,6 +44,12 @@ query HarborRepositoryPullRequests(
         updatedAt
         reviewDecision
         mergeStateStatus
+        isMergeQueueEnabled
+        isInMergeQueue
+        viewerCanMergeAsAdmin
+        autoMergeRequest {
+          enabledAt
+        }
         statusCheckRollup {
           contexts(first: 100) {
             nodes {
@@ -173,6 +180,15 @@ query HarborPullRequestEnrichment($ids: [ID!]!) {
       id
       reviewDecision
       mergeStateStatus
+      isMergeQueueEnabled
+      isInMergeQueue
+      viewerCanMergeAsAdmin
+      repository {
+        viewerPermission
+      }
+      autoMergeRequest {
+        enabledAt
+      }
       statusCheckRollup {
         contexts(first: 100) {
           nodes {
@@ -302,6 +318,16 @@ mutation HarborUpdatePullRequest($input: UpdatePullRequestInput!) {
     pullRequest {
       id
       body
+    }
+  }
+}
+"#;
+
+pub(super) const MERGE_PULL_REQUEST_WHEN_READY_MUTATION: &str = r#"
+mutation HarborMergePullRequestWhenReady($input: EnablePullRequestAutoMergeInput!) {
+  enablePullRequestAutoMerge(input: $input) {
+    pullRequest {
+      id
     }
   }
 }

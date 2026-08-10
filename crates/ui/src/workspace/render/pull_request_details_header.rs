@@ -2,9 +2,10 @@ use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
+    checkbox::Checkbox,
     clipboard::Clipboard,
 };
-use harbor_domain::{MergeMethod, PullRequest};
+use harbor_domain::{MergeMethod, MergeQueueState, PullRequest};
 
 use crate::{
     actions::{
@@ -12,7 +13,10 @@ use crate::{
         OpenRequestChangesCommentDialog, PullRequestAction, PullRequestActionKind,
         RebasePullRequest,
     },
-    panels::{merge_blocker, review_action_blocker},
+    panels::{
+        merge_blocker, merge_when_ready_blocker, merge_without_requirements_blocker,
+        review_action_blocker,
+    },
     visual::{color, layout},
     workspace::{AppView, log_entity_update_error},
 };
@@ -28,15 +32,36 @@ impl AppView {
         let review_action_running = pull_request_action_kind == Some(PullRequestActionKind::Review);
         let merge_action_running = pull_request_action_kind == Some(PullRequestActionKind::Merge);
         let review_action_blocker = review_action_blocker(pr);
-        let merge_blocker = merge_blocker(pr);
         let review_action_disabled = pull_request_action_running || review_action_blocker.is_some();
-        let merge_action_disabled = pull_request_action_running || merge_blocker.is_some();
         let approve_tooltip = review_action_blocker
             .clone()
             .unwrap_or_else(|| "Approve pull request".to_string());
-        let merge_tooltip = merge_blocker
-            .clone()
-            .unwrap_or_else(|| "Merge pull request".to_string());
+        let bypass_available = pr.merge_capabilities.viewer_can_merge_as_admin;
+        let bypass_enabled = bypass_available && self.merge_bypass_enabled;
+        let show_bypass = bypass_available
+            && (pr.merge_capabilities.queue_state != MergeQueueState::Disabled
+                || merge_blocker(pr).is_some());
+        let merge_action_blocker = if bypass_enabled {
+            merge_without_requirements_blocker(pr)
+        } else {
+            match pr.merge_capabilities.queue_state {
+                MergeQueueState::Unknown => {
+                    Some("Loading merge queue settings from GitHub".to_string())
+                }
+                MergeQueueState::Enabled | MergeQueueState::Queued => merge_when_ready_blocker(pr),
+                MergeQueueState::Disabled => merge_blocker(pr),
+            }
+        };
+        let merge_action_disabled = pull_request_action_running || merge_action_blocker.is_some();
+        let merge_tooltip = merge_action_blocker.unwrap_or_else(|| {
+            if bypass_enabled {
+                "Merge immediately without waiting for requirements".to_string()
+            } else if pr.merge_capabilities.queue_state == MergeQueueState::Enabled {
+                "Add pull request to the merge queue when requirements are met".to_string()
+            } else {
+                "Merge pull request".to_string()
+            }
+        });
         let pull_request_url = pr.url.clone();
         let pull_request_link = pr.url.clone();
         let pull_request_number = pr.number;
@@ -90,51 +115,105 @@ impl AppView {
                     dropdown.success().outline()
                 }
             })
+            .when(show_bypass, |actions| {
+                actions.child(
+                    Checkbox::new("bypass-merge-requirements")
+                        .small()
+                        .checked(bypass_enabled)
+                        .disabled(pull_request_action_running)
+                        .tooltip("Merge without waiting for requirements to be met (bypass rules)")
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(color::danger())
+                                .child("bypass requirements"),
+                        )
+                        .on_click(cx.listener(|view, enabled: &bool, _, cx| {
+                            view.set_merge_bypass_enabled(*enabled, cx);
+                        })),
+                )
+            })
             .child({
-                let button = Button::new("merge-pr-primary")
-                    .label(merge_method_button_label(MergeMethod::Squash))
-                    .small()
-                    .loading(merge_action_running)
-                    .disabled(merge_action_disabled)
-                    .on_click(cx.listener(|view, _, window, cx| {
-                        view.run_pull_request_action(
-                            PullRequestAction::Merge(MergeMethod::Squash),
-                            window,
-                            cx,
-                        );
-                    }));
-                let dropdown = DropdownButton::new("merge-pr")
-                    .button(button)
-                    .small()
-                    .compact()
-                    .tooltip(merge_tooltip)
-                    .loading(merge_action_running)
-                    .disabled(merge_action_disabled)
-                    .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                        menu.menu_with_check_and_disabled(
-                            MergeMethod::Merge.label(),
-                            false,
-                            Box::new(MergePullRequestWithMergeCommit),
-                            merge_action_disabled,
-                        )
-                        .menu_with_check_and_disabled(
-                            MergeMethod::Squash.label(),
-                            true,
-                            Box::new(MergePullRequest),
-                            merge_action_disabled,
-                        )
-                        .menu_with_check_and_disabled(
-                            MergeMethod::Rebase.label(),
-                            false,
-                            Box::new(RebasePullRequest),
-                            merge_action_disabled,
-                        )
-                    });
-
-                if merge_action_disabled {
-                    dropdown.outline().opacity(0.58)
+                if !bypass_enabled
+                    && matches!(
+                        pr.merge_capabilities.queue_state,
+                        MergeQueueState::Enabled | MergeQueueState::Queued
+                    )
+                {
+                    let label = if pr.merge_capabilities.queue_state == MergeQueueState::Queued {
+                        "queued to merge"
+                    } else if pr.merge_capabilities.auto_merge_enabled {
+                        "merge when ready enabled"
+                    } else {
+                        "merge when ready"
+                    };
+                    let button = Button::new("merge-pr-when-ready")
+                        .label(label)
+                        .small()
+                        .tooltip(merge_tooltip)
+                        .loading(merge_action_running)
+                        .disabled(merge_action_disabled)
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.run_pull_request_action(
+                                PullRequestAction::MergeWhenReady,
+                                window,
+                                cx,
+                            );
+                        }));
+                    if merge_action_disabled {
+                        button.outline().opacity(0.58).into_any_element()
+                    } else {
+                        button.success().into_any_element()
+                    }
                 } else {
-                    dropdown.success()
+                    let button = Button::new("merge-pr-primary")
+                        .label(merge_method_button_label(MergeMethod::Squash))
+                        .small()
+                        .loading(merge_action_running)
+                        .disabled(merge_action_disabled)
+                        .on_click(cx.listener(move |view, _, window, cx| {
+                            view.run_pull_request_action(
+                                PullRequestAction::Merge {
+                                    method: MergeMethod::Squash,
+                                    bypass_requirements: bypass_enabled,
+                                },
+                                window,
+                                cx,
+                            );
+                        }));
+                    let dropdown = DropdownButton::new("merge-pr")
+                        .button(button)
+                        .small()
+                        .compact()
+                        .tooltip(merge_tooltip)
+                        .loading(merge_action_running)
+                        .disabled(merge_action_disabled)
+                        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                            menu.menu_with_check_and_disabled(
+                                MergeMethod::Merge.label(),
+                                false,
+                                Box::new(MergePullRequestWithMergeCommit),
+                                merge_action_disabled,
+                            )
+                            .menu_with_check_and_disabled(
+                                MergeMethod::Squash.label(),
+                                true,
+                                Box::new(MergePullRequest),
+                                merge_action_disabled,
+                            )
+                            .menu_with_check_and_disabled(
+                                MergeMethod::Rebase.label(),
+                                false,
+                                Box::new(RebasePullRequest),
+                                merge_action_disabled,
+                            )
+                        });
+
+                    if merge_action_disabled {
+                        dropdown.outline().opacity(0.58).into_any_element()
+                    } else {
+                        dropdown.success().into_any_element()
+                    }
                 }
             });
 

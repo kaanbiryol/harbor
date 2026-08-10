@@ -84,6 +84,7 @@ async fn open_inbox_loads_and_enriches_twenty_five_rows_in_two_requests(cx: &mut
                 pending: 0,
                 skipped: 0,
             },
+            merge_capabilities: pull_request.merge_capabilities,
         })
         .collect();
     api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
@@ -413,6 +414,7 @@ async fn visible_pull_request_rows_prefetch_merge_state_without_selection(cx: &m
             pending: 0,
             skipped: 0,
         },
+        merge_capabilities: pull_request.merge_capabilities,
     }]));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
@@ -460,5 +462,6 @@ fn enrichment(pull_request: &PullRequest) -> PullRequestEnrichment {
         review_decision: pull_request.review_decision,
         merge_state: pull_request.merge_state,
         checks_summary: pull_request.checks_summary,
+        merge_capabilities: pull_request.merge_capabilities,
     }
 }

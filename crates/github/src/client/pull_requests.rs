@@ -13,11 +13,11 @@ use crate::{
 use super::{
     GitHubClient, PullRequestListFilter,
     requests::{
-        MARK_FILE_AS_VIEWED_MUTATION, PULL_REQUEST_ENRICHMENT_QUERY,
-        PULL_REQUEST_FILE_VIEWED_STATES_QUERY, REPOSITORY_PULL_REQUEST_COUNT_QUERY,
-        REPOSITORY_PULL_REQUESTS_QUERY, UNMARK_FILE_AS_VIEWED_MUTATION,
-        UPDATE_PULL_REQUEST_MUTATION, repository_pull_request_search_query,
-        repository_pull_requests_query,
+        MARK_FILE_AS_VIEWED_MUTATION, MERGE_PULL_REQUEST_WHEN_READY_MUTATION,
+        PULL_REQUEST_ENRICHMENT_QUERY, PULL_REQUEST_FILE_VIEWED_STATES_QUERY,
+        REPOSITORY_PULL_REQUEST_COUNT_QUERY, REPOSITORY_PULL_REQUESTS_QUERY,
+        UNMARK_FILE_AS_VIEWED_MUTATION, UPDATE_PULL_REQUEST_MUTATION,
+        repository_pull_request_search_query, repository_pull_requests_query,
     },
 };
 
@@ -625,6 +625,26 @@ where
                 json!({
                     "sha": head_sha,
                     "merge_method": merge_method_name(method),
+                }),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn merge_pull_request_when_ready(
+        &self,
+        pull_request_node_id: &str,
+        head_sha: &str,
+    ) -> Result<()> {
+        self.transport
+            .graphql(
+                MERGE_PULL_REQUEST_WHEN_READY_MUTATION,
+                json!({
+                    "input": {
+                        "pullRequestId": pull_request_node_id,
+                        "expectedHeadOid": head_sha,
+                    },
                 }),
             )
             .await?;

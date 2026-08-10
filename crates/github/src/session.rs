@@ -608,6 +608,16 @@ impl GitHubPullRequestMutationApi for GitHubSession {
             .merge_pull_request(owner, repo, number, head_sha, method)
             .await
     }
+
+    async fn merge_pull_request_when_ready(
+        &self,
+        pull_request_node_id: &str,
+        head_sha: &str,
+    ) -> Result<()> {
+        self.client()?
+            .merge_pull_request_when_ready(pull_request_node_id, head_sha)
+            .await
+    }
 }
 
 #[cfg(test)]

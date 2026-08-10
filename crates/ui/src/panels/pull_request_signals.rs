@@ -1,4 +1,4 @@
-use harbor_domain::{MergeState, PullRequest, PullRequestState, ReviewDecision};
+use harbor_domain::{MergeQueueState, MergeState, PullRequest, PullRequestState, ReviewDecision};
 
 const MAX_PULL_REQUEST_ROW_SIGNALS: usize = 3;
 
@@ -249,6 +249,76 @@ pub(crate) fn merge_blocker(pr: &PullRequest) -> Option<String> {
     }
 
     None
+}
+
+pub(crate) fn merge_when_ready_blocker(pr: &PullRequest) -> Option<String> {
+    if pr.state != PullRequestState::Open {
+        return Some(format!("PR #{} is not open", pr.number));
+    }
+    if pr.is_draft {
+        return Some(format!("PR #{} is still a draft", pr.number));
+    }
+    if pr.node_id.is_empty() || pr.head_sha.is_empty() {
+        return Some(format!(
+            "PR #{} is missing GitHub merge metadata",
+            pr.number
+        ));
+    }
+
+    match pr.merge_capabilities.queue_state {
+        MergeQueueState::Unknown => {
+            return Some("Loading merge queue settings from GitHub".to_string());
+        }
+        MergeQueueState::Disabled => {
+            return Some(format!("PR #{} does not target a merge queue", pr.number));
+        }
+        MergeQueueState::Queued => {
+            return Some(format!("PR #{} is already queued to merge", pr.number));
+        }
+        MergeQueueState::Enabled => {}
+    }
+
+    if pr.merge_capabilities.auto_merge_enabled {
+        return Some(format!(
+            "PR #{} is already set to merge when ready",
+            pr.number
+        ));
+    }
+    if !pr.merge_capabilities.viewer_can_queue {
+        return Some(format!(
+            "You do not have permission to queue PR #{}",
+            pr.number
+        ));
+    }
+
+    None
+}
+
+pub(crate) fn merge_without_requirements_blocker(pr: &PullRequest) -> Option<String> {
+    if !pr.merge_capabilities.viewer_can_merge_as_admin {
+        return Some(format!(
+            "You do not have permission to bypass requirements for PR #{}",
+            pr.number
+        ));
+    }
+    if pr.state != PullRequestState::Open {
+        return Some(format!("PR #{} is not open", pr.number));
+    }
+    if pr.is_draft {
+        return Some(format!("PR #{} is still a draft", pr.number));
+    }
+    if pr.head_sha.is_empty() {
+        return Some(format!("PR #{} is missing a head SHA", pr.number));
+    }
+
+    match pr.merge_state {
+        Some(MergeState::Dirty) => Some(format!("PR #{} has merge conflicts", pr.number)),
+        Some(MergeState::Unknown) | None => Some(format!(
+            "PR #{} is not confirmed mergeable by GitHub",
+            pr.number
+        )),
+        Some(MergeState::Clean | MergeState::Blocked | MergeState::Behind) => None,
+    }
 }
 
 pub(crate) fn visible_pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {

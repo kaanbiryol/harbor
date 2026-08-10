@@ -22,6 +22,7 @@ pub(super) fn merge_light_pull_request_rows(previous: &[PullRequest], current: &
         }
         pull_request.review_decision = previous_pull_request.review_decision;
         pull_request.checks_summary = previous_pull_request.checks_summary;
+        pull_request.merge_capabilities = previous_pull_request.merge_capabilities;
         pull_request.unresolved_threads = previous_pull_request.unresolved_threads;
         if pull_request.created_at.is_none() {
             pull_request.created_at = previous_pull_request.created_at;
@@ -59,6 +60,7 @@ pub(super) fn apply_pull_request_enrichments(
         pull_request.review_decision = enrichment.review_decision;
         pull_request.merge_state = enrichment.merge_state;
         pull_request.checks_summary = enrichment.checks_summary;
+        pull_request.merge_capabilities = enrichment.merge_capabilities;
     }
 }
 
@@ -67,7 +69,8 @@ mod tests {
     use chrono::{DateTime, TimeZone, Utc};
     use harbor_domain::PullRequestEnrichment;
     use harbor_domain::{
-        ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId, ReviewDecision,
+        ChecksSummary, MergeQueueState, MergeState, PullRequest, PullRequestMergeCapabilities,
+        PullRequestState, RepoId, ReviewDecision,
     };
 
     use super::{apply_pull_request_enrichments, merge_light_pull_request_rows};
@@ -77,6 +80,11 @@ mod tests {
         let mut previous = pull_request(7);
         previous.node_id = "node-7".to_string();
         previous.review_decision = Some(ReviewDecision::Approved);
+        previous.merge_capabilities = PullRequestMergeCapabilities {
+            queue_state: MergeQueueState::Enabled,
+            viewer_can_queue: true,
+            ..Default::default()
+        };
         previous.unresolved_threads = 3;
         previous.checks_summary = ChecksSummary {
             total: 2,
@@ -101,6 +109,10 @@ mod tests {
         assert_eq!(current[1].review_decision, Some(ReviewDecision::Approved));
         assert_eq!(current[1].unresolved_threads, 3);
         assert_eq!(current[1].checks_summary.failed, 1);
+        assert_eq!(
+            current[1].merge_capabilities.queue_state,
+            MergeQueueState::Enabled
+        );
         assert_eq!(current[1].created_at, Some(time(1)));
     }
 
@@ -120,6 +132,10 @@ mod tests {
                 pending: 0,
                 skipped: 0,
             },
+            merge_capabilities: PullRequestMergeCapabilities {
+                queue_state: MergeQueueState::Queued,
+                ..Default::default()
+            },
         }];
 
         apply_pull_request_enrichments(&mut pull_requests, enrichments);
@@ -133,6 +149,10 @@ mod tests {
         );
         assert_eq!(pull_requests[1].merge_state, Some(MergeState::Blocked));
         assert_eq!(pull_requests[1].checks_summary.failed, 1);
+        assert_eq!(
+            pull_requests[1].merge_capabilities.queue_state,
+            MergeQueueState::Queued
+        );
     }
 
     fn pull_request(number: u64) -> PullRequest {
@@ -151,6 +171,7 @@ mod tests {
             head_sha: "abc123".to_string(),
             review_decision: None,
             merge_state: Some(MergeState::Clean),
+            merge_capabilities: Default::default(),
             labels: Vec::new(),
             assignees: Vec::new(),
             requested_reviewers: Vec::new(),

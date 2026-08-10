@@ -296,6 +296,7 @@ impl AppView {
             changed_files_state: ChangedFilesUiState::default(),
             checks_state: ChecksUiState::default(),
             action_runtime: ActionRuntimeState::default(),
+            merge_bypass_enabled: false,
             status,
             _subscriptions: subscriptions,
         };

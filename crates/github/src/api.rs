@@ -177,6 +177,11 @@ pub trait GitHubPullRequestMutationApi: Send + Sync {
         head_sha: &str,
         method: MergeMethod,
     ) -> Result<()>;
+    async fn merge_pull_request_when_ready(
+        &self,
+        pull_request_node_id: &str,
+        head_sha: &str,
+    ) -> Result<()>;
 }
 
 #[async_trait]

@@ -69,6 +69,7 @@ impl AppView {
     pub(super) fn clear_selected_pull_request_detail_state(&mut self) {
         self.active_commit_sha = None;
         self.pull_request_description_editing = false;
+        self.merge_bypass_enabled = false;
         self.clear_changed_file_state();
         self.clear_workflow_state();
         self.clear_review_data_state();

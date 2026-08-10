@@ -1,4 +1,6 @@
-use harbor_domain::{ChecksSummary, MergeState, ReviewDecision};
+use harbor_domain::{
+    ChecksSummary, MergeQueueState, MergeState, PullRequestMergeCapabilities, ReviewDecision,
+};
 
 use super::*;
 use crate::test_fixtures::pull_request;
@@ -200,6 +202,50 @@ fn blocks_merge_until_pull_request_is_ready() {
 #[test]
 fn allows_clean_pull_request_merge() {
     assert_eq!(merge_blocker(&pull_request()), None);
+}
+
+#[test]
+fn merge_when_ready_allows_pending_requirements_for_queue() {
+    let mut pr = pull_request();
+    pr.checks_summary.pending = 1;
+    pr.review_decision = Some(ReviewDecision::ReviewRequired);
+    pr.merge_capabilities = PullRequestMergeCapabilities {
+        queue_state: MergeQueueState::Enabled,
+        viewer_can_queue: true,
+        ..Default::default()
+    };
+
+    assert_eq!(merge_when_ready_blocker(&pr), None);
+
+    pr.merge_capabilities.queue_state = MergeQueueState::Queued;
+    assert_eq!(
+        merge_when_ready_blocker(&pr).as_deref(),
+        Some("PR #7 is already queued to merge")
+    );
+
+    pr.merge_capabilities.queue_state = MergeQueueState::Enabled;
+    pr.merge_capabilities.viewer_can_queue = false;
+    assert_eq!(
+        merge_when_ready_blocker(&pr).as_deref(),
+        Some("You do not have permission to queue PR #7")
+    );
+}
+
+#[test]
+fn admin_bypass_ignores_requirements_but_not_conflicts() {
+    let mut pr = pull_request();
+    pr.merge_state = Some(MergeState::Blocked);
+    pr.checks_summary.failed = 1;
+    pr.unresolved_threads = 2;
+    pr.merge_capabilities.viewer_can_merge_as_admin = true;
+
+    assert_eq!(merge_without_requirements_blocker(&pr), None);
+
+    pr.merge_state = Some(MergeState::Dirty);
+    assert_eq!(
+        merge_without_requirements_blocker(&pr).as_deref(),
+        Some("PR #7 has merge conflicts")
+    );
 }
 
 #[test]

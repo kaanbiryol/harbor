@@ -25,6 +25,7 @@ async fn focus_catch_up_uses_light_inbox_refresh_only(cx: &mut TestAppContext) {
         review_decision: pull_request.review_decision,
         merge_state: pull_request.merge_state,
         checks_summary: pull_request.checks_summary,
+        merge_capabilities: pull_request.merge_capabilities,
     }]));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 

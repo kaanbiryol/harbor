@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 use super::super::{GitHubClient, PullRequestListFilter, test_support::RecordingTransport};
 use crate::{ConditionalFetch, HttpCacheValidator, PullRequestPageCursor};
-use harbor_domain::{FileViewedState, MergeMethod, RepoId};
+use harbor_domain::{FileViewedState, MergeMethod, MergeQueueState, RepoId};
 
 #[test]
 fn updates_pull_request_body() {
@@ -117,6 +117,9 @@ fn queries_repository_pull_request_filters() {
         assert!(calls[0].0.contains("HarborRepositoryPullRequests"));
         assert!(calls[0].0.contains("first: $first"));
         assert!(calls[0].0.contains("statusCheckRollup"));
+        assert!(calls[0].0.contains("isMergeQueueEnabled"));
+        assert!(calls[0].0.contains("viewerPermission"));
+        assert!(calls[0].0.contains("viewerCanMergeAsAdmin"));
         assert!(calls[0].0.contains("labels(first: 20) @include"));
         assert_eq!(
             calls[0].1,
@@ -425,6 +428,13 @@ fn enriches_pull_requests_by_node_ids() {
                 "id": "pr-node",
                 "reviewDecision": "APPROVED",
                 "mergeStateStatus": "CLEAN",
+                "isMergeQueueEnabled": true,
+                "isInMergeQueue": false,
+                "viewerCanMergeAsAdmin": false,
+                "repository": {
+                    "viewerPermission": "WRITE"
+                },
+                "autoMergeRequest": null,
                 "statusCheckRollup": {
                     "contexts": {
                         "nodes": [{
@@ -446,6 +456,11 @@ fn enriches_pull_requests_by_node_ids() {
     assert_eq!(enrichments[0].node_id, "pr-node");
     assert_eq!(enrichments[0].checks_summary.total, 1);
     assert_eq!(enrichments[0].checks_summary.failed, 1);
+    assert_eq!(
+        enrichments[0].merge_capabilities.queue_state,
+        MergeQueueState::Enabled
+    );
+    assert!(enrichments[0].merge_capabilities.viewer_can_queue);
 
     let calls = transport
         .graphql_calls
@@ -733,6 +748,41 @@ fn puts_pull_request_squash_merge() {
         json!({
             "sha": "abc123",
             "merge_method": "squash",
+        })
+    );
+}
+
+#[test]
+fn enables_pull_request_merge_when_ready() {
+    let transport = RecordingTransport::default();
+    *transport
+        .graphql_response
+        .lock()
+        .expect("graphql response mutex should not be poisoned") = Some(json!({
+        "data": {
+            "enablePullRequestAutoMerge": {
+                "pullRequest": { "id": "pr-node" }
+            }
+        }
+    }));
+    let client = GitHubClient::new(transport.clone());
+
+    smol::block_on(client.merge_pull_request_when_ready("pr-node", "abc123")).unwrap();
+
+    let calls = transport
+        .graphql_calls
+        .lock()
+        .expect("graphql calls mutex should not be poisoned");
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].0.contains("HarborMergePullRequestWhenReady"));
+    assert!(calls[0].0.contains("enablePullRequestAutoMerge"));
+    assert_eq!(
+        calls[0].1,
+        json!({
+            "input": {
+                "pullRequestId": "pr-node",
+                "expectedHeadOid": "abc123",
+            }
         })
     );
 }

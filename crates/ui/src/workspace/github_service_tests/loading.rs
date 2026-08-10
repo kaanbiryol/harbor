@@ -141,6 +141,7 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
         review_decision: pull_request.review_decision,
         merge_state: pull_request.merge_state,
         checks_summary: pull_request.checks_summary,
+        merge_capabilities: pull_request.merge_capabilities,
     }]));
     enqueue_successful_detail_load(&api, &pull_request);
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());

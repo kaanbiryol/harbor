@@ -9,7 +9,10 @@ use crate::{
         PanelTab, PullRequestAction, PullRequestActionRequest, RebasePullRequest, RequestChanges,
         WorkflowAction, WorkflowActionRequest,
     },
-    panels::{merge_blocker, review_action_blocker, workflow_run_failed, workflow_run_label},
+    panels::{
+        merge_blocker, merge_when_ready_blocker, merge_without_requirements_blocker,
+        review_action_blocker, workflow_run_failed, workflow_run_label,
+    },
     workspace::{AppView, ReviewActionCommentTarget, async_updates::AppViewAsyncUpdateExt},
 };
 
@@ -190,8 +193,26 @@ impl AppView {
                     body: body.unwrap_or_else(|| DEFAULT_REQUEST_CHANGES_BODY.to_string()),
                 })
             }
-            PullRequestAction::Merge(method) => {
-                if let Some(blocker) = merge_blocker(pr) {
+            PullRequestAction::Merge {
+                method,
+                bypass_requirements,
+            } => {
+                let blocker = if bypass_requirements {
+                    merge_without_requirements_blocker(pr)
+                } else {
+                    match pr.merge_capabilities.queue_state {
+                        harbor_domain::MergeQueueState::Unknown => {
+                            Some("Loading merge queue settings from GitHub".to_string())
+                        }
+                        harbor_domain::MergeQueueState::Enabled
+                        | harbor_domain::MergeQueueState::Queued => Some(format!(
+                            "PR #{} must be merged through its merge queue",
+                            pr.number
+                        )),
+                        harbor_domain::MergeQueueState::Disabled => merge_blocker(pr),
+                    }
+                };
+                if let Some(blocker) = blocker {
                     return Err(blocker);
                 }
 
@@ -201,6 +222,17 @@ impl AppView {
                     number: pr.number,
                     head_sha: pr.head_sha.clone(),
                     method,
+                })
+            }
+            PullRequestAction::MergeWhenReady => {
+                if let Some(blocker) = merge_when_ready_blocker(pr) {
+                    return Err(blocker);
+                }
+
+                Ok(PullRequestActionRequest::MergeWhenReady {
+                    number: pr.number,
+                    pull_request_node_id: pr.node_id.clone(),
+                    head_sha: pr.head_sha.clone(),
                 })
             }
         }
@@ -231,7 +263,7 @@ impl AppView {
                     return;
                 }
                 PullRequestAction::Comment { .. } => {}
-                PullRequestAction::Merge(_) => {}
+                PullRequestAction::Merge { .. } | PullRequestAction::MergeWhenReady => {}
             }
         }
 
@@ -301,6 +333,15 @@ impl AppView {
                         .merge_pull_request(owner, repo, *number, head_sha, *method)
                         .await
                 }
+                PullRequestActionRequest::MergeWhenReady {
+                    pull_request_node_id,
+                    head_sha,
+                    ..
+                } => {
+                    github_api
+                        .merge_pull_request_when_ready(pull_request_node_id, head_sha)
+                        .await
+                }
             };
 
             this.update_or_log(
@@ -311,6 +352,13 @@ impl AppView {
                         Ok(()) => {
                             let status = request.success_status();
                             view.action_runtime.finish_pull_request_action();
+                            if matches!(
+                                &request,
+                                PullRequestActionRequest::Merge { .. }
+                                    | PullRequestActionRequest::MergeWhenReady { .. }
+                            ) {
+                                view.merge_bypass_enabled = false;
+                            }
                             if matches!(&request, PullRequestActionRequest::Comment { .. })
                                 && view.selected_pull_request_number() == Some(request.number())
                             {
@@ -460,7 +508,14 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Squash), window, cx);
+        self.run_pull_request_action(
+            PullRequestAction::Merge {
+                method: MergeMethod::Squash,
+                bypass_requirements: self.merge_bypass_enabled,
+            },
+            window,
+            cx,
+        );
     }
 
     pub(super) fn merge_pr_with_merge_commit(
@@ -469,7 +524,14 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Merge), window, cx);
+        self.run_pull_request_action(
+            PullRequestAction::Merge {
+                method: MergeMethod::Merge,
+                bypass_requirements: self.merge_bypass_enabled,
+            },
+            window,
+            cx,
+        );
     }
 
     pub(super) fn rebase_pr(
@@ -478,6 +540,13 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_pull_request_action(PullRequestAction::Merge(MergeMethod::Rebase), window, cx);
+        self.run_pull_request_action(
+            PullRequestAction::Merge {
+                method: MergeMethod::Rebase,
+                bypass_requirements: self.merge_bypass_enabled,
+            },
+            window,
+            cx,
+        );
     }
 }

@@ -1,5 +1,6 @@
 use harbor_domain::{
-    FileStatus, FileViewedState, MergeState, PullRequestState, RepoId, ReviewDecision,
+    FileStatus, FileViewedState, MergeQueueState, MergeState, PullRequestState, RepoId,
+    ReviewDecision,
 };
 use serde_json::json;
 
@@ -96,6 +97,7 @@ fn maps_pull_request_search_states() {
                         "author": { "login": "octocat" },
                         "repository": {
                             "name": "app",
+                            "viewerPermission": "ADMIN",
                             "owner": { "login": "acme" }
                         },
                         "headRefName": "feature/list",
@@ -104,6 +106,11 @@ fn maps_pull_request_search_states() {
                         "createdAt": "2026-05-10T10:00:00Z",
                         "reviewDecision": "REVIEW_REQUIRED",
                         "mergeStateStatus": "CLEAN",
+                        "isMergeQueueEnabled": true,
+                        "isInMergeQueue": false,
+                        "viewerCanEnableAutoMerge": false,
+                        "viewerCanMergeAsAdmin": true,
+                        "autoMergeRequest": null,
                         "statusCheckRollup": {
                             "contexts": {
                                 "nodes": [
@@ -199,6 +206,16 @@ fn maps_pull_request_search_states() {
         Some(ReviewDecision::ReviewRequired)
     );
     assert_eq!(page.pull_requests[0].merge_state, Some(MergeState::Clean));
+    assert_eq!(
+        page.pull_requests[0].merge_capabilities.queue_state,
+        MergeQueueState::Enabled
+    );
+    assert!(page.pull_requests[0].merge_capabilities.viewer_can_queue);
+    assert!(
+        page.pull_requests[0]
+            .merge_capabilities
+            .viewer_can_merge_as_admin
+    );
     assert_eq!(page.pull_requests[0].checks_summary.total, 4);
     assert_eq!(page.pull_requests[0].checks_summary.passed, 2);
     assert_eq!(page.pull_requests[0].checks_summary.failed, 1);

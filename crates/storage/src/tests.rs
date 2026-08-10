@@ -422,6 +422,7 @@ fn pull_request(number: u64) -> PullRequest {
         head_sha: "abc123".to_string(),
         review_decision: Some(ReviewDecision::ReviewRequired),
         merge_state: Some(MergeState::Clean),
+        merge_capabilities: Default::default(),
         labels: Vec::new(),
         assignees: Vec::new(),
         requested_reviewers: Vec::new(),

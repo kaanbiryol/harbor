@@ -34,7 +34,8 @@ pub(crate) use logs::*;
 pub(crate) use pull_request::*;
 pub(crate) use pull_request_signals::{
     MergeReadiness, PullRequestReadiness, ReviewReadiness, merge_blocker, merge_readiness,
-    pull_request_readiness, review_action_blocker, review_readiness,
+    merge_when_ready_blocker, merge_without_requirements_blocker, pull_request_readiness,
+    review_action_blocker, review_readiness,
 };
 pub(crate) use review::*;
 pub(crate) use review_markdown::{

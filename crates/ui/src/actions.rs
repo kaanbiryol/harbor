@@ -202,10 +202,20 @@ pub(crate) enum PullRequestActionKind {
 
 #[derive(Clone, Debug)]
 pub(crate) enum PullRequestAction {
-    Comment { body: String },
-    Approve { body: Option<String> },
-    RequestChanges { body: Option<String> },
-    Merge(MergeMethod),
+    Comment {
+        body: String,
+    },
+    Approve {
+        body: Option<String>,
+    },
+    RequestChanges {
+        body: Option<String>,
+    },
+    Merge {
+        method: MergeMethod,
+        bypass_requirements: bool,
+    },
+    MergeWhenReady,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -335,6 +345,11 @@ pub(crate) enum PullRequestActionRequest {
         head_sha: String,
         method: MergeMethod,
     },
+    MergeWhenReady {
+        number: u64,
+        pull_request_node_id: String,
+        head_sha: String,
+    },
 }
 
 impl PullRequestActionRequest {
@@ -342,7 +357,7 @@ impl PullRequestActionRequest {
         match self {
             Self::Comment { .. } => PullRequestActionKind::Comment,
             Self::Approve { .. } | Self::RequestChanges { .. } => PullRequestActionKind::Review,
-            Self::Merge { .. } => PullRequestActionKind::Merge,
+            Self::Merge { .. } | Self::MergeWhenReady { .. } => PullRequestActionKind::Merge,
         }
     }
 
@@ -351,7 +366,8 @@ impl PullRequestActionRequest {
             Self::Comment { number, .. }
             | Self::Approve { number, .. }
             | Self::RequestChanges { number, .. }
-            | Self::Merge { number, .. } => *number,
+            | Self::Merge { number, .. }
+            | Self::MergeWhenReady { number, .. } => *number,
         }
     }
 
@@ -363,6 +379,9 @@ impl PullRequestActionRequest {
                 format!("Requesting changes on PR #{}", self.number())
             }
             Self::Merge { .. } => format!("Merging PR #{}", self.number()),
+            Self::MergeWhenReady { .. } => {
+                format!("Setting PR #{} to merge when ready", self.number())
+            }
         }
     }
 
@@ -374,6 +393,9 @@ impl PullRequestActionRequest {
                 format!("Requested changes on PR #{}", self.number())
             }
             Self::Merge { .. } => format!("Merged PR #{}", self.number()),
+            Self::MergeWhenReady { .. } => {
+                format!("PR #{} will merge when ready", self.number())
+            }
         }
     }
 
@@ -383,6 +405,7 @@ impl PullRequestActionRequest {
             Self::Approve { .. } => "approve pull request",
             Self::RequestChanges { .. } => "request changes",
             Self::Merge { .. } => "merge pull request",
+            Self::MergeWhenReady { .. } => "set pull request to merge when ready",
         }
     }
 }

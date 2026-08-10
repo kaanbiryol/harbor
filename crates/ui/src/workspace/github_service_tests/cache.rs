@@ -278,6 +278,7 @@ async fn repository_load_restores_in_memory_snapshot_before_refresh(cx: &mut Tes
         review_decision: refreshed_pull_request.review_decision,
         merge_state: refreshed_pull_request.merge_state,
         checks_summary: refreshed_pull_request.checks_summary,
+        merge_capabilities: refreshed_pull_request.merge_capabilities,
     }]));
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 

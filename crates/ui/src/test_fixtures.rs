@@ -22,6 +22,7 @@ pub(crate) fn pull_request() -> PullRequest {
         head_sha: "abc123".to_string(),
         review_decision: None,
         merge_state: Some(MergeState::Clean),
+        merge_capabilities: Default::default(),
         labels: Vec::new(),
         assignees: Vec::new(),
         requested_reviewers: Vec::new(),

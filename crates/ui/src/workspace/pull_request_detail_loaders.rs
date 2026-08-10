@@ -76,6 +76,7 @@ impl AppView {
             detail.merge_state = selected.merge_state;
         }
         detail.checks_summary = selected.checks_summary;
+        detail.merge_capabilities = selected.merge_capabilities;
         detail.unresolved_threads = selected.unresolved_threads;
         if detail.created_at.is_none() {
             detail.created_at = selected.created_at;

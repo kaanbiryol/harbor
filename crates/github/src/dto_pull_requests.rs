@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use harbor_domain::{
     CheckConclusion, CheckStatus, ChecksSummary, DiffFile, FileStatus, FileViewedState, Label,
-    MergeState, PullRequest, PullRequestCommit, PullRequestPerson, PullRequestState,
-    PullRequestTeam, RepoId, ReviewDecision,
+    MergeQueueState, MergeState, PullRequest, PullRequestCommit, PullRequestMergeCapabilities,
+    PullRequestPerson, PullRequestState, PullRequestTeam, RepoId, ReviewDecision,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -186,6 +186,14 @@ struct GraphQlPullRequestSearchNode {
     review_decision: Option<String>,
     #[serde(default, rename = "mergeStateStatus")]
     merge_state_status: Option<String>,
+    #[serde(default, rename = "isMergeQueueEnabled")]
+    is_merge_queue_enabled: Option<bool>,
+    #[serde(default, rename = "isInMergeQueue")]
+    is_in_merge_queue: bool,
+    #[serde(default, rename = "viewerCanMergeAsAdmin")]
+    viewer_can_merge_as_admin: bool,
+    #[serde(default, rename = "autoMergeRequest")]
+    auto_merge_request: Option<Value>,
     #[serde(default, rename = "statusCheckRollup")]
     status_check_rollup: Option<GraphQlStatusCheckRollup>,
     #[serde(default)]
@@ -204,6 +212,16 @@ struct GraphQlPullRequestEnrichmentNode {
     review_decision: Option<String>,
     #[serde(default, rename = "mergeStateStatus")]
     merge_state_status: Option<String>,
+    #[serde(default, rename = "isMergeQueueEnabled")]
+    is_merge_queue_enabled: Option<bool>,
+    #[serde(default, rename = "isInMergeQueue")]
+    is_in_merge_queue: bool,
+    #[serde(default, rename = "viewerCanMergeAsAdmin")]
+    viewer_can_merge_as_admin: bool,
+    #[serde(default)]
+    repository: Option<GraphQlRepositoryPermission>,
+    #[serde(default, rename = "autoMergeRequest")]
+    auto_merge_request: Option<Value>,
     #[serde(default, rename = "statusCheckRollup")]
     status_check_rollup: Option<GraphQlStatusCheckRollup>,
 }
@@ -211,7 +229,15 @@ struct GraphQlPullRequestEnrichmentNode {
 #[derive(Debug, Deserialize)]
 struct GraphQlRepository {
     name: String,
+    #[serde(default, rename = "viewerPermission")]
+    viewer_permission: Option<String>,
     owner: GraphQlRepositoryOwner,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlRepositoryPermission {
+    #[serde(default, rename = "viewerPermission")]
+    viewer_permission: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -402,6 +428,7 @@ impl ApiPullRequest {
                 .as_deref()
                 .map(map_merge_state)
                 .or(Some(MergeState::Unknown)),
+            merge_capabilities: PullRequestMergeCapabilities::default(),
             labels: self
                 .labels
                 .into_iter()
@@ -440,6 +467,7 @@ impl GraphQlPullRequestSearchNode {
 
     fn into_domain(self) -> Result<PullRequest> {
         let repository = required_graphql_field(self.repository, "repository")?;
+        let viewer_can_queue = viewer_can_queue(repository.viewer_permission.as_deref());
         let repo = RepoId::new(repository.owner.login, repository.name);
 
         Ok(PullRequest {
@@ -467,6 +495,13 @@ impl GraphQlPullRequestSearchNode {
                 .as_deref()
                 .and_then(map_review_decision),
             merge_state: self.merge_state_status.as_deref().map(map_merge_state),
+            merge_capabilities: map_merge_capabilities(
+                self.is_merge_queue_enabled,
+                self.is_in_merge_queue,
+                self.auto_merge_request.is_some(),
+                viewer_can_queue,
+                self.viewer_can_merge_as_admin,
+            ),
             labels: self
                 .labels
                 .nodes
@@ -514,6 +549,15 @@ impl GraphQlPullRequestEnrichmentNode {
                 .status_check_rollup
                 .map(checks_summary_from_graphql_rollup)
                 .unwrap_or_default(),
+            merge_capabilities: map_merge_capabilities(
+                self.is_merge_queue_enabled,
+                self.is_in_merge_queue,
+                self.auto_merge_request.is_some(),
+                self.repository.as_ref().is_some_and(|repository| {
+                    viewer_can_queue(repository.viewer_permission.as_deref())
+                }),
+                self.viewer_can_merge_as_admin,
+            ),
         })
     }
 }
@@ -588,6 +632,35 @@ fn map_review_decision(decision: &str) -> Option<ReviewDecision> {
         "review_required" => Some(ReviewDecision::ReviewRequired),
         _ => None,
     }
+}
+
+fn map_merge_capabilities(
+    is_merge_queue_enabled: Option<bool>,
+    is_in_merge_queue: bool,
+    auto_merge_enabled: bool,
+    viewer_can_queue: bool,
+    viewer_can_merge_as_admin: bool,
+) -> PullRequestMergeCapabilities {
+    let queue_state = if is_in_merge_queue {
+        MergeQueueState::Queued
+    } else {
+        match is_merge_queue_enabled {
+            Some(true) => MergeQueueState::Enabled,
+            Some(false) => MergeQueueState::Disabled,
+            None => MergeQueueState::Unknown,
+        }
+    };
+
+    PullRequestMergeCapabilities {
+        queue_state,
+        auto_merge_enabled,
+        viewer_can_queue,
+        viewer_can_merge_as_admin,
+    }
+}
+
+fn viewer_can_queue(viewer_permission: Option<&str>) -> bool {
+    matches!(viewer_permission, Some("WRITE" | "MAINTAIN" | "ADMIN"))
 }
 
 fn checks_summary_from_graphql_rollup(rollup: GraphQlStatusCheckRollup) -> ChecksSummary {

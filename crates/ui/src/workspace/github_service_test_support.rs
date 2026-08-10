@@ -75,6 +75,7 @@ pub(crate) struct FakeGitHubApi {
     approve_results: FakeQueue<()>,
     request_changes_results: FakeQueue<()>,
     merge_results: FakeQueue<()>,
+    merge_when_ready_results: FakeQueue<()>,
     submit_review_results: FakeQueue<()>,
     create_comment_results: FakeQueue<()>,
     start_review_results: FakeQueue<String>,
@@ -202,6 +203,10 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_approve_pull_request(&self, result: Result<()>) {
         push_result(&self.approve_results, result);
+    }
+
+    pub(crate) fn push_merge_pull_request_when_ready(&self, result: Result<()>) {
+        push_result(&self.merge_when_ready_results, result);
     }
 
     pub(crate) fn push_request_pull_request_reviewer(&self, result: Result<()>) {
@@ -709,6 +714,18 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
     ) -> Result<()> {
         self.record_call("merge_pull_request");
         pop_result(&self.merge_results, "merge_pull_request")
+    }
+
+    async fn merge_pull_request_when_ready(
+        &self,
+        _pull_request_node_id: &str,
+        _head_sha: &str,
+    ) -> Result<()> {
+        self.record_call("merge_pull_request_when_ready");
+        pop_result(
+            &self.merge_when_ready_results,
+            "merge_pull_request_when_ready",
+        )
     }
 }
 

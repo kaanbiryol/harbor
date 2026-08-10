@@ -193,6 +193,7 @@ pub struct AppView {
     changed_files_state: ChangedFilesUiState,
     checks_state: ChecksUiState,
     action_runtime: ActionRuntimeState,
+    merge_bypass_enabled: bool,
     status: String,
     _subscriptions: Vec<Subscription>,
 }
@@ -200,6 +201,16 @@ pub struct AppView {
 impl AppView {
     pub(crate) fn set_status(&mut self, status: impl Into<String>, cx: &mut Context<Self>) {
         self.status = status.into();
+        cx.notify();
+    }
+
+    pub(crate) fn set_merge_bypass_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.merge_bypass_enabled = enabled;
+        self.status = if enabled {
+            "Merge requirement bypass enabled".to_string()
+        } else {
+            "Merge requirement bypass disabled".to_string()
+        };
         cx.notify();
     }
 
@@ -268,6 +279,7 @@ impl AppView {
         self.cache_current_pull_request_detail_snapshot();
         self.overview_state.cache_current_content();
         self.pull_request_description_editing = false;
+        self.merge_bypass_enabled = false;
         self.selection_state.set_pull_request_index(index);
         self.active_tab = PanelTab::Overview;
 
