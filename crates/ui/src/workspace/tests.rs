@@ -545,6 +545,11 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
         .debug_bounds("pull-request-person-octocat")
         .expect("pull request author chip should render");
     assert!(author_chip.size.width > px(40.));
+    assert!(cx.debug_bounds("pull-request-person-reviewer").is_some());
+    assert!(
+        cx.debug_bounds("pull-request-review-status-reviewer")
+            .is_some()
+    );
     let label_chip = cx
         .debug_bounds("pull-request-label-needs-review")
         .expect("pull request label chip should render");
