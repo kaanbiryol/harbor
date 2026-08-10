@@ -40,7 +40,6 @@ impl AppView {
             .min(pull_requests.len().saturating_sub(1));
         let pull_request_search_input = self.pull_request_search_input.clone();
         let has_pull_request_query = !pull_request_query.is_empty();
-        let has_active_filters = self.has_active_pull_request_filters();
         let has_current_repository = self.current_repository().is_some();
         let search_loading = self.pull_request_search_state.is_loading();
         let search_error = self.pull_request_search_state.error().map(str::to_string);
@@ -93,94 +92,138 @@ impl AppView {
                 let popover = popover_cx.entity().clone();
                 let mut results = div()
                     .id("pull-request-inbox-search-results")
-                    .max_h(px(408.))
-                    .overflow_hidden()
-                    .p_2()
-                    .child(render_switcher_section_label("results"));
+                    .flex()
+                    .flex_col()
+                    .p_2();
 
                 if !has_current_repository {
                     results = results.child(render_pull_request_inbox_search_empty_row(
                         "select a repository before searching pull requests",
                     ));
+                } else if !has_pull_request_query {
+                    results = results.child(render_pull_request_inbox_search_empty_row(
+                        "type to search pull requests on GitHub",
+                    ));
+                } else if search_loading {
+                    results = results.child(render_pull_request_inbox_search_empty_row(
+                        "searching GitHub…",
+                    ));
+                } else if let Some(error) = search_error.as_ref() {
+                    let view = view.clone();
+                    results = results.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .px_2()
+                            .py_2()
+                            .text_sm()
+                            .text_color(color::text_muted())
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .truncate()
+                                    .child(format!("search failed: {error}")),
+                            )
+                            .child(
+                                Button::new("retry-pull-request-search")
+                                    .ghost()
+                                    .small()
+                                    .compact()
+                                    .label("Retry")
+                                    .on_click(move |_, _, cx| {
+                                        view.update(cx, |view, cx| {
+                                            view.retry_pull_request_search(cx);
+                                        });
+                                    }),
+                            ),
+                    );
                 } else if pull_requests.is_empty() {
-                    let label = if has_pull_request_query && search_loading {
-                        "searching GitHub…"
-                    } else if has_pull_request_query {
-                        "no pull requests match search"
-                    } else if has_active_filters {
-                        "no pull requests match filters"
-                    } else {
-                        "no pull requests in this list"
-                    };
-                    results = results.child(render_pull_request_inbox_search_empty_row(label));
+                    results = results.child(render_pull_request_inbox_search_empty_row(
+                        "no pull requests match search",
+                    ));
                 } else {
                     let row_count = pull_requests.len();
                     let list_height = pull_request_inbox_search_list_height(row_count);
                     let pull_requests = pull_requests.clone();
-                    let view = view.clone();
+                    let result_list_view = view.clone();
                     let popover = popover.clone();
                     let selected_pull_request = selected_pull_request.clone();
 
-                    results = results.child(
-                        uniform_list(
-                            "pull-request-inbox-search-list",
-                            row_count,
-                            move |range, _window, _cx| {
-                                let mut rows = Vec::with_capacity(range.len());
+                    results = results
+                        .child(render_switcher_section_label("results"))
+                        .child(
+                            uniform_list(
+                                "pull-request-inbox-search-list",
+                                row_count,
+                                move |range, _window, _cx| {
+                                    let mut rows = Vec::with_capacity(range.len());
 
-                                for row_index in range {
-                                    let Some(result) = pull_requests.get(row_index).cloned() else {
-                                        continue;
-                                    };
-                                    let pull_request = &result.pull_request;
-                                    let current = selected_pull_request.as_ref().is_some_and(
-                                        |(repository, number)| {
-                                            repository == &pull_request.repo
-                                                && *number == pull_request.number
-                                        },
-                                    );
-                                    let highlighted = row_index == pull_request_selection;
-                                    let number = pull_request.number;
-                                    let title = pull_request.title.clone();
-                                    let author = pull_request.author.clone();
-                                    let view = view.clone();
-                                    let popover = popover.clone();
-                                    let result = result.clone();
-
-                                    rows.push(
-                                        render_pull_request_inbox_search_row(
-                                            number,
-                                            title,
-                                            author,
-                                            current,
-                                            highlighted,
-                                        )
-                                        .on_click(
-                                            move |_, window, cx| {
-                                                let result = result.clone();
-                                                view.update(cx, move |view, cx| {
-                                                    view.select_pull_request_switcher_result(
-                                                        result, cx,
-                                                    );
-                                                });
-                                                popover.update(cx, |popover, cx| {
-                                                    popover.dismiss(window, cx);
-                                                });
+                                    for row_index in range {
+                                        let Some(result) = pull_requests.get(row_index).cloned()
+                                        else {
+                                            continue;
+                                        };
+                                        let pull_request = &result.pull_request;
+                                        let current = selected_pull_request.as_ref().is_some_and(
+                                            |(repository, number)| {
+                                                repository == &pull_request.repo
+                                                    && *number == pull_request.number
                                             },
-                                        ),
-                                    );
-                                }
+                                        );
+                                        let highlighted = row_index == pull_request_selection;
+                                        let number = pull_request.number;
+                                        let title = pull_request.title.clone();
+                                        let author = pull_request.author.clone();
+                                        let view = result_list_view.clone();
+                                        let popover = popover.clone();
+                                        let result = result.clone();
 
-                                rows
-                            },
-                        )
-                        .h(px(list_height))
-                        .w_full()
-                        .min_h_0(),
-                    );
-                }
+                                        rows.push(
+                                            render_pull_request_inbox_search_row(
+                                                number,
+                                                title,
+                                                author,
+                                                current,
+                                                highlighted,
+                                            )
+                                            .on_click(
+                                                move |_, window, cx| {
+                                                    let result = result.clone();
+                                                    view.update(cx, move |view, cx| {
+                                                        view.select_pull_request_switcher_result(
+                                                            result, cx,
+                                                        );
+                                                    });
+                                                    popover.update(cx, |popover, cx| {
+                                                        popover.dismiss(window, cx);
+                                                    });
+                                                },
+                                            ),
+                                        );
+                                    }
 
-                if has_pull_request_query {
+                                    rows
+                                },
+                            )
+                            .h(px(list_height))
+                            .w_full()
+                            .min_h_0(),
+                        );
+
+                    let result_summary = if let Some(error) = search_load_more_error.as_ref() {
+                        format!("could not load more: {error}")
+                    } else if let Some(total_count) = search_total_count {
+                        if search_has_more {
+                            format!("{row_count} of {total_count} results")
+                        } else {
+                            format!("{total_count} results")
+                        }
+                    } else {
+                        format!("{row_count} results")
+                    };
                     let view = view.clone();
                     results = results.child(
                         div()
@@ -194,35 +237,8 @@ impl AppView {
                             .gap_2()
                             .text_xs()
                             .text_color(color::text_muted())
-                            .child(if search_loading {
-                                "Searching GitHub…".to_string()
-                            } else if let Some(error) = search_error.as_ref() {
-                                format!("Search failed: {error}")
-                            } else if let Some(error) = search_load_more_error.as_ref() {
-                                format!("More results failed: {error}")
-                            } else if let Some(total_count) = search_total_count {
-                                format!("{total_count} matches on GitHub")
-                            } else {
-                                "GitHub search results".to_string()
-                            })
-                            .when(search_error.is_some(), |element| {
-                                element.child(
-                                    Button::new("retry-pull-request-search")
-                                        .ghost()
-                                        .small()
-                                        .compact()
-                                        .label("Retry")
-                                        .on_click({
-                                            let view = view.clone();
-                                            move |_, _, cx| {
-                                                view.update(cx, |view, cx| {
-                                                    view.retry_pull_request_search(cx);
-                                                });
-                                            }
-                                        }),
-                                )
-                            })
-                            .when(search_has_more && search_error.is_none(), |element| {
+                            .child(result_summary)
+                            .when(search_has_more, |element| {
                                 element.child(
                                     Button::new("load-more-pull-request-search-results")
                                         .ghost()
@@ -230,7 +246,7 @@ impl AppView {
                                         .compact()
                                         .label("More")
                                         .loading(search_loading_more)
-                                        .disabled(search_loading || search_loading_more)
+                                        .disabled(search_loading_more)
                                         .on_click({
                                             let view = view.clone();
                                             move |_, _, cx| {
@@ -254,6 +270,8 @@ impl AppView {
                     })
                     .w(px(360.))
                     .max_h(px(480.))
+                    .flex()
+                    .flex_col()
                     .overflow_hidden()
                     .border_1()
                     .border_color(color::border_strong())

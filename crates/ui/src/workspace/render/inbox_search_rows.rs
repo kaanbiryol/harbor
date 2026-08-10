@@ -4,7 +4,7 @@ use gpui_component::StyledExt;
 use crate::visual::color;
 
 const PULL_REQUEST_INBOX_SEARCH_ROW_HEIGHT: f32 = 58.0;
-const PULL_REQUEST_INBOX_SEARCH_MAX_VISIBLE_ROWS: usize = 7;
+const PULL_REQUEST_INBOX_SEARCH_MAX_VISIBLE_ROWS: usize = 5;
 
 pub(super) fn pull_request_inbox_search_list_height(row_count: usize) -> f32 {
     PULL_REQUEST_INBOX_SEARCH_ROW_HEIGHT
@@ -82,4 +82,16 @@ pub(super) fn render_pull_request_inbox_search_row(
                 .child(div().flex_none().child("by"))
                 .child(div().min_w_0().flex_1().truncate().child(author)),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn caps_search_list_at_five_visible_rows() {
+        assert_eq!(pull_request_inbox_search_list_height(0), 0.0);
+        assert_eq!(pull_request_inbox_search_list_height(5), 290.0);
+        assert_eq!(pull_request_inbox_search_list_height(25), 290.0);
+    }
 }

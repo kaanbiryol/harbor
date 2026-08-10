@@ -74,52 +74,23 @@ impl AppView {
         repository_switcher_choices_for_query(self.filtered_switcher_repositories(cx), &query)
     }
 
-    pub(crate) fn filtered_switcher_pull_requests(&self, cx: &App) -> Vec<(usize, PullRequest)> {
-        let query = normalized_search_query(&self.pull_request_search_input.read(cx).value());
-
-        self.current_repository()
-            .map(|repository| {
-                self.pull_requests
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, pull_request)| &pull_request.repo == repository)
-                    .filter(|(_, pull_request)| {
-                        self.pull_request_matches_active_filters(pull_request)
-                    })
-                    .filter(|(_, pull_request)| pull_request_matches_query(pull_request, &query))
-                    .map(|(index, pull_request)| (index, pull_request.clone()))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
     pub(crate) fn pull_request_switcher_results(&self, cx: &App) -> Vec<PullRequestSwitcherResult> {
         let search_query = self.current_pull_request_search_query(cx);
-        if !search_query.is_empty() {
-            if self.pull_request_search_state.query() == search_query
-                && self.pull_request_search_state.is_loaded()
-            {
-                return self
-                    .pull_request_search_state
-                    .results()
-                    .iter()
-                    .cloned()
-                    .map(|pull_request| PullRequestSwitcherResult {
-                        inbox_index: self.pull_requests.iter().position(|loaded| {
-                            loaded.repo == pull_request.repo && loaded.number == pull_request.number
-                        }),
-                        pull_request,
-                    })
-                    .collect();
-            }
-
+        if search_query.is_empty()
+            || self.pull_request_search_state.query() != search_query
+            || !self.pull_request_search_state.is_loaded()
+        {
             return Vec::new();
         }
 
-        self.filtered_switcher_pull_requests(cx)
-            .into_iter()
-            .map(|(inbox_index, pull_request)| PullRequestSwitcherResult {
-                inbox_index: Some(inbox_index),
+        self.pull_request_search_state
+            .results()
+            .iter()
+            .cloned()
+            .map(|pull_request| PullRequestSwitcherResult {
+                inbox_index: self.pull_requests.iter().position(|loaded| {
+                    loaded.repo == pull_request.repo && loaded.number == pull_request.number
+                }),
                 pull_request,
             })
             .collect()
@@ -361,16 +332,6 @@ pub(crate) fn repository_matches_query(repository: &RepoId, query: &str) -> bool
 
 fn repository_ids_match(left: &RepoId, right: &RepoId) -> bool {
     left.owner.eq_ignore_ascii_case(&right.owner) && left.name.eq_ignore_ascii_case(&right.name)
-}
-
-pub(crate) fn pull_request_matches_query(pull_request: &PullRequest, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-
-    pull_request.title.to_lowercase().contains(query)
-        || pull_request.number.to_string().contains(query)
-        || pull_request.author.to_lowercase().contains(query)
 }
 
 pub(crate) fn next_switcher_index(current: usize, len: usize, delta: isize) -> usize {

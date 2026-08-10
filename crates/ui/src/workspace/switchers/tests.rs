@@ -1,7 +1,6 @@
 use harbor_domain::RepoId;
 
 use super::*;
-use crate::test_fixtures::pull_request;
 
 #[test]
 fn parses_owner_and_repo() {
@@ -91,17 +90,6 @@ fn repository_switcher_rejects_invalid_typed_repository_without_matches() {
     let choices = repository_switcher_choices_for_query(Vec::new(), "typed");
 
     assert_eq!(repository_switcher_accepted_choice(&choices, 0), None);
-}
-
-#[test]
-fn matches_pull_requests_for_switcher_search() {
-    let pull_request = pull_request();
-
-    assert!(pull_request_matches_query(&pull_request, ""));
-    assert!(pull_request_matches_query(&pull_request, "feature"));
-    assert!(pull_request_matches_query(&pull_request, "7"));
-    assert!(pull_request_matches_query(&pull_request, "octo"));
-    assert!(!pull_request_matches_query(&pull_request, "backend"));
 }
 
 #[test]

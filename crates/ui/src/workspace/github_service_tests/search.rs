@@ -11,6 +11,24 @@ use crate::{
 use super::init_workspace_service_test;
 
 #[gpui::test]
+async fn empty_pull_request_search_does_not_show_loaded_inbox(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let pull_request = pull_request();
+    let (view, cx) = init_workspace_service_test(cx, api.clone());
+
+    view.update(cx, |view, _| {
+        view.repository_state
+            .select_repository(pull_request.repo.clone());
+        view.pull_requests = vec![pull_request];
+    });
+
+    view.read_with(cx, |view, cx| {
+        assert!(view.pull_request_switcher_results(cx).is_empty());
+    });
+    assert!(api.calls().is_empty());
+}
+
+#[gpui::test]
 async fn searches_github_after_debounce_without_replacing_loaded_inbox(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
     let loaded_pull_request = pull_request();

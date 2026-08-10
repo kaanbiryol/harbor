@@ -244,10 +244,6 @@ impl AppView {
             .collect()
     }
 
-    pub(crate) fn pull_request_matches_active_filters(&self, pull_request: &PullRequest) -> bool {
-        self.pull_request_filters.matches(pull_request)
-    }
-
     pub(crate) fn selected_pull_request_list_position(&self) -> usize {
         if !self.pull_request_filters.has_active_filter() {
             return self.selected_pull_request_index();
