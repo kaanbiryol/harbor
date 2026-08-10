@@ -25,6 +25,7 @@ use gpui_component::{
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
+    panels::ReviewSuggestionContext,
     visual::{color, font, opacity},
     workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError},
 };
@@ -57,6 +58,7 @@ pub(super) struct ReviewComposerRenderState {
 pub(super) struct ReviewThreadRenderState<'a> {
     pub(super) thread: &'a ReviewThread,
     pub(super) line_number_width: f32,
+    pub(super) suggestion_context: Option<ReviewSuggestionContext>,
     pub(super) active_review_thread_reply: Option<&'a str>,
     pub(super) review_thread_reply_input: Entity<InputState>,
     pub(super) reply_body_empty: bool,
@@ -223,6 +225,7 @@ pub(super) fn render_review_thread_inline(
     let ReviewThreadRenderState {
         thread,
         line_number_width,
+        suggestion_context,
         active_review_thread_reply,
         review_thread_reply_input,
         reply_body_empty,
@@ -308,6 +311,7 @@ pub(super) fn render_review_thread_inline(
                                     index > 0,
                                     index + 1 < thread.comments.len(),
                                     is_resolved,
+                                    suggestion_context.clone(),
                                     &comments,
                                 ))
                             }),
@@ -331,6 +335,7 @@ pub(super) fn render_review_thread_inline(
                                     index > 0,
                                     index + 1 < thread.comments.len(),
                                     is_resolved,
+                                    suggestion_context.clone(),
                                     &comments,
                                 ))
                             }),

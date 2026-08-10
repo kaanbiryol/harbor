@@ -7,6 +7,7 @@ use harbor_domain::{DiffFile, ReviewThreadState};
 
 use crate::{
     diff::{DiffLine, ParsedDiff},
+    panels::review_thread_suggestion_context,
     visual::color,
     workspace::{AppView, ReviewLineTarget},
 };
@@ -89,7 +90,7 @@ pub(super) fn render_diff_list_item(
             file_index,
             thread_id,
             ..
-        } => render_review_thread_item(diffs, *file_index, thread_id, row_state),
+        } => render_review_thread_item(files, diffs, *file_index, thread_id, row_state),
         DiffListItem::DiffUnavailable { .. } => {
             render_diff_unavailable_row(item_index).into_any_element()
         }
@@ -203,11 +204,15 @@ fn render_review_composer_item(
 }
 
 fn render_review_thread_item(
+    files: &[DiffFile],
     diffs: &[Option<ParsedDiff>],
     file_index: usize,
     thread_id: &str,
     row_state: &DiffRowRenderState<'_>,
 ) -> AnyElement {
+    let Some(file) = files.get(file_index) else {
+        return div().into_any_element();
+    };
     let Some(diff) = parsed_diff_for_file(diffs, file_index) else {
         return div().into_any_element();
     };
@@ -222,6 +227,7 @@ fn render_review_thread_item(
     render_review_thread_inline(ReviewThreadRenderState {
         thread,
         line_number_width: line_number_width_for_diff(diff),
+        suggestion_context: review_thread_suggestion_context(thread, file, diff),
         active_review_thread_reply: row_state.active_review_thread_reply,
         review_thread_reply_input: row_state.review_thread_reply_input.clone(),
         reply_body_empty: row_state.review_thread_reply_body_empty,

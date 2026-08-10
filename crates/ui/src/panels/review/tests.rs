@@ -7,6 +7,7 @@ use harbor_domain::{DiffFile, FileStatus, FileViewedState, ReviewCommentRange, R
 use super::*;
 use crate::{
     diff::ParsedDiff,
+    panels::review_markdown::{ReviewSuggestionContext, ReviewSuggestionOriginalLine},
     test_fixtures::{review_thread as test_review_thread, test_time},
     workspace::ReviewThreadUiError,
 };
@@ -31,7 +32,7 @@ fn builds_diff_preview_for_inline_review_comments() {
         .first_mut()
         .expect("test thread should have a comment");
     comment.author = "alex".to_string();
-    comment.body = "Please tighten this branch.".to_string();
+    comment.body = "Please tighten this branch.\n\n```suggestion\nreplacement\n```".to_string();
     let position = comment
         .position
         .as_mut()
@@ -49,6 +50,13 @@ fn builds_diff_preview_for_inline_review_comments() {
                 text: "Please tighten this branch.".to_string(),
                 tone: Tone::Success,
             }],
+            suggestion_context: Some(ReviewSuggestionContext {
+                original_lines: vec![ReviewSuggestionOriginalLine {
+                    line_number: 11,
+                    text: "Please tighten this branch.".to_string(),
+                }],
+                replacement_start_line: 11,
+            }),
         })
     );
 }
@@ -56,6 +64,11 @@ fn builds_diff_preview_for_inline_review_comments() {
 #[test]
 fn builds_diff_preview_for_selected_review_ranges() {
     let mut thread = review_thread();
+    thread
+        .comments
+        .first_mut()
+        .expect("test thread should have a comment")
+        .body = "```suggestion\nreplacement\n```".to_string();
     thread.range = Some(ReviewCommentRange {
         path: "src/lib.rs".to_string(),
         line: 12,
@@ -82,6 +95,19 @@ fn builds_diff_preview_for_selected_review_ranges() {
                     tone: Tone::Success,
                 },
             ],
+            suggestion_context: Some(ReviewSuggestionContext {
+                original_lines: vec![
+                    ReviewSuggestionOriginalLine {
+                        line_number: 11,
+                        text: "Please tighten this branch.".to_string(),
+                    },
+                    ReviewSuggestionOriginalLine {
+                        line_number: 12,
+                        text: "Also cover this selected line.".to_string(),
+                    },
+                ],
+                replacement_start_line: 11,
+            }),
         })
     );
 }

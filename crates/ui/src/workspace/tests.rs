@@ -352,6 +352,77 @@ async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut Te
 }
 
 #[gpui::test]
+async fn long_overview_descriptions_share_the_virtualized_overview_scroll(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view_entity = Some(view.clone());
+        view.update(cx, |view, cx| {
+            let mut pull_request = pull_request();
+            pull_request.body = Some("description paragraph\n\n".repeat(400));
+            view.pull_requests = vec![pull_request];
+            view.detail_state.apply_details_success();
+            view.detail_state.apply_commits_success();
+            view.review_state.apply_reviews_success();
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+
+    cx.refresh().expect("test window should refresh");
+    cx.run_until_parked();
+    cx.refresh()
+        .expect("test window should refresh after description parsing");
+
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-block-0")
+            .is_some(),
+        "the first visible markdown block should render"
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-block-100")
+            .is_none(),
+        "offscreen markdown blocks should not render"
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-activity-header")
+            .is_none(),
+        "activity should follow the full description in the same list"
+    );
+
+    view_entity
+        .expect("test AppView should be created")
+        .update(cx, |view, cx| {
+            assert!(view.overview_state.description_block_count() > 100);
+            view.overview_state.list_state.scroll_to(gpui::ListOffset {
+                item_ix: 101,
+                offset_in_item: px(0.0),
+            });
+            cx.notify();
+        });
+    cx.refresh()
+        .expect("test window should refresh after scrolling the description");
+
+    assert!(
+        cx.debug_bounds("pull-request-overview-description-block-100")
+            .is_some(),
+        "scrolling the overview should reveal later markdown blocks"
+    );
+    assert!(
+        cx.debug_bounds("pull-request-overview-description")
+            .is_none(),
+        "the description header should leave the viewport with the shared scroll"
+    );
+}
+
+#[gpui::test]
 async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);

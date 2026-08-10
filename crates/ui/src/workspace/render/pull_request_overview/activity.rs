@@ -7,7 +7,11 @@ use gpui_component::{
 use harbor_domain::{PullRequest, PullRequestPerson, ReviewThread};
 
 use crate::{
-    panels::{render_review_markdown_state, review_markdown_body, review_thread_diff_preview},
+    panels::{
+        ReviewDiffPreview, ReviewSuggestionContext, render_review_markdown_body_with_context,
+        render_review_markdown_state, review_markdown_body, review_markdown_has_suggestion,
+        review_thread_diff_preview,
+    },
     visual::color,
     workspace::{AppView, ReviewRuntimeState, state::OverviewMarkdownState},
 };
@@ -49,6 +53,20 @@ impl AppView {
         body: &str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.render_overview_markdown_with_context(key, body, None, cx)
+    }
+
+    fn render_overview_markdown_with_context(
+        &mut self,
+        key: String,
+        body: &str,
+        suggestion_context: Option<&ReviewSuggestionContext>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if review_markdown_has_suggestion(body) {
+            return render_review_markdown_body_with_context(key, body, suggestion_context);
+        }
+
         let state = self.ensure_overview_markdown_state(key, body, cx);
         render_review_markdown_state(&state).into_any_element()
     }
@@ -78,6 +96,7 @@ impl AppView {
 
     pub(crate) fn remeasure_overview_thread_item(&self, thread_id: &str) {
         let panel_items = overview_panel_items(
+            self.overview_description_items(),
             self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
@@ -121,6 +140,7 @@ impl AppView {
         let previous_threads = self.review_state.review_threads().to_vec();
         let result = update(&mut self.review_state);
         let panel_items = overview_panel_items(
+            self.overview_description_items(),
             self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
@@ -136,7 +156,11 @@ impl AppView {
 
         for (index, item) in panel_items.iter().enumerate() {
             let changed = match item {
-                OverviewPanelItem::Description | OverviewPanelItem::ActivityHeader => false,
+                OverviewPanelItem::DescriptionHeader
+                | OverviewPanelItem::DescriptionBlock { .. }
+                | OverviewPanelItem::DescriptionEmpty
+                | OverviewPanelItem::DescriptionEditor
+                | OverviewPanelItem::ActivityHeader => false,
                 OverviewPanelItem::Commit { .. } => false,
                 OverviewPanelItem::Comment { id } => {
                     previous_comments.iter().find(|comment| comment.id == *id)
@@ -209,14 +233,24 @@ impl AppView {
             .map(str::to_string);
         let action_error = self.review_state.review_comment_action_error().cloned();
         let view_entity = cx.entity().clone();
+        let diff_preview = review_thread_diff_preview(
+            thread,
+            self.detail_state.files(),
+            self.detail_state.diffs(),
+        );
+        let suggestion_context = diff_preview
+            .as_ref()
+            .and_then(ReviewDiffPreview::suggestion_context)
+            .cloned();
         let comments = thread
             .comments
             .iter()
             .enumerate()
             .map(|(comment_index, comment)| {
-                let markdown = self.render_overview_markdown(
+                let markdown = self.render_overview_markdown_with_context(
                     format!("overview-thread-comment-body-{}", comment.id),
                     &comment.body,
+                    suggestion_context.as_ref(),
                     cx,
                 );
                 render_overview_thread_comment(OverviewThreadCommentRenderState {
@@ -252,11 +286,7 @@ impl AppView {
             reply_error: self.review_state.review_thread_reply_error(),
             action_thread_id: self.review_state.review_thread_action_thread_id(),
             action_error: self.review_state.review_thread_action_error(),
-            diff_preview: review_thread_diff_preview(
-                thread,
-                self.detail_state.files(),
-                self.detail_state.diffs(),
-            ),
+            diff_preview,
             mono_font_family: cx.theme().mono_font_family.clone(),
             comments,
             view_entity,

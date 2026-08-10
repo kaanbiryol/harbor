@@ -40,6 +40,7 @@ pub(crate) use pull_request_signals::{
 };
 pub(crate) use review::*;
 pub(crate) use review_markdown::{
-    overview_markdown_body, render_review_markdown_state, review_markdown_body,
+    ReviewSuggestionContext, overview_markdown_blocks, render_review_markdown_body_with_context,
+    render_review_markdown_state, review_markdown_body, review_markdown_has_suggestion,
 };
 pub(crate) use workflows::*;

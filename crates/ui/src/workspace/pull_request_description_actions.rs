@@ -67,6 +67,7 @@ impl AppView {
         };
         let pull_request_node_id = pull_request.node_id.clone();
         let pull_request_number = pull_request.number;
+        let detail_key = self.selected_pull_request_detail_key();
         let body = self
             .pull_request_description_input
             .read(cx)
@@ -97,6 +98,9 @@ impl AppView {
                                 .find(|pull_request| pull_request.node_id == pull_request_node_id)
                             {
                                 pull_request.body = (!body.is_empty()).then_some(body);
+                            }
+                            if let Some(detail_key) = detail_key.as_ref() {
+                                view.overview_state.invalidate_description(detail_key);
                             }
                             view.pull_request_description_editing = false;
                             view.pull_request_description_input.update(cx, |input, cx| {

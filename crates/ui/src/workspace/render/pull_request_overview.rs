@@ -8,12 +8,7 @@ use gpui_component::{
 };
 use harbor_domain::PullRequest;
 
-use crate::{
-    icons::Octicon,
-    panels::{overview_markdown_body, render_empty_state},
-    visual::color,
-    workspace::AppView,
-};
+use crate::{icons::Octicon, panels::render_empty_state, visual::color, workspace::AppView};
 
 const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
 
@@ -38,6 +33,17 @@ use sidebar::*;
 use timeline::*;
 
 impl AppView {
+    fn overview_description_items(&self) -> OverviewDescriptionItems {
+        if self.pull_request_description_editing {
+            return OverviewDescriptionItems::Editor;
+        }
+
+        match self.overview_state.description_block_count() {
+            0 => OverviewDescriptionItems::Empty,
+            block_count => OverviewDescriptionItems::Blocks(block_count),
+        }
+    }
+
     pub(super) fn render_pull_request_overview_panel(
         &mut self,
         pr: Option<&PullRequest>,
@@ -100,6 +106,7 @@ impl AppView {
         let activity_loading =
             self.review_state.reviews_loading() || self.detail_state.commits_loading();
         let panel_items = overview_panel_items(
+            self.overview_description_items(),
             self.detail_state.commits(),
             self.review_state.pull_request_reviews(),
             self.review_state.pull_request_comments(),
@@ -124,17 +131,14 @@ impl AppView {
                     };
 
                     match item {
-                        OverviewPanelItem::Description => view
-                            .selected_pull_request()
-                            .cloned()
-                            .map(|pull_request| {
-                                div()
-                                    .w_full()
-                                    .pb_3()
-                                    .child(view.render_description_card(&pull_request, cx))
-                                    .into_any_element()
-                            })
-                            .unwrap_or_else(|| div().into_any_element()),
+                        OverviewPanelItem::DescriptionHeader => view.render_description_header(cx),
+                        OverviewPanelItem::DescriptionBlock { index: block_index } => {
+                            let is_last =
+                                *block_index + 1 == view.overview_state.description_block_count();
+                            view.render_description_block(*block_index, is_last)
+                        }
+                        OverviewPanelItem::DescriptionEmpty => view.render_empty_description(),
+                        OverviewPanelItem::DescriptionEditor => view.render_description_editor(cx),
                         OverviewPanelItem::ActivityHeader => {
                             render_overview_activity_header(activity_loading).into_any_element()
                         }
@@ -415,10 +419,10 @@ mod tests {
     };
 
     use super::{
-        OverviewPanelItem, OverviewTimelineItem, merge_readiness, overview_panel_items,
-        overview_review_visible, overview_thread_expanded, overview_thread_item_index,
-        overview_timeline_items, parse_label_color, pull_request_readiness,
-        sync_overview_list_items,
+        OverviewDescriptionItems, OverviewPanelItem, OverviewTimelineItem, merge_readiness,
+        overview_panel_items, overview_review_visible, overview_thread_expanded,
+        overview_thread_item_index, overview_timeline_items, parse_label_color,
+        pull_request_readiness, sync_overview_list_items,
     };
     use crate::test_fixtures::{pull_request, review_thread, test_time};
     use crate::visual::Tone;
@@ -572,9 +576,16 @@ mod tests {
     #[test]
     fn finds_thread_index_in_virtual_overview_items() {
         let thread = review_thread(ReviewThreadState::Unresolved);
-        let items = overview_panel_items(&[], &[], &[], &[thread], None);
+        let items = overview_panel_items(
+            OverviewDescriptionItems::Empty,
+            &[],
+            &[],
+            &[],
+            &[thread],
+            None,
+        );
 
-        assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(2));
+        assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(3));
         assert_eq!(overview_thread_item_index(&items, "missing"), None);
     }
 
@@ -607,7 +618,7 @@ mod tests {
 
     #[test]
     fn overview_rows_include_description_and_activity_in_one_list() {
-        let keys = overview_panel_items(&[], &[], &[], &[], None)
+        let keys = overview_panel_items(OverviewDescriptionItems::Empty, &[], &[], &[], &[], None)
             .iter()
             .map(OverviewPanelItem::key)
             .collect::<Vec<_>>();
@@ -615,7 +626,36 @@ mod tests {
         assert_eq!(
             keys,
             vec![
-                "description",
+                "description:header",
+                "description:empty",
+                "activity:header",
+                "activity:empty",
+                "composer"
+            ]
+        );
+    }
+
+    #[test]
+    fn description_markdown_blocks_are_individual_overview_rows() {
+        let keys = overview_panel_items(
+            OverviewDescriptionItems::Blocks(3),
+            &[],
+            &[],
+            &[],
+            &[],
+            None,
+        )
+        .iter()
+        .map(OverviewPanelItem::key)
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            keys,
+            vec![
+                "description:header",
+                "description:block:0",
+                "description:block:1",
+                "description:block:2",
                 "activity:header",
                 "activity:empty",
                 "composer"

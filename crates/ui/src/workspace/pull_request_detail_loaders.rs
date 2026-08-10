@@ -68,6 +68,12 @@ impl AppView {
         else {
             return;
         };
+        let description_changed = detail.body != selected.body;
+        let detail_key = PullRequestDetailCacheKey::new(
+            selected.repo.clone(),
+            selected.number,
+            selected.head_sha.clone(),
+        );
 
         if detail.review_decision.is_none() {
             detail.review_decision = selected.review_decision;
@@ -83,6 +89,9 @@ impl AppView {
         }
 
         *selected = detail;
+        if description_changed {
+            self.overview_state.invalidate_description(&detail_key);
+        }
     }
 
     pub(super) fn load_selected_pull_request(&mut self, cx: &mut Context<Self>) {

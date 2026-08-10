@@ -14,7 +14,7 @@ use super::{
         render_review_diff_preview, review_comment_time_label, review_comment_time_tooltip,
         review_thread_location, review_thread_state_tone,
     },
-    review_markdown::render_review_markdown_body,
+    review_markdown::{ReviewSuggestionContext, render_review_markdown_body_with_context},
     review_thread_chrome::{
         ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
         ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
@@ -90,6 +90,10 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
     let action_error = action_error
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
+    let suggestion_context = diff_preview
+        .as_ref()
+        .and_then(ReviewDiffPreview::suggestion_context)
+        .cloned();
     let use_resolved_low_emphasis = is_inactive && !ui_state.active_reply && action_error.is_none();
     let thread_id = thread.id.clone();
     div()
@@ -150,6 +154,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
                     metadata_color,
                     comment_color,
                     is_resolved,
+                    suggestion_context.as_ref(),
                 ))
                 .when(!ui_state.active_reply, |element| {
                     element.child(
@@ -241,6 +246,7 @@ fn render_review_thread_comments(
     metadata_color: gpui::Rgba,
     comment_color: gpui::Rgba,
     is_resolved: bool,
+    suggestion_context: Option<&ReviewSuggestionContext>,
 ) -> impl IntoElement {
     let thread_rail_color = if is_resolved {
         color::border_subtle()
@@ -251,6 +257,13 @@ fn render_review_thread_comments(
         color::text_muted()
     } else {
         color::text_primary()
+    };
+    let style = ReviewThreadCommentStyle {
+        rail_color: thread_rail_color,
+        author_color,
+        metadata_color,
+        comment_color,
+        suggestion_context,
     };
 
     div()
@@ -264,22 +277,25 @@ fn render_review_thread_comments(
                 comment,
                 index > 0,
                 index + 1 < thread.comments.len(),
-                thread_rail_color,
-                author_color,
-                metadata_color,
-                comment_color,
+                style,
             )
         }))
+}
+
+#[derive(Clone, Copy)]
+struct ReviewThreadCommentStyle<'a> {
+    rail_color: gpui::Rgba,
+    author_color: gpui::Rgba,
+    metadata_color: gpui::Rgba,
+    comment_color: gpui::Rgba,
+    suggestion_context: Option<&'a ReviewSuggestionContext>,
 }
 
 fn render_review_thread_comment(
     comment: &ReviewComment,
     is_reply: bool,
     show_thread_rail: bool,
-    rail_color: gpui::Rgba,
-    author_color: gpui::Rgba,
-    metadata_color: gpui::Rgba,
-    comment_color: gpui::Rgba,
+    style: ReviewThreadCommentStyle<'_>,
 ) -> impl IntoElement {
     let author_id = if is_reply {
         format!("review-thread-reply-author-link-{}", comment.id)
@@ -304,7 +320,7 @@ fn render_review_thread_comment(
         .child(render_review_thread_comment_gutter(
             comment,
             show_thread_rail,
-            rail_color,
+            style.rail_color,
         ))
         .child(
             div()
@@ -322,21 +338,22 @@ fn render_review_thread_comment(
                         .child(render_review_author_link(
                             author_id,
                             comment.author.clone(),
-                            author_color,
+                            style.author_color,
                         ))
                         .child(render_time_metadata(
                             time_id,
                             review_comment_time_label(comment),
                             Some(review_comment_time_tooltip(comment)),
-                            metadata_color,
+                            style.metadata_color,
                         )),
                 )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(comment_color)
-                        .child(render_review_markdown_body(body_id, &comment.body)),
-                ),
+                .child(div().text_sm().text_color(style.comment_color).child(
+                    render_review_markdown_body_with_context(
+                        body_id,
+                        &comment.body,
+                        style.suggestion_context,
+                    ),
+                )),
         )
 }
 

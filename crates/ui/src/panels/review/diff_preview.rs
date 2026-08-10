@@ -3,12 +3,22 @@ use harbor_domain::{DiffFile, ReviewComment, ReviewSide, ReviewThread};
 
 use crate::{
     diff::{DiffLine, DiffLineKind, ParsedDiff},
+    panels::review_markdown::{
+        ReviewSuggestionContext, ReviewSuggestionOriginalLine, review_markdown_has_suggestion,
+    },
     visual::{Tone, color, tone_colors},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewDiffPreview {
     pub(super) lines: Vec<ReviewDiffPreviewLine>,
+    pub(super) suggestion_context: Option<ReviewSuggestionContext>,
+}
+
+impl ReviewDiffPreview {
+    pub(crate) fn suggestion_context(&self) -> Option<&ReviewSuggestionContext> {
+        self.suggestion_context.as_ref()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -85,6 +95,7 @@ fn review_comment_diff_preview(
             text: "diff context unavailable".to_string(),
             tone: Tone::Neutral,
         }],
+        suggestion_context: None,
     };
     let Some((_, diff)) = files.iter().zip(diffs.iter()).find(|(file, _)| {
         file.path == target.path || file.previous_path.as_deref() == Some(target.path.as_str())
@@ -116,15 +127,82 @@ fn review_comment_diff_preview(
     } else {
         end_index..=start_index
     };
-    let lines = diff_lines[range]
+    let selected_diff_lines = &diff_lines[range];
+    let lines = selected_diff_lines
         .iter()
         .map(|line| review_diff_preview_line(line))
         .collect::<Vec<_>>();
     if lines.is_empty() {
         return Some(fallback());
     }
+    let suggestion_context = if review_thread_has_suggestion(thread) {
+        review_suggestion_context(&target, selected_diff_lines.iter().copied())
+    } else {
+        None
+    };
 
-    Some(ReviewDiffPreview { lines })
+    Some(ReviewDiffPreview {
+        lines,
+        suggestion_context,
+    })
+}
+
+pub(crate) fn review_thread_suggestion_context(
+    thread: &ReviewThread,
+    file: &DiffFile,
+    diff: &ParsedDiff,
+) -> Option<ReviewSuggestionContext> {
+    if !review_thread_has_suggestion(thread) {
+        return None;
+    }
+
+    let comment = thread.comments.first()?;
+    let target = review_comment_diff_target(comment, thread)?;
+    if file.path != target.path && file.previous_path.as_deref() != Some(target.path.as_str()) {
+        return None;
+    }
+
+    let lines = diff.hunks.iter().flat_map(|hunk| hunk.lines.iter());
+    review_suggestion_context(&target, lines)
+}
+
+fn review_thread_has_suggestion(thread: &ReviewThread) -> bool {
+    thread
+        .comments
+        .iter()
+        .any(|comment| review_markdown_has_suggestion(&comment.body))
+}
+
+fn review_suggestion_context<'a>(
+    target: &ReviewDiffTarget,
+    lines: impl IntoIterator<Item = &'a DiffLine>,
+) -> Option<ReviewSuggestionContext> {
+    if target.start_side != target.end_side {
+        return None;
+    }
+
+    let first_line = target.start_line.min(target.end_line);
+    let last_line = target.start_line.max(target.end_line);
+    let original_lines = lines
+        .into_iter()
+        .filter_map(|line| {
+            let line_number = match target.end_side {
+                ReviewSide::Left => line.old_line,
+                ReviewSide::Right => line.new_line,
+            }?;
+            (first_line..=last_line)
+                .contains(&line_number)
+                .then(|| ReviewSuggestionOriginalLine {
+                    line_number,
+                    text: line.text.clone(),
+                })
+        })
+        .collect::<Vec<_>>();
+
+    (!original_lines.is_empty()).then_some(ReviewSuggestionContext {
+        original_lines,
+        replacement_start_line: first_line,
+    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

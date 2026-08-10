@@ -8,7 +8,10 @@ use harbor_domain::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum OverviewPanelItem {
-    Description,
+    DescriptionHeader,
+    DescriptionBlock { index: usize },
+    DescriptionEmpty,
+    DescriptionEditor,
     ActivityHeader,
     Commit { sha: String },
     Comment { id: String },
@@ -21,7 +24,10 @@ pub(super) enum OverviewPanelItem {
 impl OverviewPanelItem {
     pub(super) fn key(&self) -> String {
         match self {
-            Self::Description => "description".to_string(),
+            Self::DescriptionHeader => "description:header".to_string(),
+            Self::DescriptionBlock { index } => format!("description:block:{index}"),
+            Self::DescriptionEmpty => "description:empty".to_string(),
+            Self::DescriptionEditor => "description:editor".to_string(),
             Self::ActivityHeader => "activity:header".to_string(),
             Self::Commit { sha } => format!("commit:{sha}"),
             Self::Comment { id } => format!("comment:{id}"),
@@ -32,6 +38,13 @@ impl OverviewPanelItem {
             Self::Composer => "composer".to_string(),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum OverviewDescriptionItems {
+    Blocks(usize),
+    Empty,
+    Editor,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -129,6 +142,7 @@ pub(super) fn overview_thread_item_index(
 }
 
 pub(super) fn overview_panel_items(
+    description: OverviewDescriptionItems,
     commits: &[PullRequestCommit],
     reviews: &[PullRequestReview],
     comments: &[PullRequestComment],
@@ -136,8 +150,21 @@ pub(super) fn overview_panel_items(
     error: Option<&str>,
 ) -> Vec<OverviewPanelItem> {
     let timeline_items = overview_timeline_items(commits, reviews, comments, threads);
-    let mut items = Vec::with_capacity(timeline_items.len() + 4);
-    items.push(OverviewPanelItem::Description);
+    let description_item_count = match description {
+        OverviewDescriptionItems::Blocks(block_count) => block_count,
+        OverviewDescriptionItems::Empty | OverviewDescriptionItems::Editor => 1,
+    };
+    let mut items = Vec::with_capacity(timeline_items.len() + description_item_count + 4);
+    items.push(OverviewPanelItem::DescriptionHeader);
+    match description {
+        OverviewDescriptionItems::Blocks(block_count) => {
+            items.extend(
+                (0..block_count).map(|index| OverviewPanelItem::DescriptionBlock { index }),
+            );
+        }
+        OverviewDescriptionItems::Empty => items.push(OverviewPanelItem::DescriptionEmpty),
+        OverviewDescriptionItems::Editor => items.push(OverviewPanelItem::DescriptionEditor),
+    }
     items.push(OverviewPanelItem::ActivityHeader);
 
     if let Some(error) = error {

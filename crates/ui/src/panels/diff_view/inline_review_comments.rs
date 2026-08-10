@@ -5,7 +5,7 @@ use harbor_domain::ReviewComment;
 use crate::{
     date_time::{full_time_label_with_edit, natural_time_label_with_edit},
     github::profile_url,
-    panels::review_markdown::render_review_markdown_body,
+    panels::review_markdown::{ReviewSuggestionContext, render_review_markdown_body_with_context},
     visual::color,
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync},
 };
@@ -39,6 +39,7 @@ pub(super) struct ReviewCommentRenderState<'a> {
     is_reply: bool,
     show_thread_rail: bool,
     thread_resolved: bool,
+    suggestion_context: Option<ReviewSuggestionContext>,
     ui_state: ReviewCommentUiState,
     review_comment_edit_input: Entity<InputState>,
     edit_body_empty: bool,
@@ -66,6 +67,7 @@ impl<'a> ReviewCommentRenderState<'a> {
         is_reply: bool,
         show_thread_rail: bool,
         thread_resolved: bool,
+        suggestion_context: Option<ReviewSuggestionContext>,
         list_state: &ReviewCommentListRenderState<'a>,
     ) -> Self {
         let ui_state = review_comment_ui_state(
@@ -93,6 +95,7 @@ impl<'a> ReviewCommentRenderState<'a> {
             is_reply,
             show_thread_rail,
             thread_resolved,
+            suggestion_context,
             ui_state,
             review_comment_edit_input: list_state.review_comment_edit_input.clone(),
             edit_body_empty: list_state.edit_body_empty,
@@ -112,6 +115,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
         is_reply,
         show_thread_rail,
         thread_resolved,
+        suggestion_context,
         ui_state,
         review_comment_edit_input,
         edit_body_empty,
@@ -228,6 +232,7 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                         &comment.id,
                         &comment.body,
                         body_color,
+                        suggestion_context.as_ref(),
                     ))
                 })
                 .when(ui_state.active_edit, {
@@ -295,14 +300,20 @@ fn render_review_comment_gutter(
         })
 }
 
-fn render_review_comment_body(comment_id: &str, body: &str, color: gpui::Rgba) -> impl IntoElement {
+fn render_review_comment_body(
+    comment_id: &str,
+    body: &str,
+    color: gpui::Rgba,
+    suggestion_context: Option<&ReviewSuggestionContext>,
+) -> impl IntoElement {
     div()
         .pt_2()
         .text_xs()
         .text_color(color)
-        .child(render_review_markdown_body(
+        .child(render_review_markdown_body_with_context(
             format!("review-comment-body-{comment_id}"),
             body,
+            suggestion_context,
         ))
 }
 

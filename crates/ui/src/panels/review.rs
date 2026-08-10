@@ -34,6 +34,7 @@ mod model;
 use diff_preview::ReviewDiffPreviewLine;
 pub(crate) use diff_preview::{
     ReviewDiffPreview, render_review_diff_preview, review_thread_diff_preview,
+    review_thread_suggestion_context,
 };
 
 #[cfg(test)]

@@ -199,6 +199,7 @@ impl Render for InlineReviewThreadHarness {
         render_review_thread_inline(ReviewThreadRenderState {
             thread: &self.thread,
             line_number_width: 44.0,
+            suggestion_context: None,
             active_review_thread_reply: active_reply_thread_id,
             review_thread_reply_input: render_state.reply_input.clone(),
             reply_body_empty: render_state.reply_body_empty,
