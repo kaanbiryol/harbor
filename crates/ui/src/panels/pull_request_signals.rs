@@ -20,10 +20,34 @@ pub(crate) enum PullRequestRowRailTone {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PullRequestRowSignalKind {
     MergeConflict,
+    MergeQueueWaiting,
+    MergeQueueQueued,
     ReviewApproved,
     ReviewChangesRequestedThreads,
     ReviewNeeded,
     UnresolvedThreads,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PullRequestMergeQueueStatus {
+    Waiting,
+    Queued,
+}
+
+impl PullRequestMergeQueueStatus {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Waiting => "Waiting to queue",
+            Self::Queued => "Queued to merge",
+        }
+    }
+
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::Waiting => "Requirements must pass before this pull request enters the queue",
+            Self::Queued => "GitHub will merge this pull request through the merge queue",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -328,6 +352,22 @@ pub(crate) fn visible_pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequ
         .collect()
 }
 
+pub(crate) fn pull_request_merge_queue_status(
+    pr: &PullRequest,
+) -> Option<PullRequestMergeQueueStatus> {
+    if pr.state != PullRequestState::Open {
+        return None;
+    }
+
+    match pr.merge_capabilities.queue_state {
+        MergeQueueState::Queued => Some(PullRequestMergeQueueStatus::Queued),
+        MergeQueueState::Enabled if pr.merge_capabilities.auto_merge_enabled => {
+            Some(PullRequestMergeQueueStatus::Waiting)
+        }
+        MergeQueueState::Unknown | MergeQueueState::Disabled | MergeQueueState::Enabled => None,
+    }
+}
+
 fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
     let mut signals = Vec::new();
 
@@ -336,6 +376,14 @@ fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
             PullRequestRowSignalKind::MergeConflict,
             "conflict",
         ));
+    }
+
+    if let Some(queue_status) = pull_request_merge_queue_status(pr) {
+        let kind = match queue_status {
+            PullRequestMergeQueueStatus::Waiting => PullRequestRowSignalKind::MergeQueueWaiting,
+            PullRequestMergeQueueStatus::Queued => PullRequestRowSignalKind::MergeQueueQueued,
+        };
+        signals.push(PullRequestRowSignal::with_label(kind, queue_status.label()));
     }
 
     match pr.review_decision {

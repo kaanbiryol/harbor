@@ -42,6 +42,8 @@ fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
 fn row_signal_id(kind: PullRequestRowSignalKind) -> &'static str {
     match kind {
         PullRequestRowSignalKind::MergeConflict => "pr-signal-merge-conflict",
+        PullRequestRowSignalKind::MergeQueueWaiting => "pr-signal-merge-queue-waiting",
+        PullRequestRowSignalKind::MergeQueueQueued => "pr-signal-merge-queue-queued",
         PullRequestRowSignalKind::ReviewApproved => "pr-signal-review-approved",
         PullRequestRowSignalKind::ReviewChangesRequestedThreads => {
             "pr-signal-review-changes-requested"
@@ -54,6 +56,8 @@ fn row_signal_id(kind: PullRequestRowSignalKind) -> &'static str {
 fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
     match kind {
         PullRequestRowSignalKind::MergeConflict => Octicon::Alert,
+        PullRequestRowSignalKind::MergeQueueWaiting => Octicon::Clock,
+        PullRequestRowSignalKind::MergeQueueQueued => Octicon::GitPullRequest,
         PullRequestRowSignalKind::ReviewApproved => Octicon::ThumbsUp,
         PullRequestRowSignalKind::ReviewChangesRequestedThreads => Octicon::CommentDiscussion,
         PullRequestRowSignalKind::ReviewNeeded => Octicon::Eye,
@@ -64,6 +68,10 @@ fn row_signal_icon(kind: PullRequestRowSignalKind) -> Octicon {
 fn row_signal_tooltip(signal: &PullRequestRowSignal) -> String {
     match signal.kind {
         PullRequestRowSignalKind::MergeConflict => "Merge conflict".to_string(),
+        PullRequestRowSignalKind::MergeQueueWaiting => {
+            "Waiting to enter the merge queue".to_string()
+        }
+        PullRequestRowSignalKind::MergeQueueQueued => "Queued to merge".to_string(),
         PullRequestRowSignalKind::ReviewApproved => "Review approved".to_string(),
         PullRequestRowSignalKind::ReviewChangesRequestedThreads => signal
             .label
@@ -89,6 +97,8 @@ fn row_signal_tone(kind: PullRequestRowSignalKind) -> PullRequestRowSignalTone {
         PullRequestRowSignalKind::ReviewNeeded | PullRequestRowSignalKind::UnresolvedThreads => {
             PullRequestRowSignalTone::Warning
         }
+        PullRequestRowSignalKind::MergeQueueWaiting
+        | PullRequestRowSignalKind::MergeQueueQueued => PullRequestRowSignalTone::Warning,
         PullRequestRowSignalKind::ReviewApproved => PullRequestRowSignalTone::Success,
     }
 }
@@ -305,6 +315,18 @@ mod tests {
         assert_eq!(
             pull_request_state_pill(PullRequestState::Merged),
             Some(("merged", Tone::Success))
+        );
+    }
+
+    #[test]
+    fn merge_queue_row_signals_use_warning_tone() {
+        assert_eq!(
+            row_signal_tone(PullRequestRowSignalKind::MergeQueueWaiting),
+            PullRequestRowSignalTone::Warning
+        );
+        assert_eq!(
+            row_signal_tone(PullRequestRowSignalKind::MergeQueueQueued),
+            PullRequestRowSignalTone::Warning
         );
     }
 }

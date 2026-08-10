@@ -105,6 +105,51 @@ fn approved_pull_request_shows_review_signal() {
 }
 
 #[test]
+fn merge_queue_state_precedes_review_state_in_row_signals() {
+    let mut pr = pull_request();
+    pr.review_decision = Some(ReviewDecision::Approved);
+    pr.merge_capabilities = PullRequestMergeCapabilities {
+        queue_state: MergeQueueState::Enabled,
+        auto_merge_enabled: true,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        pull_request_merge_queue_status(&pr),
+        Some(PullRequestMergeQueueStatus::Waiting)
+    );
+    assert_eq!(
+        signal_summary(&visible_pull_request_row_signals(&pr)),
+        vec![
+            (
+                PullRequestRowSignalKind::MergeQueueWaiting,
+                Some("Waiting to queue".to_string())
+            ),
+            (
+                PullRequestRowSignalKind::ReviewApproved,
+                Some("approved".to_string())
+            )
+        ]
+    );
+
+    pr.merge_capabilities.queue_state = MergeQueueState::Queued;
+    assert_eq!(
+        pull_request_merge_queue_status(&pr),
+        Some(PullRequestMergeQueueStatus::Queued)
+    );
+    assert_eq!(
+        signal_summary(&visible_pull_request_row_signals(&pr))[0],
+        (
+            PullRequestRowSignalKind::MergeQueueQueued,
+            Some("Queued to merge".to_string())
+        )
+    );
+
+    pr.state = PullRequestState::Closed;
+    assert_eq!(pull_request_merge_queue_status(&pr), None);
+}
+
+#[test]
 fn review_required_pull_request_shows_review_signal() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::ReviewRequired);

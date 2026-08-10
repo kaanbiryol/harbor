@@ -5,6 +5,7 @@ use gpui_component::{
 };
 use harbor_domain::{MergeState, PullRequest};
 
+use crate::panels::{PullRequestMergeQueueStatus, pull_request_merge_queue_status};
 use crate::{actions::PanelTab, icons::Octicon, visual::Tone, workspace::AppView};
 
 use super::sidebar::{
@@ -22,6 +23,7 @@ impl AppView {
         let (review_label, review_tone) = review_readiness(pr.review_decision);
         let (merge_label, merge_description, merge_tone) = merge_readiness(pr);
         let (status_label, status_description, status_tone) = pull_request_readiness(pr);
+        let merge_queue_status = pull_request_merge_queue_status(pr);
         let unresolved_tone = if pr.unresolved_threads == 0 {
             Tone::Success
         } else {
@@ -102,10 +104,29 @@ impl AppView {
                     ),
             )
             .child(render_readiness_section_title("Summary"))
+            .when_some(merge_queue_status, |card, queue_status| {
+                let (icon, value) = match queue_status {
+                    PullRequestMergeQueueStatus::Waiting => {
+                        (Octicon::Clock, queue_status.label().to_string())
+                    }
+                    PullRequestMergeQueueStatus::Queued => (
+                        Octicon::GitPullRequest,
+                        format!("Queued for {}", pr.base_ref),
+                    ),
+                };
+                card.child(render_summary_row(
+                    "pull-request-merge-queue-summary-row",
+                    "Merge queue",
+                    value,
+                    icon,
+                    Tone::Warning,
+                ))
+            })
             .child(render_summary_row(
                 "pull-request-checks-summary-row",
                 checks_summary_title,
                 checks_label,
+                Octicon::CheckCircle,
                 checks_tone,
             ))
             .child(render_summary_row(
@@ -116,6 +137,7 @@ impl AppView {
                 } else {
                     "Resolve to merge"
                 },
+                Octicon::CheckCircle,
                 conflicts_tone,
             ))
             .child(

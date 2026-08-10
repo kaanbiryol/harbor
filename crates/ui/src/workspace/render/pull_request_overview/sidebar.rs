@@ -595,6 +595,7 @@ pub(super) fn render_summary_row(
     id: &'static str,
     label: &'static str,
     value: impl Into<String>,
+    icon: Octicon,
     tone: Tone,
 ) -> impl IntoElement {
     let colors = tone_colors(tone);
@@ -605,11 +606,7 @@ pub(super) fn render_summary_row(
         .flex()
         .items_center()
         .gap_2()
-        .child(
-            Icon::new(Octicon::CheckCircle)
-                .xsmall()
-                .text_color(colors.text),
-        )
+        .child(Icon::new(icon).xsmall().text_color(colors.text))
         .child(
             div()
                 .flex_1()

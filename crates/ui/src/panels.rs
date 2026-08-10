@@ -33,9 +33,10 @@ pub(crate) use diff_view::*;
 pub(crate) use logs::*;
 pub(crate) use pull_request::*;
 pub(crate) use pull_request_signals::{
-    MergeReadiness, PullRequestReadiness, ReviewReadiness, merge_blocker, merge_readiness,
-    merge_when_ready_blocker, merge_without_requirements_blocker, pull_request_readiness,
-    review_action_blocker, review_readiness,
+    MergeReadiness, PullRequestMergeQueueStatus, PullRequestReadiness, ReviewReadiness,
+    merge_blocker, merge_readiness, merge_when_ready_blocker, merge_without_requirements_blocker,
+    pull_request_merge_queue_status, pull_request_readiness, review_action_blocker,
+    review_readiness,
 };
 pub(crate) use review::*;
 pub(crate) use review_markdown::{

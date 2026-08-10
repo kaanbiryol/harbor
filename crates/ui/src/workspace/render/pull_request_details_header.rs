@@ -1,9 +1,11 @@
 use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use gpui_component::{
-    ActiveTheme, Disableable, Sizable, StyledExt,
+    ActiveTheme, Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
     checkbox::Checkbox,
     clipboard::Clipboard,
+    tag::Tag,
+    tooltip::Tooltip,
 };
 use harbor_domain::{MergeMethod, MergeQueueState, PullRequest};
 
@@ -13,9 +15,10 @@ use crate::{
         OpenRequestChangesCommentDialog, PullRequestAction, PullRequestActionKind,
         RebasePullRequest,
     },
+    icons::Octicon,
     panels::{
-        merge_blocker, merge_when_ready_blocker, merge_without_requirements_blocker,
-        review_action_blocker,
+        PullRequestMergeQueueStatus, merge_blocker, merge_when_ready_blocker,
+        merge_without_requirements_blocker, pull_request_merge_queue_status, review_action_blocker,
     },
     visual::{color, layout},
     workspace::{AppView, log_entity_update_error},
@@ -38,6 +41,7 @@ impl AppView {
             .unwrap_or_else(|| "Approve pull request".to_string());
         let bypass_available = pr.merge_capabilities.viewer_can_merge_as_admin;
         let bypass_enabled = bypass_available && self.merge_bypass_enabled;
+        let merge_queue_status = pull_request_merge_queue_status(pr);
         let show_bypass = bypass_available
             && (pr.merge_capabilities.queue_state != MergeQueueState::Disabled
                 || merge_blocker(pr).is_some());
@@ -134,21 +138,13 @@ impl AppView {
                 )
             })
             .child({
-                if !bypass_enabled
-                    && matches!(
-                        pr.merge_capabilities.queue_state,
-                        MergeQueueState::Enabled | MergeQueueState::Queued
-                    )
+                if let Some(queue_status) = merge_queue_status.filter(|_| !bypass_enabled) {
+                    render_merge_queue_status(queue_status).into_any_element()
+                } else if !bypass_enabled
+                    && pr.merge_capabilities.queue_state == MergeQueueState::Enabled
                 {
-                    let label = if pr.merge_capabilities.queue_state == MergeQueueState::Queued {
-                        "queued to merge"
-                    } else if pr.merge_capabilities.auto_merge_enabled {
-                        "merge when ready enabled"
-                    } else {
-                        "merge when ready"
-                    };
                     let button = Button::new("merge-pr-when-ready")
-                        .label(label)
+                        .label("merge when ready")
                         .small()
                         .tooltip(merge_tooltip)
                         .loading(merge_action_running)
@@ -368,6 +364,29 @@ impl AppView {
             .child(header_content)
             .child(self.render_panel_tabs(cx))
     }
+}
+
+fn render_merge_queue_status(status: PullRequestMergeQueueStatus) -> impl IntoElement {
+    let icon = match status {
+        PullRequestMergeQueueStatus::Waiting => Octicon::Clock,
+        PullRequestMergeQueueStatus::Queued => Octicon::GitPullRequest,
+    };
+    let tooltip = status.description();
+
+    div()
+        .id("pull-request-merge-queue-status")
+        .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
+        .child(
+            Tag::warning().outline().small().h(px(28.0)).child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .text_color(color::warning())
+                    .child(Icon::new(icon).xsmall().text_color(color::warning()))
+                    .child(status.label()),
+            ),
+        )
 }
 
 fn merge_method_button_label(method: MergeMethod) -> &'static str {
