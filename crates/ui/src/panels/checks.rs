@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
     render_panel_header, sync_virtual_list_item_count,
 };
 
@@ -110,7 +110,11 @@ pub(crate) fn render_checks_panel(
             element.child(render_check_completion_summary(summary))
         })
         .when(is_loading && check_runs.is_empty(), |element| {
-            element.child(render_loading_panel_card("Loading checks…"))
+            element.child(render_loading_panel_skeleton(
+                "checks-loading-skeleton",
+                10,
+                CHECK_RUN_ROW_HEIGHT,
+            ))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

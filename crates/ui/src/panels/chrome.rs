@@ -1,5 +1,8 @@
-use gpui::{Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*, px};
-use gpui_component::{Icon, Selectable, Sizable, StyledExt, spinner::Spinner, tooltip::Tooltip};
+use gpui::{
+    AnyElement, Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*,
+    px,
+};
+use gpui_component::{Icon, Selectable, Sizable, StyledExt, skeleton::Skeleton, tooltip::Tooltip};
 
 use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
@@ -145,15 +148,107 @@ pub(crate) fn render_empty_state(
         )
 }
 
-pub(crate) fn render_loading_panel_card(message: impl Into<String>) -> impl IntoElement {
+pub(crate) fn render_loading_panel_skeleton(
+    selector: &'static str,
+    row_count: usize,
+    row_height: f32,
+) -> AnyElement {
     render_panel_card()
-        .p_3()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h_0()
+        .overflow_hidden()
+        .child(render_loading_skeleton_rows(
+            selector, row_count, row_height,
+        ))
+        .into_any_element()
+}
+
+pub(crate) fn render_loading_skeleton_rows(
+    selector: &'static str,
+    row_count: usize,
+    row_height: f32,
+) -> AnyElement {
+    div()
+        .debug_selector(move || selector.to_string())
+        .w_full()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .children(
+            (0..row_count)
+                .map(move |index| render_loading_skeleton_row(selector, index, row_height)),
+        )
+        .into_any_element()
+}
+
+fn render_loading_skeleton_row(
+    selector: &'static str,
+    index: usize,
+    row_height: f32,
+) -> AnyElement {
+    let primary = Skeleton::new()
+        .w(if index % 3 == 1 { px(168.0) } else { px(220.0) })
+        .max_w_full()
+        .h(px(10.0))
+        .rounded_sm();
+    let content = if row_height >= 44.0 {
+        div()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(primary)
+            .child(
+                Skeleton::new()
+                    .secondary()
+                    .w(if index.is_multiple_of(2) {
+                        px(112.0)
+                    } else {
+                        px(144.0)
+                    })
+                    .max_w_full()
+                    .h(px(8.0))
+                    .rounded_sm(),
+            )
+            .into_any_element()
+    } else {
+        div().flex_1().min_w_0().child(primary).into_any_element()
+    };
+    let leading = if row_height >= 44.0 {
+        Skeleton::new().size(px(18.0)).rounded_full()
+    } else {
+        Skeleton::new().size(px(18.0)).rounded_sm()
+    };
+
+    div()
+        .debug_selector(move || format!("{selector}-row-{index}"))
+        .h(px(row_height))
+        .w_full()
+        .min_w_0()
+        .flex_none()
         .flex()
         .items_center()
-        .gap_2()
-        .text_color(color::text_muted())
-        .child(Spinner::new().small())
-        .child(message.into())
+        .gap_3()
+        .px_3()
+        .border_b_1()
+        .border_color(color::border_subtle())
+        .child(leading)
+        .child(content)
+        .child(
+            Skeleton::new()
+                .secondary()
+                .w(if index.is_multiple_of(2) {
+                    px(52.0)
+                } else {
+                    px(72.0)
+                })
+                .h(px(9.0))
+                .rounded_sm(),
+        )
+        .into_any_element()
 }
 
 pub(crate) fn render_error_panel_card(message: impl Into<String>) -> impl IntoElement {

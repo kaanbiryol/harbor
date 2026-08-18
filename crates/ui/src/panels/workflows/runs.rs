@@ -12,7 +12,7 @@ use crate::visual::{Tone, color, tone_colors};
 use crate::workspace::AppView;
 
 use super::super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
     render_status_pill,
 };
 
@@ -97,7 +97,11 @@ pub(super) fn render_repository_workflow_runs(
                 )),
         )
         .when(is_loading && workflow_runs.is_empty(), |element| {
-            element.child(render_loading_panel_card("Loading workflow runs…"))
+            element.child(render_loading_panel_skeleton(
+                "workflow-runs-loading-skeleton",
+                8,
+                56.0,
+            ))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

@@ -2,7 +2,6 @@ use gpui::{Context, IntoElement, ListState, div, prelude::*};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    spinner::Spinner,
 };
 use harbor_domain::{PullRequest, RepoId, Workflow, WorkflowRun};
 
@@ -12,8 +11,8 @@ use crate::visual::color;
 use crate::workspace::AppView;
 
 use super::{
-    render_empty_state, render_error_panel_card, render_panel_card, render_panel_header,
-    sync_virtual_list_item_count,
+    render_empty_state, render_error_panel_card, render_loading_skeleton_rows, render_panel_card,
+    render_panel_header, sync_virtual_list_item_count,
 };
 
 #[path = "workflows/runs.rs"]
@@ -248,16 +247,11 @@ fn render_selected_pull_request_workflow_actions(
                 ),
         )
         .when(is_loading && workflow_runs.is_empty(), |element| {
-            element.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_xs()
-                    .text_color(color::text_muted())
-                    .child(Spinner::new().small())
-                    .child("Loading workflow runs…"),
-            )
+            element.child(render_loading_skeleton_rows(
+                "selected-pr-workflow-actions-loading-skeleton",
+                1,
+                36.0,
+            ))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

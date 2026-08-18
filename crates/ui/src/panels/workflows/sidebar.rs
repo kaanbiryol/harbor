@@ -1,12 +1,12 @@
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
+use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::{Workflow, WorkflowState};
 
 use crate::icons::Octicon;
 use crate::visual::color;
 use crate::workspace::AppView;
 
-use super::super::{render_error_panel_card, render_panel_card};
+use super::super::{render_error_panel_card, render_loading_skeleton_rows, render_panel_card};
 
 pub(super) fn render_workflow_sidebar(
     workflows: &[Workflow],
@@ -32,18 +32,11 @@ pub(super) fn render_workflow_sidebar(
                 .child("Workflows"),
         )
         .when(is_loading && workflows.is_empty(), |element| {
-            element.child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_xs()
-                    .text_color(color::text_muted())
-                    .child(Spinner::new().small())
-                    .child("Loading workflows…"),
-            )
+            element.child(render_loading_skeleton_rows(
+                "workflow-sidebar-loading-skeleton",
+                10,
+                48.0,
+            ))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(div().mx_2().my_2().child(render_error_panel_card(error)))
@@ -61,47 +54,50 @@ pub(super) fn render_workflow_sidebar(
                 )
             },
         )
-        .child(
-            list(
-                list_state,
-                cx.processor(|view, index: usize, _window, cx| {
-                    let selected_workflow_id = view.repository_actions_state.selected_workflow_id();
+        .when(!is_loading || !workflows.is_empty(), |element| {
+            element.child(
+                list(
+                    list_state,
+                    cx.processor(|view, index: usize, _window, cx| {
+                        let selected_workflow_id =
+                            view.repository_actions_state.selected_workflow_id();
 
-                    if index == 0 {
-                        return render_workflow_filter_row(
-                            None,
-                            "All workflows".to_string(),
-                            "Repository run history".to_string(),
-                            selected_workflow_id.is_none(),
+                        if index == 0 {
+                            return render_workflow_filter_row(
+                                None,
+                                "All workflows".to_string(),
+                                "Repository run history".to_string(),
+                                selected_workflow_id.is_none(),
+                                cx,
+                            )
+                            .into_any_element();
+                        }
+
+                        let workflow_index = index.saturating_sub(1);
+                        let Some(workflow) = view
+                            .repository_actions_state
+                            .workflows()
+                            .get(workflow_index)
+                        else {
+                            return div().into_any_element();
+                        };
+
+                        render_workflow_filter_row(
+                            Some(workflow.id),
+                            workflow.name.clone(),
+                            workflow_sidebar_subtitle(workflow),
+                            selected_workflow_id == Some(workflow.id),
                             cx,
                         )
-                        .into_any_element();
-                    }
-
-                    let workflow_index = index.saturating_sub(1);
-                    let Some(workflow) = view
-                        .repository_actions_state
-                        .workflows()
-                        .get(workflow_index)
-                    else {
-                        return div().into_any_element();
-                    };
-
-                    render_workflow_filter_row(
-                        Some(workflow.id),
-                        workflow.name.clone(),
-                        workflow_sidebar_subtitle(workflow),
-                        selected_workflow_id == Some(workflow.id),
-                        cx,
-                    )
-                    .into_any_element()
-                }),
+                        .into_any_element()
+                    }),
+                )
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .min_w_0(),
             )
-            .flex_1()
-            .min_h_0()
-            .w_full()
-            .min_w_0(),
-        )
+        })
 }
 
 fn render_workflow_filter_row(

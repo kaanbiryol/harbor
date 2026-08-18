@@ -16,7 +16,7 @@ use crate::{
 };
 
 use super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
     render_panel_header, render_status_pill,
     workflows::{render_workflow_conclusion, workflow_conclusion_tone, workflow_run_label},
 };
@@ -68,7 +68,13 @@ pub(crate) fn render_logs_panel(
         .child(render_logs_target_card(run))
         .when(
             is_loading && jobs.is_empty() && log_chunk.is_none(),
-            |element| element.child(render_loading_panel_card("Loading logs…")),
+            |element| {
+                element.child(render_loading_panel_skeleton(
+                    "logs-loading-skeleton",
+                    16,
+                    24.0,
+                ))
+            },
         )
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

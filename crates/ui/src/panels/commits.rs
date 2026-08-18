@@ -5,7 +5,7 @@ use harbor_domain::PullRequestCommit;
 use crate::{date_time::natural_time_label, icons::Octicon, visual::color, workspace::AppView};
 
 use super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_card, render_panel_card,
+    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
     render_panel_header, render_review_avatar, sync_virtual_list_item_count,
 };
 
@@ -41,7 +41,11 @@ pub(crate) fn render_commits_panel(
             Some(format!("{} commits", commits.len())),
         ))
         .when(is_loading && commits.is_empty(), |element| {
-            element.child(render_loading_panel_card("Loading commits…"))
+            element.child(render_loading_panel_skeleton(
+                "commits-loading-skeleton",
+                8,
+                52.0,
+            ))
         })
         .when_some(error.map(str::to_string), |element, error| {
             element.child(render_error_panel_card(error))

@@ -68,6 +68,79 @@ async fn pull_request_inbox_uses_skeleton_rows_while_initial_list_loads(cx: &mut
 }
 
 #[gpui::test]
+async fn initial_panel_loads_use_skeleton_rows(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+        view_entity = Some(view.clone());
+        view.update(cx, |view, cx| {
+            let repository = RepoId::new("harbor", "harbor-fixtures");
+            view.auth_status = GitHubAuthStatus::SignedIn {
+                login: Some("octocat".to_string()),
+                source: GitHubAuthSource::GhCli,
+            };
+            view.repository_state.select_repository(repository.clone());
+            view.repository_actions_state
+                .reset_for_repository(repository);
+            view.repository_actions_state.start_workflows_load();
+            view.repository_actions_state.start_runs_load();
+            view.pull_requests = vec![pull_request()];
+            view.detail_state.start_files_load();
+            view.detail_state.start_checks_load();
+            view.detail_state.start_commits_load();
+            view.detail_state.start_workflows_load();
+            view.detail_state.log_state.start_loading();
+            view.review_state.start_reviews_load();
+            view.active_tab = PanelTab::Diff;
+            cx.notify();
+        });
+        Root::new(view, window, cx)
+    });
+    let view_entity = view_entity.expect("test AppView should be created");
+
+    cx.refresh().expect("diff loading state should render");
+    assert!(cx.debug_bounds("diff-loading-skeleton").is_some());
+    assert!(cx.debug_bounds("changed-files-loading-skeleton").is_some());
+
+    for (tab, selector) in [
+        (PanelTab::Review, "review-loading-skeleton"),
+        (PanelTab::Checks, "checks-loading-skeleton"),
+        (PanelTab::Commits, "commits-loading-skeleton"),
+        (PanelTab::Logs, "logs-loading-skeleton"),
+    ] {
+        view_entity.update(cx, |view, cx| {
+            view.active_tab = tab;
+            cx.notify();
+        });
+        cx.refresh().expect("panel loading state should render");
+        assert!(
+            cx.debug_bounds(selector).is_some(),
+            "{selector} should render on the {tab:?} tab"
+        );
+    }
+
+    view_entity.update(cx, |view, cx| {
+        view.active_tab = PanelTab::Actions;
+        cx.notify();
+    });
+    cx.refresh().expect("Actions loading state should render");
+    assert!(
+        cx.debug_bounds("workflow-sidebar-loading-skeleton")
+            .is_some()
+    );
+    assert!(cx.debug_bounds("workflow-runs-loading-skeleton").is_some());
+    assert!(
+        cx.debug_bounds("selected-pr-workflow-actions-loading-skeleton")
+            .is_some()
+    );
+}
+
+#[gpui::test]
 async fn empty_workspace_and_inbox_render_guided_empty_states(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);

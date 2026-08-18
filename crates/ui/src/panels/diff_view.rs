@@ -43,7 +43,7 @@ use row_render::render_diff_list_item;
 pub(super) use row_render::render_line_number;
 use row_state::DiffRowRenderState;
 
-use super::render_empty_state;
+use super::{render_empty_state, render_loading_panel_skeleton};
 
 const MIN_LINE_NUMBER_WIDTH: f32 = 32.0;
 const LINE_NUMBER_PADDING: f32 = 10.0;
@@ -93,26 +93,17 @@ pub(crate) fn render_diff_panel(
     input: DiffPanelRenderInput<'_>,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
-    if input.is_loading {
+    if input.is_loading && input.files.is_empty() {
         return div()
             .flex()
             .flex_col()
             .flex_1()
             .min_h_0()
-            .child(
-                div()
-                    .border_1()
-                    .border_color(color::border())
-                    .bg(color::content_background())
-                    .p_3()
-                    .text_color(color::text_muted())
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap_2()
-                    .child(gpui_component::spinner::Spinner::new().small())
-                    .child("Loading diff…"),
-            )
+            .child(render_loading_panel_skeleton(
+                "diff-loading-skeleton",
+                24,
+                DIFF_ROW_HEIGHT,
+            ))
             .into_any_element();
     }
 

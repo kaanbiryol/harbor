@@ -6,7 +6,8 @@ use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 use crate::{
     icons::Octicon,
     panels::{
-        render_changed_file_row, render_changed_folder_row, render_empty_state, render_status_pill,
+        render_changed_file_row, render_changed_folder_row, render_empty_state,
+        render_loading_skeleton_rows, render_status_pill,
     },
     visual::{Tone, color, layout},
     workspace::{AppView, ChangedFileTreeRow},
@@ -26,15 +27,13 @@ fn render_changed_files_message(message: impl Into<SharedString>, text_color: Rg
 fn render_changed_files_loading() -> AnyElement {
     div()
         .flex_1()
-        .px_3()
-        .py_3()
-        .flex()
-        .items_center()
-        .gap_2()
-        .text_sm()
-        .text_color(color::text_muted())
-        .child(Spinner::new().small())
-        .child("Loading changed files…")
+        .min_h_0()
+        .overflow_hidden()
+        .child(render_loading_skeleton_rows(
+            "changed-files-loading-skeleton",
+            16,
+            layout::CHANGED_FILE_TREE_ROW_HEIGHT,
+        ))
         .into_any_element()
 }
 
