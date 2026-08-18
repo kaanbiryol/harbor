@@ -1,16 +1,40 @@
 use sqlx::{Sqlite, Transaction};
 
-use crate::{Result, SqliteStore};
+use crate::{Result, SqliteStore, StorageError};
+
+const CURRENT_SCHEMA_VERSION: i64 = 1;
 
 impl SqliteStore {
     pub(super) async fn initialize_schema(&self) -> Result<()> {
         let mut transaction = self.pool.begin().await?;
-        Self::create_schema(&mut transaction).await?;
+        Self::migrate_schema(&mut transaction).await?;
         transaction.commit().await?;
         Ok(())
     }
 
-    async fn create_schema(transaction: &mut Transaction<'_, Sqlite>) -> Result<()> {
+    async fn migrate_schema(transaction: &mut Transaction<'_, Sqlite>) -> Result<()> {
+        let schema_version = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+            .fetch_one(&mut **transaction)
+            .await?;
+
+        if schema_version > CURRENT_SCHEMA_VERSION {
+            return Err(StorageError::UnsupportedSchemaVersion {
+                found: schema_version,
+                supported: CURRENT_SCHEMA_VERSION,
+            });
+        }
+
+        if schema_version < 1 {
+            Self::migrate_to_v1(transaction).await?;
+            sqlx::query("PRAGMA user_version = 1")
+                .execute(&mut **transaction)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn migrate_to_v1(transaction: &mut Transaction<'_, Sqlite>) -> Result<()> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS recent_repositories (
                 owner TEXT NOT NULL,

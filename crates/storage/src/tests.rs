@@ -10,6 +10,92 @@ use harbor_domain::{
 };
 
 #[test]
+fn initializes_schema_at_current_version() {
+    smol::block_on(async {
+        let database_path = test_database_path("schema-version");
+        let store = SqliteStore::connect(StorageConfig {
+            database_path: database_path.clone(),
+        })
+        .await
+        .expect("connect sqlite store");
+
+        assert_eq!(schema_version(&store).await, 1);
+
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
+fn upgrades_unversioned_database_without_losing_data() {
+    smol::block_on(async {
+        let database_path = test_database_path("unversioned-schema");
+        let config = StorageConfig {
+            database_path: database_path.clone(),
+        };
+        let store = SqliteStore::connect(config.clone())
+            .await
+            .expect("connect sqlite store");
+        let repository = RepoId::new("acme", "app");
+        store
+            .set_repository_pinned(&repository, true)
+            .await
+            .expect("pin repository");
+        sqlx::query("PRAGMA user_version = 0")
+            .execute(&store.pool)
+            .await
+            .expect("mark database as unversioned");
+        store.pool.close().await;
+
+        let migrated_store = SqliteStore::connect(config)
+            .await
+            .expect("migrate sqlite store");
+        let repositories = migrated_store
+            .pinned_repositories()
+            .await
+            .expect("load repositories after migration");
+
+        assert_eq!(schema_version(&migrated_store).await, 1);
+        assert_eq!(repositories.len(), 1);
+        assert_eq!(repositories[0].id, repository);
+
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
+fn rejects_database_from_newer_harbor_version() {
+    smol::block_on(async {
+        let database_path = test_database_path("newer-schema");
+        let config = StorageConfig {
+            database_path: database_path.clone(),
+        };
+        let store = SqliteStore::connect(config.clone())
+            .await
+            .expect("connect sqlite store");
+        sqlx::query("PRAGMA user_version = 2")
+            .execute(&store.pool)
+            .await
+            .expect("set newer schema version");
+        store.pool.close().await;
+
+        let error = SqliteStore::connect(config)
+            .await
+            .err()
+            .expect("newer schema should be rejected");
+
+        assert!(matches!(
+            error,
+            StorageError::UnsupportedSchemaVersion {
+                found: 2,
+                supported: 1
+            }
+        ));
+
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
 fn persists_only_pinned_repositories_for_the_switcher() {
     smol::block_on(async {
         let database_path = test_database_path("syncs-repositories");
@@ -404,6 +490,13 @@ fn cleanup_database(database_path: PathBuf) {
     if let Err(error) = std::fs::remove_dir_all(directory) {
         eprintln!("failed to clean up test database: {error}");
     }
+}
+
+async fn schema_version(store: &SqliteStore) -> i64 {
+    sqlx::query_scalar("PRAGMA user_version")
+        .fetch_one(&store.pool)
+        .await
+        .expect("load schema version")
 }
 
 fn pull_request(number: u64) -> PullRequest {

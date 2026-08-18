@@ -25,6 +25,8 @@ pub type Result<T> = std::result::Result<T, StorageError>;
 pub enum StorageError {
     #[error("storage has not been initialized")]
     NotInitialized,
+    #[error("database schema version {found} is newer than the supported version {supported}")]
+    UnsupportedSchemaVersion { found: i64, supported: i64 },
     #[error("storage operation failed: {0}")]
     Operation(String),
 }

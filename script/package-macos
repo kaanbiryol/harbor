@@ -16,6 +16,7 @@ cd "$repo_root"
 
 package_id="$(cargo pkgid -p harbor-app)"
 version="${package_id##*@}"
+rust_target="aarch64-apple-darwin"
 target_dir="$repo_root/target/macos"
 app_dir="$target_dir/Harbor.app"
 contents_dir="$app_dir/Contents"
@@ -23,19 +24,24 @@ macos_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
 licenses_dir="$resources_dir/licenses"
 executable_path="$macos_dir/Harbor"
-zip_path="$target_dir/Harbor-${version}-macos.zip"
+zip_path="$target_dir/Harbor-${version}-macos-arm64.zip"
 
-cargo build -p harbor-app --bin harbor --release --locked
+cargo build -p harbor-app --bin harbor --release --locked --target "$rust_target"
 
 rm -rf "$app_dir" "$zip_path"
 mkdir -p "$macos_dir" "$resources_dir" "$licenses_dir/ibm-plex-sans" "$licenses_dir/lilex"
-cp "$repo_root/target/release/harbor" "$executable_path"
+cp "$repo_root/target/$rust_target/release/harbor" "$executable_path"
 cp "$repo_root/crates/app/assets/harbor.icns" "$resources_dir/harbor.icns"
 cp "$repo_root/LICENSE" "$resources_dir/LICENSE"
 cp "$repo_root/THIRD_PARTY_NOTICES.md" "$resources_dir/THIRD_PARTY_NOTICES.md"
 cp "$repo_root/crates/ui/assets/fonts/ibm-plex-sans/license.txt" "$licenses_dir/ibm-plex-sans/license.txt"
 cp "$repo_root/crates/ui/assets/fonts/lilex/license.txt" "$licenses_dir/lilex/license.txt"
 chmod 755 "$executable_path"
+
+if [[ "$(lipo -archs "$executable_path")" != "arm64" ]]; then
+    echo "Packaged executable is not Apple silicon arm64." >&2
+    exit 1
+fi
 
 cat >"$contents_dir/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

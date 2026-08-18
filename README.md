@@ -18,7 +18,7 @@ build, but they are not tested or supported yet.
 
 ## Requirements
 
-- macOS
+- An Apple silicon Mac
 - Rust `1.90` or newer
 - A working Xcode toolchain for GPUI
 - GitHub CLI, if you want to authenticate through `gh`
@@ -54,10 +54,11 @@ script/package-macos
 open target/macos/Harbor.app
 ```
 
-The packaging script also creates `target/macos/Harbor-0.1.0-macos.zip`, which
-is the artifact that should be attached to a GitHub release once app signing and
-release validation are ready. Public macOS app releases should be signed and
-notarized before publishing.
+The packaging script also creates
+`target/macos/Harbor-0.1.0-macos-arm64.zip`. Harbor currently supports Apple
+silicon Macs only. The ZIP is the artifact that should be attached to a GitHub
+release once app signing and release validation are ready. Public macOS app
+releases should be signed and notarized before publishing.
 
 ## Run From Source
 
