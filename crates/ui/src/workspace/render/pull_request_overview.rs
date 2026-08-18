@@ -1,7 +1,7 @@
 use gpui::{AnyElement, Context, IntoElement, div, list, prelude::*, px};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
-    button::{Button, ButtonCustomVariant, ButtonVariants},
+    button::{Button, ButtonVariants},
     input::Input,
     skeleton::Skeleton,
     spinner::Spinner,

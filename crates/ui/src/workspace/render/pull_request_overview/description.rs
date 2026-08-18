@@ -6,7 +6,6 @@ use crate::panels::{overview_markdown_blocks, render_review_markdown_state};
 use crate::workspace::{
     PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt, state::OverviewMarkdownState,
 };
-use gpui::rgb;
 
 impl AppView {
     pub(super) fn prepare_pull_request_description(
@@ -150,11 +149,6 @@ impl AppView {
 
     pub(super) fn render_description_header(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let editing = self.pull_request_description_editing;
-        let edit_button_style = ButtonCustomVariant::new(cx)
-            .color(color::row_selected_subtle().into())
-            .foreground(rgb(0xffffff).into())
-            .hover(color::row_selected().into())
-            .active(color::row_selected_active().into());
 
         div()
             .debug_selector(|| "pull-request-overview-description".to_string())
@@ -186,10 +180,7 @@ impl AppView {
                     Button::new("edit-pull-request-description")
                         .icon(Octicon::Pencil)
                         .xsmall()
-                        .custom(edit_button_style)
-                        .rounded(px(999.))
-                        .border_1()
-                        .border_color(color::border_strong())
+                        .ghost()
                         .tooltip("Edit description if your GitHub permissions allow it")
                         .on_click(cx.listener(|view, _, window, cx| {
                             view.start_pull_request_description_edit(window, cx);
