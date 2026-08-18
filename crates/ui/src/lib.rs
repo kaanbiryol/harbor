@@ -2,6 +2,7 @@ mod actions;
 mod date_time;
 mod diff;
 mod diff_reviews;
+mod dropdown;
 mod file_icons;
 mod github;
 mod icons;

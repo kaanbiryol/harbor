@@ -10,6 +10,7 @@ use harbor_domain::{
 
 use crate::{
     actions::PullRequestMetadataField,
+    dropdown::dropdown_menu_surface,
     github::{avatar_initial, avatar_url},
     icons::Octicon,
     panels::{
@@ -220,15 +221,10 @@ impl AppView {
                     ))
                     .content(move |_, _window, popover_cx| {
                         let popover = popover_cx.entity().clone();
-                        let mut content = div()
+                        let mut content = dropdown_menu_surface(popover_cx, 264.0)
                             .debug_selector(move || format!("add-{field_name}-menu"))
-                            .w(px(264.0))
                             .max_h(px(360.0))
                             .overflow_hidden()
-                            .border_1()
-                            .border_color(color::border_strong())
-                            .bg(color::elevated_background())
-                            .shadow_lg()
                             .p_1()
                             .flex()
                             .flex_col()

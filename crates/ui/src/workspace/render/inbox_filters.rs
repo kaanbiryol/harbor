@@ -6,6 +6,9 @@ use gpui_component::{
 };
 
 use crate::{
+    dropdown::{
+        dropdown_menu_item, dropdown_menu_section, dropdown_menu_separator, dropdown_menu_surface,
+    },
     icons::Octicon,
     panels::ImmediateTooltip,
     visual::color,
@@ -13,8 +16,6 @@ use crate::{
         AppView, PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections,
     },
 };
-
-use super::{changed_file_filter_rows::render_file_filter_row, render_switcher_section_label};
 
 impl AppView {
     pub(super) fn render_pull_request_filters(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -67,21 +68,16 @@ impl AppView {
 
                 ImmediateTooltip::new("filter-pull-request-inbox-tooltip", tooltip, button)
             })
-            .content(move |_, window, _popover_cx| {
+            .content(move |_, window, popover_cx| {
                 let menu_max_height = (window.viewport_size().height - px(16.))
                     .max(px(160.))
                     .min(px(520.));
                 let reset_view = view.clone();
-                let mut menu = div()
+                let mut menu = dropdown_menu_surface(popover_cx, 320.0)
                     .id("pull-request-filter-menu")
-                    .w(px(320.))
                     .max_h(menu_max_height)
                     .overflow_y_scroll()
-                    .border_1()
-                    .border_color(color::border_strong())
-                    .bg(color::elevated_background())
                     .p_1()
-                    .shadow_lg()
                     .when(has_active_filter, |menu| {
                         menu.child(
                             div().px_2().py_1().flex().justify_end().text_xs().child(
@@ -212,14 +208,11 @@ fn push_pull_request_filter_section(
         return;
     }
 
-    let label = render_switcher_section_label(facet.section_label());
+    let label = dropdown_menu_section(facet.section_label());
     if separated {
         elements.push(
             div()
-                .mt_1()
-                .border_t_1()
-                .border_color(color::border())
-                .pt_1()
+                .child(dropdown_menu_separator())
                 .child(label)
                 .into_any_element(),
         );
@@ -232,10 +225,11 @@ fn push_pull_request_filter_section(
         let value = option.value.clone();
 
         elements.push(
-            render_file_filter_row(
+            dropdown_menu_item(
                 format!("pull-request-filter-{}-{}", facet.key(), option.value),
                 option.value,
                 Some(option.count),
+                option.selected,
                 option.selected,
                 false,
             )

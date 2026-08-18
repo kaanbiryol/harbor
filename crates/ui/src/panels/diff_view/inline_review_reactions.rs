@@ -7,6 +7,7 @@ use gpui_component::{
 use harbor_domain::{ReactionContent, ReviewComment};
 
 use crate::{
+    dropdown::dropdown_menu_surface,
     icons::Octicon,
     panels::ImmediateTooltip,
     visual::color,
@@ -151,11 +152,7 @@ fn render_add_reaction_popover(
                     )
                 };
                 let Some(comment) = comment else {
-                    return div()
-                        .w(px(256.0))
-                        .border_1()
-                        .border_color(color::border_strong())
-                        .bg(color::elevated_background())
+                    return dropdown_menu_surface(popover_cx, 256.0)
                         .p_2()
                         .text_xs()
                         .text_color(color::text_muted())
@@ -163,13 +160,8 @@ fn render_add_reaction_popover(
                         .into_any_element();
                 };
 
-                div()
-                    .w(px(256.0))
-                    .border_1()
-                    .border_color(color::border_strong())
-                    .bg(color::elevated_background())
+                dropdown_menu_surface(popover_cx, 256.0)
                     .p_2()
-                    .shadow_lg()
                     .child(div().grid().grid_cols(4).gap_1().children(
                         ReactionContent::ALL.into_iter().map(|content| {
                             render_review_reaction_picker_button(

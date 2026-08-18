@@ -5,11 +5,15 @@ use gpui_component::{
     popover::Popover,
 };
 
-use crate::{icons::Octicon, panels::ImmediateTooltip, visual::color, workspace::AppView};
-
-use super::{
-    changed_file_filter_rows::{file_filter_list_height, render_file_filter_row},
-    render_switcher_section_label,
+use crate::{
+    dropdown::{
+        dropdown_menu_item, dropdown_menu_list_height, dropdown_menu_section,
+        dropdown_menu_separator, dropdown_menu_surface,
+    },
+    icons::Octicon,
+    panels::ImmediateTooltip,
+    visual::color,
+    workspace::AppView,
 };
 
 impl AppView {
@@ -62,21 +66,16 @@ impl AppView {
                     button,
                 )
             })
-            .content(move |_, window, _popover_cx| {
+            .content(move |_, window, popover_cx| {
                 let reset_view = view.clone();
                 let menu_max_height = (window.viewport_size().height - px(16.))
                     .max(px(160.))
                     .min(px(520.));
-                let mut menu = div()
+                let mut menu = dropdown_menu_surface(popover_cx, 320.0)
                     .id("changed-file-filters-menu")
-                    .w(px(320.))
                     .max_h(menu_max_height)
                     .overflow_y_scroll()
-                    .border_1()
-                    .border_color(color::border_strong())
-                    .bg(color::elevated_background())
                     .p_1()
-                    .shadow_lg()
                     .when(has_active_filter, |menu| {
                         menu.child(
                             div().px_2().py_1().flex().justify_end().text_xs().child(
@@ -101,14 +100,15 @@ impl AppView {
                             ),
                         )
                     })
-                    .child(render_switcher_section_label("Ownership"))
+                    .child(dropdown_menu_section("Ownership"))
                     .child({
                         let view = view.clone();
-                        render_file_filter_row(
+                        dropdown_menu_item(
                             "all-changed-files-filter-menu",
-                            "All changed files".to_string(),
+                            "All changed files",
                             Some(total_count),
                             !owned_filter_active,
+                            false,
                             false,
                         )
                         .on_click(move |_, _, cx| {
@@ -118,10 +118,11 @@ impl AppView {
                         })
                     })
                     .child({
-                        let row = render_file_filter_row(
+                        let row = dropdown_menu_item(
                             "owned-by-current-user-filter-menu",
-                            "Files owned by me".to_string(),
+                            "Files owned by me",
                             Some(owned_file_count),
+                            owned_filter_active,
                             owned_filter_active,
                             !has_owned_filter_data,
                         );
@@ -139,20 +140,18 @@ impl AppView {
                     })
                     .child(
                         div()
-                            .mt_1()
-                            .border_t_1()
-                            .border_color(color::border())
-                            .pt_1()
-                            .child(render_switcher_section_label("File types")),
+                            .child(dropdown_menu_separator())
+                            .child(dropdown_menu_section("File types")),
                     )
                     .child({
                         let view = view.clone();
                         let all_active = included_type_count == type_filters.len();
-                        render_file_filter_row(
+                        dropdown_menu_item(
                             "include-all-file-types-menu",
-                            "All file types".to_string(),
+                            "All file types",
                             Some(total_count),
                             all_active,
+                            false,
                             false,
                         )
                         .on_click(move |_, _, cx| {
@@ -164,7 +163,7 @@ impl AppView {
 
                 if !type_filters.is_empty() {
                     let row_count = type_filters.len();
-                    let list_height = file_filter_list_height(row_count);
+                    let list_height = dropdown_menu_list_height(row_count);
                     let type_filters = type_filters.clone();
                     let view = view.clone();
 
@@ -183,11 +182,12 @@ impl AppView {
                                     let file_type = filter.key.clone();
 
                                     rows.push(
-                                        render_file_filter_row(
+                                        dropdown_menu_item(
                                             format!("file-type-filter-{file_type}"),
                                             filter.label,
                                             Some(filter.file_count),
                                             filter.included,
+                                            false,
                                             false,
                                         )
                                         .on_click(

@@ -16,8 +16,6 @@ mod auth_gate;
 mod auth_gate_signed_out;
 #[path = "render/auth_preview.rs"]
 mod auth_preview;
-#[path = "render/changed_file_filter_rows.rs"]
-mod changed_file_filter_rows;
 #[path = "render/changed_file_filters.rs"]
 mod changed_file_filters;
 #[path = "render/changed_files.rs"]
@@ -67,15 +65,6 @@ impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
-}
-
-pub(super) fn render_switcher_section_label(label: &'static str) -> impl IntoElement {
-    div()
-        .px_2()
-        .py_1()
-        .text_xs()
-        .text_color(color::text_muted())
-        .child(label)
 }
 
 impl Render for AppView {

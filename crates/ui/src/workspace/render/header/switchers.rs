@@ -9,17 +9,15 @@ use gpui_component::{
 };
 
 use crate::{
+    dropdown::{dropdown_menu_section, dropdown_menu_surface},
     visual::color,
     workspace::{AppView, RepositorySwitcherChoice, normalized_search_query},
 };
 
-use super::{
-    super::render_switcher_section_label,
-    repository_switcher_rows::{
-        handle_repository_switcher_key, render_switcher_empty_row, render_switcher_error_row,
-        render_switcher_loading_row, render_switcher_notice_row, render_switcher_repository_row,
-        render_switcher_typed_repository_row, repository_switcher_list_height,
-    },
+use super::repository_switcher_rows::{
+    handle_repository_switcher_key, render_switcher_empty_row, render_switcher_error_row,
+    render_switcher_loading_row, render_switcher_notice_row, render_switcher_repository_row,
+    render_switcher_typed_repository_row, repository_switcher_list_height,
 };
 
 impl AppView {
@@ -109,7 +107,7 @@ impl AppView {
             .content(move |_, _window, popover_cx| {
                 let view = view.clone();
                 let popover = popover_cx.entity().clone();
-                let mut menu = div()
+                let mut menu = dropdown_menu_surface(popover_cx, 460.0)
                     .id("repository-switcher-menu")
                     .on_key_down({
                         let view = view.clone();
@@ -117,15 +115,10 @@ impl AppView {
                             handle_repository_switcher_key(event, &view, cx);
                         }
                     })
-                    .w(px(460.))
                     .max_h(px(520.))
                     .overflow_hidden()
-                    .border_1()
-                    .border_color(color::border_strong())
-                    .bg(color::elevated_background())
                     .p_2()
-                    .shadow_lg()
-                    .child(render_switcher_section_label("search repositories"))
+                    .child(dropdown_menu_section("search repositories"))
                     .child(
                         div()
                             .px_1()
@@ -226,16 +219,13 @@ impl AppView {
 
                     if !pinned_choices.is_empty() {
                         menu = menu
-                            .child(render_switcher_section_label("pinned"))
+                            .child(dropdown_menu_section("pinned"))
                             .child(render_choices("pinned-repository-list", pinned_choices));
                     }
                     if !repository_choices.is_empty() {
-                        menu = menu
-                            .child(render_switcher_section_label("repositories"))
-                            .child(render_choices(
-                                "repository-switcher-list",
-                                repository_choices,
-                            ));
+                        menu = menu.child(dropdown_menu_section("repositories")).child(
+                            render_choices("repository-switcher-list", repository_choices),
+                        );
                     }
                 }
 

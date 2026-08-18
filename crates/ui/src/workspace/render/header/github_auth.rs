@@ -1,4 +1,4 @@
-use gpui::{Anchor, AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
+use gpui::{Anchor, AnyElement, App, Context, Entity, IntoElement, div, prelude::*, px};
 use gpui_component::{
     Icon, Sizable, StyledExt,
     avatar::Avatar,
@@ -8,6 +8,7 @@ use gpui_component::{
 
 use crate::{
     actions::SignOutOfGitHub,
+    dropdown::dropdown_menu_surface,
     github::avatar_url,
     icons::Octicon,
     panels::ImmediateTooltip,
@@ -38,8 +39,8 @@ impl AppView {
                 }
             })
             .trigger(trigger)
-            .content(move |_, _window, _cx| {
-                render_github_auth_popover(status.clone(), view.clone())
+            .content(move |_, _window, popover_cx| {
+                render_github_auth_popover(status.clone(), view.clone(), popover_cx)
             })
     }
 }
@@ -69,47 +70,42 @@ fn render_github_auth_trigger(status: &GitHubAuthStatus) -> ImmediateTooltip<But
     ImmediateTooltip::new("github-auth-tooltip", tooltip, button)
 }
 
-fn render_github_auth_popover(status: GitHubAuthStatus, view: Entity<AppView>) -> AnyElement {
+fn render_github_auth_popover(
+    status: GitHubAuthStatus,
+    view: Entity<AppView>,
+    cx: &App,
+) -> AnyElement {
     match status {
         GitHubAuthStatus::SigningIn {
             user_code,
             verification_uri,
-        } => {
-            render_github_device_code_popover(user_code, verification_uri, view).into_any_element()
-        }
+        } => render_github_device_code_popover(user_code, verification_uri, view, cx)
+            .into_any_element(),
         GitHubAuthStatus::SignedIn { login, source } => {
-            render_github_account_popover(login, source, view).into_any_element()
+            render_github_account_popover(login, source, view, cx).into_any_element()
         }
         GitHubAuthStatus::SignedOut => {
-            render_github_message_popover("Choose a GitHub sign-in method to continue.", false)
+            render_github_message_popover("Choose a GitHub sign-in method to continue.", false, cx)
                 .into_any_element()
         }
         GitHubAuthStatus::MissingClientId => render_github_message_popover(
             "Set HARBOR_GITHUB_OAUTH_CLIENT_ID to sign in with GitHub.",
             true,
+            cx,
         )
         .into_any_element(),
         GitHubAuthStatus::Failed(error) => {
-            render_github_message_popover(error, true).into_any_element()
+            render_github_message_popover(error, true, cx).into_any_element()
         }
         GitHubAuthStatus::Loading => div().into_any_element(),
     }
-}
-
-fn render_github_popover_frame(width: f32) -> gpui::Div {
-    div()
-        .w(px(width))
-        .border_1()
-        .border_color(color::border())
-        .bg(color::elevated_background())
-        .rounded_xs()
-        .shadow_lg()
 }
 
 fn render_github_device_code_popover(
     user_code: String,
     verification_uri: String,
     view: Entity<AppView>,
+    cx: &App,
 ) -> impl IntoElement {
     let mut content = div().p_3().flex().flex_col().gap_2();
 
@@ -168,11 +164,15 @@ fn render_github_device_code_popover(
                 ),
         );
 
-    render_github_popover_frame(300.0).child(content)
+    dropdown_menu_surface(cx, 300.0).child(content)
 }
 
-fn render_github_message_popover(message: impl Into<String>, is_error: bool) -> impl IntoElement {
-    render_github_popover_frame(300.0).p_3().child(
+fn render_github_message_popover(
+    message: impl Into<String>,
+    is_error: bool,
+    cx: &App,
+) -> impl IntoElement {
+    dropdown_menu_surface(cx, 300.0).p_3().child(
         div()
             .text_sm()
             .text_color(if is_error {
@@ -188,12 +188,13 @@ fn render_github_account_popover(
     login: Option<String>,
     source: GitHubAuthSource,
     view: Entity<AppView>,
+    cx: &App,
 ) -> impl IntoElement {
     let account_label = login
         .clone()
         .unwrap_or_else(|| "GitHub account".to_string());
 
-    render_github_popover_frame(200.0)
+    dropdown_menu_surface(cx, 200.0)
         .p_1()
         .flex()
         .flex_col()

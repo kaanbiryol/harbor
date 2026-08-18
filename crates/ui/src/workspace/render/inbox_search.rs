@@ -9,18 +9,16 @@ use gpui_component::{
 };
 
 use crate::{
+    dropdown::{dropdown_menu_section, dropdown_menu_surface},
     icons::Octicon,
     panels::ImmediateTooltip,
     visual::color,
     workspace::{AppView, normalized_search_query},
 };
 
-use super::{
-    inbox_search_rows::{
-        pull_request_inbox_search_list_height, render_pull_request_inbox_search_empty_row,
-        render_pull_request_inbox_search_row,
-    },
-    render_switcher_section_label,
+use super::inbox_search_rows::{
+    pull_request_inbox_search_list_height, render_pull_request_inbox_search_empty_row,
+    render_pull_request_inbox_search_row,
 };
 
 impl AppView {
@@ -152,66 +150,63 @@ impl AppView {
                     let popover = popover.clone();
                     let selected_pull_request = selected_pull_request.clone();
 
-                    results = results
-                        .child(render_switcher_section_label("results"))
-                        .child(
-                            uniform_list(
-                                "pull-request-inbox-search-list",
-                                row_count,
-                                move |range, _window, _cx| {
-                                    let mut rows = Vec::with_capacity(range.len());
+                    results = results.child(dropdown_menu_section("results")).child(
+                        uniform_list(
+                            "pull-request-inbox-search-list",
+                            row_count,
+                            move |range, _window, _cx| {
+                                let mut rows = Vec::with_capacity(range.len());
 
-                                    for row_index in range {
-                                        let Some(result) = pull_requests.get(row_index).cloned()
-                                        else {
-                                            continue;
-                                        };
-                                        let pull_request = &result.pull_request;
-                                        let current = selected_pull_request.as_ref().is_some_and(
-                                            |(repository, number)| {
-                                                repository == &pull_request.repo
-                                                    && *number == pull_request.number
+                                for row_index in range {
+                                    let Some(result) = pull_requests.get(row_index).cloned() else {
+                                        continue;
+                                    };
+                                    let pull_request = &result.pull_request;
+                                    let current = selected_pull_request.as_ref().is_some_and(
+                                        |(repository, number)| {
+                                            repository == &pull_request.repo
+                                                && *number == pull_request.number
+                                        },
+                                    );
+                                    let highlighted = row_index == pull_request_selection;
+                                    let number = pull_request.number;
+                                    let title = pull_request.title.clone();
+                                    let author = pull_request.author.clone();
+                                    let view = result_list_view.clone();
+                                    let popover = popover.clone();
+                                    let result = result.clone();
+
+                                    rows.push(
+                                        render_pull_request_inbox_search_row(
+                                            number,
+                                            title,
+                                            author,
+                                            current,
+                                            highlighted,
+                                        )
+                                        .on_click(
+                                            move |_, window, cx| {
+                                                let result = result.clone();
+                                                view.update(cx, move |view, cx| {
+                                                    view.select_pull_request_switcher_result(
+                                                        result, cx,
+                                                    );
+                                                });
+                                                popover.update(cx, |popover, cx| {
+                                                    popover.dismiss(window, cx);
+                                                });
                                             },
-                                        );
-                                        let highlighted = row_index == pull_request_selection;
-                                        let number = pull_request.number;
-                                        let title = pull_request.title.clone();
-                                        let author = pull_request.author.clone();
-                                        let view = result_list_view.clone();
-                                        let popover = popover.clone();
-                                        let result = result.clone();
+                                        ),
+                                    );
+                                }
 
-                                        rows.push(
-                                            render_pull_request_inbox_search_row(
-                                                number,
-                                                title,
-                                                author,
-                                                current,
-                                                highlighted,
-                                            )
-                                            .on_click(
-                                                move |_, window, cx| {
-                                                    let result = result.clone();
-                                                    view.update(cx, move |view, cx| {
-                                                        view.select_pull_request_switcher_result(
-                                                            result, cx,
-                                                        );
-                                                    });
-                                                    popover.update(cx, |popover, cx| {
-                                                        popover.dismiss(window, cx);
-                                                    });
-                                                },
-                                            ),
-                                        );
-                                    }
-
-                                    rows
-                                },
-                            )
-                            .h(px(list_height))
-                            .w_full()
-                            .min_h_0(),
-                        );
+                                rows
+                            },
+                        )
+                        .h(px(list_height))
+                        .w_full()
+                        .min_h_0(),
+                    );
 
                     let result_summary = if let Some(error) = search_load_more_error.as_ref() {
                         format!("could not load more: {error}")
@@ -260,7 +255,7 @@ impl AppView {
                     );
                 }
 
-                div()
+                dropdown_menu_surface(popover_cx, 360.0)
                     .id("pull-request-inbox-search-menu")
                     .on_key_down({
                         let view = view.clone();
@@ -268,15 +263,10 @@ impl AppView {
                             handle_pull_request_inbox_search_key(event, &view, cx);
                         }
                     })
-                    .w(px(360.))
                     .max_h(px(480.))
                     .flex()
                     .flex_col()
                     .overflow_hidden()
-                    .border_1()
-                    .border_color(color::border_strong())
-                    .bg(color::elevated_background())
-                    .shadow_lg()
                     .child(
                         div()
                             .p_2()
