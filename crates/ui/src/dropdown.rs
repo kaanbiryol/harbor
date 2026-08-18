@@ -7,7 +7,11 @@ const DROPDOWN_MENU_ROW_HEIGHT: f32 = 30.0;
 const DROPDOWN_MENU_MAX_VISIBLE_ROWS: usize = 9;
 
 pub(crate) fn dropdown_menu_surface(cx: &App, width: f32) -> Div {
-    div().w(px(width)).popover_style(cx)
+    div()
+        .w(px(width))
+        .popover_style(cx)
+        .bg(color::elevated_background())
+        .border_color(color::border_strong())
 }
 
 pub(crate) fn dropdown_menu_section(label: impl Into<SharedString>) -> Div {
