@@ -196,7 +196,11 @@ pub(crate) fn render_pull_request_row(
         })
         .when(selected, |element| element.bg(color::row_selected_active()))
         .hover(move |style| {
-            let style = style.bg(color::row_hover());
+            let style = if selected {
+                style
+            } else {
+                style.bg(color::row_hover())
+            };
             if is_draft {
                 style.opacity(opacity::DEEMPHASIZED_ITEM_HOVER)
             } else {
@@ -206,13 +210,7 @@ pub(crate) fn render_pull_request_row(
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_pull_request(index, cx);
         }))
-        .child(
-            div()
-                .h_full()
-                .w(px(if selected { 3.0 } else { 2.0 }))
-                .flex_none()
-                .bg(rail_color),
-        )
+        .child(div().h_full().w(px(2.0)).flex_none().bg(rail_color))
         .child(
             div()
                 .flex_1()

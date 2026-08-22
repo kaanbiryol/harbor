@@ -1,12 +1,14 @@
-use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, div, prelude::*};
 use gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    tab::{Tab, TabBar},
 };
 
 use crate::{
     icons::Octicon,
-    visual::color,
+    panels::render_status_pill,
+    visual::{Tone, color},
     workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode},
 };
 
@@ -33,6 +35,19 @@ impl AppView {
         current_mode: PullRequestInboxMode,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let active_index = PullRequestInboxMode::ALL
+            .iter()
+            .position(|mode| *mode == current_mode)
+            .unwrap_or_default();
+        let tabs = PullRequestInboxMode::ALL.into_iter().map(|mode| {
+            Tab::new()
+                .label(mode.label())
+                .when_some(self.pull_request_inbox_mode_count(mode), |tab, count| {
+                    tab.suffix(render_status_pill(count.to_string(), Tone::Neutral))
+                })
+        });
+        let view = cx.entity().clone();
+
         div()
             .px_3()
             .pt_3()
@@ -77,78 +92,26 @@ impl AppView {
                             ),
                     ),
             )
-            .child(div().pt_2().flex().items_center().gap_1().children(
-                PullRequestInboxMode::ALL.into_iter().map(|mode| {
-                    let active = mode == current_mode;
-                    let count = self.pull_request_inbox_mode_count(mode);
-
-                    render_pull_request_inbox_mode_tab(mode, active, count, cx)
-                }),
-            ))
+            .child(
+                div().pt_2().child(
+                    TabBar::new("pull-request-inbox-mode-tabs")
+                        .w_full()
+                        .underline()
+                        .xsmall()
+                        .selected_index(active_index)
+                        .children(tabs)
+                        .on_click(move |index, _, cx| {
+                            let Some(mode) = PullRequestInboxMode::ALL.get(*index).copied() else {
+                                return;
+                            };
+                            view.update(cx, |view, cx| {
+                                view.select_pull_request_inbox_mode(mode, cx);
+                            });
+                        }),
+                ),
+            )
             .when(self.has_active_pull_request_filters(), |element| {
                 element.child(self.render_pull_request_filter_chips(cx))
             })
     }
-}
-
-fn render_pull_request_inbox_mode_tab(
-    mode: PullRequestInboxMode,
-    active: bool,
-    count: Option<usize>,
-    cx: &mut Context<AppView>,
-) -> AnyElement {
-    div()
-        .id(format!("pull-request-inbox-mode-{}", mode.key()))
-        .h(px(28.))
-        .min_w_0()
-        .flex()
-        .items_center()
-        .gap_1()
-        .rounded_xs()
-        .px_2()
-        .text_xs()
-        .font_medium()
-        .cursor_pointer()
-        .text_color(if active {
-            color::text_primary()
-        } else {
-            color::text_secondary()
-        })
-        .when(active, |element| {
-            element
-                .border_1()
-                .border_color(color::border_strong())
-                .bg(color::row_selected())
-        })
-        .when(!active, |element| {
-            element.hover(|style| style.bg(color::row_hover()))
-        })
-        .on_click(cx.listener(move |view, _, _, cx| {
-            view.select_pull_request_inbox_mode(mode, cx);
-        }))
-        .child(div().truncate().child(mode.label()))
-        .when_some(count, |element, count| {
-            element.child(
-                div()
-                    .min_w(px(16.))
-                    .h(px(18.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_xs()
-                    .px_1()
-                    .text_color(if active {
-                        color::text_secondary()
-                    } else {
-                        color::text_muted()
-                    })
-                    .bg(if active {
-                        color::row_selected_subtle()
-                    } else {
-                        color::elevated_background()
-                    })
-                    .child(count.to_string()),
-            )
-        })
-        .into_any_element()
 }

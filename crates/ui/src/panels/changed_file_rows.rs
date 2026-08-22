@@ -1,13 +1,11 @@
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use gpui_component::{
-    Icon, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
-};
+use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::DiffFile;
 
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
+    panels::{render_diff_stats, render_file_review_button},
     visual::{color, layout, leading_truncated_path},
     workspace::{AppView, ChangedFileFolderRow, ChangedFileRow},
 };
@@ -71,21 +69,7 @@ pub(crate) fn render_changed_file_row(
     cx: &mut Context<AppView>,
 ) -> AnyElement {
     let index = row.file_index;
-    let review_icon = if reviewed {
-        Icon::new(Octicon::CheckCircle).text_color(color::success())
-    } else {
-        Icon::new(Octicon::Eye).text_color(color::text_muted())
-    };
-    let review_button = Button::new(format!("file-reviewed-{index}"))
-        .icon(review_icon)
-        .small()
-        .compact()
-        .ghost()
-        .tooltip(if reviewed {
-            "Mark as unreviewed"
-        } else {
-            "Mark as reviewed"
-        });
+    let review_button = render_file_review_button(format!("file-reviewed-{index}"), reviewed);
 
     div()
         .id(("file-row", index))
@@ -98,13 +82,14 @@ pub(crate) fn render_changed_file_row(
         .pl(file_tree_padding(row.depth))
         .pr_2()
         .gap_2()
-        .when(selected, |element| {
-            element
-                .border_l_1()
-                .border_color(color::accent())
-                .bg(color::row_selected_subtle())
+        .when(selected, |element| element.bg(color::row_selected_active()))
+        .hover(move |style| {
+            if selected {
+                style
+            } else {
+                style.bg(color::row_hover())
+            }
         })
-        .hover(|style| style.bg(color::row_hover()))
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_file(index, cx);
         }))
@@ -130,43 +115,14 @@ pub(crate) fn render_changed_file_row(
                         .child(row.name.clone()),
                 ),
         )
-        .child(
-            div()
-                .flex_none()
-                .flex()
-                .items_center()
-                .gap_1()
-                .text_xs()
-                .child(
-                    div()
-                        .text_color(diff_stat_color(file.additions, color::success()))
-                        .child(format!("+{}", file.additions)),
-                )
-                .child(
-                    div()
-                        .text_color(diff_stat_color(file.deletions, color::danger()))
-                        .child(format!("-{}", file.deletions)),
-                ),
-        )
-        .child(
-            review_button
-                .on_click(cx.listener(move |view, _, _, cx| {
-                    view.toggle_changed_file_reviewed(index, cx);
-                }))
-                .when(!reviewed, |element| element.opacity(0.32)),
-        )
+        .child(render_diff_stats(file.additions, file.deletions))
+        .child(review_button.on_click(cx.listener(move |view, _, _, cx| {
+            view.toggle_changed_file_reviewed(index, cx);
+        })))
         .into_any_element()
 }
 
 fn file_tree_padding(depth: usize) -> gpui::Pixels {
     px(layout::CHANGED_FILE_TREE_BASE_INDENT
         + depth as f32 * layout::CHANGED_FILE_TREE_DEPTH_INDENT)
-}
-
-fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {
-    if count == 0 {
-        color::text_muted()
-    } else {
-        active_color
-    }
 }

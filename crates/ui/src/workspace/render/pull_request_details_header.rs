@@ -114,7 +114,7 @@ impl AppView {
                     });
 
                 if review_action_disabled {
-                    dropdown.outline().opacity(0.58)
+                    dropdown.outline()
                 } else {
                     dropdown.success().outline()
                 }
@@ -157,7 +157,7 @@ impl AppView {
                             );
                         }));
                     if merge_action_disabled {
-                        button.outline().opacity(0.58).into_any_element()
+                        button.outline().into_any_element()
                     } else {
                         button.success().into_any_element()
                     }
@@ -206,7 +206,7 @@ impl AppView {
                         });
 
                     if merge_action_disabled {
-                        dropdown.outline().opacity(0.58).into_any_element()
+                        dropdown.outline().into_any_element()
                     } else {
                         dropdown.success().into_any_element()
                     }

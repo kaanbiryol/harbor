@@ -1,28 +1,15 @@
-use gpui::{
-    AnyElement, Context, IntoElement, Rgba, SharedString, div, prelude::*, px, uniform_list,
-};
+use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px, uniform_list};
 use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 
 use crate::{
     icons::Octicon,
     panels::{
         render_changed_file_row, render_changed_folder_row, render_empty_state,
-        render_loading_skeleton_rows, render_status_pill,
+        render_error_panel_card, render_loading_skeleton_rows, render_status_pill,
     },
     visual::{Tone, color, layout},
     workspace::{AppView, ChangedFileTreeRow},
 };
-
-fn render_changed_files_message(message: impl Into<SharedString>, text_color: Rgba) -> AnyElement {
-    div()
-        .flex_1()
-        .px_3()
-        .py_3()
-        .text_sm()
-        .text_color(text_color)
-        .child(message.into())
-        .into_any_element()
-}
 
 fn render_changed_files_loading() -> AnyElement {
     div()
@@ -44,7 +31,11 @@ impl AppView {
         }
 
         if let Some(error) = self.detail_state.files_error() {
-            return render_changed_files_message(error.to_string(), color::danger());
+            return div()
+                .flex_1()
+                .p_3()
+                .child(render_error_panel_card(error.to_string()))
+                .into_any_element();
         }
 
         if self.detail_state.files().is_empty() {

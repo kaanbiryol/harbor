@@ -2,7 +2,12 @@ use gpui::{
     AnyElement, Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*,
     px,
 };
-use gpui_component::{Icon, Selectable, Sizable, StyledExt, skeleton::Skeleton, tooltip::Tooltip};
+use gpui_component::{
+    Icon, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+    skeleton::Skeleton,
+    tooltip::Tooltip,
+};
 
 use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
@@ -252,15 +257,62 @@ fn render_loading_skeleton_row(
 }
 
 pub(crate) fn render_error_panel_card(message: impl Into<String>) -> impl IntoElement {
+    let colors = tone_colors(Tone::Danger);
+
     div()
         .w_full()
         .min_w_0()
         .border_1()
-        .border_color(color::danger_background())
-        .bg(color::danger_background())
+        .border_color(colors.border)
+        .bg(colors.background)
         .p_3()
-        .text_color(color::danger())
+        .text_color(colors.text)
         .child(message.into())
+}
+
+pub(crate) fn render_file_review_button(id: impl Into<ElementId>, reviewed: bool) -> Button {
+    Button::new(id)
+        .icon(if reviewed {
+            Icon::new(Octicon::CheckCircle).text_color(color::success())
+        } else {
+            Icon::new(Octicon::Eye).text_color(color::text_muted())
+        })
+        .small()
+        .compact()
+        .ghost()
+        .tooltip(if reviewed {
+            "Mark as unreviewed"
+        } else {
+            "Mark as reviewed"
+        })
+}
+
+pub(crate) fn render_diff_stats(additions: u32, deletions: u32) -> Div {
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap_1()
+        .text_xs()
+        .font_medium()
+        .child(
+            div()
+                .text_color(diff_stat_color(additions, color::success()))
+                .child(format!("+{additions}")),
+        )
+        .child(
+            div()
+                .text_color(diff_stat_color(deletions, color::danger()))
+                .child(format!("-{deletions}")),
+        )
+}
+
+fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {
+    if count == 0 {
+        color::text_muted()
+    } else {
+        active_color
+    }
 }
 
 pub(crate) fn render_status_pill(label: impl Into<String>, tone: Tone) -> impl IntoElement {
@@ -307,7 +359,14 @@ pub(crate) fn sync_virtual_list_item_count(list_state: &ListState, item_count: u
 mod tests {
     use gpui::{ListAlignment, ListOffset, ListState, px};
 
-    use super::sync_virtual_list_item_count;
+    use super::{diff_stat_color, sync_virtual_list_item_count};
+    use crate::visual::color;
+
+    #[test]
+    fn zero_diff_stats_use_muted_text() {
+        assert_eq!(diff_stat_color(0, color::danger()), color::text_muted());
+        assert_eq!(diff_stat_color(1, color::danger()), color::danger());
+    }
 
     #[test]
     fn sync_virtual_list_item_count_keeps_empty_list_at_top_when_items_arrive() {

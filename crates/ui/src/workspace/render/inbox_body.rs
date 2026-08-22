@@ -3,7 +3,7 @@ use gpui_component::skeleton::Skeleton;
 
 use crate::{
     icons::Octicon,
-    panels::{render_empty_state, render_pull_request_row},
+    panels::{render_empty_state, render_error_panel_card, render_pull_request_row},
     visual::{color, layout},
     workspace::{AppView, PullRequestInboxMode},
 };
@@ -71,16 +71,13 @@ impl AppView {
                 body.push(
                     div()
                         .id("pull-request-inbox-refresh-error")
-                        .px_3()
-                        .py_2()
+                        .p_2()
                         .border_b_1()
                         .border_color(color::border())
-                        .text_xs()
-                        .text_color(color::danger())
-                        .child(format!(
+                        .child(render_error_panel_card(format!(
                             "Refresh failed: {}",
                             load_error.clone().unwrap_or_default()
-                        ))
+                        )))
                         .into_any_element(),
                 );
             }
@@ -88,11 +85,10 @@ impl AppView {
                 body.push(
                     div()
                         .flex_1()
-                        .px_3()
-                        .py_3()
-                        .text_sm()
-                        .text_color(color::danger())
-                        .child(load_error.clone().unwrap_or_default())
+                        .p_3()
+                        .child(render_error_panel_card(
+                            load_error.clone().unwrap_or_default(),
+                        ))
                         .into_any_element(),
                 );
             }

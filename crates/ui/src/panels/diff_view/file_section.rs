@@ -1,19 +1,15 @@
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{
-    Icon, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
-    clipboard::Clipboard,
-};
+use gpui_component::{Icon, Sizable, StyledExt, clipboard::Clipboard};
 use harbor_domain::DiffFile;
 
 use crate::{
     file_icons::render_file_icon,
     icons::Octicon,
-    visual::{Tone, color, font, leading_truncated_path},
+    visual::{color, font, leading_truncated_path},
     workspace::AppView,
 };
 
-use super::super::render_status_pill;
+use super::super::{render_diff_stats, render_file_review_button};
 use super::{DIFF_FILE_HEADER_HEIGHT, DIFF_ROW_HEIGHT};
 
 pub(super) fn render_diff_file_section_header(
@@ -30,23 +26,13 @@ pub(super) fn render_diff_file_section_header(
     } else {
         format!("diff-file-header-{file_index}")
     };
-    let review_button = Button::new(format!(
-        "{}-diff-file-reviewed-{file_index}",
-        if sticky { "sticky" } else { "row" }
-    ))
-    .icon(if reviewed {
-        Icon::new(Octicon::CheckCircle).text_color(color::success())
-    } else {
-        Icon::new(Octicon::Eye).text_color(color::text_muted())
-    })
-    .small()
-    .compact()
-    .ghost()
-    .tooltip(if reviewed {
-        "Mark as unreviewed"
-    } else {
-        "Mark as reviewed"
-    });
+    let review_button = render_file_review_button(
+        format!(
+            "{}-diff-file-reviewed-{file_index}",
+            if sticky { "sticky" } else { "row" }
+        ),
+        reviewed,
+    );
     let review_button = review_button.on_click({
         let view_entity = view_entity.clone();
         move |_, _, cx| {
@@ -97,7 +83,9 @@ pub(super) fn render_diff_file_section_header(
         } else {
             color::border_subtle()
         })
-        .bg(if active || reviewed {
+        .bg(if active {
+            color::row_selected_active()
+        } else if reviewed {
             color::content_background()
         } else {
             color::elevated_background()
@@ -107,7 +95,13 @@ pub(super) fn render_diff_file_section_header(
         .whitespace_nowrap()
         .cursor_pointer()
         .when(sticky, |element| element.shadow_lg())
-        .hover(|element| element.bg(color::elevated_background()))
+        .hover(move |element| {
+            if active {
+                element
+            } else {
+                element.bg(color::row_hover())
+            }
+        })
         .on_click(move |_, _, cx| {
             toggle_section_view_entity.update(cx, |view, cx| {
                 view.toggle_diff_file_section(file_index, cx);
@@ -122,7 +116,6 @@ pub(super) fn render_diff_file_section_header(
                 .items_center()
                 .gap_2()
                 .child(Icon::new(chevron).xsmall().text_color(color::text_muted()))
-                .child(review_button)
                 .child(render_file_icon(file.status))
                 .child(
                     div()
@@ -146,17 +139,8 @@ pub(super) fn render_diff_file_section_header(
                 .flex()
                 .items_center()
                 .gap_2()
-                .text_xs()
-                .font_medium()
-                .text_color(color::text_secondary())
-                .child(render_status_pill(
-                    format!("+{}", file.additions),
-                    Tone::Success,
-                ))
-                .child(render_status_pill(
-                    format!("-{}", file.deletions),
-                    Tone::Danger,
-                )),
+                .child(render_diff_stats(file.additions, file.deletions))
+                .child(review_button),
         )
         .into_any_element()
 }

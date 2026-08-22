@@ -1,5 +1,8 @@
 use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::{Icon, Sizable, StyledExt};
+use gpui_component::{
+    Icon, Sizable,
+    tab::{Tab, TabBar},
+};
 use harbor_domain::PullRequest;
 
 use crate::{
@@ -25,91 +28,58 @@ impl AppView {
             .detail_state
             .commits_loaded()
             .then(|| self.detail_state.commits().len());
+        let active_index = PanelTab::ALL
+            .iter()
+            .position(|tab| *tab == self.active_tab)
+            .unwrap_or_default();
+        let tabs = PanelTab::ALL.into_iter().map(|tab| {
+            Tab::new()
+                .label(tab.label())
+                .prefix(Icon::new(tab.icon()).xsmall())
+                .when(tab == PanelTab::Review && unresolved_threads > 0, |tab| {
+                    tab.suffix(
+                        div()
+                            .debug_selector(|| "review-tab-unresolved-count".to_string())
+                            .child(render_status_pill(
+                                unresolved_threads.to_string(),
+                                Tone::Warning,
+                            )),
+                    )
+                })
+                .when_some(
+                    (tab == PanelTab::Commits).then_some(commit_count).flatten(),
+                    |tab, commit_count| {
+                        tab.suffix(
+                            div()
+                                .debug_selector(|| "commits-tab-count".to_string())
+                                .child(render_status_pill(commit_count.to_string(), Tone::Neutral)),
+                        )
+                    },
+                )
+        });
 
         div()
             .debug_selector(|| "pull-request-panel-tabs".to_string())
             .flex_none()
             .h_10()
             .flex()
-            .items_center()
-            .gap_1()
+            .items_end()
             .px_2()
             .pt_1()
-            .border_b_1()
-            .border_color(color::border())
-            .children(
-                PanelTab::ALL
-                    .iter()
-                    .copied()
-                    .enumerate()
-                    .map(|(index, tab)| {
-                        let active = tab == self.active_tab;
-                        let tab_color = if active {
-                            color::accent()
-                        } else {
-                            color::text_secondary()
+            .child(
+                TabBar::new("pull-request-panel-tab-bar")
+                    .w_full()
+                    .underline()
+                    .small()
+                    .selected_index(active_index)
+                    .children(tabs)
+                    .on_click(move |index, _, cx| {
+                        let Some(tab) = PanelTab::ALL.get(*index).copied() else {
+                            return;
                         };
-                        let view = view.clone();
-
-                        div()
-                            .id(("panel-tab", index))
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .px_3()
-                            .pb_1()
-                            .pt_1()
-                            .text_sm()
-                            .text_color(tab_color)
-                            .cursor_pointer()
-                            .when(active, |element| {
-                                element
-                                    .border_b_1()
-                                    .border_color(color::accent())
-                                    .font_medium()
-                            })
-                            .hover(move |element| {
-                                if active {
-                                    element
-                                } else {
-                                    element.bg(color::row_hover())
-                                }
-                            })
-                            .on_click(move |_, _, cx| {
-                                view.update(cx, |view, cx| {
-                                    view.select_panel_tab(tab, cx);
-                                });
-                            })
-                            .child(Icon::new(tab.icon()).xsmall().text_color(tab_color))
-                            .child(tab.label())
-                            .when(
-                                tab == PanelTab::Review && unresolved_threads > 0,
-                                |element| {
-                                    element.child(
-                                        div()
-                                            .debug_selector(|| {
-                                                "review-tab-unresolved-count".to_string()
-                                            })
-                                            .child(render_status_pill(
-                                                unresolved_threads.to_string(),
-                                                Tone::Warning,
-                                            )),
-                                    )
-                                },
-                            )
-                            .when_some(
-                                (tab == PanelTab::Commits).then_some(commit_count).flatten(),
-                                |element, commit_count| {
-                                    element.child(
-                                        div()
-                                            .debug_selector(|| "commits-tab-count".to_string())
-                                            .child(render_status_pill(
-                                                commit_count.to_string(),
-                                                Tone::Neutral,
-                                            )),
-                                    )
-                                },
-                            )
+                        view.update(cx, |view, cx| {
+                            view.select_panel_tab(tab, cx);
+                        });
                     }),
             )
     }
