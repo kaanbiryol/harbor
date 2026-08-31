@@ -48,6 +48,7 @@ fn pull_request_review(id: &str, state: PullRequestReviewState) -> PullRequestRe
         id: id.to_string(),
         node_id: Some(format!("{id}-node")),
         author: "octocat".to_string(),
+        author_avatar_url: None,
         state,
         body: None,
         submitted_at: Some(test_time()),

@@ -15,7 +15,10 @@ fn maps_pull_request_reviews() {
             "state": "APPROVED",
             "body": "ship it",
             "submitted_at": "2026-05-01T11:00:00Z",
-            "user": { "login": "octocat" }
+            "user": {
+                "login": "octocat",
+                "avatar_url": "https://avatars.githubusercontent.com/u/583231?v=4"
+            }
         },
         {
             "id": 402,
@@ -32,9 +35,14 @@ fn maps_pull_request_reviews() {
     assert_eq!(reviews[0].id, "401");
     assert_eq!(reviews[0].node_id.as_deref(), Some("review-node-401"));
     assert_eq!(reviews[0].author, "octocat");
+    assert_eq!(
+        reviews[0].author_avatar_url.as_deref(),
+        Some("https://avatars.githubusercontent.com/u/583231?v=4")
+    );
     assert_eq!(reviews[0].state, PullRequestReviewState::Approved);
     assert_eq!(reviews[0].body.as_deref(), Some("ship it"));
     assert_eq!(reviews[1].author, "ghost");
+    assert_eq!(reviews[1].author_avatar_url, None);
     assert_eq!(reviews[1].state, PullRequestReviewState::ChangesRequested);
     assert_eq!(reviews[1].body, None);
 }

@@ -323,6 +323,7 @@ pub struct PullRequestReview {
     pub id: String,
     pub node_id: Option<String>,
     pub author: String,
+    pub author_avatar_url: Option<String>,
     pub state: PullRequestReviewState,
     pub body: Option<String>,
     pub submitted_at: Option<DateTime<Utc>>,

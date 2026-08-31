@@ -11,7 +11,7 @@ use crate::{GitHubError, Result};
 #[derive(Debug, Deserialize)]
 struct ApiUser {
     login: String,
-    #[serde(default, rename = "avatarUrl")]
+    #[serde(default, alias = "avatarUrl")]
     avatar_url: Option<String>,
 }
 
@@ -325,13 +325,16 @@ pub(crate) fn review_thread_comments_page_from_graphql_value(
 
 impl ApiPullRequestReview {
     fn into_domain(self) -> PullRequestReview {
+        let (author, author_avatar_url) = self
+            .user
+            .map(|user| (user.login, user.avatar_url))
+            .unwrap_or_else(|| ("ghost".to_string(), None));
+
         PullRequestReview {
             id: self.id.to_string(),
             node_id: self.node_id,
-            author: self
-                .user
-                .map(|user| user.login)
-                .unwrap_or_else(|| "ghost".to_string()),
+            author,
+            author_avatar_url,
             state: map_pull_request_review_state(&self.state),
             body: self.body.filter(|body| !body.is_empty()),
             submitted_at: self.submitted_at,

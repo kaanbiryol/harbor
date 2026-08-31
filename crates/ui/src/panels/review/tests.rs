@@ -456,6 +456,7 @@ fn pull_request_review(id: &str, node_id: Option<&str>, body: Option<&str>) -> P
         id: id.to_string(),
         node_id: node_id.map(str::to_string),
         author: "alex".to_string(),
+        author_avatar_url: None,
         state: PullRequestReviewState::Commented,
         body: body.map(str::to_string),
         submitted_at: None,

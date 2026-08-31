@@ -770,7 +770,7 @@ fn reviewers_for_sidebar(
             reviewers.push(SidebarReviewer {
                 person: PullRequestPerson {
                     login: review.author.clone(),
-                    avatar_url: None,
+                    avatar_url: review.author_avatar_url.clone(),
                 },
                 status,
             });
@@ -949,6 +949,7 @@ mod tests {
             id: format!("{author}-{state:?}"),
             node_id: None,
             author: author.to_string(),
+            author_avatar_url: None,
             state,
             body: None,
             submitted_at: None,
@@ -995,6 +996,20 @@ mod tests {
         assert_eq!(reviewers[0].status, ReviewerStatus::Requested);
         assert_eq!(reviewers[1].person.login, "reviewer");
         assert_eq!(reviewers[1].status, ReviewerStatus::Approved);
+    }
+
+    #[test]
+    fn uses_submitted_reviewer_avatar() {
+        let mut submitted_review = review("cursor[bot]", PullRequestReviewState::Approved);
+        submitted_review.author_avatar_url =
+            Some("https://avatars.githubusercontent.com/in/12345?v=4".to_string());
+
+        let reviewers = reviewers_for_sidebar(&[], &[submitted_review]);
+
+        assert_eq!(
+            reviewers[0].person.avatar_url.as_deref(),
+            Some("https://avatars.githubusercontent.com/in/12345?v=4")
+        );
     }
 
     #[test]

@@ -488,6 +488,7 @@ mod tests {
             id: id.to_string(),
             node_id: Some(node_id.to_string()),
             author: author.to_string(),
+            author_avatar_url: None,
             state: PullRequestReviewState::Pending,
             body: None,
             submitted_at: None,
