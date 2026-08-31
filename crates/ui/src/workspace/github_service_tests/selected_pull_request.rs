@@ -91,6 +91,41 @@ async fn commit_diff_files_receive_syntax_highlights(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn commit_diff_syntax_highlighting_completes_for_all_files(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let files = (0..8)
+        .map(|index| {
+            let mut file = patched_diff_file();
+            file.path = format!("src/file_{index}.rs");
+            file.patch = Some(format!(
+                "@@ -1,3 +1,3 @@\n fn main() {{\n-let old_value_{index} = true;\n+let new_value_{index} = false;\n }}\n"
+            ));
+            file
+        })
+        .collect();
+    api.push_files(Ok(files));
+    let (view_entity, cx) = init_workspace_service_test(cx, api);
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        view.select_commit("commit-sha".to_string(), cx);
+    });
+    cx.run_until_parked();
+
+    view_entity.read_with(cx, |view, _| {
+        assert!(view.detail_state.diffs().iter().all(|diff| {
+            diff.as_ref().is_some_and(|diff| {
+                diff.hunks
+                    .iter()
+                    .flat_map(|hunk| &hunk.lines)
+                    .any(|line| !line.syntax_highlights.is_empty())
+            })
+        }));
+    });
+}
+
+#[gpui::test]
 async fn ignores_stale_pull_request_detail_results_after_selection_changes(
     cx: &mut TestAppContext,
 ) {

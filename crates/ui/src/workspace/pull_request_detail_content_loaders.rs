@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
-use gpui::{AppContext, AsyncApp, Context, ScrollStrategy, WeakEntity};
+use futures::stream::{FuturesUnordered, StreamExt};
+use gpui::{AppContext, AsyncApp, Context, ScrollStrategy, Task, WeakEntity};
 use gpui_component::{ActiveTheme, highlighter::HighlightTheme};
 use harbor_domain::DiffFile;
 use harbor_sync::{SyncTarget, refresh_pull_request_files, refresh_pull_request_metadata};
@@ -15,6 +16,8 @@ use crate::{
 };
 
 type PullRequestFilesResult = harbor_github::Result<(Vec<DiffFile>, Vec<Option<ParsedDiff>>)>;
+
+const SYNTAX_HIGHLIGHT_CONCURRENCY: usize = 4;
 
 struct DiffSyntaxUpdate {
     detail_key: PullRequestDetailCacheKey,
@@ -233,28 +236,42 @@ impl AppView {
         highlight_theme: Arc<HighlightTheme>,
     ) {
         let mut syntax_updated = false;
+        let mut pending_files = files
+            .into_iter()
+            .enumerate()
+            .filter_map(|(file_index, file)| {
+                file.patch.clone().map(|patch| (file_index, file, patch))
+            })
+            .collect::<VecDeque<_>>();
+        let mut tasks = FuturesUnordered::new();
 
-        for (file_index, file) in files.into_iter().enumerate() {
-            let file_path = file.path.clone();
-            let Some(patch) = file.patch.clone() else {
-                continue;
+        while tasks.len() < SYNTAX_HIGHLIGHT_CONCURRENCY {
+            let Some((file_index, file, patch)) = pending_files.pop_front() else {
+                break;
             };
-            let expected_patch = patch.clone();
-            let highlight_theme = highlight_theme.clone();
-            let highlighted_diff = cx
-                .background_spawn(async move {
-                    parse_unified_diff_with_syntax(&file, &patch, &highlight_theme)
-                })
-                .await;
-            let update = DiffSyntaxUpdate {
-                detail_key: detail_key.clone(),
-                commit_sha: commit_sha.clone(),
+            tasks.push(spawn_diff_syntax_task(
+                cx,
+                detail_key.clone(),
+                commit_sha.clone(),
                 file_index,
-                file_path,
-                expected_patch,
-                highlighted_diff,
-            };
+                file,
+                patch,
+                highlight_theme.clone(),
+            ));
+        }
 
+        while let Some(update) = tasks.next().await {
+            if let Some((file_index, file, patch)) = pending_files.pop_front() {
+                tasks.push(spawn_diff_syntax_task(
+                    cx,
+                    detail_key.clone(),
+                    commit_sha.clone(),
+                    file_index,
+                    file,
+                    patch,
+                    highlight_theme.clone(),
+                ));
+            }
             let Some(updated) = this
                 .update_or_log(
                     cx,
@@ -315,4 +332,29 @@ impl AppView {
         selected_pull_request_matches(self, detail_key)
             && self.active_commit_sha.as_deref() == commit_sha
     }
+}
+
+fn spawn_diff_syntax_task(
+    cx: &mut AsyncApp,
+    detail_key: PullRequestDetailCacheKey,
+    commit_sha: Option<String>,
+    file_index: usize,
+    file: DiffFile,
+    patch: String,
+    highlight_theme: Arc<HighlightTheme>,
+) -> Task<DiffSyntaxUpdate> {
+    cx.background_spawn(async move {
+        let file_path = file.path.clone();
+        let expected_patch = patch.clone();
+        let highlighted_diff = parse_unified_diff_with_syntax(&file, &patch, &highlight_theme);
+
+        DiffSyntaxUpdate {
+            detail_key,
+            commit_sha,
+            file_index,
+            file_path,
+            expected_patch,
+            highlighted_diff,
+        }
+    })
 }

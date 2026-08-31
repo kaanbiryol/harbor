@@ -1,4 +1,6 @@
-use gpui::{Anchor, AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
+use gpui::{
+    Anchor, AnyElement, Context, Div, IntoElement, Rgba, SharedString, div, prelude::*, px, rgb,
+};
 use gpui_component::{
     Icon, Sizable, StyledExt, avatar::Avatar, button::Button, input::Input, list::ListItem,
     popover::Popover, scroll::ScrollableElement, spinner::Spinner,
@@ -37,6 +39,10 @@ impl AppView {
             &pr.requested_reviewers,
             self.review_state.pull_request_reviews(),
         );
+        let reviewer_add_control =
+            self.render_metadata_add_control(PullRequestMetadataField::Reviewer, cx);
+        let assignee_add_control =
+            self.render_metadata_add_control(PullRequestMetadataField::Assignee, cx);
 
         render_overview_card("People")
             .debug_selector(|| "pull-request-people-card".to_string())
@@ -47,36 +53,28 @@ impl AppView {
                     .child(render_people_row(std::slice::from_ref(&author)))
                     .into_any_element(),
             ))
-            .child(render_overview_section(
+            .child(render_overview_section_with_action(
                 "Reviewers",
+                reviewer_add_control,
                 div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .min_h(px(28.0))
+                    .min_h(px(24.0))
                     .child(if !reviewers.is_empty() || !pr.requested_teams.is_empty() {
                         render_reviewers_row(&reviewers, &pr.requested_teams)
                     } else {
                         render_empty_value("No reviewers")
                     })
-                    .child(self.render_metadata_add_control(PullRequestMetadataField::Reviewer, cx))
                     .into_any_element(),
             ))
-            .child(render_overview_section(
+            .child(render_overview_section_with_action(
                 "Assignees",
+                assignee_add_control,
                 div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .min_h(px(28.0))
+                    .min_h(px(24.0))
                     .child(if pr.assignees.is_empty() {
                         render_empty_value("No assignees")
                     } else {
                         render_people_row(&pr.assignees)
                     })
-                    .child(self.render_metadata_add_control(PullRequestMetadataField::Assignee, cx))
                     .into_any_element(),
             ))
             .into_any_element()
@@ -215,7 +213,7 @@ impl AppView {
                         format!("Add {field_name}"),
                         Button::new(format!("open-add-{field_name}"))
                             .icon(Octicon::Plus)
-                            .small()
+                            .xsmall()
                             .compact()
                             .outline(),
                     ))
@@ -467,14 +465,13 @@ pub(super) fn render_overview_card(title: &'static str) -> Div {
 pub(super) fn render_readiness_row(
     id: &'static str,
     label: &'static str,
-    description: &'static str,
-    value: impl Into<String>,
+    description: impl Into<SharedString>,
     icon: Octicon,
     tone: Tone,
     navigable: bool,
 ) -> ListItem {
     let colors = tone_colors(tone);
-    let value = value.into();
+    let description = description.into();
 
     ListItem::new(id)
         .w_full()
@@ -514,15 +511,6 @@ pub(super) fn render_readiness_row(
                         ),
                 ),
         )
-        .suffix(move |_, _| {
-            div()
-                .flex()
-                .items_center()
-                .text_xs()
-                .font_medium()
-                .text_color(colors.text)
-                .child(value.clone())
-        })
 }
 
 pub(super) fn render_readiness_status(
@@ -687,6 +675,35 @@ fn render_overview_section(title: &'static str, body: AnyElement) -> impl IntoEl
                 .font_medium()
                 .text_color(color::text_muted())
                 .child(title),
+        )
+        .child(body)
+}
+
+fn render_overview_section_with_action(
+    title: &'static str,
+    action: AnyElement,
+    body: AnyElement,
+) -> impl IntoElement {
+    div()
+        .w_full()
+        .min_w_0()
+        .pt_3()
+        .border_t_1()
+        .border_color(color::border_subtle())
+        .child(
+            div()
+                .pb_1()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_medium()
+                        .text_color(color::text_muted())
+                        .child(title),
+                )
+                .child(action),
         )
         .child(body)
 }
