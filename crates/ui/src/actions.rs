@@ -58,6 +58,8 @@ actions!(
         MergePullRequestWithMergeCommit,
         /// Rebases and merges the selected pull request.
         RebasePullRequest,
+        /// Toggles whether merge requirements are bypassed for the selected pull request.
+        ToggleMergeRequirementsBypass,
         /// Focuses filtering for the current list.
         FilterCurrentList,
         /// Selects the next changed file.
