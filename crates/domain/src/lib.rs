@@ -139,6 +139,8 @@ pub struct PullRequest {
     pub title: String,
     pub body: Option<String>,
     pub author: String,
+    #[serde(default)]
+    pub author_avatar_url: Option<String>,
     pub url: String,
     pub state: PullRequestState,
     pub is_draft: bool,

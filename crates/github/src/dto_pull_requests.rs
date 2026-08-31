@@ -406,16 +406,19 @@ pub fn diff_files_from_value(value: Value) -> Result<Vec<DiffFile>> {
 
 impl ApiPullRequest {
     fn into_domain(self, repo: RepoId) -> PullRequest {
+        let (author, author_avatar_url) = self
+            .user
+            .map(|user| (user.login, user.avatar_url))
+            .unwrap_or_else(|| ("ghost".to_string(), None));
+
         PullRequest {
             repo,
             node_id: self.node_id,
             number: self.number,
             title: self.title,
             body: self.body,
-            author: self
-                .user
-                .map(|user| user.login)
-                .unwrap_or_else(|| "ghost".to_string()),
+            author,
+            author_avatar_url,
             url: self.html_url,
             state: map_pull_request_state(&self.state, self.merged),
             is_draft: self.draft,
@@ -469,6 +472,10 @@ impl GraphQlPullRequestSearchNode {
         let repository = required_graphql_field(self.repository, "repository")?;
         let viewer_can_queue = viewer_can_queue(repository.viewer_permission.as_deref());
         let repo = RepoId::new(repository.owner.login, repository.name);
+        let (author, author_avatar_url) = self
+            .author
+            .map(|author| (author.login, author.avatar_url))
+            .unwrap_or_else(|| ("ghost".to_string(), None));
 
         Ok(PullRequest {
             repo,
@@ -476,10 +483,8 @@ impl GraphQlPullRequestSearchNode {
             number: required_graphql_field(self.number, "number")?,
             title: required_graphql_field(self.title, "title")?,
             body: self.body.filter(|body| !body.is_empty()),
-            author: self
-                .author
-                .map(|author| author.login)
-                .unwrap_or_else(|| "ghost".to_string()),
+            author,
+            author_avatar_url,
             url: required_graphql_field(self.url, "url")?,
             state: self
                 .state

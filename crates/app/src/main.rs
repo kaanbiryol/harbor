@@ -19,7 +19,7 @@ fn main() {
         .with_assets(Assets)
         .run(move |cx| {
             app_icon::install();
-            let http_client = reqwest_client::ReqwestClient::user_agent("harbor")
+            let http_client = reqwest_client::ReqwestClient::proxy_and_user_agent(None, "harbor")
                 .expect("failed to initialize GPUI HTTP client");
             cx.set_http_client(Arc::new(http_client));
             gpui_component::init(cx);

@@ -22,7 +22,10 @@ fn maps_pull_request_list() {
             "html_url": "https://github.com/acme/app/pull/42",
             "state": "open",
             "draft": false,
-            "user": { "login": "octocat" },
+            "user": {
+                "login": "octocat",
+                "avatar_url": "https://avatars.githubusercontent.com/u/583231?v=4"
+            },
             "head": { "ref": "feature/list", "sha": "abc123" },
             "base": { "ref": "main", "sha": "def456" },
             "labels": [{ "name": "performance", "color": "34d399" }],
@@ -56,6 +59,10 @@ fn maps_pull_request_list() {
     assert_eq!(pulls[0].node_id, "pr-node-42");
     assert_eq!(pulls[0].number, 42);
     assert_eq!(pulls[0].author, "octocat");
+    assert_eq!(
+        pulls[0].author_avatar_url.as_deref(),
+        Some("https://avatars.githubusercontent.com/u/583231?v=4")
+    );
     assert_eq!(pulls[0].head_ref, "feature/list");
     assert_eq!(pulls[0].base_ref, "main");
     assert_eq!(pulls[0].state, PullRequestState::Open);
@@ -94,7 +101,10 @@ fn maps_pull_request_search_states() {
                         "url": "https://github.com/acme/app/pull/42",
                         "state": "OPEN",
                         "isDraft": false,
-                        "author": { "login": "octocat" },
+                        "author": {
+                            "login": "octocat",
+                            "avatarUrl": "https://avatars.githubusercontent.com/u/583231?v=4"
+                        },
                         "repository": {
                             "name": "app",
                             "viewerPermission": "ADMIN",
@@ -201,6 +211,10 @@ fn maps_pull_request_search_states() {
     assert_eq!(page.pull_requests[0].repo.full_name(), "acme/app");
     assert_eq!(page.pull_requests[0].node_id, "pr-node-42");
     assert_eq!(page.pull_requests[0].number, 42);
+    assert_eq!(
+        page.pull_requests[0].author_avatar_url.as_deref(),
+        Some("https://avatars.githubusercontent.com/u/583231?v=4")
+    );
     assert_eq!(
         page.pull_requests[0].review_decision,
         Some(ReviewDecision::ReviewRequired)

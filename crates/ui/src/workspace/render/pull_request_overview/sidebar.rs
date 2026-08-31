@@ -31,7 +31,7 @@ impl AppView {
     ) -> AnyElement {
         let author = PullRequestPerson {
             login: pr.author.clone(),
-            avatar_url: None,
+            avatar_url: pr.author_avatar_url.clone(),
         };
         let reviewers = reviewers_for_sidebar(
             &pr.requested_reviewers,

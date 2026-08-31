@@ -14,6 +14,7 @@ pub(crate) fn pull_request() -> PullRequest {
         title: "Add feature".to_string(),
         body: None,
         author: "octocat".to_string(),
+        author_avatar_url: None,
         url: "https://github.com/acme/app/pull/7".to_string(),
         state: PullRequestState::Open,
         is_draft: false,

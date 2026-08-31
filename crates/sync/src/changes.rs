@@ -305,6 +305,7 @@ mod tests {
             title: "Add feature".to_string(),
             body: None,
             author: "octocat".to_string(),
+            author_avatar_url: None,
             url: format!("https://github.com/acme/app/pull/{number}"),
             state: PullRequestState::Open,
             is_draft: false,
