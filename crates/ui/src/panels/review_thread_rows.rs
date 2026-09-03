@@ -1,6 +1,6 @@
+use crate::gpui_component::input::TextareaState;
+use crate::gpui_component::{StyledExt, tooltip::Tooltip};
 use gpui::{AnyElement, Entity, SharedString, div, prelude::*, px};
-use gpui_component::input::InputState;
-use gpui_component::{StyledExt, tooltip::Tooltip};
 use harbor_domain::{ReviewComment, ReviewThread, ReviewThreadState};
 
 use crate::{
@@ -27,7 +27,7 @@ pub(crate) struct ReviewThreadRowRenderState<'a> {
     pub(crate) index: usize,
     pub(crate) thread: &'a ReviewThread,
     pub(crate) active_review_thread_reply: Option<&'a str>,
-    pub(crate) review_thread_reply_input: Entity<InputState>,
+    pub(crate) review_thread_reply_input: Entity<TextareaState>,
     pub(crate) reply_body_empty: bool,
     pub(crate) is_submitting_reply: bool,
     pub(crate) reply_error: Option<&'a ReviewThreadUiError>,

@@ -1,8 +1,8 @@
-use gpui::{Context, IntoElement, ListState, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
+use gpui::{Context, IntoElement, ListState, div, prelude::*};
 use harbor_domain::{PullRequest, RepoId, Workflow, WorkflowRun};
 
 use crate::actions::WorkflowAction;

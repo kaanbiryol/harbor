@@ -1,10 +1,10 @@
 use std::{ops::Range, path::Path, time::Duration};
 
-use gpui::HighlightStyle;
-use gpui_component::{
+use crate::gpui_component::{
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
     input::Rope,
 };
+use gpui::HighlightStyle;
 use harbor_domain::DiffFile;
 
 pub use harbor_domain::diff::DiffLineKind;

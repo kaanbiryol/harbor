@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px, uniform_list};
-use gpui_component::{Icon, Sizable, StyledExt, spinner::Spinner};
 
 use crate::{
     icons::Octicon,

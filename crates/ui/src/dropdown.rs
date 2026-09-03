@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable, ThemeStyled, list::ListItem};
 use gpui::{App, Div, ElementId, SharedString, div, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt, list::ListItem};
 
 use crate::{icons::Octicon, visual::color};
 

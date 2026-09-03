@@ -1,5 +1,5 @@
+use crate::gpui_component::{StyledExt, input::TextareaState, tooltip::Tooltip};
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{StyledExt, input::InputState, tooltip::Tooltip};
 use harbor_domain::ReviewComment;
 
 use crate::{
@@ -22,7 +22,7 @@ use super::{
 #[derive(Clone)]
 pub(in crate::panels::diff_view) struct ReviewCommentListRenderState<'a> {
     pub(in crate::panels::diff_view) active_review_comment_edit: Option<&'a str>,
-    pub(in crate::panels::diff_view) review_comment_edit_input: Entity<InputState>,
+    pub(in crate::panels::diff_view) review_comment_edit_input: Entity<TextareaState>,
     pub(in crate::panels::diff_view) edit_body_empty: bool,
     pub(in crate::panels::diff_view) is_submitting_edit: bool,
     pub(in crate::panels::diff_view) edit_error: Option<&'a ReviewCommentUiError>,
@@ -41,7 +41,7 @@ pub(super) struct ReviewCommentRenderState<'a> {
     thread_resolved: bool,
     suggestion_context: Option<ReviewSuggestionContext>,
     ui_state: ReviewCommentUiState,
-    review_comment_edit_input: Entity<InputState>,
+    review_comment_edit_input: Entity<TextareaState>,
     edit_body_empty: bool,
     edit_error: Option<String>,
     action_error: Option<String>,

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::gpui_component::text::TextViewState;
 use gpui::{Entity, ListState, Subscription};
-use gpui_component::text::TextViewState;
 
 use crate::workspace::PullRequestDetailCacheKey;
 

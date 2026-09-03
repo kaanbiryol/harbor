@@ -1,9 +1,9 @@
-use gpui::{Context, IntoElement, div, prelude::*, px, uniform_list};
-use gpui_component::{
+use crate::gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
+use gpui::{Context, IntoElement, div, prelude::*, px, uniform_list};
 
 use crate::{
     dropdown::{

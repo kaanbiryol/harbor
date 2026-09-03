@@ -1,5 +1,5 @@
+use crate::gpui_component::StyledExt;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*};
-use gpui_component::StyledExt;
 use harbor_domain::PullRequestCommit;
 
 use crate::{date_time::natural_time_label, icons::Octicon, visual::color, workspace::AppView};

@@ -1,11 +1,10 @@
-use gpui::{AnyElement, Context, IntoElement, div, list, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::Input,
     skeleton::Skeleton,
     spinner::Spinner,
 };
+use gpui::{AnyElement, Context, IntoElement, div, list, prelude::*, px};
 use harbor_domain::PullRequest;
 
 use crate::{icons::Octicon, panels::render_empty_state, visual::color, workspace::AppView};
@@ -410,9 +409,9 @@ fn render_overview_activity_header(loading: bool) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpui_component::{Root, Theme, ThemeMode};
     use chrono::Duration;
     use gpui::{AppContext, ListAlignment, ListOffset, ListState, TestAppContext, px};
-    use gpui_component::{Root, Theme, ThemeMode};
     use harbor_domain::{
         MergeState, PullRequestComment, PullRequestCommit, PullRequestReview,
         PullRequestReviewState, ReviewDecision, ReviewThreadState,
@@ -666,7 +665,7 @@ mod tests {
     #[gpui::test]
     async fn overview_markdown_state_survives_virtual_row_recreation(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            gpui_component::init(cx);
+            crate::gpui_component::init(cx);
             Theme::change(ThemeMode::Dark, None, cx);
         });
 

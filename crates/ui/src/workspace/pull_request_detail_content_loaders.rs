@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::gpui_component::{ActiveTheme, highlighter::HighlightTheme};
 use gpui::{AppContext, AsyncApp, Context, ScrollStrategy, WeakEntity};
-use gpui_component::{ActiveTheme, highlighter::HighlightTheme};
 use harbor_domain::DiffFile;
 use harbor_sync::{SyncTarget, refresh_pull_request_files, refresh_pull_request_metadata};
 

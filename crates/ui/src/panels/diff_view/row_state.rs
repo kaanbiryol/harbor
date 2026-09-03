@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::gpui_component::{ActiveTheme, input::TextareaState};
 use gpui::{App, Entity, SharedString};
-use gpui_component::{ActiveTheme, input::InputState};
 use harbor_domain::ReviewThread;
 
 use crate::diff_reviews::ReviewThreadIndex;
@@ -16,19 +16,19 @@ pub(super) struct DiffRowRenderState<'a> {
     pub(super) review_composer: Option<&'a ReviewComposer>,
     pub(super) review_line_selection: Option<&'a ReviewLineSelection>,
     pub(super) pending_review: Option<&'a PendingReviewSession>,
-    pub(super) review_comment_input: Entity<InputState>,
+    pub(super) review_comment_input: Entity<TextareaState>,
     pub(super) review_comment_body_empty: bool,
     pub(super) is_submitting_review_comment: bool,
     pub(super) review_comment_error: Option<&'a str>,
     pub(super) active_review_thread_reply: Option<&'a str>,
-    pub(super) review_thread_reply_input: Entity<InputState>,
+    pub(super) review_thread_reply_input: Entity<TextareaState>,
     pub(super) review_thread_reply_body_empty: bool,
     pub(super) is_submitting_review_thread_reply: bool,
     pub(super) review_thread_reply_error: Option<&'a ReviewThreadUiError>,
     pub(super) review_thread_action_thread_id: Option<&'a str>,
     pub(super) review_thread_action_error: Option<&'a ReviewThreadUiError>,
     pub(super) active_review_comment_edit: Option<&'a str>,
-    pub(super) review_comment_edit_input: Entity<InputState>,
+    pub(super) review_comment_edit_input: Entity<TextareaState>,
     pub(super) review_comment_edit_body_empty: bool,
     pub(super) is_submitting_review_comment_edit: bool,
     pub(super) review_comment_edit_error: Option<&'a ReviewCommentUiError>,

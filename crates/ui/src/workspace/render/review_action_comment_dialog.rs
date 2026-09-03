@@ -1,9 +1,9 @@
-use gpui::{Context, IntoElement, div, prelude::*, px, rgba};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::Input,
+    input::Textarea,
 };
+use gpui::{Context, IntoElement, div, prelude::*, px, rgba};
 
 use crate::{icons::Octicon, visual::color, workspace::AppView};
 
@@ -79,12 +79,10 @@ impl AppView {
                     )
                     .child(
                         div().p_3().child(
-                            Input::new(&input)
-                                .small()
+                            Textarea::new(&input)
                                 .w_full()
                                 .appearance(false)
-                                .bordered(true)
-                                .focus_bordered(true),
+                                .bordered(true),
                         ),
                     )
                     .child(

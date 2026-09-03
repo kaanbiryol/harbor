@@ -1,7 +1,7 @@
+use crate::gpui_component::{Root, Theme, ThemeMode, input::TextareaState};
 use gpui::{
     Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
 };
-use gpui_component::{Root, Theme, ThemeMode, input::InputState};
 use harbor_domain::{DiffFile, FileStatus, FileViewedState, ReviewCommentRange, ReviewSide};
 
 use super::*;
@@ -326,7 +326,7 @@ fn init_visual_review_panel_test(
     cx: &mut TestAppContext,
 ) -> (Entity<AppView>, &mut VisualTestContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -405,7 +405,7 @@ impl Render for ReviewPanelRowHarness {
 
 struct ReviewPanelRowTestState {
     active_reply_thread_id: Option<String>,
-    reply_input: Entity<InputState>,
+    reply_input: Entity<TextareaState>,
     reply_body_empty: bool,
     is_submitting_reply: bool,
     reply_error: Option<ReviewThreadUiError>,

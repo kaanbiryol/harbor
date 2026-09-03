@@ -1,3 +1,5 @@
+extern crate gpui_kit as gpui;
+
 mod app_icon;
 mod assets;
 mod fonts;
@@ -5,6 +7,8 @@ mod fonts;
 use assets::Assets;
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
+use gpui_kit::component as gpui_component;
+use gpui_reqwest_client as reqwest_client;
 use harbor_github::GitHubSession;
 use harbor_storage::{SqliteStore, StorageConfig};
 use harbor_ui::{AppView, bind_keys};
@@ -15,57 +19,55 @@ fn main() {
     install_rustls_provider();
     init_logging();
 
-    gpui_platform::application()
-        .with_assets(Assets)
-        .run(move |cx| {
-            app_icon::install();
-            let http_client = reqwest_client::ReqwestClient::user_agent("harbor")
-                .expect("failed to initialize GPUI HTTP client");
-            cx.set_http_client(Arc::new(http_client));
-            gpui_component::init(cx);
-            fonts::install(cx).expect("failed to install bundled fonts");
-            Theme::change(ThemeMode::Dark, None, cx);
-            let theme = Theme::global_mut(cx);
-            theme.font_family = "IBM Plex Sans".into();
-            theme.mono_font_family = "Lilex".into();
-            theme.radius = px(0.);
-            theme.radius_lg = px(0.);
-            bind_keys(cx);
+    gpui_kit::application().with_assets(Assets).run(move |cx| {
+        app_icon::install();
+        let http_client = reqwest_client::ReqwestClient::user_agent("harbor")
+            .expect("failed to initialize GPUI HTTP client");
+        cx.set_http_client(Arc::new(http_client));
+        gpui_component::init(cx);
+        fonts::install(cx).expect("failed to install bundled fonts");
+        Theme::change(ThemeMode::Dark, None, cx);
+        let theme = Theme::global_mut(cx);
+        theme.font_family = "IBM Plex Sans".into();
+        theme.mono_font_family = "Lilex".into();
+        theme.radius = px(0.);
+        theme.radius_lg = px(0.);
+        bind_keys(cx);
 
-            let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
+        let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
 
-            let storage_task = cx.background_spawn(async move {
-                match StorageConfig::from_env() {
-                    Ok(config) => SqliteStore::connect(config)
-                        .await
-                        .map_err(|error| error.to_string()),
-                    Err(error) => Err(error.to_string()),
-                }
-            });
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: Some(TitleBar::title_bar_options()),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    let github_api = Arc::new(GitHubSession::default());
-                    let view = cx.new(|cx| AppView::new(github_api, None, window, cx));
-                    let storage_view = view.downgrade();
-                    cx.spawn(async move |cx| {
-                        let storage = storage_task.await;
-                        if let Err(error) = storage_view.update(cx, |view, cx| {
-                            view.finish_storage_initialization(storage, cx);
-                        }) {
-                            tracing::warn!(%error, "failed to finish storage initialization");
-                        }
-                    })
-                    .detach();
-                    cx.new(|cx| Root::new(view, window, cx))
-                },
-            )
-            .expect("failed to open application window");
+        let storage_task = cx.background_spawn(async move {
+            match StorageConfig::from_env() {
+                Ok(config) => SqliteStore::connect(config)
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            }
         });
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitleBar::title_bar_options()),
+                ..Default::default()
+            },
+            |window, cx| {
+                let github_api = Arc::new(GitHubSession::default());
+                let view = cx.new(|cx| AppView::new(github_api, None, window, cx));
+                let storage_view = view.downgrade();
+                cx.spawn(async move |cx| {
+                    let storage = storage_task.await;
+                    if let Err(error) = storage_view.update(cx, |view, cx| {
+                        view.finish_storage_initialization(storage, cx);
+                    }) {
+                        tracing::warn!(%error, "failed to finish storage initialization");
+                    }
+                })
+                .detach();
+                cx.new(|cx| Root::new(view, window, cx))
+            },
+        )
+        .expect("failed to open application window");
+    });
 }
 
 fn install_rustls_provider() {

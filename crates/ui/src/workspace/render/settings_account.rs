@@ -1,8 +1,8 @@
-use gpui::{Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
+use gpui::{Entity, IntoElement, div, prelude::*, px};
 
 use crate::{
     actions::SignOutOfGitHub,

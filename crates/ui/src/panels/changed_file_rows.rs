@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable, StyledExt};
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::DiffFile;
 
 use crate::{

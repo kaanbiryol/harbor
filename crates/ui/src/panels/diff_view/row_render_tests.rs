@@ -1,7 +1,7 @@
+use crate::gpui_component::{Root, Theme, ThemeMode};
 use gpui::{
     Context, Entity, IntoElement, Render, TestAppContext, VisualTestContext, Window, div, px,
 };
-use gpui_component::{Root, Theme, ThemeMode};
 
 use crate::diff::{DiffHunk, DiffLineKind};
 use crate::workspace::AppView;
@@ -44,7 +44,7 @@ async fn keeps_line_numbers_single_line_in_wrapped_rows(cx: &mut TestAppContext)
 
 fn init_visual_diff_line_test(cx: &mut TestAppContext) -> &mut VisualTestContext {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 

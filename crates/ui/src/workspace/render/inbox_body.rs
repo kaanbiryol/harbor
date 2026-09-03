@@ -1,5 +1,5 @@
+use crate::gpui_component::skeleton::Skeleton;
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px, uniform_list};
-use gpui_component::skeleton::Skeleton;
 
 use crate::{
     icons::Octicon,

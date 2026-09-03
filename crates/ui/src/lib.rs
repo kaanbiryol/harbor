@@ -1,3 +1,7 @@
+extern crate gpui_kit as gpui;
+
+use gpui_kit::component as gpui_component;
+
 mod actions;
 mod date_time;
 mod diff;

@@ -1,8 +1,8 @@
-use gpui::{Anchor, IntoElement, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable,
     button::{Button, DropdownButton},
 };
+use gpui::{Anchor, IntoElement, px};
 use harbor_git::ExternalApp;
 
 use crate::actions::*;
@@ -56,7 +56,6 @@ impl AppView {
                     .compact(),
             )
             .small()
-            .compact()
             .outline()
             .disabled(!has_repository || local_action_running)
             .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {

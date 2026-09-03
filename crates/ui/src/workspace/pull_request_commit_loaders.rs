@@ -1,5 +1,5 @@
+use crate::gpui_component::ActiveTheme;
 use gpui::{AppContext, Context};
-use gpui_component::ActiveTheme;
 
 use crate::{actions::PanelTab, diff::parse_files};
 

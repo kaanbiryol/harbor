@@ -1,5 +1,5 @@
+use crate::gpui_component::IconNamed;
 use gpui::SharedString;
-use gpui_component::IconNamed;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Octicon {

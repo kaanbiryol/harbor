@@ -1,9 +1,9 @@
-use gpui::{Context, Div, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
     progress::ProgressCircle,
 };
+use gpui::{Context, Div, IntoElement, div, prelude::*, px};
 
 use crate::{actions::TogglePullRequestInbox, icons::Octicon, visual::color, workspace::AppView};
 

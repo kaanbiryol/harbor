@@ -7,8 +7,8 @@ mod repository_switcher_rows;
 #[path = "header/switchers.rs"]
 mod switchers;
 
+use crate::gpui_component::{StyledExt, TitleBar};
 use gpui::{Context, IntoElement, Window, div, prelude::*, px};
-use gpui_component::{StyledExt, TitleBar};
 
 use crate::{visual::color, workspace::AppView};
 

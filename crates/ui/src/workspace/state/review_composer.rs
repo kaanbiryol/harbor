@@ -1,14 +1,14 @@
+use crate::gpui_component::input::TextareaState;
 use gpui::Entity;
-use gpui_component::input::InputState;
 
 use crate::workspace::{ReviewComposer, ReviewLineSelection, ReviewLineTarget};
 
 pub(crate) struct ReviewComposerState {
     mode: ReviewComposerMode,
-    pub(crate) comment_input: Entity<InputState>,
-    pub(crate) thread_reply_input: Entity<InputState>,
-    pub(crate) comment_edit_input: Entity<InputState>,
-    pub(crate) pending_review_body_input: Entity<InputState>,
+    pub(crate) comment_input: Entity<TextareaState>,
+    pub(crate) thread_reply_input: Entity<TextareaState>,
+    pub(crate) comment_edit_input: Entity<TextareaState>,
+    pub(crate) pending_review_body_input: Entity<TextareaState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -31,10 +31,10 @@ pub(crate) enum ReviewComposerMode {
 
 impl ReviewComposerState {
     pub(crate) fn new(
-        comment_input: Entity<InputState>,
-        thread_reply_input: Entity<InputState>,
-        comment_edit_input: Entity<InputState>,
-        pending_review_body_input: Entity<InputState>,
+        comment_input: Entity<TextareaState>,
+        thread_reply_input: Entity<TextareaState>,
+        comment_edit_input: Entity<TextareaState>,
+        pending_review_body_input: Entity<TextareaState>,
     ) -> Self {
         Self {
             mode: ReviewComposerMode::Idle,

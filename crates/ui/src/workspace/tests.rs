@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
+use crate::gpui_component::{Root, Theme, ThemeMode};
 use crate::{
     actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher},
     test_fixtures::{pull_request, review_thread, test_time},
@@ -11,7 +12,6 @@ use gpui::{
     AppContext, Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext,
     VisualTestContext, point, px, size,
 };
-use gpui_component::{Root, Theme, ThemeMode};
 use harbor_domain::{
     Label, PullRequestComment, PullRequestCommit, PullRequestReview, PullRequestReviewState,
     ReviewThreadState,
@@ -32,7 +32,7 @@ fn defaults_pull_request_inbox_to_open_mode() {
 #[gpui::test]
 async fn pull_request_inbox_uses_skeleton_rows_while_initial_list_loads(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -70,7 +70,7 @@ async fn pull_request_inbox_uses_skeleton_rows_while_initial_list_loads(cx: &mut
 #[gpui::test]
 async fn initial_panel_loads_use_skeleton_rows(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -143,7 +143,7 @@ async fn initial_panel_loads_use_skeleton_rows(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn empty_workspace_and_inbox_render_guided_empty_states(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -161,7 +161,7 @@ async fn empty_workspace_and_inbox_render_guided_empty_states(cx: &mut TestAppCo
 #[gpui::test]
 async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -182,7 +182,7 @@ async fn repository_switcher_starts_closed(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -207,7 +207,7 @@ async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn overview_uses_skeletons_until_initial_data_finishes(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -266,7 +266,7 @@ async fn overview_uses_skeletons_until_initial_data_finishes(cx: &mut TestAppCon
 #[gpui::test]
 async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -427,7 +427,7 @@ async fn overview_reveals_content_together_after_pull_request_switch(cx: &mut Te
 #[gpui::test]
 async fn long_overview_descriptions_share_the_virtualized_overview_scroll(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -498,7 +498,7 @@ async fn long_overview_descriptions_share_the_virtualized_overview_scroll(cx: &m
 #[gpui::test]
 async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -707,7 +707,7 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
 #[gpui::test]
 async fn overview_description_and_activity_scroll_together(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -764,7 +764,7 @@ async fn overview_description_and_activity_scroll_together(cx: &mut TestAppConte
 #[gpui::test]
 async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -828,7 +828,7 @@ async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -903,7 +903,7 @@ async fn pull_request_header_spans_details_and_panel(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn panel_tab_height_stays_stable_when_counts_load(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -955,7 +955,7 @@ async fn panel_tab_height_stays_stable_when_counts_load(cx: &mut TestAppContext)
 #[gpui::test]
 async fn pull_request_columns_resize_horizontally(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -1041,7 +1041,7 @@ async fn pull_request_columns_resize_horizontally(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn non_diff_panel_uses_full_workspace_width(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -1073,7 +1073,7 @@ async fn non_diff_panel_uses_full_workspace_width(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn fullscreen_repository_title_keeps_left_inset(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -1107,7 +1107,7 @@ async fn fullscreen_repository_title_keeps_left_inset(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn repository_switcher_does_not_open_while_auth_gate_is_visible(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -1133,7 +1133,7 @@ async fn repository_switcher_does_not_open_while_auth_gate_is_visible(cx: &mut T
 #[gpui::test]
 async fn dismissing_github_auth_popover_keeps_pending_sign_in(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -1179,7 +1179,7 @@ async fn dismissing_github_auth_popover_keeps_pending_sign_in(cx: &mut TestAppCo
 #[gpui::test]
 async fn github_account_settings_open_and_close(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -1211,7 +1211,7 @@ async fn github_account_settings_open_and_close(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn pending_auth_switch_preserves_current_source(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 

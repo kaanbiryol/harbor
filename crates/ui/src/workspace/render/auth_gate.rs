@@ -1,9 +1,9 @@
-use gpui::{Context, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     spinner::Spinner,
 };
+use gpui::{Context, IntoElement, div, prelude::*, px};
 
 use crate::{
     actions::SignInToGitHub,

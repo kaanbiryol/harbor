@@ -1,5 +1,5 @@
+use crate::gpui_component::input::{InputEvent, TextareaState};
 use gpui::{Context, Entity, Window};
-use gpui_component::input::{InputEvent, InputState};
 
 use crate::{
     actions::PanelTab,
@@ -91,7 +91,7 @@ impl AppView {
 
     pub(crate) fn on_review_input_event(
         &mut self,
-        _: &Entity<InputState>,
+        _: &Entity<TextareaState>,
         event: &InputEvent,
         _: &mut Window,
         cx: &mut Context<Self>,

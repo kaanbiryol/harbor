@@ -45,11 +45,11 @@ mod workflow_log_loaders;
 
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
+use crate::gpui_component::input::{InputState, TextareaState};
 use gpui::{
     Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
     UniformListScrollHandle, px,
 };
-use gpui_component::input::InputState;
 use harbor_domain::{PullRequest, RepoId, WorkflowRun};
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
@@ -179,10 +179,10 @@ pub struct AppView {
     pull_request_filters: PullRequestFilters,
     file_filter_popover_open: bool,
     review_action_comment_target: Option<ReviewActionCommentTarget>,
-    review_action_comment_input: Entity<InputState>,
-    overview_comment_input: Entity<InputState>,
+    review_action_comment_input: Entity<TextareaState>,
+    overview_comment_input: Entity<TextareaState>,
     pull_request_description_editing: bool,
-    pull_request_description_input: Entity<InputState>,
+    pull_request_description_input: Entity<TextareaState>,
     pull_request_reviewer_input: Entity<InputState>,
     pull_request_assignee_input: Entity<InputState>,
     pull_request_label_input: Entity<InputState>,

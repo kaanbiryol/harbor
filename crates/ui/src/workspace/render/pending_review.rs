@@ -1,9 +1,9 @@
-use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::Input,
+    input::Textarea,
 };
+use gpui::{Context, IntoElement, div, prelude::*};
 use harbor_domain::SubmitPullRequestReviewEvent;
 
 use crate::{
@@ -68,12 +68,10 @@ impl AppView {
                 )
                 .child(
                     div().pt_2().child(
-                        Input::new(&body_input)
-                            .small()
+                        Textarea::new(&body_input)
                             .w_full()
                             .appearance(false)
-                            .bordered(true)
-                            .focus_bordered(true),
+                            .bordered(true),
                     ),
                 )
                 .child(

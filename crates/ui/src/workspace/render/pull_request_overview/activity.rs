@@ -1,9 +1,9 @@
-use gpui::{AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::Input,
+    input::Textarea,
 };
+use gpui::{AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
 use harbor_domain::{PullRequest, PullRequestPerson, ReviewThread};
 
 use crate::{
@@ -24,7 +24,7 @@ impl AppView {
         key: String,
         body: &str,
         cx: &mut Context<Self>,
-    ) -> Entity<gpui_component::text::TextViewState> {
+    ) -> Entity<crate::gpui_component::text::TextViewState> {
         let source = review_markdown_body(body);
         if let Some(entry) = self.overview_state.markdown_state_mut(&key) {
             if entry.source != source {
@@ -36,7 +36,7 @@ impl AppView {
             return entry.state.clone();
         }
 
-        let state = cx.new(|cx| gpui_component::text::TextViewState::markdown(&source, cx));
+        let state = cx.new(|cx| crate::gpui_component::text::TextViewState::markdown(&source, cx));
         self.overview_state.insert_markdown_state(
             key,
             OverviewMarkdownState {
@@ -339,13 +339,11 @@ impl AppView {
                     div()
                         .debug_selector(|| "pull-request-overview-comment-input".to_string())
                         .child(
-                            Input::new(&input)
-                                .small()
+                            Textarea::new(&input)
                                 .w_full()
                                 .h(px(64.0))
                                 .appearance(false)
-                                .bordered(true)
-                                .focus_bordered(true),
+                                .bordered(true),
                         ),
                 )
                 .when_some(action_error, |element, error| {

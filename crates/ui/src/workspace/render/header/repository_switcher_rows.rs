@@ -1,9 +1,9 @@
-use gpui::{App, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Sizable, StyledExt,
     button::{Button, ButtonVariants},
     spinner::Spinner,
 };
+use gpui::{App, Div, Entity, IntoElement, KeyDownEvent, Stateful, div, prelude::*, px};
 use harbor_domain::RepoId;
 
 use crate::{icons::Octicon, visual::color, workspace::AppView};

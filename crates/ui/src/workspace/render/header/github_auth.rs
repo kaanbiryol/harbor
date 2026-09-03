@@ -1,10 +1,10 @@
-use gpui::{Anchor, AnyElement, App, Context, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Sizable, StyledExt,
     avatar::Avatar,
     button::{Button, ButtonVariants},
     popover::Popover,
 };
+use gpui::{Anchor, AnyElement, App, Context, Entity, IntoElement, div, prelude::*, px};
 
 use crate::{
     actions::SignOutOfGitHub,

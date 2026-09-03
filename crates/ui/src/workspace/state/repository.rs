@@ -3,8 +3,8 @@ use std::{
     path::PathBuf,
 };
 
+use crate::gpui_component::input::InputState;
 use gpui::Entity;
-use gpui_component::input::InputState;
 use harbor_domain::RepoId;
 use harbor_storage::SqliteStore;
 

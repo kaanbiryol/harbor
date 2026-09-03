@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use crate::gpui_component::{Root, Theme, ThemeMode};
 use gpui::{
     AppContext, Context, Entity, IntoElement, Render, TestAppContext, VisualTestContext, Window,
     div,
 };
-use gpui_component::{Root, Theme, ThemeMode};
 use harbor_domain::PullRequest;
 use harbor_github::GitHubError;
 
@@ -39,7 +39,7 @@ fn init_workspace_service_test(
     api: Arc<FakeGitHubApi>,
 ) -> (Entity<AppView>, &mut VisualTestContext) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 

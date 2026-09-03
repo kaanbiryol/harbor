@@ -1,5 +1,5 @@
+use crate::gpui_component::input::Position;
 use gpui::{Context, Window};
-use gpui_component::input::Position;
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 

@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable, StyledExt, clipboard::Clipboard};
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt, clipboard::Clipboard};
 use harbor_domain::DiffFile;
 
 use crate::{

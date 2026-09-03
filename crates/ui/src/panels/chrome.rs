@@ -1,12 +1,12 @@
-use gpui::{
-    AnyElement, Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*,
-    px,
-};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     skeleton::Skeleton,
     tooltip::Tooltip,
+};
+use gpui::{
+    AnyElement, Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*,
+    px,
 };
 
 use crate::icons::Octicon;

@@ -1,9 +1,9 @@
-use gpui::{
-    App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, Window, div, prelude::*, px,
-};
-use gpui_component::{
+use crate::gpui_component::{
     Root,
     resizable::{h_resizable, resizable_panel},
+};
+use gpui::{
+    App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, Window, div, prelude::*, px,
 };
 
 use crate::actions::*;

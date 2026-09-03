@@ -1,5 +1,5 @@
+use crate::gpui_component::input::{InputEvent, InputState};
 use gpui::{App, Context, Entity, Window};
-use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{PullRequest, RepoId};
 
 use crate::workspace::AppView;

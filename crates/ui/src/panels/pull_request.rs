@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable, tooltip::Tooltip};
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
-use gpui_component::{Icon, Sizable, tooltip::Tooltip};
 use harbor_domain::{ChecksSummary, PullRequest, PullRequestState};
 
 use crate::{

@@ -1,9 +1,9 @@
-use gpui::{Entity, IntoElement, Pixels, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::{Input, InputState},
+    input::{Textarea, TextareaState},
 };
+use gpui::{Entity, IntoElement, Pixels, div, prelude::*};
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
@@ -68,7 +68,7 @@ pub(crate) struct ReviewThreadActionsState {
 pub(crate) struct ReviewThreadReplyComposerState {
     pub(crate) ids: ReviewThreadReplyComposerIds,
     pub(crate) thread_id: String,
-    pub(crate) input: Entity<InputState>,
+    pub(crate) input: Entity<TextareaState>,
     pub(crate) input_height: Pixels,
     pub(crate) disabled: bool,
     pub(crate) submitting: bool,
@@ -311,13 +311,11 @@ pub(crate) fn render_review_thread_reply_composer(
                 .px_2()
                 .py_1()
                 .child(
-                    Input::new(&input)
+                    Textarea::new(&input)
                         .w_full()
-                        .small()
                         .h(input_height)
                         .appearance(false)
-                        .bordered(false)
-                        .focus_bordered(false),
+                        .bordered(false),
                 ),
         )
         .when_some(error, |element, error| {

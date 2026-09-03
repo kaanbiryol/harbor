@@ -1,9 +1,9 @@
-use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     popover::{Popover, PopoverState},
 };
+use gpui::{Anchor, AnyElement, Entity, IntoElement, div, prelude::*, px};
 use harbor_domain::{ReactionContent, ReviewComment};
 
 use crate::{

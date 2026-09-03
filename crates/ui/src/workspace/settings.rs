@@ -1,5 +1,5 @@
+use crate::gpui_component::{Root, WindowExt};
 use gpui::{Context, Window};
-use gpui_component::{Root, WindowExt};
 
 use crate::{
     actions::{CloseSettings, OpenSettings},

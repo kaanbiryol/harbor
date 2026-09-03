@@ -1,5 +1,5 @@
+use crate::gpui_component::input::TextareaState;
 use gpui::{Entity, IntoElement, div, prelude::*, px};
-use gpui_component::input::InputState;
 use harbor_domain::ReviewThreadState;
 
 use crate::{
@@ -34,7 +34,7 @@ pub(super) struct ReviewThreadHeaderState {
 
 pub(super) struct ReviewThreadReplyComposerState {
     pub(super) thread_id: String,
-    pub(super) input: Entity<InputState>,
+    pub(super) input: Entity<TextareaState>,
     pub(super) disabled: bool,
     pub(super) submitting: bool,
     pub(super) error: Option<String>,

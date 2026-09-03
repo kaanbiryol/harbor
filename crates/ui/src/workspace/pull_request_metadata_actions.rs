@@ -1,5 +1,5 @@
+use crate::gpui_component::input::{InputEvent, InputState};
 use gpui::{Context, Entity, Window};
-use gpui_component::input::{InputEvent, InputState};
 use harbor_domain::{Label, PullRequestMetadataOptions, PullRequestPerson};
 
 use crate::{

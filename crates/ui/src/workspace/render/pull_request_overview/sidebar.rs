@@ -1,8 +1,8 @@
-use gpui::{Anchor, AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Sizable, StyledExt, avatar::Avatar, button::Button, input::Input, list::ListItem,
     popover::Popover, scroll::ScrollableElement, spinner::Spinner,
 };
+use gpui::{Anchor, AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
 use harbor_domain::{
     Label, PullRequest, PullRequestPerson, PullRequestReview, PullRequestReviewState,
     PullRequestTeam, ReviewDecision,

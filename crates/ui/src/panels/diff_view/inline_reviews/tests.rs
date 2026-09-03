@@ -1,7 +1,7 @@
+use crate::gpui_component::{Root, Theme, ThemeMode, input::TextareaState};
 use gpui::{
     Context, Entity, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window,
 };
-use gpui_component::{Root, Theme, ThemeMode, input::InputState};
 
 use crate::test_fixtures::review_thread as test_review_thread;
 use crate::workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError};
@@ -87,7 +87,7 @@ fn init_visual_review_test(
     &mut VisualTestContext,
 ) {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
@@ -216,14 +216,14 @@ impl Render for InlineReviewThreadHarness {
 
 struct ReviewThreadTestState {
     active_reply_thread_id: Option<String>,
-    reply_input: Entity<InputState>,
+    reply_input: Entity<TextareaState>,
     reply_body_empty: bool,
     is_submitting_reply: bool,
     review_thread_reply_error: Option<ReviewThreadUiError>,
     action_thread_id: Option<String>,
     action_error: Option<ReviewThreadUiError>,
     active_comment_edit_id: Option<String>,
-    comment_edit_input: Entity<InputState>,
+    comment_edit_input: Entity<TextareaState>,
     edit_body_empty: bool,
     is_submitting_edit: bool,
     review_comment_edit_error: Option<ReviewCommentUiError>,

@@ -1,11 +1,16 @@
 use std::collections::HashSet;
 
+use crate::gpui_component::input::Textarea;
+
 use super::*;
 use crate::icons::Octicon;
 use crate::panels::{overview_markdown_blocks, render_review_markdown_state};
 use crate::workspace::{
     PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt, state::OverviewMarkdownState,
 };
+
+// TextViewState parses full replacements up to this size before observers can subscribe.
+const SYNCHRONOUS_TEXT_VIEW_PARSE_MAX_BYTES: usize = 4 * 1024;
 
 impl AppView {
     pub(super) fn prepare_pull_request_description(
@@ -89,13 +94,18 @@ impl AppView {
                     block
                         .state
                         .update(cx, |state, cx| state.set_text(&source, cx));
-                    pending_blocks.insert(index);
+                    if source.len() > SYNCHRONOUS_TEXT_VIEW_PARSE_MAX_BYTES {
+                        pending_blocks.insert(index);
+                    }
                     block
                 }
                 None => {
-                    let state =
-                        cx.new(|cx| gpui_component::text::TextViewState::markdown(&source, cx));
-                    pending_blocks.insert(index);
+                    let state = cx.new(|cx| {
+                        crate::gpui_component::text::TextViewState::markdown(&source, cx)
+                    });
+                    if source.len() > SYNCHRONOUS_TEXT_VIEW_PARSE_MAX_BYTES {
+                        pending_blocks.insert(index);
+                    }
                     OverviewMarkdownState { source, state }
                 }
             };
@@ -230,7 +240,7 @@ impl AppView {
         let content = div()
             .w_full()
             .min_w_0()
-            .child(Input::new(&description_input))
+            .child(Textarea::new(&description_input))
             .when_some(error, |element, error| {
                 element.child(
                     div()

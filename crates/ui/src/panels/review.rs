@@ -1,7 +1,7 @@
-use gpui::{AnyElement, Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     ActiveTheme, Icon, Sizable, StyledExt, avatar::Avatar, spinner::Spinner, tooltip::Tooltip,
 };
+use gpui::{AnyElement, Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{
     PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment, ReviewThread,
     ReviewThreadState,

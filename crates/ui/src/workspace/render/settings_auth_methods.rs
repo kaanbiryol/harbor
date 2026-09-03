@@ -1,5 +1,5 @@
+use crate::gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button};
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button};
 
 use crate::{
     actions::{SwitchGitHubAuthToGhCli, SwitchGitHubAuthToOAuth},

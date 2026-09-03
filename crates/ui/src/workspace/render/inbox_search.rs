@@ -1,11 +1,11 @@
-use gpui::{
-    Anchor, App, Context, Entity, IntoElement, KeyDownEvent, div, prelude::*, px, uniform_list,
-};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable,
     button::{Button, ButtonVariants},
     input::Input,
     popover::Popover,
+};
+use gpui::{
+    Anchor, App, Context, Entity, IntoElement, KeyDownEvent, div, prelude::*, px, uniform_list,
 };
 
 use crate::{

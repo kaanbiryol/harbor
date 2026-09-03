@@ -1,11 +1,11 @@
-use gpui::{AnyElement, Entity, IntoElement, SharedString, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::InputState,
+    input::TextareaState,
     list::ListItem,
     tooltip::Tooltip,
 };
+use gpui::{AnyElement, Entity, IntoElement, SharedString, div, prelude::*, px};
 use harbor_domain::{PullRequestPerson, PullRequestReviewState, ReviewThread, ReviewThreadState};
 
 use crate::{
@@ -32,7 +32,7 @@ pub(super) struct OverviewThreadRenderState<'a> {
     pub(super) index: usize,
     pub(super) expanded: bool,
     pub(super) active_review_thread_reply: Option<&'a str>,
-    pub(super) reply_input: Entity<InputState>,
+    pub(super) reply_input: Entity<TextareaState>,
     pub(super) reply_body_empty: bool,
     pub(super) is_submitting_reply: bool,
     pub(super) reply_error: Option<&'a ReviewThreadUiError>,
@@ -313,7 +313,7 @@ pub(super) struct OverviewThreadCommentRenderState<'a> {
     pub(super) reaction_action: Option<&'a ReviewReactionAction>,
     pub(super) reaction_error: Option<&'a ReviewCommentUiError>,
     pub(super) active_comment_edit: Option<&'a str>,
-    pub(super) comment_edit_input: Entity<InputState>,
+    pub(super) comment_edit_input: Entity<TextareaState>,
     pub(super) edit_body_empty: bool,
     pub(super) is_submitting_edit: bool,
     pub(super) edit_error: Option<&'a ReviewCommentUiError>,

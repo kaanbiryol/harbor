@@ -1,11 +1,11 @@
 use std::ops::Range;
 
-use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px, rems};
-use gpui_component::{
+use crate::gpui_component::{
     StyledExt,
     highlighter::LanguageRegistry,
     text::{TextView, TextViewState, TextViewStyle},
 };
+use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px, rems};
 use markdown::{ParseOptions, mdast::Node};
 
 use crate::visual::{Tone, color, tone_colors};

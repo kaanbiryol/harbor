@@ -1,8 +1,8 @@
-use gpui::{AnyElement, Context, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable,
     button::{Button, ButtonVariants},
 };
+use gpui::{AnyElement, Context, div, prelude::*, px};
 
 use crate::{icons::Octicon, visual::color, workspace::AppView};
 

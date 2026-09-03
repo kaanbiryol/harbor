@@ -20,11 +20,11 @@ pub(crate) use inline_reviews::{
 
 use std::{collections::HashSet, sync::Arc};
 
-use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
+use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{DiffFile, PullRequest, ReviewThread};
 
 use crate::diff::ParsedDiff;

@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable};
 use gpui::{AnyElement, div, prelude::*, px};
-use gpui_component::{Icon, Sizable};
 use harbor_domain::FileStatus;
 
 use crate::{icons::Octicon, visual::color};

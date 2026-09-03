@@ -1,5 +1,4 @@
-use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     ActiveTheme, Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
     checkbox::Checkbox,
@@ -7,6 +6,7 @@ use gpui_component::{
     tag::Tag,
     tooltip::Tooltip,
 };
+use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use harbor_domain::{MergeMethod, MergeQueueState, PullRequest};
 
 use crate::{
@@ -85,6 +85,7 @@ impl AppView {
                         Button::new("approve-pr-primary")
                             .label("approve")
                             .small()
+                            .tooltip(approve_tooltip)
                             .loading(review_action_running)
                             .disabled(review_action_disabled)
                             .on_click(cx.listener(|view, _, window, cx| {
@@ -96,9 +97,6 @@ impl AppView {
                             })),
                     )
                     .small()
-                    .compact()
-                    .tooltip(approve_tooltip)
-                    .loading(review_action_running)
                     .disabled(review_action_disabled)
                     .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
                         menu.menu_with_disabled(
@@ -165,6 +163,7 @@ impl AppView {
                     let button = Button::new("merge-pr-primary")
                         .label(merge_method_button_label(MergeMethod::Squash))
                         .small()
+                        .tooltip(merge_tooltip)
                         .loading(merge_action_running)
                         .disabled(merge_action_disabled)
                         .on_click(cx.listener(move |view, _, window, cx| {
@@ -180,9 +179,6 @@ impl AppView {
                     let dropdown = DropdownButton::new("merge-pr")
                         .button(button)
                         .small()
-                        .compact()
-                        .tooltip(merge_tooltip)
-                        .loading(merge_action_running)
                         .disabled(merge_action_disabled)
                         .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                             menu.menu_with_check_and_disabled(

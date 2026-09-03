@@ -1,11 +1,11 @@
-use gpui::{Anchor, ClipboardItem, Entity, IntoElement, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Icon, Sizable,
     button::{Button, ButtonVariants},
-    input::{Input, InputState},
+    input::{Textarea, TextareaState},
     popover::{Popover, PopoverState},
     spinner::Spinner,
 };
+use gpui::{Anchor, ClipboardItem, Entity, IntoElement, div, prelude::*};
 use harbor_domain::ReviewComment;
 
 use crate::{
@@ -244,7 +244,7 @@ fn render_review_comment_action_menu_item(
 
 pub(crate) fn render_review_comment_edit_composer(
     comment_id: String,
-    review_comment_edit_input: Entity<InputState>,
+    review_comment_edit_input: Entity<TextareaState>,
     edit_body_empty: bool,
     edit_submitting: bool,
     edit_error: Option<String>,
@@ -261,12 +261,10 @@ pub(crate) fn render_review_comment_edit_composer(
                 .px_2()
                 .py_1()
                 .child(
-                    Input::new(&review_comment_edit_input)
+                    Textarea::new(&review_comment_edit_input)
                         .w_full()
-                        .small()
                         .appearance(false)
-                        .bordered(false)
-                        .focus_bordered(false),
+                        .bordered(false),
                 ),
         )
         .when_some(edit_error, |element, error| {

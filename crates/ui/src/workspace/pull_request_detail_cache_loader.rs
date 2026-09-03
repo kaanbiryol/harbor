@@ -1,5 +1,5 @@
+use crate::gpui_component::ActiveTheme;
 use gpui::{AppContext, Context};
-use gpui_component::ActiveTheme;
 use harbor_domain::{
     CheckRun, DiffFile, PullRequest, PullRequestComment, PullRequestReview, ReviewThread,
     WorkflowRun, checks_summary_from_runs,

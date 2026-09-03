@@ -1,8 +1,8 @@
-use gpui::{AnyElement, Context, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
 };
+use gpui::{AnyElement, Context, div, prelude::*};
 use harbor_domain::{MergeState, PullRequest};
 
 use crate::panels::{PullRequestMergeQueueStatus, pull_request_merge_queue_status};

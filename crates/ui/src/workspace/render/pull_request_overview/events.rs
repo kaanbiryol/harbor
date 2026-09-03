@@ -1,5 +1,5 @@
+use crate::gpui_component::{StyledExt, tooltip::Tooltip};
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use gpui_component::{StyledExt, tooltip::Tooltip};
 use harbor_domain::{PullRequestComment, PullRequestCommit, PullRequestPerson, PullRequestReview};
 
 use crate::{

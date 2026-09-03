@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 
-use gpui::{Anchor, Context, div, prelude::*, px, uniform_list};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::Input,
     popover::Popover,
 };
+use gpui::{Anchor, Context, div, prelude::*, px, uniform_list};
 
 use crate::{
     dropdown::{dropdown_menu_section, dropdown_menu_surface},

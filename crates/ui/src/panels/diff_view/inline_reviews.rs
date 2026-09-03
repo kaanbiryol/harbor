@@ -16,12 +16,12 @@ pub(crate) use comment_actions::{
 pub(crate) use comments::review_comment_ui_state;
 pub(crate) use reactions::render_review_reactions;
 
-use gpui::{Entity, IntoElement, div, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    input::{Input, InputState},
+    input::{Textarea, TextareaState},
 };
+use gpui::{Entity, IntoElement, div, prelude::*, px};
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
@@ -46,7 +46,7 @@ const INLINE_REVIEW_THREAD_RECENT_REPLY_LIMIT: usize = 20;
 pub(super) struct ReviewComposerRenderState {
     pub(super) composer: ReviewComposer,
     pub(super) has_pending_review: bool,
-    pub(super) input: Entity<InputState>,
+    pub(super) input: Entity<TextareaState>,
     pub(super) body_empty: bool,
     pub(super) is_submitting: bool,
     pub(super) error: Option<String>,
@@ -60,7 +60,7 @@ pub(super) struct ReviewThreadRenderState<'a> {
     pub(super) line_number_width: f32,
     pub(super) suggestion_context: Option<ReviewSuggestionContext>,
     pub(super) active_review_thread_reply: Option<&'a str>,
-    pub(super) review_thread_reply_input: Entity<InputState>,
+    pub(super) review_thread_reply_input: Entity<TextareaState>,
     pub(super) reply_body_empty: bool,
     pub(super) is_submitting_reply: bool,
     pub(super) reply_error: Option<&'a ReviewThreadUiError>,
@@ -113,13 +113,11 @@ pub(super) fn render_review_composer_inline(state: ReviewComposerRenderState) ->
                     .px_2()
                     .py_1()
                     .child(
-                        Input::new(&input)
+                        Textarea::new(&input)
                             .w_full()
-                            .small()
                             .h(px(DIFF_ROW_HEIGHT * 3.0))
                             .appearance(false)
-                            .bordered(false)
-                            .focus_bordered(false),
+                            .bordered(false),
                     ),
             )
             .when_some(error, |element, error| {

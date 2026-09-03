@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
+use crate::gpui_component::{Icon, Sizable, StyledExt};
 use chrono::Duration;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::{CheckConclusion, CheckRun, CheckStatus, ChecksSummary};
 
 use crate::{

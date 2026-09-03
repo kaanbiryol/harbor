@@ -1,9 +1,9 @@
-use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     tab::{Tab, TabBar},
 };
+use gpui::{Context, IntoElement, div, prelude::*};
 
 use crate::{
     icons::Octicon,

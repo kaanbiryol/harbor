@@ -11,14 +11,11 @@ name = "harbor"
 path = "src/main.rs"
 
 [dependencies]
-gpui.workspace = true
-gpui-component-assets.workspace = true
-gpui-component.workspace = true
-gpui_platform.workspace = true
+gpui-kit.workspace = true
+gpui_reqwest_client.workspace = true
 harbor-github = { path = "../github" }
 harbor-storage = { path = "../storage" }
 harbor-ui = { path = "../ui" }
-reqwest_client.workspace = true
 rustls.workspace = true
 rust-embed = { version = "8.11", features = ["include-exclude"] }
 tracing.workspace = true

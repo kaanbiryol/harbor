@@ -1,5 +1,5 @@
+use crate::gpui_component::{Root, StyledExt, WindowExt};
 use gpui::{App, Context, Entity, IntoElement, Window, div, prelude::*, px};
-use gpui_component::{Root, StyledExt, WindowExt};
 
 use crate::{visual::color, workspace::AppView};
 

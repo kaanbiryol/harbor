@@ -1,5 +1,5 @@
+use crate::gpui_component::{Icon, Sizable, StyledExt};
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{Icon, Sizable, StyledExt};
 use harbor_domain::{Workflow, WorkflowState};
 
 use crate::icons::Octicon;

@@ -1,5 +1,5 @@
+use crate::gpui_component::StyledExt;
 use gpui::{Div, IntoElement, Stateful, div, prelude::*, px};
-use gpui_component::StyledExt;
 
 use crate::visual::color;
 

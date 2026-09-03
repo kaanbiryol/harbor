@@ -1,8 +1,8 @@
-use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::{
+use crate::gpui_component::{
     Icon, Sizable,
     tab::{Tab, TabBar},
 };
+use gpui::{Context, IntoElement, div, prelude::*};
 use harbor_domain::PullRequest;
 
 use crate::{

@@ -1,10 +1,10 @@
+use crate::gpui_component::{
+    ActiveTheme, Disableable, Sizable,
+    button::{Button, ButtonVariants},
+};
 use gpui::{
     AnyElement, Context, IntoElement, ListHorizontalSizingBehavior, UniformListScrollHandle, div,
     prelude::*, px, uniform_list,
-};
-use gpui_component::{
-    ActiveTheme, Disableable, Sizable,
-    button::{Button, ButtonVariants},
 };
 use harbor_domain::{WorkflowJob, WorkflowRun, WorkflowStep};
 use harbor_logs::{LogChunk, LogLine, LogSeverity};

@@ -1,9 +1,9 @@
-use chrono::Duration;
-use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use gpui_component::{
+use crate::gpui_component::{
     Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
 };
+use chrono::Duration;
+use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{RepoId, Workflow, WorkflowConclusion, WorkflowRun, WorkflowStatus};
 
 use crate::date_time::{full_time_label, natural_time_label, short_duration_label};

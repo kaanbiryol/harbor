@@ -21,7 +21,7 @@ impl AssetSource for Assets {
             return Ok(Some(asset.data));
         }
 
-        gpui_component_assets::Assets.load(path)
+        gpui_kit::assets::Assets.load(path)
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
@@ -32,7 +32,7 @@ impl AssetSource for Assets {
                     .then(|| SharedString::from(asset_path.into_owned()))
             })
             .collect();
-        assets.extend(gpui_component_assets::Assets.list(path)?);
+        assets.extend(gpui_kit::assets::Assets.list(path)?);
         Ok(assets)
     }
 }

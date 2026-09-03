@@ -1,7 +1,10 @@
 use std::{collections::HashSet, sync::Arc};
 
+use crate::gpui_component::{
+    ActiveTheme,
+    input::{InputState, TextareaState},
+};
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
-use gpui_component::{ActiveTheme, input::InputState};
 use harbor_storage::SqliteStore;
 use harbor_sync::{ActivityState, SyncPolicy};
 
@@ -73,44 +76,43 @@ impl AppView {
         let pull_request_reviews = Vec::new();
         let review_threads = Vec::new();
         let review_comment_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .auto_grow(3, 8)
                 .placeholder("Leave a comment")
                 .clean_on_escape()
         });
         let review_thread_reply_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .auto_grow(2, 5)
                 .placeholder("Reply to thread")
                 .clean_on_escape()
         });
         let review_comment_edit_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .auto_grow(2, 6)
                 .placeholder("Edit comment")
                 .clean_on_escape()
         });
         let pending_review_body_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .auto_grow(2, 6)
                 .placeholder("Review summary")
                 .clean_on_escape()
         });
         let review_action_comment_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .auto_grow(3, 8)
                 .placeholder("Review comment")
                 .clean_on_escape()
         });
         let overview_comment_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
+            TextareaState::new(window, cx)
                 .rows(4)
                 .placeholder("Add your comment here...")
                 .clean_on_escape()
         });
         let pull_request_description_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .auto_grow(8, 24)
                 .placeholder("Pull request description")
                 .clean_on_escape()

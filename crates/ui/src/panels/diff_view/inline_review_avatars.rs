@@ -1,5 +1,5 @@
+use crate::gpui_component::{Sizable, StyledExt, avatar::Avatar};
 use gpui::{IntoElement, div, prelude::*, px};
-use gpui_component::{Sizable, StyledExt, avatar::Avatar};
 use harbor_domain::ReviewComment;
 
 use crate::{

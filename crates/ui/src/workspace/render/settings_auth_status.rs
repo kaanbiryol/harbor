@@ -1,5 +1,5 @@
+use crate::gpui_component::{Sizable, StyledExt, button::Button};
 use gpui::{Entity, IntoElement, div, prelude::*};
-use gpui_component::{Sizable, StyledExt, button::Button};
 
 use crate::{
     visual::color,

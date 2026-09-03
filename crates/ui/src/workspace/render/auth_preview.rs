@@ -1,8 +1,8 @@
 #[path = "auth_preview_elements.rs"]
 mod auth_preview_elements;
 
+use crate::gpui_component::StyledExt;
 use gpui::{IntoElement, SharedString, div, prelude::*, px};
-use gpui_component::StyledExt;
 
 use crate::visual::color;
 
