@@ -7,7 +7,7 @@ use crate::{
         ApprovePullRequest, DEFAULT_REQUEST_CHANGES_BODY, MergePullRequest,
         MergePullRequestWithMergeCommit, OpenApproveCommentDialog, OpenRequestChangesCommentDialog,
         PanelTab, PullRequestAction, PullRequestActionRequest, RebasePullRequest, RequestChanges,
-        WorkflowAction, WorkflowActionRequest,
+        ToggleMergeRequirementsBypass, WorkflowAction, WorkflowActionRequest,
     },
     panels::{
         merge_blocker, merge_when_ready_blocker, merge_without_requirements_blocker,
@@ -548,5 +548,29 @@ impl AppView {
             window,
             cx,
         );
+    }
+
+    pub(super) fn toggle_merge_requirements_bypass(
+        &mut self,
+        _: &ToggleMergeRequirementsBypass,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.action_runtime.pull_request_action_running() {
+            return;
+        }
+
+        let bypass_available = self
+            .selected_pull_request()
+            .is_some_and(|pr| pr.merge_capabilities.viewer_can_merge_as_admin);
+        if !bypass_available {
+            self.set_status(
+                "You do not have permission to bypass merge requirements",
+                cx,
+            );
+            return;
+        }
+
+        self.set_merge_bypass_enabled(!self.merge_bypass_enabled, cx);
     }
 }

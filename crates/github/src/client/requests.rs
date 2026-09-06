@@ -29,6 +29,7 @@ query HarborRepositoryPullRequests(
         isDraft
         author {
           login
+          avatarUrl(size: 48)
         }
         repository {
           name

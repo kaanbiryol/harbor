@@ -184,6 +184,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::merge_pr))
             .on_action(cx.listener(Self::merge_pr_with_merge_commit))
             .on_action(cx.listener(Self::rebase_pr))
+            .on_action(cx.listener(Self::toggle_merge_requirements_bypass))
             .on_action(cx.listener(Self::filter_current_list))
             .on_action(cx.listener(Self::select_next_file))
             .on_action(cx.listener(Self::select_previous_file))

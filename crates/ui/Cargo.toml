@@ -9,6 +9,7 @@ rust-version.workspace = true
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+futures.workspace = true
 gpui-kit.workspace = true
 harbor-domain = { path = "../domain" }
 harbor-git = { path = "../git" }

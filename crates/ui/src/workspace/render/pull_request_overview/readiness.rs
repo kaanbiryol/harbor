@@ -20,8 +20,8 @@ impl AppView {
         pr: &PullRequest,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (review_label, review_tone) = review_readiness(pr.review_decision);
-        let (merge_label, merge_description, merge_tone) = merge_readiness(pr);
+        let (_, review_tone) = review_readiness(pr.review_decision);
+        let (_, merge_description, merge_tone) = merge_readiness(pr);
         let (status_label, status_description, status_tone) = pull_request_readiness(pr);
         let merge_queue_status = pull_request_merge_queue_status(pr);
         let unresolved_tone = if pr.unresolved_threads == 0 {
@@ -71,7 +71,6 @@ impl AppView {
                 "pull-request-review-readiness-row",
                 "Review",
                 review_readiness_description(pr.review_decision),
-                review_label,
                 Octicon::Eye,
                 review_tone,
                 false,
@@ -80,7 +79,6 @@ impl AppView {
                 "pull-request-merge-readiness-row",
                 "Merge",
                 merge_description,
-                merge_label,
                 Octicon::CheckCircle,
                 merge_tone,
                 false,
@@ -92,8 +90,11 @@ impl AppView {
                         render_readiness_row(
                             "pull-request-unresolved-conversations-row",
                             "Conversations",
-                            "Resolve open threads",
-                            format!("{} open", pr.unresolved_threads),
+                            format!(
+                                "Resolve {} open thread{}",
+                                pr.unresolved_threads,
+                                if pr.unresolved_threads == 1 { "" } else { "s" }
+                            ),
                             Octicon::CommentDiscussion,
                             unresolved_tone,
                             true,

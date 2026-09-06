@@ -162,6 +162,7 @@ mod tests {
             id: id.to_string(),
             node_id: Some(format!("{id}-node")),
             author: author.to_string(),
+            author_avatar_url: None,
             state,
             body: None,
             submitted_at: None,
