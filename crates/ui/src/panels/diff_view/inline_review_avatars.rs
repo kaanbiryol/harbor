@@ -10,6 +10,7 @@ use crate::{
 pub(super) fn render_review_comment_avatar(comment: &ReviewComment) -> impl IntoElement {
     let avatar = if let Some(avatar_url) = review_comment_avatar_url(comment) {
         Avatar::new()
+            .rounded_full()
             .src(avatar_url)
             .with_size(px(20.0))
             .into_any_element()

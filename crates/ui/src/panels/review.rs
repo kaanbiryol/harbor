@@ -536,6 +536,7 @@ pub(super) fn render_review_avatar(
         .or_else(|| github_avatar_url(author))
     {
         return Avatar::new()
+            .rounded_full()
             .src(avatar_url)
             .name(author.to_string())
             .with_size(px(size))

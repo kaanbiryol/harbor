@@ -1,13 +1,13 @@
 use crate::gpui_component::{
     Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    tab::{Tab, TabBar},
+    tab::TabBar,
 };
-use gpui::{Context, IntoElement, div, prelude::*};
+use gpui::{Context, IntoElement, div, prelude::*, px};
 
 use crate::{
     icons::Octicon,
-    panels::render_status_pill,
+    panels::{navigation_tab, render_tab_count},
     visual::{Tone, color},
     workspace::{AppView, PullRequestInboxCacheKey, PullRequestInboxMode},
 };
@@ -40,17 +40,17 @@ impl AppView {
             .position(|mode| *mode == current_mode)
             .unwrap_or_default();
         let tabs = PullRequestInboxMode::ALL.into_iter().map(|mode| {
-            Tab::new()
-                .label(mode.label())
+            navigation_tab(mode.label())
+                .px(px(6.0))
                 .when_some(self.pull_request_inbox_mode_count(mode), |tab, count| {
-                    tab.suffix(render_status_pill(count.to_string(), Tone::Neutral))
+                    tab.suffix(render_tab_count(count, Tone::Neutral))
                 })
         });
         let view = cx.entity().clone();
 
         div()
             .px_3()
-            .pt_3()
+            .pt_4()
             .pb_2()
             .border_b_1()
             .border_color(color::border())
@@ -65,7 +65,7 @@ impl AppView {
                             .min_w_0()
                             .flex_1()
                             .truncate()
-                            .text_sm()
+                            .text_size(px(15.0))
                             .font_medium()
                             .text_color(color::text_primary())
                             .child("Pull requests"),
@@ -93,11 +93,11 @@ impl AppView {
                     ),
             )
             .child(
-                div().pt_2().child(
+                div().pt_3().child(
                     TabBar::new("pull-request-inbox-mode-tabs")
                         .w_full()
                         .underline()
-                        .xsmall()
+                        .small()
                         .selected_index(active_index)
                         .children(tabs)
                         .on_click(move |index, _, cx| {

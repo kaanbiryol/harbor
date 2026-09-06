@@ -299,11 +299,13 @@ fn render_github_account_menu_row(
 fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {
     match login.and_then(avatar_url) {
         Some(avatar_url) => Avatar::new()
+            .rounded_full()
             .src(avatar_url)
             .name(login.unwrap_or("GitHub").to_string())
             .with_size(px(size))
             .into_any_element(),
         None => Avatar::new()
+            .rounded_full()
             .placeholder(Octicon::MarkGithub)
             .with_size(px(size))
             .into_any_element(),

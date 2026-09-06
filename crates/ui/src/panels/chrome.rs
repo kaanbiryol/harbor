@@ -2,6 +2,7 @@ use crate::gpui_component::{
     Icon, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     skeleton::Skeleton,
+    tab::Tab,
     tooltip::Tooltip,
 };
 use gpui::{
@@ -313,6 +314,36 @@ fn diff_stat_color(count: u32, active_color: gpui::Rgba) -> gpui::Rgba {
     } else {
         active_color
     }
+}
+
+pub(crate) fn navigation_tab(label: &'static str) -> Tab {
+    Tab::new()
+        .aria_label(label)
+        .px_2()
+        .child(div().text_size(px(13.0)).font_medium().child(label))
+}
+
+pub(crate) fn render_tab_count(count: usize, tone: Tone) -> impl IntoElement {
+    let colors = tone_colors(tone);
+
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .ml(px(2.0))
+        .min_w(px(20.0))
+        .h(px(18.0))
+        .px(px(5.0))
+        .rounded_full()
+        .bg(colors.background)
+        .text_size(px(11.0))
+        .font_medium()
+        .text_color(match tone {
+            Tone::Neutral if count > 0 => color::text_secondary(),
+            _ => colors.text,
+        })
+        .child(count.to_string())
 }
 
 pub(crate) fn render_status_pill(label: impl Into<String>, tone: Tone) -> impl IntoElement {

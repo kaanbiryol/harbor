@@ -424,6 +424,7 @@ fn render_metadata_choice_leading(
         PullRequestMetadataField::Reviewer | PullRequestMetadataField::Assignee => {
             if let Some(avatar_url) = avatar_url {
                 Avatar::new()
+                    .rounded_full()
                     .src(avatar_url)
                     .name(name.to_string())
                     .with_size(px(20.0))
@@ -917,6 +918,7 @@ pub(super) fn render_person_avatar_with_size(person: &PullRequestPerson, size: f
 
     if let Some(avatar_url) = avatar_url {
         return Avatar::new()
+            .rounded_full()
             .src(avatar_url)
             .name(person.login.clone())
             .with_size(px(size))

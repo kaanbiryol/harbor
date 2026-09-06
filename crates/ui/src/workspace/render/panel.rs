@@ -1,7 +1,4 @@
-use crate::gpui_component::{
-    Icon, Sizable,
-    tab::{Tab, TabBar},
-};
+use crate::gpui_component::{Icon, Sizable, tab::TabBar};
 use gpui::{Context, IntoElement, div, prelude::*};
 use harbor_domain::PullRequest;
 
@@ -9,9 +6,9 @@ use crate::{
     actions::PanelTab,
     panels::{
         ActionsPanelRenderInput, CheckPanelRenderInput, CommitsPanelRenderInput,
-        DiffPanelRenderInput, ReviewPanelRenderInput, render_actions_panel, render_checks_panel,
-        render_commits_panel, render_diff_panel, render_logs_panel, render_review_panel,
-        render_status_pill,
+        DiffPanelRenderInput, ReviewPanelRenderInput, navigation_tab, render_actions_panel,
+        render_checks_panel, render_commits_panel, render_diff_panel, render_logs_panel,
+        render_review_panel, render_tab_count,
     },
     visual::{Tone, color},
     workspace::AppView,
@@ -33,17 +30,13 @@ impl AppView {
             .position(|tab| *tab == self.active_tab)
             .unwrap_or_default();
         let tabs = PanelTab::ALL.into_iter().map(|tab| {
-            Tab::new()
-                .label(tab.label())
-                .prefix(Icon::new(tab.icon()).xsmall())
+            navigation_tab(tab.label())
+                .prefix(div().mr_0p5().child(Icon::new(tab.icon()).xsmall()))
                 .when(tab == PanelTab::Review && unresolved_threads > 0, |tab| {
                     tab.suffix(
                         div()
                             .debug_selector(|| "review-tab-unresolved-count".to_string())
-                            .child(render_status_pill(
-                                unresolved_threads.to_string(),
-                                Tone::Warning,
-                            )),
+                            .child(render_tab_count(unresolved_threads, Tone::Warning)),
                     )
                 })
                 .when_some(
@@ -52,7 +45,7 @@ impl AppView {
                         tab.suffix(
                             div()
                                 .debug_selector(|| "commits-tab-count".to_string())
-                                .child(render_status_pill(commit_count.to_string(), Tone::Neutral)),
+                                .child(render_tab_count(commit_count, Tone::Neutral)),
                         )
                     },
                 )
@@ -61,16 +54,15 @@ impl AppView {
         div()
             .debug_selector(|| "pull-request-panel-tabs".to_string())
             .flex_none()
-            .h_10()
+            .h_12()
             .flex()
             .items_end()
-            .px_2()
+            .px_3()
             .pt_1()
             .child(
                 TabBar::new("pull-request-panel-tab-bar")
                     .w_full()
                     .underline()
-                    .small()
                     .selected_index(active_index)
                     .children(tabs)
                     .on_click(move |index, _, cx| {
