@@ -3,6 +3,53 @@ use serde_json::json;
 use super::super::{GitHubClient, test_support::RecordingTransport};
 
 #[test]
+fn loads_check_runs_after_the_first_page() {
+    let transport = RecordingTransport::default();
+    let check = |id| json!({"id": id, "name": format!("check-{id}"), "status": "completed", "conclusion": "success"});
+    *transport.get_responses.lock().unwrap() = vec![
+        json!({"check_runs": (1..=100).map(check).collect::<Vec<_>>()}),
+        json!({"check_runs": [check(101)]}),
+    ];
+    let client = GitHubClient::new(transport.clone());
+    let checks = smol::block_on(client.list_check_runs("acme", "app", "head")).unwrap();
+    assert_eq!(checks.len(), 101);
+    assert_eq!(checks.last().unwrap().id, Some(101));
+    assert!(
+        transport.gets.lock().unwrap()[1]
+            .1
+            .contains(&("page".into(), "2".into()))
+    );
+}
+
+#[test]
+fn loads_workflow_runs_after_the_first_page_for_the_same_head() {
+    let transport = RecordingTransport::default();
+    let run = |id| {
+        json!({
+            "id": id, "name": format!("workflow-{id}"), "status": "completed", "conclusion": "success",
+            "head_sha": "head", "head_branch": "feature", "event": "pull_request",
+            "url": format!("https://api.github.com/repos/acme/app/actions/runs/{id}"),
+            "html_url": format!("https://github.com/acme/app/actions/runs/{id}"),
+            "created_at": "2026-09-07T12:00:00Z", "updated_at": "2026-09-07T12:00:00Z"
+        })
+    };
+    *transport.get_responses.lock().unwrap() = vec![
+        json!({"workflow_runs": (1..=100).map(run).collect::<Vec<_>>()}),
+        json!({"workflow_runs": [run(101)]}),
+    ];
+    let client = GitHubClient::new(transport.clone());
+    let runs = smol::block_on(client.list_workflow_runs_for_head("acme", "app", "head")).unwrap();
+    assert_eq!(runs.len(), 101);
+    assert_eq!(runs.last().unwrap().id, 101);
+    let gets = transport.gets.lock().unwrap();
+    assert!(gets[1].1.contains(&("page".into(), "2".into())));
+    assert!(
+        gets.iter()
+            .all(|(_, query)| query.contains(&("head_sha".into(), "head".into())))
+    );
+}
+
+#[test]
 fn gets_repository_workflows() {
     let transport = RecordingTransport::default();
     *transport

@@ -66,12 +66,23 @@ where
         git_ref: &str,
     ) -> Result<Vec<CheckRun>> {
         let path = format!("/repos/{owner}/{repo}/commits/{git_ref}/check-runs");
-        let response = self
-            .transport
-            .rest_get(&path, &[("per_page", "100")])
-            .await?;
-
-        dto::check_runs_from_value(response)
+        let mut checks = Vec::new();
+        let mut page = 1;
+        loop {
+            let page_number = page.to_string();
+            let mut query = vec![("per_page", "100")];
+            if page > 1 {
+                query.push(("page", page_number.as_str()));
+            }
+            let response = self.transport.rest_get(&path, &query).await?;
+            let batch = dto::check_runs_from_value(response)?;
+            let complete = batch.len() < 100;
+            checks.extend(batch);
+            if complete {
+                return Ok(checks);
+            }
+            page += 1;
+        }
     }
 
     pub async fn list_workflow_runs_for_head(
@@ -81,12 +92,23 @@ where
         head_sha: &str,
     ) -> Result<Vec<WorkflowRun>> {
         let path = format!("/repos/{owner}/{repo}/actions/runs");
-        let response = self
-            .transport
-            .rest_get(&path, &[("head_sha", head_sha), ("per_page", "50")])
-            .await?;
-
-        dto::workflow_runs_from_value(response)
+        let mut runs = Vec::new();
+        let mut page = 1;
+        loop {
+            let page_number = page.to_string();
+            let mut query = vec![("head_sha", head_sha), ("per_page", "100")];
+            if page > 1 {
+                query.push(("page", page_number.as_str()));
+            }
+            let response = self.transport.rest_get(&path, &query).await?;
+            let batch = dto::workflow_runs_from_value(response)?;
+            let complete = batch.len() < 100;
+            runs.extend(batch);
+            if complete {
+                return Ok(runs);
+            }
+            page += 1;
+        }
     }
 
     pub async fn list_workflow_jobs_for_run(
