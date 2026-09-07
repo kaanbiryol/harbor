@@ -49,18 +49,52 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(pr) = pr else {
+            if self.pull_request_workspace_loading() {
+                let message = if self.pull_request_inbox.is_loading() {
+                    "Loading pull requests…"
+                } else {
+                    "Opening workspace…"
+                };
+                return div()
+                    .debug_selector(|| "pull-request-workspace-loading".to_string())
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap_3()
+                    .child(Spinner::new().large())
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(color::text_secondary())
+                            .child(message),
+                    )
+                    .into_any_element();
+            }
+
             let has_repository = self.repository_state.has_configured_repo();
-            let (icon, title, description) = if has_repository {
-                (
-                    Octicon::GitPullRequest,
-                    "No pull request selected",
-                    "Select a pull request from the list to view its overview, changes, reviews, and checks.",
-                )
-            } else {
+            let (icon, title, description) = if !has_repository {
                 (
                     Octicon::FileDirectory,
                     "No repository selected",
                     "Choose a repository from the title bar to load its pull requests.",
+                )
+            } else if let Some(error) = self.pull_request_inbox.load_error() {
+                (Octicon::Alert, "Could not load pull requests", error)
+            } else if self.pull_requests.is_empty() {
+                (
+                    Octicon::GitPullRequest,
+                    self.pull_request_inbox.mode().empty_message(),
+                    "Refresh to check again, or choose another repository from the title bar.",
+                )
+            } else {
+                (
+                    Octicon::GitPullRequest,
+                    "No pull request selected",
+                    "Select a pull request from the list to view its overview, changes, reviews, and checks.",
                 )
             };
 

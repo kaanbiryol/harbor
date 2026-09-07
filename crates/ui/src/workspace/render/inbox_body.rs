@@ -33,6 +33,11 @@ fn pull_request_inbox_body_state(
 }
 
 impl AppView {
+    pub(super) fn pull_request_workspace_loading(&self) -> bool {
+        self.pull_request_inbox.is_loading()
+            || (!self.repository_state.has_configured_repo() && self.repository_state.is_loading())
+    }
+
     pub(super) fn render_pull_request_inbox_body(
         &self,
         current_mode: PullRequestInboxMode,
@@ -42,7 +47,7 @@ impl AppView {
         let visible_pull_request_indices = self.visible_pull_request_indices();
         let has_active_filters = self.has_active_pull_request_filters();
         let body_state = pull_request_inbox_body_state(
-            self.pull_request_inbox.is_loading(),
+            self.pull_request_workspace_loading(),
             load_error.is_some(),
             !self.pull_requests.is_empty(),
         );

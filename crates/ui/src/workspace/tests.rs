@@ -42,6 +42,8 @@ async fn pull_request_inbox_uses_skeleton_rows_while_initial_list_loads(cx: &mut
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
         view_entity = Some(view.clone());
         view.update(cx, |view, cx| {
+            view.repository_state
+                .select_repository(RepoId::new("acme", "app"));
             view.pull_request_inbox.start_loading();
             cx.notify();
         });
@@ -50,21 +52,32 @@ async fn pull_request_inbox_uses_skeleton_rows_while_initial_list_loads(cx: &mut
 
     cx.refresh().expect("test window should refresh");
     assert!(cx.debug_bounds("pull-request-inbox-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_none());
     let loading_row = cx
         .debug_bounds("pull-request-inbox-loading-row-0")
         .expect("pull request skeleton row should render");
     assert_eq!(loading_row.size.height, px(layout::PULL_REQUEST_ROW_HEIGHT));
 
-    view_entity
-        .expect("test AppView should be created")
-        .update(cx, |view, cx| {
-            view.pull_requests = vec![pull_request()];
-            view.pull_request_inbox.apply_success();
-            cx.notify();
-        });
+    let view_entity = view_entity.expect("test AppView should be created");
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.pull_request_inbox.apply_success();
+        cx.notify();
+    });
     cx.refresh()
         .expect("test window should refresh after pull requests load");
     assert!(cx.debug_bounds("pull-request-inbox-loading").is_none());
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_none());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_request_inbox.start_loading();
+        cx.notify();
+    });
+    cx.refresh()
+        .expect("loaded pull requests should remain visible during refresh");
+    assert!(cx.debug_bounds("pull-request-inbox-loading").is_none());
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_none());
 }
 
 #[gpui::test]
@@ -147,14 +160,60 @@ async fn empty_workspace_and_inbox_render_guided_empty_states(cx: &mut TestAppCo
         Theme::change(ThemeMode::Dark, None, cx);
     });
 
+    let mut view_entity = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
         let view = cx
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view_entity = Some(view.clone());
         Root::new(view, window, cx)
     });
 
     cx.refresh().expect("test window should refresh");
     assert!(cx.debug_bounds("pull-request-inbox-empty-state").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_some());
+
+    let view_entity = view_entity.expect("test AppView should be created");
+    view_entity.update(cx, |view, cx| {
+        view.repository_state.start_loading();
+        cx.notify();
+    });
+    cx.refresh()
+        .expect("repository loading state should render");
+    assert!(cx.debug_bounds("pull-request-inbox-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_none());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state.finish_loading();
+        view.repository_state
+            .select_repository(RepoId::new("acme", "app"));
+        view.pull_request_inbox.start_loading();
+        cx.notify();
+    });
+    cx.refresh()
+        .expect("inbox loading should continue after repository loading");
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_none());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_request_inbox.apply_success();
+        cx.notify();
+    });
+    cx.refresh()
+        .expect("an empty result should replace the loading state");
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_none());
+    assert!(cx.debug_bounds("pull-request-inbox-empty-state").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_some());
+
+    view_entity.update(cx, |view, cx| {
+        view.pull_request_inbox.start_loading();
+        view.pull_request_inbox
+            .apply_failure("GitHub is unavailable");
+        cx.notify();
+    });
+    cx.refresh()
+        .expect("a failed load should leave the loading state");
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_none());
     assert!(cx.debug_bounds("pull-request-empty-state").is_some());
 }
 
@@ -188,8 +247,7 @@ async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
 
     let mut view_entity = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
-        let view =
-            cx.new(|cx| AppView::new(Arc::new(FakeGitHubApi::signed_out()), None, window, cx));
+        let view = cx.new(|cx| AppView::new(Arc::new(FakeGitHubApi::default()), None, window, cx));
         view_entity = Some(view.clone());
         Root::new(view, window, cx)
     });
@@ -202,6 +260,12 @@ async fn app_view_starts_before_storage_is_ready(cx: &mut TestAppContext) {
             assert!(view.repository_state.is_loading());
             assert_eq!(view.status, "Initializing local storage...");
         });
+
+    cx.refresh()
+        .expect("workspace should render before storage is ready");
+    assert!(cx.debug_bounds("pull-request-inbox-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-workspace-loading").is_some());
+    assert!(cx.debug_bounds("pull-request-empty-state").is_none());
 }
 
 #[gpui::test]
