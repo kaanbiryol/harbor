@@ -127,6 +127,7 @@ impl AppView {
                                         .changed_files_state
                                         .collapsed_diff_file_paths,
                                     review_threads: self.review_state.review_threads(),
+                                    review_thread_index: self.review_state.review_thread_index(),
                                     review_composer: self
                                         .review_state
                                         .review_composer_state

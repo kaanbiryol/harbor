@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use chrono::Utc;
 use harbor_domain::{
     ReviewComment, ReviewCommentPosition, ReviewCommentRange, ReviewThread, ReviewThreadState,
@@ -27,7 +25,7 @@ impl ReviewRuntimeState {
             body,
         );
 
-        Arc::make_mut(&mut self.review_threads).push(ReviewThread {
+        self.review_threads_mut().push(ReviewThread {
             id: format!("{LOCAL_REVIEW_THREAD_ID_PREFIX}{sequence}"),
             path: range.path.clone(),
             range: Some(range),
@@ -62,7 +60,7 @@ impl ReviewRuntimeState {
         let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
         let comment = self.optimistic_review_comment(comment_id.clone(), position, body);
 
-        Arc::make_mut(&mut self.review_threads)[thread_index]
+        self.review_threads_mut()[thread_index]
             .comments
             .push(comment);
 

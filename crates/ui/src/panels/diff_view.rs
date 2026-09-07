@@ -65,6 +65,7 @@ pub(crate) struct DiffPanelRenderInput<'a> {
     pub(crate) expanded_diff_file_paths: &'a HashSet<String>,
     pub(crate) collapsed_diff_file_paths: &'a HashSet<String>,
     pub(crate) review_threads: &'a [ReviewThread],
+    pub(crate) review_thread_index: Arc<ReviewThreadIndex>,
     pub(crate) review_composer: Option<&'a ReviewComposer>,
     pub(crate) active_file_index: usize,
     pub(crate) commit_sha: Option<&'a str>,
@@ -156,7 +157,7 @@ pub(crate) fn render_diff_panel(
     let view_entity = cx.entity().clone();
     let processor_view_entity = view_entity.clone();
     let list_items_for_render = input.list_items.clone();
-    let review_thread_index = Arc::new(ReviewThreadIndex::new(input.review_threads));
+    let review_thread_index = input.review_thread_index.clone();
     let commit_scope = input.commit_sha.map(|sha| {
         let short_sha: String = sha.chars().take(7).collect();
         let pull_request = input.pull_request;

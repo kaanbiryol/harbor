@@ -105,7 +105,6 @@ pub(crate) fn render_review_panel(
     let review_item_count = review_content_item_count(&review_items);
     let has_review_items = !review_items.is_empty();
     sync_virtual_list_item_count(&review_list_state, review_items.len());
-    let review_items_for_render = review_items.clone();
 
     div()
         .image_cache(gpui::retain_all("review-timeline-avatar-cache"))
@@ -157,7 +156,7 @@ pub(crate) fn render_review_panel(
                 list(
                     review_list_state,
                     cx.processor(move |view, index: usize, _window, cx| {
-                        let Some(item) = review_items_for_render.get(index) else {
+                        let Some(item) = review_items.get(index) else {
                             return div().into_any_element();
                         };
 
