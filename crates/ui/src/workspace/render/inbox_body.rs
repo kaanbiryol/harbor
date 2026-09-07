@@ -238,15 +238,9 @@ fn render_pull_request_inbox_skeleton_row(index: usize) -> AnyElement {
         .min_w_0()
         .flex()
         .overflow_hidden()
-        .border_1()
+        .border_b_1()
         .border_color(color::border_subtle())
-        .child(
-            div()
-                .h_full()
-                .w(px(2.0))
-                .flex_none()
-                .bg(color::border_subtle()),
-        )
+        .child(div().h_full().w(px(2.0)).flex_none())
         .child(
             div()
                 .flex_1()
@@ -264,22 +258,27 @@ fn render_pull_request_inbox_skeleton_row(index: usize) -> AnyElement {
                         .min_w_0()
                         .flex()
                         .items_center()
+                        .justify_between()
                         .gap_2()
-                        .child(
-                            pull_request_inbox_skeleton()
-                                .w(px(32.0))
-                                .h(px(10.0))
-                                .rounded_sm(),
-                        )
                         .child(
                             pull_request_inbox_skeleton()
                                 .flex_1()
                                 .h(px(12.0))
                                 .rounded_sm(),
                         )
-                        .when(index % 3 != 2, |element| {
-                            element.child(pull_request_inbox_skeleton().size(px(24.0)).rounded_xs())
-                        }),
+                        .child(
+                            div()
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .gap_2()
+                                .child(pull_request_inbox_skeleton().size(px(16.0)).rounded_sm())
+                                .when(index % 3 != 2, |element| {
+                                    element.child(
+                                        pull_request_inbox_skeleton().size(px(16.0)).rounded_sm(),
+                                    )
+                                }),
+                        ),
                 )
                 .child(
                     pull_request_inbox_skeleton()

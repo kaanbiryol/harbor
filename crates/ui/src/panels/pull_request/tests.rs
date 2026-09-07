@@ -6,69 +6,30 @@ use super::*;
 use crate::test_fixtures::pull_request;
 
 #[test]
-fn shows_missing_checks_without_no_review_noise() {
+fn missing_checks_and_review_do_not_add_a_row_signal() {
     let mut pr = pull_request();
     pr.checks_summary = ChecksSummary::default();
 
-    let signals = visible_pull_request_row_signals(&pr);
-
-    assert!(signals.is_empty());
+    assert_eq!(pull_request_row_signal(&pr), None);
 }
 
 #[test]
-fn changes_requested_colors_unresolved_thread_count_as_danger() {
+fn conflict_takes_priority_over_review_feedback() {
     let mut pr = pull_request();
-    pr.is_draft = true;
-    pr.checks_summary = ChecksSummary {
-        total: 4,
-        passed: 2,
-        failed: 1,
-        pending: 1,
-        skipped: 0,
-    };
+    pr.merge_state = Some(MergeState::Dirty);
+    pr.checks_summary.failed = 1;
     pr.review_decision = Some(ReviewDecision::ChangesRequested);
     pr.unresolved_threads = 2;
 
-    let signals = visible_pull_request_row_signals(&pr);
-
     assert_eq!(
-        signal_summary(&signals),
-        vec![(
-            PullRequestRowSignalKind::ReviewChangesRequestedThreads,
-            Some("2".to_string())
-        )]
+        pull_request_row_signal(&pr),
+        Some(PullRequestRowSignal::MergeConflict)
     );
-}
 
-#[test]
-fn shows_unresolved_threads_without_no_review_noise() {
-    let mut pr = pull_request();
-    pr.unresolved_threads = 2;
-
-    let signals = visible_pull_request_row_signals(&pr);
-
+    pr.merge_state = Some(MergeState::Clean);
     assert_eq!(
-        signal_summary(&signals),
-        vec![(
-            PullRequestRowSignalKind::UnresolvedThreads,
-            Some("2".to_string())
-        )]
-    );
-}
-
-#[test]
-fn merge_conflict_uses_row_signal_badge() {
-    let mut pr = pull_request();
-    pr.merge_state = Some(MergeState::Dirty);
-
-    let signals = visible_pull_request_row_signals(&pr);
-
-    assert_eq!(
-        signal_summary(&signals),
-        vec![(
-            PullRequestRowSignalKind::MergeConflict,
-            Some("conflict".to_string())
-        )]
+        pull_request_row_signal(&pr),
+        Some(PullRequestRowSignal::ChangesRequested)
     );
 }
 
@@ -77,35 +38,29 @@ fn changes_requested_without_threads_still_has_review_signal() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::ChangesRequested);
 
-    let signals = visible_pull_request_row_signals(&pr);
-
     assert_eq!(
-        signal_summary(&signals),
-        vec![(
-            PullRequestRowSignalKind::ReviewChangesRequestedThreads,
-            Some("changes".to_string())
-        )]
+        pull_request_row_signal(&pr),
+        Some(PullRequestRowSignal::ChangesRequested)
     );
 }
 
 #[test]
-fn approved_pull_request_shows_review_signal() {
+fn approval_and_threads_do_not_add_row_signals() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::Approved);
 
-    let signals = visible_pull_request_row_signals(&pr);
+    assert_eq!(pull_request_row_signal(&pr), None);
 
+    pr.unresolved_threads = 2;
+    assert_eq!(pull_request_row_signal(&pr), None);
     assert_eq!(
-        signal_summary(&signals),
-        vec![(
-            PullRequestRowSignalKind::ReviewApproved,
-            Some("approved".to_string())
-        )]
+        pull_request_row_rail_tone(&pr),
+        PullRequestRowRailTone::Neutral
     );
 }
 
 #[test]
-fn merge_queue_state_precedes_review_state_in_row_signals() {
+fn queue_status_remains_available_without_adding_row_signals() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::Approved);
     pr.merge_capabilities = PullRequestMergeCapabilities {
@@ -118,55 +73,41 @@ fn merge_queue_state_precedes_review_state_in_row_signals() {
         pull_request_merge_queue_status(&pr),
         Some(PullRequestMergeQueueStatus::Waiting)
     );
-    assert_eq!(
-        signal_summary(&visible_pull_request_row_signals(&pr)),
-        vec![
-            (
-                PullRequestRowSignalKind::MergeQueueWaiting,
-                Some("Waiting to queue".to_string())
-            ),
-            (
-                PullRequestRowSignalKind::ReviewApproved,
-                Some("approved".to_string())
-            )
-        ]
-    );
+    assert_eq!(pull_request_row_signal(&pr), None);
 
     pr.merge_capabilities.queue_state = MergeQueueState::Queued;
     assert_eq!(
         pull_request_merge_queue_status(&pr),
         Some(PullRequestMergeQueueStatus::Queued)
     );
-    assert_eq!(
-        signal_summary(&visible_pull_request_row_signals(&pr))[0],
-        (
-            PullRequestRowSignalKind::MergeQueueQueued,
-            Some("Queued to merge".to_string())
-        )
-    );
+    assert_eq!(pull_request_row_signal(&pr), None);
 
     pr.state = PullRequestState::Closed;
     assert_eq!(pull_request_merge_queue_status(&pr), None);
 }
 
 #[test]
-fn review_required_pull_request_shows_review_signal() {
+fn review_required_stays_visible_alongside_ci() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::ReviewRequired);
 
-    let signals = visible_pull_request_row_signals(&pr);
-
-    assert_eq!(
-        signal_summary(&signals),
-        vec![(
-            PullRequestRowSignalKind::ReviewNeeded,
-            Some("review".to_string())
-        )]
-    );
+    for (failed, pending, expected_rail) in [
+        (0, 0, PullRequestRowRailTone::Warning),
+        (0, 1, PullRequestRowRailTone::Warning),
+        (1, 0, PullRequestRowRailTone::Danger),
+    ] {
+        pr.checks_summary.failed = failed;
+        pr.checks_summary.pending = pending;
+        assert_eq!(
+            pull_request_row_signal(&pr),
+            Some(PullRequestRowSignal::ReviewNeeded)
+        );
+        assert_eq!(pull_request_row_rail_tone(&pr), expected_rail);
+    }
 }
 
 #[test]
-fn colors_review_posture_on_row_rail() {
+fn approval_only_gets_a_green_rail_when_ready_to_merge() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::Approved);
     assert_eq!(
@@ -174,22 +115,22 @@ fn colors_review_posture_on_row_rail() {
         PullRequestRowRailTone::Success
     );
 
-    pr.review_decision = Some(ReviewDecision::ChangesRequested);
-    assert_eq!(
-        pull_request_row_rail_tone(&pr),
-        PullRequestRowRailTone::Danger
-    );
-
-    pr.review_decision = None;
-    pr.unresolved_threads = 1;
-    assert_eq!(
-        pull_request_row_rail_tone(&pr),
-        PullRequestRowRailTone::Warning
-    );
+    for merge_state in [
+        None,
+        Some(MergeState::Unknown),
+        Some(MergeState::Blocked),
+        Some(MergeState::Behind),
+    ] {
+        pr.merge_state = merge_state;
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Neutral
+        );
+    }
 }
 
 #[test]
-fn row_rail_prioritizes_blockers_over_approval() {
+fn ci_failure_sets_a_red_rail_without_a_duplicate_blocker_icon() {
     let mut pr = pull_request();
     pr.review_decision = Some(ReviewDecision::Approved);
     pr.checks_summary.failed = 1;
@@ -198,26 +139,39 @@ fn row_rail_prioritizes_blockers_over_approval() {
         pull_request_row_rail_tone(&pr),
         PullRequestRowRailTone::Danger
     );
+    assert_eq!(pull_request_row_signal(&pr), None);
 
     pr.checks_summary.failed = 0;
     pr.checks_summary.pending = 1;
 
     assert_eq!(
         pull_request_row_rail_tone(&pr),
-        PullRequestRowRailTone::Warning
+        PullRequestRowRailTone::Neutral
     );
+    assert_eq!(pull_request_row_signal(&pr), None);
 }
 
 #[test]
-fn closed_pull_request_is_not_ready_to_merge() {
+fn drafts_and_finished_pull_requests_have_no_action_signal_or_colored_rail() {
     let mut pr = pull_request();
-    pr.state = PullRequestState::Closed;
+    pr.merge_state = Some(MergeState::Dirty);
+    pr.review_decision = Some(ReviewDecision::ChangesRequested);
+    pr.checks_summary.failed = 1;
 
-    assert!(!is_ready_to_merge(&pr));
-    assert_eq!(
-        pull_request_row_rail_tone(&pr),
-        PullRequestRowRailTone::Neutral
-    );
+    for (state, is_draft) in [
+        (PullRequestState::Open, true),
+        (PullRequestState::Closed, false),
+        (PullRequestState::Merged, false),
+    ] {
+        pr.state = state;
+        pr.is_draft = is_draft;
+        assert!(!is_ready_to_merge(&pr));
+        assert_eq!(pull_request_row_signal(&pr), None);
+        assert_eq!(
+            pull_request_row_rail_tone(&pr),
+            PullRequestRowRailTone::Neutral
+        );
+    }
 }
 
 #[test]
@@ -332,13 +286,4 @@ fn keeps_merge_action_eligibility_distinct_from_visual_approval_readiness() {
         pull_request_readiness(&pr),
         PullRequestReadiness::ReviewRequired
     );
-}
-
-fn signal_summary(
-    signals: &[PullRequestRowSignal],
-) -> Vec<(PullRequestRowSignalKind, Option<String>)> {
-    signals
-        .iter()
-        .map(|signal| (signal.kind, signal.label.clone()))
-        .collect()
 }

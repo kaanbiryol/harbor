@@ -1,14 +1,5 @@
 use harbor_domain::{MergeQueueState, MergeState, PullRequest, PullRequestState, ReviewDecision};
 
-const MAX_PULL_REQUEST_ROW_SIGNALS: usize = 3;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PullRequestRowSignalTone {
-    Danger,
-    Warning,
-    Success,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PullRequestRowRailTone {
     Neutral,
@@ -18,14 +9,10 @@ pub(crate) enum PullRequestRowRailTone {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PullRequestRowSignalKind {
+pub(crate) enum PullRequestRowSignal {
     MergeConflict,
-    MergeQueueWaiting,
-    MergeQueueQueued,
-    ReviewApproved,
-    ReviewChangesRequestedThreads,
+    ChangesRequested,
     ReviewNeeded,
-    UnresolvedThreads,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -151,21 +138,6 @@ impl ReviewReadiness {
             Self::Approved => "Approvals received",
             Self::ChangesRequested => "Changes were requested",
             Self::Pending => "1 approval required",
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct PullRequestRowSignal {
-    pub(crate) kind: PullRequestRowSignalKind,
-    pub(crate) label: Option<String>,
-}
-
-impl PullRequestRowSignal {
-    fn with_label(kind: PullRequestRowSignalKind, label: impl Into<String>) -> Self {
-        Self {
-            kind,
-            label: Some(label.into()),
         }
     }
 }
@@ -345,11 +317,20 @@ pub(crate) fn merge_without_requirements_blocker(pr: &PullRequest) -> Option<Str
     }
 }
 
-pub(crate) fn visible_pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
-    pull_request_row_signals(pr)
-        .into_iter()
-        .take(MAX_PULL_REQUEST_ROW_SIGNALS)
-        .collect()
+pub(crate) fn pull_request_row_signal(pr: &PullRequest) -> Option<PullRequestRowSignal> {
+    if pr.state != PullRequestState::Open || pr.is_draft {
+        return None;
+    }
+
+    if pr.merge_state == Some(MergeState::Dirty) {
+        Some(PullRequestRowSignal::MergeConflict)
+    } else {
+        match pr.review_decision {
+            Some(ReviewDecision::ChangesRequested) => Some(PullRequestRowSignal::ChangesRequested),
+            Some(ReviewDecision::ReviewRequired) => Some(PullRequestRowSignal::ReviewNeeded),
+            Some(ReviewDecision::Approved) | None => None,
+        }
+    }
 }
 
 pub(crate) fn pull_request_merge_queue_status(
@@ -368,58 +349,6 @@ pub(crate) fn pull_request_merge_queue_status(
     }
 }
 
-fn pull_request_row_signals(pr: &PullRequest) -> Vec<PullRequestRowSignal> {
-    let mut signals = Vec::new();
-
-    if pr.merge_state == Some(MergeState::Dirty) {
-        signals.push(PullRequestRowSignal::with_label(
-            PullRequestRowSignalKind::MergeConflict,
-            "conflict",
-        ));
-    }
-
-    if let Some(queue_status) = pull_request_merge_queue_status(pr) {
-        let kind = match queue_status {
-            PullRequestMergeQueueStatus::Waiting => PullRequestRowSignalKind::MergeQueueWaiting,
-            PullRequestMergeQueueStatus::Queued => PullRequestRowSignalKind::MergeQueueQueued,
-        };
-        signals.push(PullRequestRowSignal::with_label(kind, queue_status.label()));
-    }
-
-    match pr.review_decision {
-        Some(ReviewDecision::ChangesRequested) => signals.push(PullRequestRowSignal::with_label(
-            PullRequestRowSignalKind::ReviewChangesRequestedThreads,
-            if pr.unresolved_threads > 0 {
-                pr.unresolved_threads.to_string()
-            } else {
-                "changes".to_string()
-            },
-        )),
-        Some(ReviewDecision::ReviewRequired) => {
-            signals.push(PullRequestRowSignal::with_label(
-                PullRequestRowSignalKind::ReviewNeeded,
-                "review",
-            ));
-        }
-        Some(ReviewDecision::Approved) => {
-            signals.push(PullRequestRowSignal::with_label(
-                PullRequestRowSignalKind::ReviewApproved,
-                "approved",
-            ));
-        }
-        None => {}
-    }
-
-    if pr.review_decision != Some(ReviewDecision::ChangesRequested) && pr.unresolved_threads > 0 {
-        signals.push(PullRequestRowSignal::with_label(
-            PullRequestRowSignalKind::UnresolvedThreads,
-            pr.unresolved_threads.to_string(),
-        ));
-    }
-
-    signals
-}
-
 pub(crate) fn is_ready_to_merge(pr: &PullRequest) -> bool {
     pr.state == PullRequestState::Open
         && !pr.is_draft
@@ -435,7 +364,7 @@ pub(crate) fn is_ready_to_merge(pr: &PullRequest) -> bool {
 }
 
 pub(crate) fn pull_request_row_rail_tone(pr: &PullRequest) -> PullRequestRowRailTone {
-    if pr.state != PullRequestState::Open {
+    if pr.state != PullRequestState::Open || pr.is_draft {
         return PullRequestRowRailTone::Neutral;
     }
 
@@ -444,12 +373,9 @@ pub(crate) fn pull_request_row_rail_tone(pr: &PullRequest) -> PullRequestRowRail
         || pr.review_decision == Some(ReviewDecision::ChangesRequested)
     {
         PullRequestRowRailTone::Danger
-    } else if pr.checks_summary.pending > 0
-        || pr.review_decision == Some(ReviewDecision::ReviewRequired)
-        || pr.unresolved_threads > 0
-    {
+    } else if pr.review_decision == Some(ReviewDecision::ReviewRequired) {
         PullRequestRowRailTone::Warning
-    } else if is_ready_to_merge(pr) || pr.review_decision == Some(ReviewDecision::Approved) {
+    } else if is_ready_to_merge(pr) {
         PullRequestRowRailTone::Success
     } else {
         PullRequestRowRailTone::Neutral
