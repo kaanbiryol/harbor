@@ -273,10 +273,6 @@ impl PullRequestDetailUiState {
         self.workflow_runs = Arc::new(Vec::new());
     }
 
-    pub(crate) fn replace_workflow_jobs(&mut self, workflow_jobs: Vec<WorkflowJob>) {
-        self.workflow_jobs = Arc::new(workflow_jobs);
-    }
-
     pub(crate) fn restore_workflow_jobs(&mut self, workflow_jobs: Arc<Vec<WorkflowJob>>) {
         self.workflow_jobs = workflow_jobs;
     }

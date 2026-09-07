@@ -1,3 +1,4 @@
+use harbor_domain::WorkflowJob;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -21,6 +22,8 @@ pub struct LogLine {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LogChunk {
+    #[serde(default)]
+    format_version: u8,
     pub run_id: u64,
     pub job_id: Option<u64>,
     pub lines: Vec<LogLine>,
@@ -28,10 +31,62 @@ pub struct LogChunk {
     pub error_line_indices: Vec<usize>,
 }
 
+impl LogChunk {
+    /// Older cached chunks must be reloaded to apply log normalization and step mapping.
+    pub fn is_current_format(&self) -> bool {
+        self.format_version == 1
+    }
+}
+
 pub fn parse_workflow_log(run_id: u64, text: &str) -> LogChunk {
     let mut parser = WorkflowLogParser::new(run_id);
     parser.push(text);
     parser.finish()
+}
+
+/// Recovers step context when an archive contains combined job output instead of step files.
+pub fn parse_workflow_log_with_jobs(run_id: u64, text: &str, jobs: &[WorkflowJob]) -> LogChunk {
+    let mut chunk = parse_workflow_log(run_id, text);
+    let mut jobs_by_name = std::collections::HashMap::new();
+    for job in jobs {
+        jobs_by_name.insert(job.name.clone(), job);
+        jobs_by_name.insert(job.name.replace('/', "_"), job);
+    }
+    for line in &mut chunk.lines {
+        let Some(job) = line.job.as_ref().and_then(|name| jobs_by_name.get(name)) else {
+            continue;
+        };
+        if let Some(step) = job.steps.iter().find(|step| {
+            line.step
+                .as_ref()
+                .is_some_and(|name| *name == step.name || *name == step.name.replace('/', "_"))
+        }) {
+            line.step = Some(step.name.clone());
+        } else if matches!(line.step.as_deref(), Some("Output" | "UNKNOWN STEP") | None) {
+            let timestamp = line
+                .text
+                .split_once(' ')
+                .and_then(|(timestamp, _)| chrono::DateTime::parse_from_rfc3339(timestamp).ok());
+            if let Some(timestamp) = timestamp {
+                // The jobs API reports whole seconds; a step's final second can contain output.
+                if let Some(step) = job
+                    .steps
+                    .iter()
+                    .filter(|step| {
+                        step.started_at.is_some_and(|start| start <= timestamp)
+                            && step
+                                .completed_at
+                                .is_none_or(|end| timestamp.timestamp() <= end.timestamp())
+                    })
+                    .max_by_key(|step| (step.started_at, step.number))
+                {
+                    line.step = Some(step.name.clone());
+                }
+            }
+        }
+        line.job = Some(job.name.clone());
+    }
+    chunk
 }
 
 pub struct WorkflowLogParser {
@@ -43,6 +98,7 @@ impl WorkflowLogParser {
     pub fn new(run_id: u64) -> Self {
         Self {
             chunk: LogChunk {
+                format_version: 1,
                 run_id,
                 job_id: None,
                 lines: Vec::new(),
@@ -80,7 +136,7 @@ impl WorkflowLogParser {
         let first = fields.next();
         let second = fields.next();
         let third = fields.next();
-        let (job, step, text) = match (first, second, third) {
+        let (job, step, mut text) = match (first, second, third) {
             (Some(job), Some(step), Some(output)) => (
                 Some(job.to_string()),
                 Some(step.to_string()),
@@ -88,7 +144,22 @@ impl WorkflowLogParser {
             ),
             _ => (None, None, text),
         };
+        strip_terminal_sequences(&mut text);
         let severity = infer_severity(&text);
+        let message_start = text
+            .split_once(' ')
+            .filter(|(prefix, _)| prefix.contains('T') && prefix.ends_with('Z'))
+            .map_or(0, |(prefix, _)| prefix.len() + 1);
+        let message = &text[message_start..];
+        if message == "##[endgroup]" {
+            return;
+        }
+        if let Some(marker) = ["##[group]", "##[command]"]
+            .into_iter()
+            .find(|marker| message.starts_with(marker))
+        {
+            text.drain(message_start..message_start + marker.len());
+        }
         match severity {
             LogSeverity::Warning => self.chunk.warning_line_indices.push(index),
             LogSeverity::Error => self.chunk.error_line_indices.push(index),
@@ -102,6 +173,37 @@ impl WorkflowLogParser {
             text,
         });
     }
+}
+
+fn strip_terminal_sequences(text: &mut String) {
+    if !text.contains('\u{1b}') {
+        return;
+    }
+    enum State {
+        Text,
+        Escape,
+        ControlSequence,
+        String,
+        StringEscape,
+    }
+    let mut state = State::Text;
+    text.retain(|character| {
+        state = match state {
+            State::Text if character != '\u{1b}' => return true,
+            State::Text => State::Escape,
+            State::Escape if character == '[' => State::ControlSequence,
+            State::Escape if matches!(character, ']' | 'P' | '^' | '_') => State::String,
+            State::Escape => State::Text,
+            State::ControlSequence if ('@'..='~').contains(&character) => State::Text,
+            State::ControlSequence => State::ControlSequence,
+            State::String if character == '\u{7}' => State::Text,
+            State::String if character == '\u{1b}' => State::StringEscape,
+            State::String => State::String,
+            State::StringEscape if character == '\\' => State::Text,
+            State::StringEscape => State::String,
+        };
+        false
+    });
 }
 
 fn infer_severity(line: &str) -> LogSeverity {
@@ -183,6 +285,75 @@ mod tests {
 #[cfg(test)]
 mod context_tests {
     use super::*;
+
+    #[test]
+    fn maps_combined_job_output_to_steps_using_timestamps() {
+        use chrono::{TimeZone, Utc};
+        use harbor_domain::{WorkflowStatus, WorkflowStep};
+
+        let start = Utc.with_ymd_and_hms(2026, 9, 7, 12, 0, 0).unwrap();
+        let jobs = [WorkflowJob {
+            id: 1,
+            name: "build / test".to_string(),
+            status: WorkflowStatus::Completed,
+            conclusion: None,
+            steps: ["Set up job", "Run / tests"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, name)| WorkflowStep {
+                    name: name.to_string(),
+                    number: index as u32 + 1,
+                    status: WorkflowStatus::Completed,
+                    conclusion: None,
+                    started_at: Some(start + chrono::Duration::seconds(index as i64 * 10)),
+                    completed_at: Some(start + chrono::Duration::seconds((index as i64 + 1) * 10)),
+                })
+                .collect(),
+        }];
+        let chunk = parse_workflow_log_with_jobs(
+            1,
+            concat!(
+                "build _ test\tOutput\t2026-09-07T12:00:01Z setup\n",
+                "build _ test\tUNKNOWN STEP\t2026-09-07T12:00:10.100Z test output\n",
+                "build _ test\tRun _ tests\toutput without timestamp\n",
+                "build _ test\tOutput\t2026-09-07T12:00:20.500Z final output\n",
+                "build _ test\tOutput\t2026-09-07T12:00:30Z outside any step\n",
+            ),
+            &jobs,
+        );
+
+        assert_eq!(chunk.lines[0].step.as_deref(), Some("Set up job"));
+        assert_eq!(chunk.lines[4].step.as_deref(), Some("Output"));
+        assert_eq!(
+            filter_log_lines(
+                &chunk,
+                Some(&("build / test".into(), Some("Run / tests".into()))),
+                ""
+            ),
+            [1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn displays_terminal_output_without_escape_sequences_or_runner_markers() {
+        let chunk = parse_workflow_log(
+            1,
+            concat!(
+                "job\tTest\t2026-09-07T12:00:00Z ##[group]Run tests\n",
+                "job\tTest\t2026-09-07T12:00:00Z ##[command]cargo test\n",
+                "job\tTest\t\u{1b}[31merror: failed café\u{1b}[0m\n",
+                "job\tTest\t\u{1b}]8;;https://example.com\u{1b}\\details\u{1b}]8;;\u{1b}\\\n",
+                "job\tTest\t2026-09-07T12:00:01Z ##[endgroup]\n",
+            ),
+        );
+        assert_eq!(chunk.lines.len(), 4);
+        assert_eq!(chunk.lines[0].text, "2026-09-07T12:00:00Z Run tests");
+        assert_eq!(chunk.lines[1].text, "2026-09-07T12:00:00Z cargo test");
+        assert_eq!(chunk.lines[2].text, "error: failed café");
+        assert_eq!(chunk.lines[3].text, "details");
+        assert_eq!(chunk.error_line_indices, [2]);
+    }
+
     #[test]
     fn preserves_job_step_and_output_tabs() {
         let chunk = parse_workflow_log(

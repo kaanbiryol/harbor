@@ -230,6 +230,6 @@ fn system_logs_do_not_replace_the_main_job_output() {
     let text = workflow_log_text_from_zip(&bytes).unwrap();
     assert!(text.contains("profile _ branch\tOutput\tbuild\n"));
     assert!(text.contains("profile _ branch\tOutput\ttests\n"));
-    assert!(text.contains("profile _ branch\tsystem\trunner ready\n"));
-    assert_eq!(text.lines().count(), 3);
+    assert!(!text.contains("runner ready"));
+    assert_eq!(text.lines().count(), 2);
 }

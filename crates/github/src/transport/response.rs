@@ -190,7 +190,7 @@ pub(super) fn workflow_log_text_from_zip(body: &[u8]) -> Result<String> {
         let mut file = archive
             .by_index(index)
             .map_err(|error| GitHubError::Mapping(error.to_string()))?;
-        if file.is_dir() {
+        if file.is_dir() || file.name().rsplit('/').next() == Some("system.txt") {
             continue;
         }
 

@@ -1,5 +1,6 @@
 use gpui::{AppContext, Context, ScrollStrategy};
-use harbor_logs::parse_workflow_log;
+use harbor_logs::{parse_workflow_log, parse_workflow_log_with_jobs};
+use std::sync::Arc;
 
 use crate::{
     actions::PanelTab,
@@ -59,13 +60,14 @@ impl AppView {
             .set_task(cx.spawn(async move |this, cx| {
                 let jobs_result = github_api
                     .list_workflow_jobs_for_run(&owner, &name, run_id, run.run_attempt)
-                    .await;
+                    .await.map(Arc::new);
+                let jobs_for_logs = jobs_result.as_ref().cloned().unwrap_or_default();
                 let all_skipped = jobs_result.as_ref().is_ok_and(|jobs| !jobs.is_empty() && jobs.iter().all(|job| job.conclusion == Some(harbor_domain::WorkflowConclusion::Skipped)));
                 this.update_or_log(cx, "failed to update workflow jobs", move |view, cx| {
                     if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) { return; }
                         match jobs_result {
                             Ok(jobs) => {
-                                view.detail_state.replace_workflow_jobs(jobs);
+                                view.detail_state.restore_workflow_jobs(jobs);
                             }
                             Err(error) => {
                                 view.detail_state.log_state.apply_jobs_failure(format!(
@@ -77,7 +79,7 @@ impl AppView {
                 });
                 let log_result = if all_skipped { Ok(parse_workflow_log(run_id, "")) } else { match github_api.workflow_run_log(&owner, &name, run_id, run.run_attempt).await {
                     Ok(text) => Ok(cx
-                        .background_spawn(async move { parse_workflow_log(run_id, &text) })
+                        .background_spawn(async move { parse_workflow_log_with_jobs(run_id, &text, &jobs_for_logs) })
                         .await),
                     Err(error) => Err(error),
                 }};

@@ -3299,6 +3299,8 @@ dependencies = [
 name = "harbor-logs"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "harbor-domain",
  "serde",
 ]
 

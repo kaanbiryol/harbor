@@ -32,7 +32,7 @@ impl WorkflowLogState {
             search_input: None,
             search_subscription: None,
             filter_task: None,
-            show_timestamps: true,
+            show_timestamps: false,
             navigation_scroll: UniformListScrollHandle::new(),
             next_failure: 0,
             widest_line: None,
@@ -49,6 +49,7 @@ impl WorkflowLogState {
     }
 
     pub(crate) fn restore_chunk(&mut self, chunk: Option<Arc<LogChunk>>) {
+        let chunk = chunk.filter(|chunk| chunk.is_current_format());
         self.visible_lines =
             Arc::new((0..chunk.as_ref().map_or(0, |chunk| chunk.lines.len())).collect());
         self.selected_section = None;
@@ -116,5 +117,24 @@ impl WorkflowLogState {
     pub(crate) fn apply_log_failure(&mut self, error: impl Into<String>) {
         self.error = Some(error.into());
         self.is_loading = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reloads_legacy_cached_logs_and_keeps_current_output() {
+        let mut state = WorkflowLogState::new();
+        state.restore_chunk(Some(Arc::new(LogChunk::default())));
+        assert!(state.chunk().is_none());
+        assert!(state.visible_lines.is_empty());
+
+        state.restore_chunk(Some(Arc::new(harbor_logs::parse_workflow_log(
+            42, "output",
+        ))));
+        assert_eq!(state.chunk().unwrap().run_id, 42);
+        assert_eq!(state.visible_lines.as_ref(), &[0]);
     }
 }
