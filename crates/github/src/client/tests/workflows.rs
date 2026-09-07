@@ -142,7 +142,7 @@ fn delegates_workflow_run_log() {
     let transport = RecordingTransport::default();
     let client = GitHubClient::new(transport.clone());
 
-    let log = smol::block_on(client.workflow_run_log("acme", "app", 42)).unwrap();
+    let log = smol::block_on(client.workflow_run_log("acme", "app", 42, None)).unwrap();
 
     assert_eq!(log, "acme/app#42");
     assert_eq!(
@@ -152,5 +152,17 @@ fn delegates_workflow_run_log() {
             .expect("log mutex should not be poisoned")
             .as_deref(),
         Some("acme/app#42")
+    );
+}
+
+#[test]
+fn loads_jobs_for_the_selected_attempt() {
+    let transport = RecordingTransport::default();
+    *transport.get_response.lock().unwrap() = Some(json!({"jobs": []}));
+    let client = GitHubClient::new(transport.clone());
+    smol::block_on(client.list_workflow_jobs_for_run("acme", "app", 42, Some(2))).unwrap();
+    assert_eq!(
+        transport.gets.lock().unwrap()[0].0,
+        "/repos/acme/app/actions/runs/42/attempts/2/jobs"
     );
 }

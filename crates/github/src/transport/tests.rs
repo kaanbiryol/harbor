@@ -190,5 +190,46 @@ fn extracts_workflow_log_archive_in_name_order() {
 
     let text = workflow_log_text_from_zip(&bytes).unwrap();
 
-    assert_eq!(text, "build\ntest\n");
+    assert_eq!(text, "build\tOutput\tbuild\ntest\tOutput\ttest\n");
+}
+
+#[test]
+fn preserves_step_context_and_numeric_order_without_duplicate_job_logs() {
+    let mut archive = ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, text) in [
+        ("0_test.txt", "duplicate"),
+        ("test/10_Cleanup.txt", "cleanup"),
+        ("test/2_Build.txt", "build"),
+        ("1_other.txt", "other"),
+    ] {
+        archive
+            .start_file(name, SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(text.as_bytes()).unwrap();
+    }
+    let bytes = archive.finish().unwrap().into_inner();
+    assert_eq!(
+        workflow_log_text_from_zip(&bytes).unwrap(),
+        "other\tOutput\tother\ntest\tBuild\tbuild\ntest\tCleanup\tcleanup\n"
+    );
+}
+
+#[test]
+fn system_logs_do_not_replace_the_main_job_output() {
+    let mut archive = ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, text) in [
+        ("2_profile _ branch.txt", "\u{feff}build\ntests"),
+        ("profile _ branch/system.txt", "runner ready"),
+    ] {
+        archive
+            .start_file(name, SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(text.as_bytes()).unwrap();
+    }
+    let bytes = archive.finish().unwrap().into_inner();
+    let text = workflow_log_text_from_zip(&bytes).unwrap();
+    assert!(text.contains("profile _ branch\tOutput\tbuild\n"));
+    assert!(text.contains("profile _ branch\tOutput\ttests\n"));
+    assert!(text.contains("profile _ branch\tsystem\trunner ready\n"));
+    assert_eq!(text.lines().count(), 3);
 }

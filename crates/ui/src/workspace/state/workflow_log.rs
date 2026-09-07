@@ -5,6 +5,17 @@ use harbor_logs::LogChunk;
 
 pub(crate) struct WorkflowLogState {
     chunk: Option<Arc<LogChunk>>,
+    pub(crate) selected_run: Option<u64>,
+    pub(crate) selected_section: Option<(String, Option<String>)>,
+    pub(crate) visible_lines: Arc<Vec<usize>>,
+    pub(crate) search_input: Option<gpui::Entity<crate::gpui_component::input::InputState>>,
+    pub(crate) search_subscription: Option<gpui::Subscription>,
+    pub(crate) filter_task: Option<Task<()>>,
+    pub(crate) show_timestamps: bool,
+    pub(crate) navigation_scroll: UniformListScrollHandle,
+    pub(crate) next_failure: usize,
+    pub(crate) widest_line: Option<usize>,
+    pub(crate) is_filtering: bool,
     task: Option<Task<()>>,
     pub(crate) list_scroll: UniformListScrollHandle,
     is_loading: bool,
@@ -15,6 +26,17 @@ impl WorkflowLogState {
     pub(crate) fn new() -> Self {
         Self {
             chunk: None,
+            selected_run: None,
+            selected_section: None,
+            visible_lines: Arc::new(Vec::new()),
+            search_input: None,
+            search_subscription: None,
+            filter_task: None,
+            show_timestamps: true,
+            navigation_scroll: UniformListScrollHandle::new(),
+            next_failure: 0,
+            widest_line: None,
+            is_filtering: false,
             task: None,
             list_scroll: UniformListScrollHandle::new(),
             is_loading: false,
@@ -27,6 +49,12 @@ impl WorkflowLogState {
     }
 
     pub(crate) fn restore_chunk(&mut self, chunk: Option<Arc<LogChunk>>) {
+        self.visible_lines =
+            Arc::new((0..chunk.as_ref().map_or(0, |chunk| chunk.lines.len())).collect());
+        self.selected_section = None;
+        self.selected_run = chunk.as_ref().map(|chunk| chunk.run_id);
+        self.filter_task = None;
+        self.is_filtering = false;
         self.chunk = chunk;
     }
 
@@ -53,7 +81,6 @@ impl WorkflowLogState {
     pub(crate) fn start_loading(&mut self) {
         self.is_loading = true;
         self.error = None;
-        self.chunk = None;
     }
 
     pub(crate) fn set_loading(&mut self, loading: bool) {
@@ -61,7 +88,15 @@ impl WorkflowLogState {
     }
 
     pub(crate) fn clear_content(&mut self) {
+        self.task = None;
+        self.is_loading = false;
+        self.selected_run = None;
+        self.widest_line = None;
         self.chunk = None;
+        self.visible_lines = Arc::new(Vec::new());
+        self.selected_section = None;
+        self.filter_task = None;
+        self.is_filtering = false;
     }
 
     pub(crate) fn clear_error(&mut self) {
@@ -73,6 +108,7 @@ impl WorkflowLogState {
     }
 
     pub(crate) fn apply_log_success(&mut self, chunk: LogChunk) {
+        self.visible_lines = Arc::new((0..chunk.lines.len()).collect());
         self.chunk = Some(Arc::new(chunk));
         self.is_loading = false;
     }

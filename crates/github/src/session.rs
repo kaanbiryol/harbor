@@ -340,14 +340,23 @@ impl GitHubWorkflowApi for GitHubSession {
         owner: &str,
         repo: &str,
         run_id: u64,
+        attempt: Option<u64>,
     ) -> Result<Vec<WorkflowJob>> {
         self.client()?
-            .list_workflow_jobs_for_run(owner, repo, run_id)
+            .list_workflow_jobs_for_run(owner, repo, run_id, attempt)
             .await
     }
 
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
-        self.client()?.workflow_run_log(owner, repo, run_id).await
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String> {
+        self.client()?
+            .workflow_run_log(owner, repo, run_id, attempt)
+            .await
     }
 }
 

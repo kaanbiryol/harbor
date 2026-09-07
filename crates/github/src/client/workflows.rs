@@ -94,18 +94,40 @@ where
         owner: &str,
         repo: &str,
         run_id: u64,
+        attempt: Option<u64>,
     ) -> Result<Vec<WorkflowJob>> {
-        let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/jobs");
-        let response = self
-            .transport
-            .rest_get(&path, &[("per_page", "100")])
-            .await?;
-
-        dto::workflow_jobs_from_value(response)
+        let suffix = attempt
+            .map(|attempt| format!("/attempts/{attempt}"))
+            .unwrap_or_default();
+        let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}{suffix}/jobs");
+        let mut jobs = Vec::new();
+        let mut page = 1;
+        loop {
+            let page_number = page.to_string();
+            let response = self
+                .transport
+                .rest_get(&path, &[("per_page", "100"), ("page", &page_number)])
+                .await?;
+            let batch = dto::workflow_jobs_from_value(response)?;
+            let complete = batch.len() < 100;
+            jobs.extend(batch);
+            if complete {
+                return Ok(jobs);
+            }
+            page += 1;
+        }
     }
 
-    pub async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
-        self.transport.workflow_run_log(owner, repo, run_id).await
+    pub async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String> {
+        self.transport
+            .workflow_run_log(owner, repo, run_id, attempt)
+            .await
     }
 
     pub async fn rerun_workflow_run(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {

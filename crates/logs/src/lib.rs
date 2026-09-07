@@ -13,6 +13,10 @@ pub struct LogLine {
     pub number: usize,
     pub severity: LogSeverity,
     pub text: String,
+    #[serde(default)]
+    pub job: Option<String>,
+    #[serde(default)]
+    pub step: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -72,6 +76,18 @@ impl WorkflowLogParser {
 
     fn push_line(&mut self, text: String) {
         let index = self.chunk.lines.len();
+        let mut fields = text.splitn(3, '\t');
+        let first = fields.next();
+        let second = fields.next();
+        let third = fields.next();
+        let (job, step, text) = match (first, second, third) {
+            (Some(job), Some(step), Some(output)) => (
+                Some(job.to_string()),
+                Some(step.to_string()),
+                output.to_string(),
+            ),
+            _ => (None, None, text),
+        };
         let severity = infer_severity(&text);
         match severity {
             LogSeverity::Warning => self.chunk.warning_line_indices.push(index),
@@ -79,6 +95,8 @@ impl WorkflowLogParser {
             LogSeverity::Trace | LogSeverity::Info => {}
         }
         self.chunk.lines.push(LogLine {
+            job,
+            step,
             number: index + 1,
             severity,
             text,
@@ -159,5 +177,98 @@ mod tests {
         assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
         assert_eq!(chunk.lines[2].severity, LogSeverity::Trace);
         assert_eq!(chunk.lines[0].text, "ERROR: failed");
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    #[test]
+    fn preserves_job_step_and_output_tabs() {
+        let chunk = parse_workflow_log(
+            1,
+            "test (2)\tRun tests\t2026-01-01T00:00:00Z error: a\tb\nplain",
+        );
+        assert_eq!(chunk.lines[0].job.as_deref(), Some("test (2)"));
+        assert_eq!(chunk.lines[0].step.as_deref(), Some("Run tests"));
+        assert!(chunk.lines[0].text.ends_with("a\tb"));
+        assert_eq!(chunk.lines[1].job, None);
+    }
+}
+
+/// Returns source line indices without copying log output.
+pub fn filter_log_lines(
+    chunk: &LogChunk,
+    section: Option<&(String, Option<String>)>,
+    query: &str,
+) -> Vec<usize> {
+    let query = query.to_lowercase();
+    let archive_job = section.map(|(job, _)| job.replace('/', "_"));
+    chunk
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| {
+            section.is_none_or(|(job, step)| {
+                (line.job.as_ref() == Some(job) || line.job.as_ref() == archive_job.as_ref())
+                    && step
+                        .as_ref()
+                        .is_none_or(|step| line.step.as_ref() == Some(step))
+            }) && (query.is_empty() || line.text.to_lowercase().contains(&query))
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    #[test]
+    fn filters_by_job_step_and_case_insensitive_query() {
+        let chunk = parse_workflow_log(
+            1,
+            "test (1)\tBuild\tok\ntest (2)\tBuild\tERROR: failed\ntest (2)\tTest\tok",
+        );
+        assert_eq!(
+            filter_log_lines(&chunk, Some(&("test (2)".into(), None)), ""),
+            vec![1, 2]
+        );
+        assert_eq!(
+            filter_log_lines(
+                &chunk,
+                Some(&("test (2)".into(), Some("Build".into()))),
+                "error"
+            ),
+            vec![1]
+        );
+        assert!(filter_log_lines(&chunk, None, "missing").is_empty());
+    }
+    #[test]
+    fn indexes_large_logs() {
+        let text = "job\tstep\t2026-01-01T00:00:00Z output\n".repeat(100_000);
+        let start = std::time::Instant::now();
+        let chunk = parse_workflow_log(1, &text);
+        let indices = filter_log_lines(&chunk, None, "output");
+        assert_eq!(indices.len(), 100_000);
+        eprintln!(
+            "100k log lines parsed and searched in {:?}",
+            start.elapsed()
+        );
+    }
+}
+
+#[cfg(test)]
+mod archive_job_tests {
+    use super::*;
+    #[test]
+    fn matches_sanitized_archive_job_names() {
+        let chunk = parse_workflow_log(
+            1,
+            "profile _ branch\tOutput\tbuild output\nother\tOutput\tother output",
+        );
+        assert_eq!(
+            filter_log_lines(&chunk, Some(&("profile / branch".into(), None)), ""),
+            vec![0]
+        );
     }
 }

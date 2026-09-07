@@ -170,8 +170,17 @@ impl GitHubTransport for OctocrabTransport {
             .await
     }
 
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
-        let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/logs");
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String> {
+        let suffix = attempt
+            .map(|attempt| format!("/attempts/{attempt}"))
+            .unwrap_or_default();
+        let path = format!("/repos/{owner}/{repo}/actions/runs/{run_id}{suffix}/logs");
         let client = self.client.clone();
         let runtime = self.runtime.clone();
         self.coordinator

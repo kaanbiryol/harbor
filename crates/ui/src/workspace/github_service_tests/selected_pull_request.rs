@@ -328,3 +328,75 @@ async fn selecting_cached_pull_request_restores_detail_without_refetch(cx: &mut 
 
     assert!(api.calls().is_empty());
 }
+
+#[gpui::test]
+async fn skipped_jobs_do_not_request_logs(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    api.push_workflow_jobs(Ok(vec![harbor_domain::WorkflowJob {
+        id: 1,
+        name: "Skipped".into(),
+        status: harbor_domain::WorkflowStatus::Completed,
+        conclusion: Some(harbor_domain::WorkflowConclusion::Skipped),
+        steps: vec![],
+    }]));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
+        view.load_selected_workflow_logs(cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(api.calls(), vec!["list_workflow_jobs_for_run"]);
+    view_entity.read_with(cx, |view, _| {
+        assert!(!view.detail_state.log_state.is_loading());
+        assert!(view.detail_state.log_state.error().is_none());
+        assert!(
+            view.detail_state
+                .log_state
+                .chunk()
+                .unwrap()
+                .lines
+                .is_empty()
+        );
+    });
+}
+
+#[gpui::test]
+async fn failed_job_opens_its_failed_step(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    api.push_workflow_jobs(Ok(vec![harbor_domain::WorkflowJob {
+        id: 1,
+        name: "Test".into(),
+        status: harbor_domain::WorkflowStatus::Completed,
+        conclusion: Some(harbor_domain::WorkflowConclusion::Failure),
+        steps: vec![harbor_domain::WorkflowStep {
+            number: 2,
+            name: "Run tests".into(),
+            status: harbor_domain::WorkflowStatus::Completed,
+            conclusion: Some(harbor_domain::WorkflowConclusion::Failure),
+            started_at: None,
+            completed_at: None,
+        }],
+    }]));
+    api.push_workflow_logs(Ok(
+        "Test\tSetup\tok\nTest\tRun tests\t::error::failed".into()
+    ));
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+    view_entity.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.selection_state.reset_pull_request_index();
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
+        view.load_selected_workflow_logs(cx);
+    });
+    cx.run_until_parked();
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(
+            view.detail_state.log_state.selected_section,
+            Some(("Test".into(), Some("Run tests".into())))
+        );
+        assert_eq!(*view.detail_state.log_state.visible_lines, vec![1]);
+    });
+}

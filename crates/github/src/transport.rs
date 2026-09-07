@@ -49,7 +49,13 @@ pub trait GitHubTransport: Send + Sync {
     }
     async fn rest_post(&self, path: &str, body: Value) -> Result<Value>;
     async fn rest_put(&self, path: &str, body: Value) -> Result<Value>;
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String>;
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value>;
 
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
@@ -110,10 +116,24 @@ impl GitHubTransport for GitHubTransportSource {
         }
     }
 
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String> {
         match self {
-            Self::Token(transport) => transport.workflow_run_log(owner, repo, run_id).await,
-            Self::GhCli(transport) => transport.workflow_run_log(owner, repo, run_id).await,
+            Self::Token(transport) => {
+                transport
+                    .workflow_run_log(owner, repo, run_id, attempt)
+                    .await
+            }
+            Self::GhCli(transport) => {
+                transport
+                    .workflow_run_log(owner, repo, run_id, attempt)
+                    .await
+            }
         }
     }
 

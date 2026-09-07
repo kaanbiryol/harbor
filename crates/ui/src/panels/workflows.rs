@@ -21,9 +21,7 @@ mod runs;
 mod sidebar;
 
 use runs::{RepositoryWorkflowRunsRenderInput, render_repository_workflow_runs};
-pub(crate) use runs::{
-    render_workflow_conclusion, workflow_conclusion_tone, workflow_run_failed, workflow_run_label,
-};
+pub(crate) use runs::{workflow_conclusion_tone, workflow_run_failed, workflow_run_label};
 use sidebar::render_workflow_sidebar;
 
 pub(crate) struct ActionsPanelRenderInput<'a> {

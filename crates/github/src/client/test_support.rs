@@ -108,7 +108,13 @@ impl GitHubTransport for RecordingTransport {
         Ok(Value::Null)
     }
 
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        _attempt: Option<u64>,
+    ) -> Result<String> {
         let log = format!("{owner}/{repo}#{run_id}");
         *self.log.lock().expect("log mutex should not be poisoned") = Some(log.clone());
         Ok(log)

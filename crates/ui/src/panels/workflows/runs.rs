@@ -361,15 +361,6 @@ pub(crate) fn workflow_run_failed(run: &WorkflowRun) -> bool {
     )
 }
 
-pub(crate) fn render_workflow_conclusion(
-    conclusion: Option<WorkflowConclusion>,
-    status: WorkflowStatus,
-) -> impl IntoElement {
-    let (label, tone) = workflow_conclusion_tone(conclusion, status);
-
-    render_status_pill(label, tone)
-}
-
 pub(crate) fn workflow_conclusion_tone(
     conclusion: Option<WorkflowConclusion>,
     status: WorkflowStatus,

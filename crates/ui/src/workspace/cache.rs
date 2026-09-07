@@ -289,6 +289,7 @@ impl AppView {
         self.detail_state
             .log_state
             .restore_chunk(snapshot.log_chunk.clone());
+        self.filter_workflow_logs(cx);
         self.changed_files_state = snapshot.changed_files_state.clone();
         self.checks_state.expanded_groups = snapshot.expanded_check_groups.clone();
         self.selection_state.restore_diff_position(

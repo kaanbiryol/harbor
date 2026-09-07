@@ -201,16 +201,47 @@ pub(super) fn workflow_log_text_from_zip(body: &[u8]) -> Result<String> {
         entries.push((name, bytes));
     }
 
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
-
+    fn entry_context(name: &str) -> (&str, &str, u32) {
+        fn numbered_name(name: &str) -> (u32, &str) {
+            let name = name.trim_end_matches(".txt");
+            name.split_once('_')
+                .and_then(|(number, name)| number.parse().ok().map(|number| (number, name)))
+                .unwrap_or((0, name))
+        }
+        match name.rsplit_once('/') {
+            Some((job, step)) => {
+                let (number, step) = numbered_name(step);
+                (job, step, number)
+            }
+            None => (numbered_name(name).1, "Output", 0),
+        }
+    }
+    entries.sort_by(|left, right| {
+        let left = entry_context(&left.0);
+        let right = entry_context(&right.0);
+        (left.0, left.2, left.1).cmp(&(right.0, right.2, right.1))
+    });
+    let step_jobs: std::collections::HashSet<String> = entries
+        .iter()
+        .filter(|(name, _)| name.contains('/') && !name.ends_with("/system.txt"))
+        .map(|(name, _)| entry_context(name).0.to_string())
+        .collect();
     let output_capacity = entries.iter().map(|(_, bytes)| bytes.len() + 1).sum();
     let mut output = String::with_capacity(output_capacity);
-    for (_, bytes) in entries {
-        if !output.is_empty() && !output.ends_with('\n') {
-            output.push('\n');
+    for (name, bytes) in entries {
+        let (job, step, _) = entry_context(&name);
+        if !name.contains('/') && step_jobs.contains(job) {
+            continue;
         }
-        output.push_str(&String::from_utf8_lossy(&bytes));
-        if !output.ends_with('\n') {
+        for line in String::from_utf8_lossy(&bytes)
+            .trim_start_matches('\u{feff}')
+            .lines()
+        {
+            output.push_str(job);
+            output.push('\t');
+            output.push_str(step);
+            output.push('\t');
+            output.push_str(line);
             output.push('\n');
         }
     }

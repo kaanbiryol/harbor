@@ -261,11 +261,17 @@ impl AppView {
         cx.notify();
     }
 
-    fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
+    pub(crate) fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
         self.detail_state
             .workflow_runs()
             .iter()
-            .find(|run| workflow_run_failed(run))
+            .find(|run| Some(run.id) == self.detail_state.log_state.selected_run)
+            .or_else(|| {
+                self.detail_state
+                    .workflow_runs()
+                    .iter()
+                    .find(|run| workflow_run_failed(run))
+            })
             .or_else(|| self.detail_state.workflow_runs().first())
     }
 

@@ -224,16 +224,7 @@ impl AppView {
                             cx,
                         )
                         .into_any_element(),
-                        PanelTab::Logs => render_logs_panel(
-                            self.selected_workflow_run_for_logs(),
-                            self.detail_state.workflow_jobs(),
-                            self.detail_state.log_state.chunk(),
-                            self.detail_state.log_state.is_loading(),
-                            self.detail_state.log_state.error(),
-                            self.detail_state.log_state.list_scroll.clone(),
-                            cx,
-                        )
-                        .into_any_element(),
+                        PanelTab::Logs => render_logs_panel(self, cx).into_any_element(),
                     }),
             )
     }

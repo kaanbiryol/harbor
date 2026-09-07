@@ -1249,3 +1249,104 @@ async fn pending_auth_switch_preserves_current_source(cx: &mut TestAppContext) {
             );
         });
 }
+
+#[gpui::test]
+async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
+    cx: &mut TestAppContext,
+) {
+    cx.update(|cx| {
+        crate::gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+        view_entity = Some(view.clone());
+        view.update(cx, |view, cx| {
+            view.auth_status = GitHubAuthStatus::SignedIn {
+                login: Some("octocat".into()),
+                source: GitHubAuthSource::GhCli,
+            };
+            view.pull_requests = vec![pull_request()];
+            view.detail_state
+                .replace_workflow_runs(vec![crate::test_fixtures::workflow_run()]);
+            let output = format!(
+                "short\n{}",
+                format!("{}\n", "wide output ".repeat(100)).repeat(500)
+            );
+            view.detail_state
+                .log_state
+                .apply_log_success(harbor_logs::parse_workflow_log(42, &output));
+            view.active_tab = PanelTab::Logs;
+            view.filter_workflow_logs(cx);
+        });
+        Root::new(view, window, cx)
+    });
+    let view = view_entity.unwrap();
+    cx.run_until_parked();
+    cx.refresh().unwrap();
+    let viewport = cx
+        .debug_bounds("workflow-log-viewport")
+        .expect("log viewport is visible");
+    assert!(viewport.size.height > px(0.));
+    view.read_with(cx, |view, _| {
+        let scroll = &view
+            .detail_state
+            .log_state
+            .list_scroll
+            .0
+            .borrow()
+            .base_handle;
+        assert!(
+            scroll.max_offset().x > px(0.),
+            "long lines must contribute to scroll width"
+        );
+        assert!(
+            scroll.max_offset().y > px(0.),
+            "output must have a bounded viewport"
+        );
+    });
+    cx.simulate_event(ScrollWheelEvent {
+        position: viewport.center(),
+        delta: ScrollDelta::Pixels(point(px(-400.), px(0.))),
+        ..Default::default()
+    });
+    cx.refresh().unwrap();
+    cx.simulate_event(ScrollWheelEvent {
+        position: viewport.center(),
+        delta: ScrollDelta::Pixels(point(px(0.), px(-200.))),
+        ..Default::default()
+    });
+    cx.refresh().unwrap();
+    let offset = view.read_with(cx, |view, _| {
+        view.detail_state
+            .log_state
+            .list_scroll
+            .0
+            .borrow()
+            .base_handle
+            .offset()
+    });
+    assert!(offset.x < px(0.), "horizontal wheel input scrolls output");
+    assert!(offset.y < px(0.), "vertical wheel input scrolls output");
+    view.update(cx, |view, cx| {
+        view.detail_state.log_state.start_loading();
+        cx.notify();
+    });
+    cx.refresh().unwrap();
+    assert_eq!(cx.debug_bounds("workflow-log-viewport"), Some(viewport));
+    view.read_with(cx, |view, _| {
+        assert_eq!(
+            view.detail_state
+                .log_state
+                .list_scroll
+                .0
+                .borrow()
+                .base_handle
+                .offset(),
+            offset
+        );
+        assert_eq!(view.detail_state.log_state.visible_lines.len(), 501);
+    });
+    assert!(cx.debug_bounds("logs-loading-skeleton").is_none());
+}

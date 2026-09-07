@@ -216,6 +216,18 @@ impl AppView {
             "Ready".to_string()
         };
 
+        let mut log_state = WorkflowLogState::new();
+        let log_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search logs…")
+                .clean_on_escape()
+        });
+        log_state.search_subscription = Some(cx.subscribe(&log_search, |view, _, event, cx| {
+            if matches!(event, crate::gpui_component::input::InputEvent::Change) {
+                view.filter_workflow_logs(cx);
+            }
+        }));
+        log_state.search_input = Some(log_search);
         let mut view = Self {
             focus_handle: cx.focus_handle(),
             pull_requests,
@@ -233,7 +245,7 @@ impl AppView {
                 storage,
             ),
             repository_actions_state: RepositoryActionsUiState::new(),
-            detail_state: PullRequestDetailUiState::new(files, diffs, WorkflowLogState::new()),
+            detail_state: PullRequestDetailUiState::new(files, diffs, log_state),
             review_state: ReviewRuntimeState::new(
                 pull_request_reviews,
                 review_threads,

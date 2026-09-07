@@ -160,8 +160,14 @@ impl GitHubTransport for GhCliTransport {
             .await
     }
 
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String> {
-        let args = vec![
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String> {
+        let mut args = vec![
             "run".to_string(),
             "view".to_string(),
             run_id.to_string(),
@@ -170,6 +176,9 @@ impl GitHubTransport for GhCliTransport {
             "--log".to_string(),
         ];
 
+        if let Some(attempt) = attempt {
+            args.extend(["--attempt".to_string(), attempt.to_string()]);
+        }
         self.coordinator.run_text(args).await
     }
 

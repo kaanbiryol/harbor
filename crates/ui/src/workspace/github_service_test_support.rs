@@ -159,6 +159,14 @@ impl FakeGitHubApi {
         push_result(&self.workflow_runs, result);
     }
 
+    pub(crate) fn push_workflow_jobs(&self, result: Result<Vec<WorkflowJob>>) {
+        push_result(&self.workflow_jobs, result);
+    }
+
+    pub(crate) fn push_workflow_logs(&self, result: Result<String>) {
+        push_result(&self.workflow_logs, result);
+    }
+
     pub(crate) fn push_workflows(&self, result: Result<Vec<Workflow>>) {
         push_result(&self.workflows, result);
     }
@@ -530,12 +538,19 @@ impl GitHubWorkflowApi for FakeGitHubApi {
         _owner: &str,
         _repo: &str,
         _run_id: u64,
+        _attempt: Option<u64>,
     ) -> Result<Vec<WorkflowJob>> {
         self.record_call("list_workflow_jobs_for_run");
         pop_result(&self.workflow_jobs, "list_workflow_jobs_for_run")
     }
 
-    async fn workflow_run_log(&self, _owner: &str, _repo: &str, _run_id: u64) -> Result<String> {
+    async fn workflow_run_log(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _run_id: u64,
+        _attempt: Option<u64>,
+    ) -> Result<String> {
         self.record_call("workflow_run_log");
         pop_result(&self.workflow_logs, "workflow_run_log")
     }

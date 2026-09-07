@@ -205,8 +205,15 @@ pub trait GitHubWorkflowApi: Send + Sync {
         owner: &str,
         repo: &str,
         run_id: u64,
+        attempt: Option<u64>,
     ) -> Result<Vec<WorkflowJob>>;
-    async fn workflow_run_log(&self, owner: &str, repo: &str, run_id: u64) -> Result<String>;
+    async fn workflow_run_log(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+        attempt: Option<u64>,
+    ) -> Result<String>;
 }
 
 #[async_trait]
