@@ -113,6 +113,8 @@ impl AppView {
                             let visible_file_indices = self.visible_file_indices(cx);
                             render_diff_panel(
                                 DiffPanelRenderInput {
+                                    preferences: &self.preferences.value,
+                                    display: &self.diff_display,
                                     pull_request: pr,
                                     files: self.detail_state.files(),
                                     diffs: self.detail_state.diffs(),

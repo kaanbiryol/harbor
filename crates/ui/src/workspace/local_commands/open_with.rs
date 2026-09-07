@@ -85,7 +85,7 @@ impl AppView {
         self.open_with_app(ExternalApp::Xcode, cx);
     }
 
-    fn open_with_app(&mut self, app: ExternalApp, cx: &mut Context<Self>) {
+    pub(crate) fn open_with_app(&mut self, app: ExternalApp, cx: &mut Context<Self>) {
         let Some(pr) = self.selected_pull_request().cloned() else {
             self.status = "Select a pull request before using Open With".to_string();
             cx.notify();
@@ -117,12 +117,14 @@ impl AppView {
         self.status = format!("Preparing PR #{} worktree for {app_label}", pr.number);
         cx.notify();
 
+        let worktree_directory = self.preferences.value.worktree_directory.clone();
         let task = cx.background_spawn(async move {
-            let worktree_path = harbor_git::create_or_update_pr_worktree(
+            let worktree_path = harbor_git::create_or_update_pr_worktree_in(
                 &repo_path,
                 &pr.repo.owner,
                 &pr.repo.name,
                 pr.number,
+                worktree_directory.as_deref(),
             )
             .map_err(|error| error.to_string())?;
             let (target, target_status) =

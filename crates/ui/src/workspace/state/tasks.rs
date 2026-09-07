@@ -97,6 +97,10 @@ impl WorkspaceTasks {
         self.sync_task = Some(task);
     }
 
+    pub(crate) fn clear_sync_task(&mut self) {
+        self.sync_task = None;
+    }
+
     pub(crate) fn set_auth_task(&mut self, task: Task<()>) {
         self.auth_task = Some(task);
     }

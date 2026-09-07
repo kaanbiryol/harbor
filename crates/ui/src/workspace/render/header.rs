@@ -60,7 +60,7 @@ impl AppView {
                             .items_center()
                             .gap_2()
                             .child(self.render_github_auth_control(cx))
-                            .child(self.render_open_with_dropdown()),
+                            .child(self.render_open_with_dropdown(cx)),
                     ),
             )
     }

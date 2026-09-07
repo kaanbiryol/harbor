@@ -24,6 +24,10 @@ impl SyncRuntimeState {
         self.activity_state = activity_state;
     }
 
+    pub(crate) fn set_policy(&mut self, policy: SyncPolicy) {
+        self.sync_policy = policy;
+    }
+
     pub(crate) fn activity_state(&self) -> ActivityState {
         self.activity_state
     }

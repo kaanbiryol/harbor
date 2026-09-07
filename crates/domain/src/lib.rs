@@ -5,6 +5,7 @@ pub mod changed_files;
 mod checks;
 pub mod diff;
 pub mod diff_reviews;
+pub mod preferences;
 mod repository;
 pub mod reviews;
 mod workflows;

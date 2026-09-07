@@ -18,6 +18,25 @@ pub enum PullRequestChangeKind {
 }
 
 impl PullRequestChangeKind {
+    pub fn enabled_by(
+        self,
+        preferences: &harbor_domain::preferences::NotificationPreferences,
+    ) -> bool {
+        preferences.enabled
+            && match self {
+                Self::CheckFailed => preferences.checks_failed,
+                Self::CheckPassed => preferences.checks_passed,
+                Self::Approved => preferences.approvals,
+                Self::ChangesRequested => preferences.changes_requested,
+                Self::ReviewDecisionChanged | Self::ReviewActivity => preferences.review_activity,
+                Self::NewPullRequest
+                | Self::Closed
+                | Self::Merged
+                | Self::HeadChanged
+                | Self::MergeStateChanged => preferences.pull_request_updates,
+            }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::NewPullRequest => "New pull request",
@@ -88,12 +107,15 @@ pub fn detect_pull_request_changes(
             continue;
         };
 
+        let event_count = events.len();
         detect_state_change(previous_pull_request, current_pull_request, &mut events);
         detect_review_decision_change(previous_pull_request, current_pull_request, &mut events);
-        detect_review_activity(previous_pull_request, current_pull_request, &mut events);
         detect_check_change(previous_pull_request, current_pull_request, &mut events);
         detect_head_change(previous_pull_request, current_pull_request, &mut events);
         detect_merge_state_change(previous_pull_request, current_pull_request, &mut events);
+        if events.len() == event_count {
+            detect_review_activity(previous_pull_request, current_pull_request, &mut events);
+        }
     }
 
     events
@@ -265,6 +287,35 @@ mod tests {
         assert!(changes.iter().any(|change| {
             change.kind == PullRequestChangeKind::CheckFailed && change.number == 7
         }));
+    }
+
+    #[test]
+    fn notification_preferences_filter_specific_events_without_generic_duplicates() {
+        let mut preferences = harbor_domain::preferences::NotificationPreferences {
+            approvals: false,
+            checks_passed: false,
+            ..Default::default()
+        };
+        assert!(!PullRequestChangeKind::Approved.enabled_by(&preferences));
+        assert!(!PullRequestChangeKind::CheckPassed.enabled_by(&preferences));
+        assert!(PullRequestChangeKind::ChangesRequested.enabled_by(&preferences));
+        assert!(PullRequestChangeKind::CheckFailed.enabled_by(&preferences));
+
+        let previous = pull_request(7);
+        let mut current = previous.clone();
+        current.review_decision = Some(ReviewDecision::Approved);
+        current.updated_at = Some(time(2));
+        let events = detect_pull_request_changes(&[previous], &[current]);
+        assert_eq!(events.len(), 1);
+        assert!(
+            events
+                .iter()
+                .all(|event| !event.kind.enabled_by(&preferences))
+        );
+
+        preferences.enabled = false;
+        assert!(!PullRequestChangeKind::CheckFailed.enabled_by(&preferences));
+        assert!(!PullRequestChangeKind::HeadChanged.enabled_by(&preferences));
     }
 
     #[test]

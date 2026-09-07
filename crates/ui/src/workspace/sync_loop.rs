@@ -111,6 +111,14 @@ impl AppView {
     }
 
     fn sync_decision(&self, target: SyncTarget, reason: SyncReason) -> SyncDecision {
+        let interval = if self.sync_runtime.is_background() {
+            self.preferences.value.background_refresh
+        } else {
+            self.preferences.value.focused_refresh
+        };
+        if interval.duration().is_none() {
+            return SyncDecision::Wait(IDLE_SYNC_LOOP_DELAY);
+        }
         self.sync_runtime.decision(target, reason)
     }
 
@@ -198,5 +206,73 @@ impl AppView {
         }
 
         delay
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+    use harbor_domain::preferences::RefreshInterval;
+    use harbor_sync::ActivityState;
+
+    #[gpui::test]
+    fn manual_refresh_disables_scheduled_and_focus_refresh_even_when_stale(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::gpui_component::init);
+        let (view, cx) = cx.add_window_view(AppView::new_without_startup_tasks);
+        view.update(cx, |view, cx| {
+            view.update_preferences(
+                |preferences| {
+                    preferences.focused_refresh = RefreshInterval::Manual;
+                    preferences.background_refresh = RefreshInterval::Manual;
+                },
+                cx,
+            );
+            view.sync_runtime
+                .mark_stale(SyncTarget::SelectedPullRequestMetadata);
+            for activity in [ActivityState::Focused, ActivityState::Background] {
+                view.sync_runtime.set_activity(activity);
+                for reason in [SyncReason::Scheduled, SyncReason::FocusGained] {
+                    assert!(matches!(
+                        view.sync_decision(SyncTarget::SelectedPullRequestMetadata, reason),
+                        SyncDecision::Wait(_)
+                    ));
+                }
+            }
+            view.update_preferences(
+                |preferences| preferences.background_refresh = RefreshInterval::OneMinute,
+                cx,
+            );
+            assert_eq!(
+                view.sync_decision(
+                    SyncTarget::SelectedPullRequestMetadata,
+                    SyncReason::Scheduled
+                ),
+                SyncDecision::RunNow
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn changing_refresh_interval_updates_the_active_policy(cx: &mut TestAppContext) {
+        cx.update(crate::gpui_component::init);
+        let (view, cx) = cx.add_window_view(AppView::new_without_startup_tasks);
+        view.update(cx, |view, cx| {
+            view.sync_runtime.set_activity(ActivityState::Focused);
+            view.mark_sync_success(SyncTarget::SelectedPullRequestMetadata);
+            view.update_preferences(
+                |preferences| preferences.focused_refresh = RefreshInterval::FifteenMinutes,
+                cx,
+            );
+            let SyncDecision::Wait(delay) = view.sync_decision(
+                SyncTarget::SelectedPullRequestMetadata,
+                SyncReason::Scheduled,
+            ) else {
+                panic!("fresh metadata should wait");
+            };
+            assert!(delay > Duration::from_secs(890) && delay <= Duration::from_secs(900));
+        });
     }
 }

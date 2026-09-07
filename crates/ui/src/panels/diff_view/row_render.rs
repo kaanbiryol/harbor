@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    DIFF_CODE_FONT_SIZE, DIFF_ROW_HEIGHT, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
+    DIFF_CODE_FONT_SIZE, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
     file_section::{render_diff_file_section_header, render_diff_unavailable_row},
     inline_review_layout::{
         review_comment_range_matches_file, review_comment_range_matches_line,
@@ -157,10 +157,13 @@ fn render_diff_line_item(
         has_thread_anchor,
         has_thread_range,
         review_line_target,
-        line_number_width: line_number_width_for_diff(diff),
+        line_number_width: line_number_width_for_diff(diff) * row_state.code_font_size
+            / DIFF_CODE_FONT_SIZE,
         review_marker_width: REVIEW_MARKER_WIDTH,
         view_entity: row_state.view_entity.clone(),
         mono_font_family: &row_state.mono_font_family,
+        code_font_size: row_state.code_font_size,
+        wrap_lines: row_state.wrap_lines,
     })
     .into_any_element()
 }
@@ -272,6 +275,8 @@ struct DiffLineRenderInput<'a> {
     review_marker_width: f32,
     view_entity: Entity<AppView>,
     mono_font_family: &'a SharedString,
+    code_font_size: f32,
+    wrap_lines: bool,
 }
 
 fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
@@ -289,6 +294,8 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         review_marker_width,
         view_entity,
         mono_font_family,
+        code_font_size,
+        wrap_lines,
     } = input;
     let line_id = format!("diff-line-{item_index}");
     let style = diff_line_style(DiffLineStyleInput {
@@ -302,7 +309,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
 
     div()
         .id(line_id)
-        .min_h(px(DIFF_ROW_HEIGHT))
+        .min_h(px((code_font_size * 1.6).ceil()))
         .w_full()
         .min_w_0()
         .flex()
@@ -310,8 +317,8 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         .bg(style.background)
         .text_color(style.text_color)
         .font_family(mono_font_family.clone())
-        .text_size(px(DIFF_CODE_FONT_SIZE))
-        .line_height(px(DIFF_ROW_HEIGHT))
+        .text_size(px(code_font_size))
+        .line_height(px((code_font_size * 1.6).ceil()))
         .child(render_line_number(line.old_line, line_number_width))
         .child(render_line_number(line.new_line, line_number_width))
         .child(render_review_marker(
@@ -331,7 +338,8 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
                 .min_w_0()
                 .flex_1()
                 .text_color(style.code_text_color)
-                .whitespace_normal()
+                .when(wrap_lines, |element| element.whitespace_normal())
+                .when(!wrap_lines, |element| element.whitespace_nowrap())
                 .child(
                     StyledText::new(line.text.clone())
                         .with_highlights(line.syntax_highlights.clone()),

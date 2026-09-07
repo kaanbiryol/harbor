@@ -126,7 +126,8 @@ impl AppView {
         diff_file_item_index(&self.diff_list_items, file_index)
     }
 
-    pub(super) fn sync_diff_list_items(&mut self, cx: &App) {
+    pub(super) fn sync_diff_list_items(&mut self, cx: &mut Context<Self>) {
+        self.prepare_diff_display(cx);
         let visible_file_indices = self.visible_file_indices(cx);
         let next_items = continuous_diff_items(ContinuousDiffLayoutInput {
             files: self.detail_state.files(),

@@ -6,11 +6,22 @@ use gpui::{
 use crate::diff::{DiffHunk, DiffLineKind};
 use crate::workspace::AppView;
 
+use super::super::DIFF_ROW_HEIGHT;
+
+#[gpui::test]
+async fn unwrapped_diff_lines_stay_one_row_and_follow_font_size(cx: &mut TestAppContext) {
+    let cx = init_visual_diff_line_test(cx, false, 20.0);
+    cx.refresh().expect("render unwrapped line");
+    let bounds = cx
+        .debug_bounds("diff-line-wrap-harness")
+        .expect("diff line");
+    assert_eq!(bounds.size.height, px(32.0));
+}
 use super::*;
 
 #[gpui::test]
 async fn wraps_long_diff_line_in_narrow_panel(cx: &mut TestAppContext) {
-    let cx = init_visual_diff_line_test(cx);
+    let cx = init_visual_diff_line_test(cx, true, DIFF_CODE_FONT_SIZE);
 
     cx.refresh().expect("test window should refresh");
     cx.run_until_parked();
@@ -27,7 +38,7 @@ async fn wraps_long_diff_line_in_narrow_panel(cx: &mut TestAppContext) {
 
 #[gpui::test]
 async fn keeps_line_numbers_single_line_in_wrapped_rows(cx: &mut TestAppContext) {
-    let cx = init_visual_diff_line_test(cx);
+    let cx = init_visual_diff_line_test(cx, true, DIFF_CODE_FONT_SIZE);
 
     cx.refresh().expect("test window should refresh");
     cx.run_until_parked();
@@ -42,7 +53,11 @@ async fn keeps_line_numbers_single_line_in_wrapped_rows(cx: &mut TestAppContext)
     );
 }
 
-fn init_visual_diff_line_test(cx: &mut TestAppContext) -> &mut VisualTestContext {
+fn init_visual_diff_line_test(
+    cx: &mut TestAppContext,
+    wrap_lines: bool,
+    code_font_size: f32,
+) -> &mut VisualTestContext {
     cx.update(|cx| {
         crate::gpui_component::init(cx);
         Theme::change(ThemeMode::Dark, None, cx);
@@ -50,7 +65,11 @@ fn init_visual_diff_line_test(cx: &mut TestAppContext) -> &mut VisualTestContext
 
     let (_, cx) = cx.add_window_view(|window, cx| {
         let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-        let harness = cx.new(|_| DiffLineWrapHarness { view_entity: view });
+        let harness = cx.new(|_| DiffLineWrapHarness {
+            view_entity: view,
+            wrap_lines,
+            code_font_size,
+        });
         Root::new(harness, window, cx)
     });
 
@@ -59,6 +78,8 @@ fn init_visual_diff_line_test(cx: &mut TestAppContext) -> &mut VisualTestContext
 
 struct DiffLineWrapHarness {
     view_entity: Entity<AppView>,
+    wrap_lines: bool,
+    code_font_size: f32,
 }
 
 impl Render for DiffLineWrapHarness {
@@ -91,6 +112,8 @@ impl Render for DiffLineWrapHarness {
                     review_marker_width: REVIEW_MARKER_WIDTH,
                     view_entity: self.view_entity.clone(),
                     mono_font_family: &mono_font_family,
+                    code_font_size: self.code_font_size,
+                    wrap_lines: self.wrap_lines,
                 })),
             div()
                 .id("diff-line-number-wrap-harness")
@@ -131,6 +154,8 @@ impl Render for DiffLineWrapHarness {
                     review_marker_width: REVIEW_MARKER_WIDTH,
                     view_entity: self.view_entity.clone(),
                     mono_font_family: &mono_font_family,
+                    code_font_size: self.code_font_size,
+                    wrap_lines: self.wrap_lines,
                 })),
         ])
     }

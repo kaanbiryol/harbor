@@ -39,6 +39,8 @@ pub(super) struct DiffRowRenderState<'a> {
     pub(super) active_file: usize,
     pub(super) view_entity: Entity<AppView>,
     pub(super) mono_font_family: SharedString,
+    pub(super) code_font_size: f32,
+    pub(super) wrap_lines: bool,
 }
 
 impl<'a> DiffRowRenderState<'a> {
@@ -120,6 +122,8 @@ impl<'a> DiffRowRenderState<'a> {
             active_file: view.active_file_index(),
             view_entity,
             mono_font_family: cx.theme().mono_font_family.clone(),
+            code_font_size: view.preferences.value.code_font_size,
+            wrap_lines: view.preferences.value.wrap_diff_lines,
         }
     }
 }

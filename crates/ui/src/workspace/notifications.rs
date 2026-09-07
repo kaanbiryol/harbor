@@ -99,11 +99,14 @@ impl AppView {
         events: Vec<PullRequestChangeEvent>,
         cx: &mut Context<Self>,
     ) {
-        if !self.sync_runtime.is_background() || !self.notification_state.notifications_enabled {
+        if !self.sync_runtime.is_background() || !self.preferences.value.notifications.enabled {
             return;
         }
 
         for event in events {
+            if !event.kind.enabled_by(&self.preferences.value.notifications) {
+                continue;
+            }
             let dedupe_key = event.dedupe_key();
             if !self
                 .notification_state

@@ -140,12 +140,14 @@ impl AppView {
         self.status = format!("Preparing PR #{} worktree", pr.number);
         cx.notify();
 
+        let worktree_directory = self.preferences.value.worktree_directory.clone();
         let task = cx.background_spawn(async move {
-            harbor_git::create_or_update_pr_worktree(
+            harbor_git::create_or_update_pr_worktree_in(
                 &repo_path,
                 &pr.repo.owner,
                 &pr.repo.name,
                 pr.number,
+                worktree_directory.as_deref(),
             )
             .map(|path| format!("Prepared PR #{} worktree at {}", pr.number, path.display()))
             .map_err(|error| error.to_string())

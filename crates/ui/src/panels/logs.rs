@@ -441,6 +441,7 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                                                         render_log_line_with_timestamps(
                                                             line,
                                                             state.show_timestamps,
+                                                            view.preferences.value.code_font_size,
                                                         )
                                                     })
                                                     .collect()
@@ -457,7 +458,7 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                                     .min_h_0()
                                     .min_w_0()
                                     .font_family(cx.theme().mono_font_family.clone())
-                                    .text_xs(),
+                                    .text_size(px(view.preferences.value.code_font_size)),
                                 )
                                 .child(Scrollbar::new(&scroll).mode(ScrollbarMode::Always)),
                         )
@@ -652,7 +653,11 @@ fn status_icon(
     }
 }
 
-fn render_log_line_with_timestamps(line: &LogLine, timestamps: bool) -> AnyElement {
+fn render_log_line_with_timestamps(
+    line: &LogLine,
+    timestamps: bool,
+    code_font_size: f32,
+) -> AnyElement {
     let color = match line.severity {
         LogSeverity::Trace => color::text_muted(),
         LogSeverity::Info => color::text_secondary(),
@@ -661,7 +666,7 @@ fn render_log_line_with_timestamps(line: &LogLine, timestamps: bool) -> AnyEleme
     };
 
     div()
-        .h(px(22.))
+        .h(px((code_font_size * 1.6).ceil().max(22.)))
         .flex()
         .items_center()
         .whitespace_nowrap()

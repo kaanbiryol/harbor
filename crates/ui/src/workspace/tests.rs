@@ -1387,7 +1387,7 @@ async fn github_account_settings_open_and_close(cx: &mut TestAppContext) {
             view.open_settings(&OpenSettings, window, cx);
 
             assert!(view.settings_open());
-            assert_eq!(view.settings_section(), SettingsSection::GitHub);
+            assert_eq!(view.settings_section(), SettingsSection::General);
             assert!(!view.github_auth_popover_open);
 
             view.close_settings(&CloseSettings, window, cx);

@@ -244,6 +244,8 @@ impl AppView {
             github_auth_popover_open: false,
             settings_open: false,
             settings_section: SettingsSection::GitHub,
+            preferences: super::settings::PreferencesState::default(),
+            diff_display: super::diff_display::DiffDisplayState::default(),
             auth_switch_status: None,
             tasks: WorkspaceTasks::default(),
             repository_state: RepositoryUiState::new(
@@ -266,7 +268,6 @@ impl AppView {
             notification_state: NotificationState {
                 notification_sink,
                 notification_dedupe: HashSet::new(),
-                notifications_enabled: true,
             },
             sync_runtime: SyncRuntimeState::new(
                 if window.is_window_active() {
@@ -339,8 +340,7 @@ impl AppView {
             Ok(store) => {
                 self.repository_state.set_store(store);
                 self.status = "Loading saved workspace state…".to_string();
-                self.load_github_credentials(cx);
-                self.load_repository_preferences(cx);
+                self.load_preferences(cx);
             }
             Err(error) => {
                 self.repository_state.clear_store_with_error(error);

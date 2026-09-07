@@ -73,9 +73,48 @@ pub fn create_or_update_pr_worktree(
     repo: &str,
     number: u64,
 ) -> Result<PathBuf> {
+    create_or_update_pr_worktree_in(repo_path, owner, repo, number, None)
+}
+
+/// Prepares a PR worktree under a custom root, or uses Harbor's default location.
+pub fn create_or_update_pr_worktree_in(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+    directory: Option<&Path>,
+) -> Result<PathBuf> {
     let local_repository = validate_repository_path(repo_path, owner, repo)?;
-    let worktree_path = managed_worktree_path(&local_repository.repo_path, owner, repo, number)?;
+    let worktree_path = match directory {
+        Some(directory) if directory.is_absolute() => directory
+            .join(sanitize_path_part(owner))
+            .join(sanitize_path_part(repo))
+            .join(format!("pr-{number}")),
+        Some(_) => {
+            return Err(GitError::Command(
+                "worktree directory must be an absolute path".to_string(),
+            ));
+        }
+        None => managed_worktree_path(&local_repository.repo_path, owner, repo, number)?,
+    };
     let reference = pr_reference(number);
+
+    if worktree_path.exists() {
+        let common_directory = |path: &Path| -> Result<PathBuf> {
+            let directory = git_stdout(
+                path,
+                ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            )?;
+            std::fs::canonicalize(directory.trim()).map_err(|error| {
+                GitError::Command(format!("could not resolve worktree repository: {error}"))
+            })
+        };
+        if common_directory(&worktree_path)? != common_directory(&local_repository.repo_path)? {
+            return Err(GitError::Command(
+                "worktree folder belongs to another local repository".to_string(),
+            ));
+        }
+    }
 
     git_success(
         &local_repository.repo_path,
@@ -369,6 +408,56 @@ mod tests {
             format!("managed worktree has local changes: {}", worktree.display())
         );
 
+        fixture.cleanup();
+    }
+
+    #[test]
+    fn custom_worktree_directory_creates_updates_and_preserves_local_changes() {
+        let fixture = LocalGitFixture::new("custom-worktree");
+        fixture.commit_and_publish_pull_request("first\n");
+        let directory = fixture.root.join("custom worktrees");
+        let worktree =
+            create_or_update_pr_worktree_in(&fixture.source, "acme", "app", 7, Some(&directory))
+                .expect("custom worktree");
+        assert_eq!(worktree, directory.join("acme/app/pr-7"));
+        let second_sha = fixture.commit_and_publish_pull_request("second\n");
+        assert_eq!(
+            create_or_update_pr_worktree_in(&fixture.source, "acme", "app", 7, Some(&directory))
+                .expect("update custom worktree"),
+            worktree
+        );
+        assert_eq!(
+            git_stdout(&worktree, ["rev-parse", "HEAD"]).expect("worktree head"),
+            second_sha
+        );
+        std::fs::write(worktree.join("README.md"), "local changes\n").expect("modify file");
+        assert!(matches!(
+            create_or_update_pr_worktree_in(&fixture.source, "acme", "app", 7, Some(&directory)),
+            Err(GitError::DirtyWorktree(_))
+        ));
+        fixture.cleanup();
+    }
+
+    #[test]
+    fn refuses_custom_worktree_owned_by_another_checkout() {
+        let fixture = LocalGitFixture::new("foreign-worktree");
+        let other = LocalGitFixture::new("other-checkout");
+        fixture.commit_and_publish_pull_request("first\n");
+        other.commit_and_publish_pull_request("other\n");
+        let directory = fixture.root.join("custom");
+        let worktree =
+            create_or_update_pr_worktree_in(&other.source, "acme", "app", 7, Some(&directory))
+                .expect("other worktree");
+        let previous_head = git_stdout(&worktree, ["rev-parse", "HEAD"]).expect("other head");
+        let error =
+            create_or_update_pr_worktree_in(&fixture.source, "acme", "app", 7, Some(&directory))
+                .expect_err("foreign worktree rejected");
+        assert!(error.to_string().contains("another local repository"));
+        assert_eq!(
+            git_stdout(&worktree, ["rev-parse", "HEAD"]).expect("unchanged head"),
+            previous_head
+        );
+        other.cleanup();
         fixture.cleanup();
     }
 

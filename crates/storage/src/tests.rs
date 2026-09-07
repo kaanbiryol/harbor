@@ -295,6 +295,66 @@ fn saves_and_deletes_app_settings() {
 }
 
 #[test]
+fn preferences_round_trip_and_accept_missing_fields() {
+    use harbor_domain::preferences::{
+        AppPreferences, PreferredEditor, PreferredTerminal, RefreshInterval,
+    };
+    smol::block_on(async {
+        let database_path = test_database_path("preferences");
+        let store = SqliteStore::connect(StorageConfig {
+            database_path: database_path.clone(),
+        })
+        .await
+        .expect("connect store");
+        assert_eq!(
+            store.load_preferences().await.expect("defaults"),
+            AppPreferences::default()
+        );
+        let mut preferences = AppPreferences {
+            code_font_size: 18.0,
+            wrap_diff_lines: false,
+            editor: PreferredEditor::Zed,
+            terminal: PreferredTerminal::Ghostty,
+            focused_refresh: RefreshInterval::Manual,
+            background_refresh: RefreshInterval::OneHour,
+            worktree_directory: Some(std::env::temp_dir().join("custom-worktrees")),
+            ..AppPreferences::default()
+        };
+        preferences.notifications.approvals = false;
+        store
+            .save_preferences(&preferences)
+            .await
+            .expect("save preferences");
+        assert_eq!(
+            store.load_preferences().await.expect("reload preferences"),
+            preferences
+        );
+        store
+            .save_app_setting(
+                "preferences",
+                r#"{"code_font_size":999,"notifications":{"enabled":false}}"#,
+            )
+            .await
+            .expect("older settings");
+        let loaded = store
+            .load_preferences()
+            .await
+            .expect("load partial settings");
+        assert_eq!(loaded.code_font_size, 24.0);
+        assert!(!loaded.notifications.enabled);
+        assert!(loaded.notifications.checks_failed);
+        assert_eq!(loaded.focused_refresh, RefreshInterval::FiveMinutes);
+        store
+            .save_app_setting("preferences", "broken json")
+            .await
+            .expect("invalid settings");
+        assert!(store.load_preferences().await.is_err());
+        store.pool.close().await;
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
 fn saves_and_loads_detail_sections_independently() {
     smol::block_on(async {
         let database_path = test_database_path("pull-request-detail-cache");

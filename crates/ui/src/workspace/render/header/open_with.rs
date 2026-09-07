@@ -2,12 +2,13 @@ use crate::gpui_component::{
     Disableable, Sizable,
     button::{Button, DropdownButton},
 };
-use gpui::{Anchor, IntoElement, px};
+use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use harbor_git::ExternalApp;
 
 use crate::actions::*;
 use crate::icons::Octicon;
 use crate::workspace::AppView;
+use crate::workspace::settings::{preferred_editor_app, preferred_terminal_app};
 
 pub(super) fn open_with_action(app: ExternalApp) -> Box<dyn gpui::Action> {
     match app {
@@ -40,55 +41,84 @@ pub(crate) fn open_with_app_disabled(
 }
 
 impl AppView {
-    pub(super) fn render_open_with_dropdown(&self) -> impl IntoElement {
+    pub(super) fn render_open_with_dropdown(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let has_repository = self.current_repository().is_some();
         let local_path = self.current_repository_local_path().cloned();
         let has_local_path = local_path.is_some();
         let local_action_running = self.tasks.local_task_running();
         let app_availability = ExternalApp::ALL.map(|app| self.external_app_is_available(app));
+        let editor = preferred_editor_app(self.preferences.value.editor);
+        let terminal = preferred_terminal_app(self.preferences.value.terminal);
 
-        DropdownButton::new("open-with")
-            .button(
-                Button::new("open-with-primary")
-                    .icon(Octicon::LinkExternal)
-                    .label("Open With")
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                DropdownButton::new("open-with")
+                    .button(
+                        Button::new("open-with-primary")
+                            .icon(open_with_icon(editor))
+                            .label(format!("Open in {}", editor.label()))
+                            .small()
+                            .compact()
+                            .disabled(open_with_app_disabled(
+                                has_local_path,
+                                local_action_running,
+                                self.external_app_is_available(editor),
+                            ))
+                            .on_click(
+                                cx.listener(move |view, _, _, cx| view.open_with_app(editor, cx)),
+                            ),
+                    )
                     .small()
-                    .compact(),
+                    .outline()
+                    .disabled(!has_repository || local_action_running)
+                    .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                        let mut menu = menu.max_w(px(320.)).menu_with_disabled(
+                            "Choose Local Checkout...",
+                            Box::new(ChooseLocalCheckout),
+                            !has_repository || local_action_running,
+                        );
+
+                        if let Some(local_path) = local_path.clone() {
+                            menu = menu.label(format!("Local: {}", local_path.display()));
+                        } else {
+                            menu = menu.label("No local checkout selected");
+                        }
+
+                        menu = menu.separator();
+
+                        for (app_index, app) in ExternalApp::ALL.into_iter().enumerate() {
+                            let disabled = open_with_app_disabled(
+                                has_local_path,
+                                local_action_running,
+                                app_availability[app_index],
+                            );
+                            menu = menu.menu_with_icon_and_disabled(
+                                app.label(),
+                                open_with_icon(app),
+                                open_with_action(app),
+                                disabled,
+                            );
+                        }
+
+                        menu
+                    }),
             )
-            .small()
-            .outline()
-            .disabled(!has_repository || local_action_running)
-            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                let mut menu = menu.max_w(px(320.)).menu_with_disabled(
-                    "Choose Local Checkout...",
-                    Box::new(ChooseLocalCheckout),
-                    !has_repository || local_action_running,
-                );
-
-                if let Some(local_path) = local_path.clone() {
-                    menu = menu.label(format!("Local: {}", local_path.display()));
-                } else {
-                    menu = menu.label("No local checkout selected");
-                }
-
-                menu = menu.separator();
-
-                for (app_index, app) in ExternalApp::ALL.into_iter().enumerate() {
-                    let disabled = open_with_app_disabled(
+            .child(
+                Button::new("open-preferred-terminal")
+                    .small()
+                    .compact()
+                    .icon(Octicon::Terminal)
+                    .tooltip(format!("Open PR worktree in {}", terminal.label()))
+                    .disabled(open_with_app_disabled(
                         has_local_path,
                         local_action_running,
-                        app_availability[app_index],
-                    );
-                    menu = menu.menu_with_icon_and_disabled(
-                        app.label(),
-                        open_with_icon(app),
-                        open_with_action(app),
-                        disabled,
-                    );
-                }
-
-                menu
-            })
+                        self.external_app_is_available(terminal),
+                    ))
+                    .on_click(cx.listener(move |view, _, _, cx| view.open_with_app(terminal, cx))),
+            )
     }
 }
 

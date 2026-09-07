@@ -21,8 +21,9 @@ pub(crate) use inline_reviews::{
 use std::{collections::HashSet, sync::Arc};
 
 use crate::gpui_component::{
-    Icon, Sizable, StyledExt,
+    ActiveTheme, Icon, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    scroll::Scrollbar,
 };
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{DiffFile, PullRequest, ReviewThread};
@@ -57,6 +58,8 @@ const REVIEW_MARKER_WIDTH: f32 = 24.0;
 const PREFIX_WIDTH: f32 = 16.0;
 
 pub(crate) struct DiffPanelRenderInput<'a> {
+    pub(crate) preferences: &'a harbor_domain::preferences::AppPreferences,
+    pub(crate) display: &'a crate::workspace::diff_display::DiffDisplayState,
     pub(crate) pull_request: Option<&'a PullRequest>,
     pub(crate) files: &'a [DiffFile],
     pub(crate) diffs: &'a [Option<ParsedDiff>],
@@ -144,6 +147,18 @@ pub(crate) fn render_diff_panel(
             .into_any_element();
     }
 
+    let wrap_lines = input.preferences.wrap_diff_lines;
+    let font = gpui::font(cx.theme().mono_font_family.clone());
+    let font_id = cx.text_system().resolve_font(&font);
+    let character_width =
+        cx.text_system()
+            .layout_width(font_id, px(input.preferences.code_font_size), 'm');
+    let gutter_width = 2.0
+        * (10.0 * LINE_NUMBER_DIGIT_WIDTH + LINE_NUMBER_PADDING)
+        * input.preferences.code_font_size
+        / DIFF_CODE_FONT_SIZE;
+    let content_width = character_width * input.display.columns as f32
+        + px(gutter_width + PREFIX_WIDTH + REVIEW_MARKER_WIDTH);
     let logical_scroll_top = input.list_state.logical_scroll_top();
     let sticky_section = continuous_diff_section_for_item(
         input.layout_input(),
@@ -275,6 +290,24 @@ pub(crate) fn render_diff_panel(
         .min_w_0()
         .when_some(commit_scope, |element, scope| element.gap_2().child(scope))
         .child(
+            div().flex().justify_end().pb_1().child(
+                Button::new("diff-wrap-lines")
+                    .xsmall()
+                    .compact()
+                    .ghost()
+                    .label("Wrap lines")
+                    .selected(wrap_lines)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.update_preferences(
+                            |preferences| {
+                                preferences.wrap_diff_lines = !preferences.wrap_diff_lines
+                            },
+                            cx,
+                        )
+                    })),
+            ),
+        )
+        .child(
             div()
                 .flex()
                 .flex_col()
@@ -294,31 +327,46 @@ pub(crate) fn render_diff_panel(
                         .min_w_0()
                         .overflow_hidden()
                         .child(
-                            list(
-                                input.list_state.clone(),
-                                cx.processor(move |view, item_index: usize, _window, cx| {
-                                    let row_state = DiffRowRenderState::from_view(
-                                        view,
-                                        cx,
-                                        processor_view_entity.clone(),
-                                        review_thread_index.clone(),
-                                    );
+                            div()
+                                .id("diff-horizontal-viewport")
+                                .debug_selector(|| "diff-horizontal-viewport".to_string())
+                                .size_full()
+                                .overflow_x_scroll()
+                                .track_scroll(&input.display.horizontal_scroll)
+                                .child(
+                                    list(
+                                        input.list_state.clone(),
+                                        cx.processor(
+                                            move |view, item_index: usize, _window, cx| {
+                                                let row_state = DiffRowRenderState::from_view(
+                                                    view,
+                                                    cx,
+                                                    processor_view_entity.clone(),
+                                                    review_thread_index.clone(),
+                                                );
 
-                                    render_diff_list_item(
-                                        list_items_for_render.get(item_index),
-                                        view.diff_files(),
-                                        view.parsed_diffs(),
-                                        view.reviewed_file_paths(),
-                                        &row_state,
-                                        item_index,
+                                                render_diff_list_item(
+                                                    list_items_for_render.get(item_index),
+                                                    view.diff_files(),
+                                                    view.parsed_diffs(),
+                                                    view.reviewed_file_paths(),
+                                                    &row_state,
+                                                    item_index,
+                                                )
+                                            },
+                                        ),
                                     )
-                                }),
-                            )
-                            .flex_1()
-                            .min_h_0()
-                            .min_w_0()
-                            .text_xs(),
+                                    .h_full()
+                                    .min_w_full()
+                                    .when(wrap_lines, |element| element.w_full())
+                                    .when(!wrap_lines, |element| element.w(content_width))
+                                    .min_h_0()
+                                    .text_xs(),
+                                ),
                         )
+                        .when(!wrap_lines, |element| {
+                            element.child(Scrollbar::horizontal(&input.display.horizontal_scroll))
+                        })
                         .when_some(sticky_section, {
                             let view_entity = view_entity.clone();
                             move |element, section| {

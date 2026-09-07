@@ -8,6 +8,7 @@ mod cache;
 mod changed_file_interactions;
 mod codeowners;
 mod commands;
+pub(crate) mod diff_display;
 mod external_apps;
 pub(crate) mod github_service;
 mod initialization;
@@ -153,6 +154,8 @@ pub struct AppView {
     github_auth_popover_open: bool,
     settings_open: bool,
     settings_section: SettingsSection,
+    pub(crate) preferences: settings::PreferencesState,
+    pub(crate) diff_display: diff_display::DiffDisplayState,
     auth_switch_status: Option<AuthSwitchStatus>,
     tasks: WorkspaceTasks,
     repository_state: RepositoryUiState,
