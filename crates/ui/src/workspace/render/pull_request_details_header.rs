@@ -1,10 +1,8 @@
 use crate::gpui_component::{
-    ActiveTheme, Disableable, Icon, Sizable, StyledExt,
+    ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
     popover::Popover,
-    tag::Tag,
-    tooltip::Tooltip,
 };
 use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use harbor_domain::{MergeMethod, MergeQueueState, PullRequest};
@@ -394,22 +392,13 @@ fn render_merge_queue_status(status: PullRequestMergeQueueStatus) -> impl IntoEl
         PullRequestMergeQueueStatus::Waiting => Octicon::Clock,
         PullRequestMergeQueueStatus::Queued => Octicon::GitPullRequest,
     };
-    let tooltip = status.description();
-
-    div()
-        .id("pull-request-merge-queue-status")
-        .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
-        .child(
-            Tag::warning().outline().small().rounded_full().child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .text_color(color::warning())
-                    .child(Icon::new(icon).xsmall().text_color(color::warning()))
-                    .child("Queued"),
-            ),
-        )
+    Button::new("pull-request-merge-queue-status")
+        .label("Queued")
+        .icon(icon)
+        .small()
+        .warning()
+        .outline()
+        .tooltip(status.description())
 }
 
 fn render_merge_bypass_options(
