@@ -208,6 +208,9 @@ impl AppView {
                 }
             }
             PanelTab::Logs => {
+                if !self.detail_state.should_load_workflows() {
+                    self.load_workflow_log_navigation(cx);
+                }
                 if self.detail_state.should_load_workflows() {
                     self.spawn_pull_request_workflows_loader(load, cx);
                 } else if !self.detail_state.log_state.is_loading()

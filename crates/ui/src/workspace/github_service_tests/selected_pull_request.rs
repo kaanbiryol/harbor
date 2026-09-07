@@ -400,3 +400,72 @@ async fn failed_job_opens_its_failed_step(cx: &mut TestAppContext) {
         assert_eq!(*view.detail_state.log_state.visible_lines, vec![1]);
     });
 }
+
+#[gpui::test]
+async fn logs_load_checks_from_other_workflows_without_downloading_their_output(
+    cx: &mut TestAppContext,
+) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let (view, cx) = init_workspace_service_test(cx, api.clone());
+    let mut title_run = workflow_run();
+    title_run.name = "PR Title".into();
+    let mut build_run = title_run.clone();
+    build_run.id = 84;
+    build_run.name = "PR".into();
+    let job = |id, name: &str| harbor_domain::WorkflowJob {
+        id,
+        name: name.to_string(),
+        status: harbor_domain::WorkflowStatus::Completed,
+        conclusion: Some(harbor_domain::WorkflowConclusion::Success),
+        steps: Vec::new(),
+    };
+    api.push_workflow_jobs(Ok(vec![job(1, "PR Title")]));
+    api.push_workflow_logs(Ok("PR Title\tCheck PR title\ttitle passed".into()));
+    view.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.detail_state
+            .replace_workflow_runs(vec![title_run, build_run]);
+        view.load_selected_workflow_logs(cx);
+    });
+    cx.run_until_parked();
+
+    let other_jobs = vec![job(2, "Android"), job(3, "iOS")];
+    api.push_workflow_jobs(Ok(other_jobs.clone()));
+    view.update(cx, |view, cx| view.load_workflow_log_navigation(cx));
+    cx.run_until_parked();
+    view.read_with(cx, |view, _| {
+        let jobs = view
+            .detail_state
+            .log_state
+            .navigation_jobs
+            .get(&84)
+            .unwrap()
+            .as_ref()
+            .unwrap();
+        assert_eq!(jobs.as_ref(), &other_jobs);
+        assert_eq!(view.detail_state.log_state.chunk().unwrap().run_id, 42);
+    });
+    assert_eq!(
+        api.calls()
+            .iter()
+            .filter(|call| *call == "workflow_run_log")
+            .count(),
+        1
+    );
+
+    api.push_workflow_jobs(Ok(other_jobs));
+    api.push_workflow_logs(Ok(
+        "Android\tBuild\tandroid output\niOS\tBuild\tios output".into()
+    ));
+    view.update(cx, |view, cx| {
+        view.select_workflow_log_section(84, Some(("Android".into(), None)), cx)
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |view, _| {
+        let state = &view.detail_state.log_state;
+        assert_eq!(state.chunk().unwrap().run_id, 84);
+        assert_eq!(state.selected_section, Some(("Android".into(), None)));
+        assert_eq!(state.visible_lines.as_ref(), &[0]);
+        assert_eq!(state.chunk().unwrap().lines[0].text, "android output");
+    });
+}

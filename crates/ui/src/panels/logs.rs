@@ -9,7 +9,7 @@ use gpui::{
     AnyElement, Context, IntoElement, ListHorizontalSizingBehavior, div, prelude::*, px,
     uniform_list,
 };
-use harbor_domain::WorkflowJob;
+use harbor_domain::WorkflowRun;
 use harbor_logs::{LogLine, LogSeverity};
 
 use crate::{
@@ -34,7 +34,8 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
             .all(|job| job.conclusion == Some(harbor_domain::WorkflowConclusion::Skipped));
     let scroll = state.list_scroll.clone();
     let line_count = state.visible_lines.len();
-    let navigation = navigation_rows(jobs);
+    let selected_run = run.map(|run| run.id);
+    let navigation = navigation_rows(view.detail_state.workflow_runs(), state, selected_run);
     let navigation_count = navigation.len();
     let selected = state.selected_section.clone();
     let runs = view
@@ -53,7 +54,6 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
             )
         })
         .collect::<Vec<_>>();
-    let selected_run = run.map(|run| run.id);
     let weak_view = cx.entity().downgrade();
     let mut content = div()
         .id("logs-panel")
@@ -71,7 +71,10 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                 .gap_2()
                 .child(render_panel_header(
                     "Logs",
-                    Some(format!("{} jobs", jobs.len())),
+                    Some(format!(
+                        "{} workflows",
+                        view.detail_state.workflow_runs().len()
+                    )),
                 ))
                 .child(div().flex_1())
                 .when(!all_skipped, |element| {
@@ -119,7 +122,7 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                         .small()
                         .ghost()
                         .max_w(px(300.))
-                        .disabled(runs.len() < 2 || state.is_loading())
+                        .disabled(runs.len() < 2)
                         .dropdown_menu(move |mut menu, _, _| {
                             for (run_id, label) in &runs {
                                 let run_id = *run_id;
@@ -129,9 +132,7 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                                         .checked(Some(run_id) == selected_run)
                                         .on_click(move |_, _, cx| {
                                             if let Err(error) = weak_view.update(cx, |view, cx| {
-                                                view.detail_state.log_state.selected_run =
-                                                    Some(run_id);
-                                                view.load_selected_workflow_logs(cx);
+                                                view.select_workflow_log_section(run_id, None, cx);
                                             }) {
                                                 tracing::debug!(%error, "log run selector closed");
                                             }
@@ -322,7 +323,7 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                                 .pb_1()
                                 .text_xs()
                                 .text_color(color::text_muted())
-                                .child(format!("JOBS · {}", jobs.len())),
+                                .child("WORKFLOWS / CHECKS"),
                         )
                         .child(
                             div()
@@ -341,6 +342,7 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
                                                         navigation.get(index).map(|row| {
                                                             render_navigation_row(
                                                                 row,
+                                                                selected_run,
                                                                 selected.as_ref(),
                                                                 cx,
                                                             )
@@ -535,34 +537,43 @@ pub(crate) fn render_logs_panel(view: &AppView, cx: &mut Context<AppView>) -> im
 
 fn render_navigation_row(
     row: &LogNavigationRow,
+    selected_run: Option<u64>,
     selected: Option<&(String, Option<String>)>,
     cx: &mut Context<AppView>,
 ) -> AnyElement {
-    let section = (row.job.clone(), row.step.clone());
+    let section = row.job.as_ref().map(|job| (job.clone(), row.step.clone()));
+    let run_id = row.run_id;
     let label = row.label.clone();
     div()
         .h(px(52.))
         .py_0p5()
         .child(
             ListItem::new(gpui::SharedString::from(format!("log-section-{}", row.id)))
-                .selected(selected == Some(&section))
+                .selected(
+                    selected_run == Some(run_id)
+                        && row.job.is_some()
+                        && selected == section.as_ref(),
+                )
                 .h_full()
                 .px_2()
-                .when(row.step.is_some(), |element| element.pl_5())
                 .tooltip(move |window, cx| {
                     crate::gpui_component::tooltip::Tooltip::new(label.clone()).build(window, cx)
                 })
                 .child(
                     div()
                         .flex()
-                        .items_center()
+                        .items_start()
                         .gap_2()
                         .min_w_0()
                         .child(
-                            Icon::new(row.icon)
-                                .small()
+                            div()
                                 .flex_none()
-                                .text_color(tone_text(row.tone)),
+                                .w_3p5()
+                                .h(px(20.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(Icon::new(row.icon).small().text_color(tone_text(row.tone))),
                         )
                         .child(
                             div()
@@ -574,6 +585,8 @@ fn render_navigation_row(
                                 .child(
                                     div()
                                         .text_sm()
+                                        .line_height(px(20.))
+                                        .when(row.job.is_none(), |element| element.font_semibold())
                                         .truncate()
                                         .text_color(color::text_primary())
                                         .child(row.label.clone()),
@@ -581,14 +594,15 @@ fn render_navigation_row(
                                 .child(
                                     div()
                                         .text_xs()
+                                        .line_height(px(16.))
+                                        .truncate()
                                         .text_color(tone_text(row.tone))
                                         .child(row.status.clone()),
                                 ),
                         ),
                 )
                 .on_click(cx.listener(move |view, _, _, cx| {
-                    view.detail_state.log_state.selected_section = Some(section.clone());
-                    view.filter_workflow_logs(cx);
+                    view.select_workflow_log_section(run_id, section.clone(), cx);
                 })),
         )
         .into_any_element()
@@ -596,7 +610,8 @@ fn render_navigation_row(
 
 struct LogNavigationRow {
     id: String,
-    job: String,
+    run_id: u64,
+    job: Option<String>,
     step: Option<String>,
     label: String,
     status: String,
@@ -604,35 +619,74 @@ struct LogNavigationRow {
     icon: Octicon,
 }
 
-fn navigation_rows(jobs: &[WorkflowJob]) -> Vec<LogNavigationRow> {
+fn navigation_rows(
+    runs: &[WorkflowRun],
+    state: &crate::workspace::WorkflowLogState,
+    selected_run: Option<u64>,
+) -> Vec<LogNavigationRow> {
     let mut rows = Vec::new();
-    for job in jobs {
-        let (status, tone) = workflow_conclusion_tone(job.conclusion, job.status);
+    for run in runs {
+        let (status, tone) = workflow_conclusion_tone(run.conclusion, run.status);
+        let jobs = state.navigation_jobs.get(&run.id);
         rows.push(LogNavigationRow {
-            id: job.id.to_string(),
-            job: job.name.clone(),
+            id: format!("run-{}", run.id),
+            run_id: run.id,
+            job: None,
             step: None,
-            label: job.name.clone(),
-            status: status.into(),
-            tone,
-            icon: status_icon(job.conclusion, job.status),
+            label: run.workflow_name.as_ref().unwrap_or(&run.name).clone(),
+            status: match jobs {
+                Some(Ok(jobs)) => format!("{} checks · {status}", jobs.len()),
+                Some(Err(error)) => format!("Checks unavailable: {error}"),
+                None => "Loading checks…".to_string(),
+            },
+            tone: if jobs.is_some_and(Result::is_err) {
+                Tone::Danger
+            } else {
+                tone
+            },
+            icon: status_icon(run.conclusion, run.status),
         });
-        for step in &job.steps {
-            let (status, tone) = workflow_conclusion_tone(step.conclusion, step.status);
-            let duration = step
-                .started_at
-                .zip(step.completed_at)
-                .map(|(start, end)| format!(" · {}s", (end - start).num_seconds().max(0)))
-                .unwrap_or_default();
+        let Some(Ok(jobs)) = jobs else {
+            continue;
+        };
+        for job in jobs.iter() {
+            let (status, tone) = workflow_conclusion_tone(job.conclusion, job.status);
             rows.push(LogNavigationRow {
-                id: format!("{}-{}", job.id, step.number),
-                job: job.name.clone(),
-                step: Some(step.name.clone()),
-                label: step.name.clone(),
-                status: format!("{status}{duration}"),
+                id: format!("{}-{}", run.id, job.id),
+                run_id: run.id,
+                job: Some(job.name.clone()),
+                step: None,
+                label: job.name.clone(),
+                status: status.into(),
                 tone,
-                icon: status_icon(step.conclusion, step.status),
+                icon: status_icon(job.conclusion, job.status),
             });
+            if selected_run != Some(run.id)
+                || state
+                    .selected_section
+                    .as_ref()
+                    .is_none_or(|(name, _)| *name != job.name)
+            {
+                continue;
+            }
+            for step in &job.steps {
+                let (status, tone) = workflow_conclusion_tone(step.conclusion, step.status);
+                let duration = step
+                    .started_at
+                    .zip(step.completed_at)
+                    .map(|(start, end)| format!(" · {}s", (end - start).num_seconds().max(0)))
+                    .unwrap_or_default();
+                rows.push(LogNavigationRow {
+                    id: format!("{}-{}-{}", run.id, job.id, step.number),
+                    run_id: run.id,
+                    job: Some(job.name.clone()),
+                    step: Some(step.name.clone()),
+                    label: step.name.clone(),
+                    status: format!("{status}{duration}"),
+                    tone,
+                    icon: status_icon(step.conclusion, step.status),
+                });
+            }
         }
     }
     rows
@@ -689,4 +743,59 @@ fn render_log_line_with_timestamps(
                 .map_or_else(|| line.text.clone(), |(_, text)| text.to_string())
         }))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace::WorkflowLogState;
+    use harbor_domain::{WorkflowJob, WorkflowStatus, WorkflowStep};
+    use std::sync::Arc;
+
+    #[test]
+    fn navigation_includes_checks_from_every_workflow_and_expands_only_the_selected_job() {
+        let first = crate::test_fixtures::workflow_run();
+        let mut second = first.clone();
+        second.id = 84;
+        let mut state = WorkflowLogState::new();
+        let job = |name: &str| WorkflowJob {
+            id: 1,
+            name: name.into(),
+            status: WorkflowStatus::Completed,
+            conclusion: None,
+            steps: vec![WorkflowStep {
+                number: 1,
+                name: "Run tests".into(),
+                status: WorkflowStatus::Completed,
+                conclusion: None,
+                started_at: None,
+                completed_at: None,
+            }],
+        };
+        state
+            .navigation_jobs
+            .insert(first.id, Ok(Arc::new(vec![job("PR Title")])));
+        state
+            .navigation_jobs
+            .insert(second.id, Ok(Arc::new(vec![job("Android")])));
+        state.selected_section = Some(("Android".into(), None));
+        let rows = navigation_rows(&[first, second], &state, Some(84));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.job.is_some())
+                .map(|row| row.label.as_str())
+                .collect::<Vec<_>>(),
+            ["PR Title", "Android", "Run tests"]
+        );
+        let ids = rows
+            .iter()
+            .map(|row| &row.id)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(ids.len(), rows.len());
+        assert!(
+            rows.iter()
+                .filter(|row| row.step.is_some())
+                .all(|row| row.run_id == 84)
+        );
+    }
 }

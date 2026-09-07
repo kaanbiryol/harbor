@@ -80,12 +80,13 @@ pub(crate) use reviews::{
     ReviewLineSelection, ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
+pub(crate) use state::WorkflowLogState;
 use state::{
     ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
     PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
     PullRequestSearchState, PullRequestSelectionState, RepositoryActionsTaskKind,
     RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
-    SelectedPullRequestTaskKind, SyncRuntimeState, WorkflowLogState, WorkspaceTasks,
+    SelectedPullRequestTaskKind, SyncRuntimeState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};

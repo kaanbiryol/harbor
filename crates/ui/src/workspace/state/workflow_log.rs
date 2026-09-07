@@ -1,9 +1,12 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use gpui::{Task, UniformListScrollHandle};
+use harbor_domain::WorkflowJob;
 use harbor_logs::LogChunk;
 
 pub(crate) struct WorkflowLogState {
+    pub(crate) navigation_jobs: HashMap<u64, Result<Arc<Vec<WorkflowJob>>, String>>,
+    pub(crate) navigation_task: Option<Task<()>>,
     chunk: Option<Arc<LogChunk>>,
     pub(crate) selected_run: Option<u64>,
     pub(crate) selected_section: Option<(String, Option<String>)>,
@@ -25,6 +28,8 @@ pub(crate) struct WorkflowLogState {
 impl WorkflowLogState {
     pub(crate) fn new() -> Self {
         Self {
+            navigation_jobs: HashMap::new(),
+            navigation_task: None,
             chunk: None,
             selected_run: None,
             selected_section: None,
@@ -46,6 +51,11 @@ impl WorkflowLogState {
 
     pub(crate) fn chunk(&self) -> Option<&LogChunk> {
         self.chunk.as_deref()
+    }
+
+    pub(crate) fn clear_navigation(&mut self) {
+        self.navigation_task = None;
+        self.navigation_jobs.clear();
     }
 
     pub(crate) fn restore_chunk(&mut self, chunk: Option<Arc<LogChunk>>) {

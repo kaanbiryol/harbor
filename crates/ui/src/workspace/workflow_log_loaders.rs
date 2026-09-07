@@ -1,3 +1,4 @@
+use futures::{StreamExt, stream};
 use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_logs::{parse_workflow_log, parse_workflow_log_with_jobs};
 use std::sync::Arc;
@@ -9,6 +10,119 @@ use crate::{
 };
 
 impl AppView {
+    pub(crate) fn select_workflow_log_section(
+        &mut self,
+        run_id: u64,
+        section: Option<(String, Option<String>)>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self
+            .detail_state
+            .workflow_runs()
+            .iter()
+            .any(|run| run.id == run_id)
+        {
+            return;
+        }
+        if self.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
+            self.detail_state.log_state.clear_content();
+            self.detail_state.clear_workflow_jobs();
+        }
+        self.detail_state.log_state.selected_run = Some(run_id);
+        self.detail_state.log_state.selected_section = section;
+        if self
+            .detail_state
+            .log_state
+            .chunk()
+            .is_some_and(|chunk| chunk.run_id == run_id)
+        {
+            self.filter_workflow_logs(cx);
+        } else {
+            self.load_selected_workflow_logs(cx);
+        }
+    }
+
+    pub(crate) fn load_workflow_log_navigation(&mut self, cx: &mut Context<Self>) {
+        if self.detail_state.log_state.navigation_task.is_some() {
+            return;
+        }
+        let Some(pull_request) = self.selected_pull_request() else {
+            return;
+        };
+        let detail_key = super::PullRequestDetailCacheKey::new(
+            pull_request.repo.clone(),
+            pull_request.number,
+            pull_request.head_sha.clone(),
+        );
+        let repo = pull_request.repo.clone();
+        let selected_run = self.selected_workflow_run_for_logs().map(|run| run.id);
+        if let Some(run_id) = selected_run
+            && self
+                .detail_state
+                .log_state
+                .chunk()
+                .is_some_and(|chunk| chunk.run_id == run_id)
+            && !self
+                .detail_state
+                .log_state
+                .navigation_jobs
+                .contains_key(&run_id)
+        {
+            let jobs = self.detail_state.shared_workflow_jobs();
+            self.detail_state
+                .log_state
+                .navigation_jobs
+                .insert(run_id, Ok(jobs));
+        }
+        let runs = self
+            .detail_state
+            .workflow_runs()
+            .iter()
+            .filter(|run| Some(run.id) != selected_run)
+            .filter(|run| {
+                !self
+                    .detail_state
+                    .log_state
+                    .navigation_jobs
+                    .contains_key(&run.id)
+            })
+            .map(|run| (run.id, run.run_attempt))
+            .collect::<Vec<_>>();
+        if runs.is_empty() {
+            return;
+        }
+        let github_api = self.github_api.clone();
+        self.detail_state.log_state.navigation_task = Some(cx.spawn(async move |this, cx| {
+            let mut requests = stream::iter(runs)
+                .map(|(run_id, attempt)| {
+                    let github_api = github_api.clone();
+                    let repo = repo.clone();
+                    async move {
+                        let jobs = github_api
+                            .list_workflow_jobs_for_run(&repo.owner, &repo.name, run_id, attempt)
+                            .await
+                            .map(Arc::new)
+                            .map_err(|error| error.to_string());
+                        (run_id, jobs)
+                    }
+                })
+                .buffer_unordered(4);
+            while let Some((run_id, jobs)) = requests.next().await {
+                this.update_or_log(cx, "failed to update log check navigation", |view, cx| {
+                    if !super::review_data_loaders::selected_pull_request_matches(view, &detail_key)
+                    {
+                        return;
+                    }
+                    view.detail_state
+                        .log_state
+                        .navigation_jobs
+                        .insert(run_id, jobs);
+                    cx.notify();
+                });
+            }
+        }));
+    }
+
     pub(crate) fn load_selected_workflow_logs(&mut self, cx: &mut Context<Self>) {
         let Some(repo) = self
             .selected_pull_request()
@@ -41,8 +155,14 @@ impl AppView {
             .chunk()
             .is_some_and(|chunk| chunk.run_id == run.id);
         if !refresh {
+            let section = if self.detail_state.log_state.selected_run == Some(run.id) {
+                self.detail_state.log_state.selected_section.take()
+            } else {
+                None
+            };
             self.detail_state.log_state.clear_content();
             self.detail_state.log_state.selected_run = Some(run.id);
+            self.detail_state.log_state.selected_section = section;
             self.detail_state.clear_workflow_jobs();
         }
         self.detail_state.log_state.start_loading();
@@ -67,9 +187,11 @@ impl AppView {
                     if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) { return; }
                         match jobs_result {
                             Ok(jobs) => {
+                                view.detail_state.log_state.navigation_jobs.insert(run_id, Ok(jobs.clone()));
                                 view.detail_state.restore_workflow_jobs(jobs);
                             }
                             Err(error) => {
+                                view.detail_state.log_state.navigation_jobs.insert(run_id, Err(error.to_string()));
                                 view.detail_state.log_state.apply_jobs_failure(format!(
                                     "Failed to load workflow jobs: {error}"
                                 ));
@@ -96,7 +218,7 @@ impl AppView {
                             Ok(chunk) => {
                                 view.detail_state.log_state.apply_log_success(chunk);
                                 let failed = view.detail_state.workflow_jobs().iter().find(|job| matches!(job.conclusion, Some(harbor_domain::WorkflowConclusion::Failure | harbor_domain::WorkflowConclusion::TimedOut)));
-                                if !refresh { view.detail_state.log_state.selected_section = failed.map(|job| (job.name.clone(), job.steps.iter().find(|step| matches!(step.conclusion, Some(harbor_domain::WorkflowConclusion::Failure | harbor_domain::WorkflowConclusion::TimedOut))).map(|step| step.name.clone()))); }
+                                if !refresh && view.detail_state.log_state.selected_section.is_none() { view.detail_state.log_state.selected_section = failed.map(|job| (job.name.clone(), job.steps.iter().find(|step| matches!(step.conclusion, Some(harbor_domain::WorkflowConclusion::Failure | harbor_domain::WorkflowConclusion::TimedOut))).map(|step| step.name.clone()))); }
                                 view.filter_workflow_logs_with_scroll(!refresh, cx);
                                 if !view.detail_state.log_state.has_error() {
                                     view.status = format!("Loaded logs for {run_label}");

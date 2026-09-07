@@ -147,6 +147,7 @@ impl AppView {
                                         && !view.detail_state.workflow_runs().is_empty()
                                     {
                                         view.load_selected_workflow_logs(cx);
+                                        view.load_workflow_log_navigation(cx);
                                     }
                                 }
                                 Err(error) => {

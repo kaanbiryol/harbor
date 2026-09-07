@@ -254,10 +254,12 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn replace_workflow_runs(&mut self, workflow_runs: Vec<WorkflowRun>) {
+        self.log_state.clear_navigation();
         self.workflow_runs = Arc::new(workflow_runs);
     }
 
     pub(crate) fn restore_workflow_runs(&mut self, workflow_runs: Arc<Vec<WorkflowRun>>) {
+        self.log_state.clear_navigation();
         self.workflow_runs = workflow_runs;
     }
 
@@ -270,6 +272,7 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn clear_workflow_runs(&mut self) {
+        self.log_state.clear_navigation();
         self.workflow_runs = Arc::new(Vec::new());
     }
 
