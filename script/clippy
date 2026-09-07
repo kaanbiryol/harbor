@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cargo clippy --workspace --all-targets "$@"
+exec cargo clippy --all-targets --no-default-features "$@"

@@ -6,6 +6,10 @@ license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["full-languages"]
+full-languages = ["gpui-kit/tree-sitter-languages"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

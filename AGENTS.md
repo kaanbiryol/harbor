@@ -72,6 +72,12 @@ Keep GitHub DTOs out of `ui`. Map API responses into stable domain models first.
 
 ## Validation
 
+During iteration, use `script/check -p <crate>` for checks without linking,
+`script/test -p <crate>` for focused tests, or `script/test-core` for all non-UI
+crates. Development scripts use a reduced syntax-parser set; add
+`--features full-languages` when testing other languages. Keep the full workspace
+checks below for final validation.
+
 Once the Rust workspace exists, use these checks before handing work back:
 
 ```bash

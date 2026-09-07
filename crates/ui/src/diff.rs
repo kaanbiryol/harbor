@@ -399,6 +399,23 @@ mod tests {
     }
 
     #[test]
+    fn respects_optional_language_highlighting() {
+        let file = crate::test_fixtures::diff_file("sample.py", FileStatus::Added);
+        let parsed = parse_unified_diff_with_syntax(
+            &file,
+            "@@ -0,0 +1,2 @@\n+def greet(name):\n+    return name\n",
+            &HighlightTheme::default_dark(),
+        );
+        let has_highlights = parsed
+            .hunks
+            .iter()
+            .flat_map(|hunk| hunk.lines.iter())
+            .any(|line| !line.syntax_highlights.is_empty());
+
+        assert_eq!(has_highlights, cfg!(feature = "full-languages"));
+    }
+
+    #[test]
     fn leaves_metadata_and_unknown_languages_plain() {
         let file = DiffFile {
             path: "notes.unknown".to_string(),

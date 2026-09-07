@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec cargo run -p harbor-app --bin harbor --locked --no-default-features "$@"

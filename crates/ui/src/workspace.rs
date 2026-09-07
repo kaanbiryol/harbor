@@ -6,7 +6,6 @@ mod auth_oauth;
 mod auth_state;
 mod cache;
 mod changed_file_interactions;
-mod changed_files;
 mod codeowners;
 mod commands;
 mod external_apps;
@@ -50,7 +49,7 @@ use gpui::{
     Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
     UniformListScrollHandle, px,
 };
-use harbor_domain::{PullRequest, RepoId, WorkflowRun};
+use harbor_domain::{PullRequest, RepoId, WorkflowRun, changed_files};
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
 use crate::actions::PanelTab;

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cargo test --workspace "$@"
+exec cargo test --no-default-features "$@"

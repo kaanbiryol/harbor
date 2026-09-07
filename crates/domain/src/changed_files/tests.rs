@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
-use harbor_domain::FileStatus;
+use crate::{FileStatus, FileViewedState};
 
 use super::*;
-use crate::test_fixtures::diff_file;
 
 #[test]
 fn builds_changed_file_tree_rows_with_folders() {
@@ -176,4 +175,17 @@ fn changed_file_tree_labels(rows: &[ChangedFileTreeRow]) -> Vec<String> {
             }
         })
         .collect()
+}
+
+fn diff_file(path: &str, status: FileStatus) -> DiffFile {
+    DiffFile {
+        path: path.to_string(),
+        previous_path: None,
+        status,
+        additions: 1,
+        deletions: 0,
+        changes: 1,
+        patch: Some("@@ -1 +1 @@".to_string()),
+        viewed_state: FileViewedState::Unviewed,
+    }
 }

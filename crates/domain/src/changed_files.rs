@@ -1,38 +1,38 @@
 use std::collections::{BTreeMap, HashSet};
 
-use harbor_domain::DiffFile;
+use crate::DiffFile;
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum ChangedFileTreeRow {
+pub enum ChangedFileTreeRow {
     Folder(ChangedFileFolderRow),
     File(ChangedFileRow),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ChangedFileFolderRow {
-    pub(crate) path: String,
-    pub(crate) name: String,
-    pub(crate) depth: usize,
-    pub(crate) file_count: usize,
-    pub(crate) reviewed_file_count: usize,
-    pub(crate) expanded: bool,
+pub struct ChangedFileFolderRow {
+    pub path: String,
+    pub name: String,
+    pub depth: usize,
+    pub file_count: usize,
+    pub reviewed_file_count: usize,
+    pub expanded: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ChangedFileRow {
-    pub(crate) file_index: usize,
-    pub(crate) name: String,
-    pub(crate) depth: usize,
+pub struct ChangedFileRow {
+    pub file_index: usize,
+    pub name: String,
+    pub depth: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ChangedFileFilters {
-    pub(crate) excluded_file_types: HashSet<String>,
-    pub(crate) owned_by_current_user_only: bool,
-    pub(crate) owned_file_paths: HashSet<String>,
+pub struct ChangedFileFilters {
+    pub excluded_file_types: HashSet<String>,
+    pub owned_by_current_user_only: bool,
+    pub owned_file_paths: HashSet<String>,
 }
 
 impl ChangedFileFilters {
@@ -42,11 +42,11 @@ impl ChangedFileFilters {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ChangedFileTypeFilter {
-    pub(crate) key: String,
-    pub(crate) label: String,
-    pub(crate) file_count: usize,
-    pub(crate) included: bool,
+pub struct ChangedFileTypeFilter {
+    pub key: String,
+    pub label: String,
+    pub file_count: usize,
+    pub included: bool,
 }
 
 #[derive(Default)]
@@ -81,7 +81,7 @@ impl ChangedFileTreeNode {
     }
 }
 
-pub(crate) fn changed_file_tree_rows(
+pub fn changed_file_tree_rows(
     files: &[DiffFile],
     collapsed_folders: &HashSet<String>,
     reviewed_file_paths: &HashSet<String>,
@@ -123,7 +123,7 @@ pub(crate) fn changed_file_tree_rows(
     rows
 }
 
-pub(crate) fn changed_file_matches_filters(file: &DiffFile, filters: &ChangedFileFilters) -> bool {
+pub fn changed_file_matches_filters(file: &DiffFile, filters: &ChangedFileFilters) -> bool {
     if filters
         .excluded_file_types
         .contains(&changed_file_type_key(file))
@@ -138,7 +138,7 @@ pub(crate) fn changed_file_matches_filters(file: &DiffFile, filters: &ChangedFil
     true
 }
 
-pub(crate) fn changed_file_type_filters(
+pub fn changed_file_type_filters(
     files: &[DiffFile],
     excluded_file_types: &HashSet<String>,
 ) -> Vec<ChangedFileTypeFilter> {
@@ -160,7 +160,7 @@ pub(crate) fn changed_file_type_filters(
         .collect()
 }
 
-pub(crate) fn changed_file_type_key(file: &DiffFile) -> String {
+pub fn changed_file_type_key(file: &DiffFile) -> String {
     let name = changed_file_name(&file.path);
 
     if let Some((stem, extension)) = name.rsplit_once('.')

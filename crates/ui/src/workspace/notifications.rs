@@ -31,6 +31,23 @@ pub(crate) trait NotificationSink: Send + Sync {
     fn notify(&self, notification: HarborNotification) -> std::result::Result<(), String>;
 }
 
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct RecordingNotificationSink {
+    pub(crate) notifications: Mutex<Vec<HarborNotification>>,
+}
+
+#[cfg(test)]
+impl NotificationSink for RecordingNotificationSink {
+    fn notify(&self, notification: HarborNotification) -> std::result::Result<(), String> {
+        self.notifications
+            .lock()
+            .map_err(|error| error.to_string())?
+            .push(notification);
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NativeNotificationSink;
 

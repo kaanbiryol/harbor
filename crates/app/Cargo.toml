@@ -6,6 +6,10 @@ license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["full-languages"]
+full-languages = ["harbor-ui/full-languages"]
+
 [[bin]]
 name = "harbor"
 path = "src/main.rs"
@@ -15,7 +19,7 @@ gpui-kit.workspace = true
 gpui_reqwest_client.workspace = true
 harbor-github = { path = "../github" }
 harbor-storage = { path = "../storage" }
-harbor-ui = { path = "../ui" }
+harbor-ui = { path = "../ui", default-features = false }
 rustls.workspace = true
 rust-embed = { version = "8.11", features = ["include-exclude"] }
 tracing.workspace = true

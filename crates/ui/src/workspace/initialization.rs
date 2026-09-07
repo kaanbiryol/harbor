@@ -18,7 +18,7 @@ use super::{
     OVERVIEW_LIST_OVERDRAW, PANEL_LIST_OVERDRAW, PullRequestFilters, SettingsSection,
     external_apps::ExternalAppAvailability,
     github_service::GitHubApi,
-    notifications::NativeNotificationSink,
+    notifications::{NativeNotificationSink, NotificationSink},
     state::{
         ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
         PullRequestDetailUiState, PullRequestInboxState, PullRequestSearchState,
@@ -35,17 +35,22 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_with_startup_tasks_and_github_api(window, cx, true, github_api, storage)
+        Self::new_with_startup_tasks_and_github_api(
+            window,
+            cx,
+            true,
+            github_api,
+            storage,
+            Arc::new(NativeNotificationSink::new()),
+        )
     }
 
     #[cfg(test)]
     pub(crate) fn new_without_startup_tasks(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_with_startup_tasks_and_github_api(
+        Self::new_with_github_api(
+            Arc::new(super::github_service::test_support::FakeGitHubApi::signed_out()),
             window,
             cx,
-            false,
-            Arc::new(super::github_service::test_support::FakeGitHubApi::signed_out()),
-            Some(Err("storage is disabled in this test".to_string())),
         )
     }
 
@@ -61,6 +66,7 @@ impl AppView {
             false,
             github_api,
             Some(Err("storage is disabled in this test".to_string())),
+            Arc::new(super::notifications::RecordingNotificationSink::default()),
         )
     }
 
@@ -70,6 +76,7 @@ impl AppView {
         start_startup_tasks: bool,
         github_api: Arc<dyn GitHubApi>,
         storage: Option<std::result::Result<SqliteStore, String>>,
+        notification_sink: Arc<dyn NotificationSink>,
     ) -> Self {
         let pull_requests = Vec::new();
         let files = Vec::new();
@@ -257,7 +264,7 @@ impl AppView {
                 ),
             ),
             notification_state: NotificationState {
-                notification_sink: Arc::new(NativeNotificationSink::new()),
+                notification_sink,
                 notification_dedupe: HashSet::new(),
                 notifications_enabled: true,
             },

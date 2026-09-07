@@ -9,7 +9,8 @@ use harbor_github::{
 use crate::{
     test_fixtures::pull_request,
     workspace::{
-        PullRequestInboxCacheKey, PullRequestInboxMode, github_service::test_support::FakeGitHubApi,
+        PullRequestInboxCacheKey, PullRequestInboxMode,
+        github_service::test_support::FakeGitHubApi, notifications::RecordingNotificationSink,
     },
 };
 
@@ -63,6 +64,7 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
 #[gpui::test]
 async fn open_inbox_loads_and_enriches_twenty_five_rows_in_two_requests(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
+    let notifications = Arc::new(RecordingNotificationSink::default());
     let pull_requests = (1..=25)
         .map(|number| {
             let mut pull_request = pull_request();
@@ -95,6 +97,7 @@ async fn open_inbox_loads_and_enriches_twenty_five_rows_in_two_requests(cx: &mut
     let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
 
     view_entity.update(cx, |view, cx| {
+        view.notification_state.notification_sink = notifications.clone();
         view.repository_state
             .select_repository(pull_requests[0].repo.clone());
         view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
@@ -119,6 +122,14 @@ async fn open_inbox_loads_and_enriches_twenty_five_rows_in_two_requests(cx: &mut
         ]
     );
     assert_eq!(api.light_pull_request_requests(), vec![(None, 25, false)]);
+    let notifications = notifications.notifications.lock().unwrap();
+    assert_eq!(notifications.len(), 25);
+    for number in 1..=25 {
+        assert!(notifications.iter().any(|notification| {
+            notification.summary == format!("Checks failed #{number}")
+                && notification.body == "acme/app: Add feature"
+        }));
+    }
 }
 
 #[gpui::test]

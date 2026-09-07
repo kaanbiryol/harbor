@@ -28,7 +28,7 @@ executable_path="$macos_dir/Harbor"
 zip_path="$target_dir/Harbor-${version}-macos-arm64.zip"
 
 MACOSX_DEPLOYMENT_TARGET="$minimum_macos_version" \
-    cargo build -p harbor-app --bin harbor --release --locked --target "$rust_target"
+    cargo build -p harbor-app --bin harbor --release --locked --features full-languages --target "$rust_target"
 
 rm -rf "$app_dir" "$zip_path"
 mkdir -p "$macos_dir" "$resources_dir" "$licenses_dir/ibm-plex-sans" "$licenses_dir/lilex"
