@@ -13,6 +13,7 @@ impl AppView {
         force: bool,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.prefetch_inbox_counts {
             return;
         }
@@ -33,7 +34,7 @@ impl AppView {
             return;
         }
 
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let task = cx.background_spawn(async move {
             let mut counts = Vec::with_capacity(modes.len());
             let mut errors = Vec::new();
@@ -54,8 +55,9 @@ impl AppView {
         cx.spawn(async move |this, cx| {
             let (repo, counts, errors) = task.await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update pull request inbox counts",
                 move |view, cx| {
                     for (mode, error) in errors {

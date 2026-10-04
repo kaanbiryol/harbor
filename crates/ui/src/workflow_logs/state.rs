@@ -94,10 +94,6 @@ impl WorkflowLogState {
         self.error = None;
     }
 
-    pub(crate) fn set_loading(&mut self, loading: bool) {
-        self.is_loading = loading;
-    }
-
     pub(crate) fn clear_content(&mut self) {
         self.task = None;
         self.is_loading = false;
@@ -108,10 +104,6 @@ impl WorkflowLogState {
         self.selected_section = None;
         self.filter_task = None;
         self.is_filtering = false;
-    }
-
-    pub(crate) fn clear_error(&mut self) {
-        self.error = None;
     }
 
     pub(crate) fn apply_jobs_failure(&mut self, error: impl Into<String>) {

@@ -33,6 +33,10 @@ pub(crate) struct WorkspaceTasks {
 }
 
 impl WorkspaceTasks {
+    pub(crate) fn cancel_repository_task(&mut self) {
+        self.repository_task = None;
+    }
+
     pub(crate) fn cancel_selected_pull_request_tasks(&mut self) {
         self.selected_pull_request_tasks.clear();
     }

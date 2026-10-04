@@ -99,6 +99,7 @@ impl AppView {
         events: Vec<PullRequestChangeEvent>,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.sync_runtime.is_background() || !self.preferences.value.notifications.enabled {
             return;
         }
@@ -122,8 +123,9 @@ impl AppView {
 
             cx.spawn(async move |this, cx| {
                 let result = task.await;
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update notification state",
                     move |view, cx| {
                         if let Err(error) = result {

@@ -26,6 +26,7 @@ impl ReviewRuntimeState {
         );
 
         self.review_threads_mut().push(ReviewThread {
+            comments_complete: true,
             id: format!("{LOCAL_REVIEW_THREAD_ID_PREFIX}{sequence}"),
             path: range.path.clone(),
             range: Some(range),

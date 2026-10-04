@@ -406,6 +406,7 @@ mod tests {
 
     fn review_thread(state: ReviewThreadState) -> ReviewThread {
         ReviewThread {
+            comments_complete: true,
             id: "thread".to_string(),
             path: "src/app.rs".to_string(),
             range: None,

@@ -11,6 +11,19 @@ pub(crate) struct SyncRuntimeState {
 }
 
 impl SyncRuntimeState {
+    pub(crate) fn clear_selected_pull_request(&mut self) {
+        self.sync_states.retain(|target, _| {
+            matches!(
+                target,
+                SyncTarget::ActiveInbox | SyncTarget::ActiveInboxLight
+            )
+        });
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.sync_states.clear();
+    }
+
     pub(crate) fn new(activity_state: ActivityState, sync_policy: SyncPolicy) -> Self {
         Self {
             activity_state,

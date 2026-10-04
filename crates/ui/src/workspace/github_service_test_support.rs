@@ -22,7 +22,7 @@ use harbor_github::{
 
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
-use queues::{FakeQueue, pop_result, push_result};
+use queues::{FakeQueue, pop_result, push_pending_result, push_result};
 
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
 type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>;
@@ -90,6 +90,24 @@ pub(crate) struct FakeGitHubApi {
 }
 
 impl FakeGitHubApi {
+    pub(crate) fn pending_workflow_logs(
+        &self,
+    ) -> futures::channel::oneshot::Sender<Result<String>> {
+        push_pending_result(&self.workflow_logs)
+    }
+
+    pub(crate) fn pending_detail(&self) -> futures::channel::oneshot::Sender<Result<PullRequest>> {
+        push_pending_result(&self.pull_request_details)
+    }
+
+    pub(crate) fn pending_files(&self) -> futures::channel::oneshot::Sender<Result<Vec<DiffFile>>> {
+        push_pending_result(&self.files)
+    }
+
+    pub(crate) fn pending_current_user(&self) -> futures::channel::oneshot::Sender<Result<String>> {
+        push_pending_result(&self.current_user)
+    }
+
     pub(crate) fn signed_out() -> Self {
         let api = Self::default();
         api.signed_out.store(true, Ordering::Relaxed);
@@ -288,7 +306,7 @@ impl PullRequestInboxSource for FakeGitHubApi {
         _page_size: usize,
     ) -> Result<PullRequestPage> {
         self.record_call("list_repository_pull_requests");
-        pop_result(&self.pull_request_pages, "list_repository_pull_requests")
+        pop_result(&self.pull_request_pages, "list_repository_pull_requests").await
     }
 
     async fn search_repository_pull_request_page(
@@ -308,6 +326,7 @@ impl PullRequestInboxSource for FakeGitHubApi {
             &self.pull_request_search_pages,
             "search_repository_pull_requests",
         )
+        .await
     }
 
     async fn count_repository_pull_requests(
@@ -316,7 +335,7 @@ impl PullRequestInboxSource for FakeGitHubApi {
         _filter: PullRequestListFilter,
     ) -> Result<usize> {
         self.record_call("count_repository_pull_requests");
-        pop_result(&self.pull_request_counts, "count_repository_pull_requests")
+        pop_result(&self.pull_request_counts, "count_repository_pull_requests").await
     }
 
     async fn list_repository_pull_requests_light_page(
@@ -336,6 +355,7 @@ impl PullRequestInboxSource for FakeGitHubApi {
             &self.light_pull_request_pages,
             "list_repository_pull_requests_light",
         )
+        .await
     }
 
     async fn enrich_pull_requests_by_node_ids(
@@ -347,6 +367,7 @@ impl PullRequestInboxSource for FakeGitHubApi {
             &self.pull_request_enrichments,
             "enrich_pull_requests_by_node_ids",
         )
+        .await
     }
 }
 
@@ -359,7 +380,7 @@ impl PullRequestCiSource for FakeGitHubApi {
         _head_sha: &str,
     ) -> Result<Vec<CheckRun>> {
         self.record_call("list_check_runs");
-        pop_result(&self.check_runs, "list_check_runs")
+        pop_result(&self.check_runs, "list_check_runs").await
     }
 
     async fn list_workflow_runs_for_head(
@@ -369,7 +390,7 @@ impl PullRequestCiSource for FakeGitHubApi {
         _head_sha: &str,
     ) -> Result<Vec<WorkflowRun>> {
         self.record_call("list_workflow_runs_for_head");
-        pop_result(&self.workflow_runs, "list_workflow_runs_for_head")
+        pop_result(&self.workflow_runs, "list_workflow_runs_for_head").await
     }
 }
 
@@ -382,7 +403,7 @@ impl PullRequestContentSource for FakeGitHubApi {
         _number: u64,
     ) -> Result<PullRequest> {
         self.record_call("get_pull_request");
-        pop_result(&self.pull_request_details, "get_pull_request")
+        pop_result(&self.pull_request_details, "get_pull_request").await
     }
 
     async fn list_pull_request_files(
@@ -392,7 +413,7 @@ impl PullRequestContentSource for FakeGitHubApi {
         _number: u64,
     ) -> Result<Vec<DiffFile>> {
         self.record_call("list_pull_request_files");
-        pop_result(&self.files, "list_pull_request_files")
+        pop_result(&self.files, "list_pull_request_files").await
     }
 
     async fn list_commit_files(
@@ -402,7 +423,7 @@ impl PullRequestContentSource for FakeGitHubApi {
         _sha: &str,
     ) -> Result<Vec<DiffFile>> {
         self.record_call("list_commit_files");
-        pop_result(&self.files, "list_commit_files")
+        pop_result(&self.files, "list_commit_files").await
     }
 }
 
@@ -439,12 +460,12 @@ impl GitHubAuthApi for FakeGitHubApi {
 impl GitHubRepositoryApi for FakeGitHubApi {
     async fn list_repositories(&self) -> Result<RepositoryList> {
         self.record_call("list_repositories");
-        pop_result(&self.repositories, "list_repositories")
+        pop_result(&self.repositories, "list_repositories").await
     }
 
     async fn get_repository(&self, _repository: &RepoId) -> Result<RepoId> {
         self.record_call("get_repository");
-        pop_result(&self.repository_lookups, "get_repository")
+        pop_result(&self.repository_lookups, "get_repository").await
     }
 
     async fn list_pull_request_metadata_options(
@@ -453,12 +474,12 @@ impl GitHubRepositoryApi for FakeGitHubApi {
         _repo: &str,
     ) -> Result<PullRequestMetadataOptions> {
         self.record_call("list_pull_request_metadata_options");
-        pop_result(&self.metadata_options, "list_pull_request_metadata_options")
+        pop_result(&self.metadata_options, "list_pull_request_metadata_options").await
     }
 
     async fn current_user(&self) -> Result<String> {
         self.record_call("current_user");
-        pop_result(&self.current_user, "current_user")
+        pop_result(&self.current_user, "current_user").await
     }
 }
 
@@ -471,7 +492,7 @@ impl GitHubPullRequestApi for FakeGitHubApi {
         _number: u64,
     ) -> Result<Vec<PullRequestCommit>> {
         self.record_call("list_pull_request_commits");
-        pop_result(&self.commits, "list_pull_request_commits")
+        pop_result(&self.commits, "list_pull_request_commits").await
     }
 
     async fn mark_pull_request_file_viewed(
@@ -484,6 +505,7 @@ impl GitHubPullRequestApi for FakeGitHubApi {
             &self.mark_file_viewed_results,
             "mark_pull_request_file_viewed",
         )
+        .await
     }
 
     async fn unmark_pull_request_file_viewed(
@@ -496,6 +518,7 @@ impl GitHubPullRequestApi for FakeGitHubApi {
             &self.unmark_file_viewed_results,
             "unmark_pull_request_file_viewed",
         )
+        .await
     }
 }
 
@@ -503,7 +526,7 @@ impl GitHubPullRequestApi for FakeGitHubApi {
 impl GitHubWorkflowApi for FakeGitHubApi {
     async fn list_workflows(&self, _owner: &str, _repo: &str) -> Result<Vec<Workflow>> {
         self.record_call("list_workflows");
-        pop_result(&self.workflows, "list_workflows")
+        pop_result(&self.workflows, "list_workflows").await
     }
 
     async fn list_repository_workflow_run_page(
@@ -517,6 +540,7 @@ impl GitHubWorkflowApi for FakeGitHubApi {
             &self.repository_workflow_runs,
             "list_repository_workflow_runs",
         )
+        .await
     }
 
     async fn list_workflow_run_page_for_workflow(
@@ -531,6 +555,7 @@ impl GitHubWorkflowApi for FakeGitHubApi {
             &self.workflow_runs_for_workflow,
             "list_workflow_runs_for_workflow",
         )
+        .await
     }
 
     async fn list_workflow_jobs_for_run(
@@ -541,7 +566,7 @@ impl GitHubWorkflowApi for FakeGitHubApi {
         _attempt: Option<u64>,
     ) -> Result<Vec<WorkflowJob>> {
         self.record_call("list_workflow_jobs_for_run");
-        pop_result(&self.workflow_jobs, "list_workflow_jobs_for_run")
+        pop_result(&self.workflow_jobs, "list_workflow_jobs_for_run").await
     }
 
     async fn workflow_run_log(
@@ -552,7 +577,7 @@ impl GitHubWorkflowApi for FakeGitHubApi {
         _attempt: Option<u64>,
     ) -> Result<String> {
         self.record_call("workflow_run_log");
-        pop_result(&self.workflow_logs, "workflow_run_log")
+        pop_result(&self.workflow_logs, "workflow_run_log").await
     }
 }
 
@@ -573,7 +598,7 @@ impl GitHubReviewApi for FakeGitHubApi {
         _number: u64,
     ) -> Result<Vec<PullRequestReview>> {
         self.record_call("list_pull_request_reviews");
-        pop_result(&self.reviews, "list_pull_request_reviews")
+        pop_result(&self.reviews, "list_pull_request_reviews").await
     }
 
     async fn list_pull_request_comments(
@@ -583,7 +608,7 @@ impl GitHubReviewApi for FakeGitHubApi {
         _number: u64,
     ) -> Result<Vec<PullRequestComment>> {
         self.record_call("list_pull_request_comments");
-        pop_result(&self.pull_request_comments, "list_pull_request_comments")
+        pop_result(&self.pull_request_comments, "list_pull_request_comments").await
     }
 
     async fn pull_request_review_comment_count(
@@ -598,6 +623,7 @@ impl GitHubReviewApi for FakeGitHubApi {
             &self.review_comment_counts,
             "pull_request_review_comment_count",
         )
+        .await
     }
 
     async fn list_review_threads(
@@ -607,7 +633,7 @@ impl GitHubReviewApi for FakeGitHubApi {
         _number: u64,
     ) -> Result<Vec<ReviewThread>> {
         self.record_call("list_review_threads");
-        pop_result(&self.review_threads, "list_review_threads")
+        pop_result(&self.review_threads, "list_review_threads").await
     }
 }
 
@@ -621,12 +647,12 @@ impl GitHubWorkflowMutationApi for FakeGitHubApi {
         _git_ref: &str,
     ) -> Result<()> {
         self.record_call("dispatch_workflow");
-        pop_result(&self.dispatch_workflow_results, "dispatch_workflow")
+        pop_result(&self.dispatch_workflow_results, "dispatch_workflow").await
     }
 
     async fn rerun_failed_jobs(&self, _owner: &str, _repo: &str, _run_id: u64) -> Result<()> {
         self.record_call("rerun_failed_jobs");
-        pop_result(&self.rerun_failed_jobs_results, "rerun_failed_jobs")
+        pop_result(&self.rerun_failed_jobs_results, "rerun_failed_jobs").await
     }
 }
 
@@ -642,6 +668,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
             &self.update_pull_request_body_results,
             "update_pull_request_body",
         )
+        .await
     }
 
     async fn request_pull_request_reviewer(
@@ -656,6 +683,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
             &self.request_reviewer_results,
             "request_pull_request_reviewer",
         )
+        .await
     }
 
     async fn add_pull_request_assignee(
@@ -666,7 +694,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
         _assignee: &str,
     ) -> Result<()> {
         self.record_call("add_pull_request_assignee");
-        pop_result(&self.add_assignee_results, "add_pull_request_assignee")
+        pop_result(&self.add_assignee_results, "add_pull_request_assignee").await
     }
 
     async fn add_pull_request_label(
@@ -677,7 +705,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
         _label: &str,
     ) -> Result<()> {
         self.record_call("add_pull_request_label");
-        pop_result(&self.add_label_results, "add_pull_request_label")
+        pop_result(&self.add_label_results, "add_pull_request_label").await
     }
 
     async fn create_pull_request_comment(
@@ -692,6 +720,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
             &self.create_pull_request_comment_results,
             "create_pull_request_comment",
         )
+        .await
     }
 
     async fn approve_pull_request(
@@ -702,7 +731,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
         _body: Option<&str>,
     ) -> Result<()> {
         self.record_call("approve_pull_request");
-        pop_result(&self.approve_results, "approve_pull_request")
+        pop_result(&self.approve_results, "approve_pull_request").await
     }
 
     async fn request_pull_request_changes(
@@ -717,6 +746,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
             &self.request_changes_results,
             "request_pull_request_changes",
         )
+        .await
     }
 
     async fn merge_pull_request(
@@ -728,7 +758,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
         _method: MergeMethod,
     ) -> Result<()> {
         self.record_call("merge_pull_request");
-        pop_result(&self.merge_results, "merge_pull_request")
+        pop_result(&self.merge_results, "merge_pull_request").await
     }
 
     async fn merge_pull_request_when_ready(
@@ -741,6 +771,7 @@ impl GitHubPullRequestMutationApi for FakeGitHubApi {
             &self.merge_when_ready_results,
             "merge_pull_request_when_ready",
         )
+        .await
     }
 }
 
@@ -753,7 +784,7 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
         _body: Option<&str>,
     ) -> Result<()> {
         self.record_call("submit_pull_request_review");
-        pop_result(&self.submit_review_results, "submit_pull_request_review")
+        pop_result(&self.submit_review_results, "submit_pull_request_review").await
     }
 
     async fn create_pull_request_review_comment(
@@ -770,6 +801,7 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
             &self.create_comment_results,
             "create_pull_request_review_comment",
         )
+        .await
     }
 
     async fn start_pull_request_review(
@@ -780,7 +812,7 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
         _body: &str,
     ) -> Result<String> {
         self.record_call("start_pull_request_review");
-        pop_result(&self.start_review_results, "start_pull_request_review")
+        pop_result(&self.start_review_results, "start_pull_request_review").await
     }
 
     async fn add_pending_review_thread(
@@ -790,7 +822,7 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
         _body: &str,
     ) -> Result<()> {
         self.record_call("add_pending_review_thread");
-        pop_result(&self.pending_thread_results, "add_pending_review_thread")
+        pop_result(&self.pending_thread_results, "add_pending_review_thread").await
     }
 
     async fn add_review_thread_reply(
@@ -800,27 +832,27 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
         _body: &str,
     ) -> Result<()> {
         self.record_call("add_review_thread_reply");
-        pop_result(&self.reply_results, "add_review_thread_reply")
+        pop_result(&self.reply_results, "add_review_thread_reply").await
     }
 
     async fn resolve_review_thread(&self, _thread_id: &str) -> Result<()> {
         self.record_call("resolve_review_thread");
-        pop_result(&self.resolve_thread_results, "resolve_review_thread")
+        pop_result(&self.resolve_thread_results, "resolve_review_thread").await
     }
 
     async fn unresolve_review_thread(&self, _thread_id: &str) -> Result<()> {
         self.record_call("unresolve_review_thread");
-        pop_result(&self.unresolve_thread_results, "unresolve_review_thread")
+        pop_result(&self.unresolve_thread_results, "unresolve_review_thread").await
     }
 
     async fn update_review_comment(&self, _comment_id: &str, _body: &str) -> Result<()> {
         self.record_call("update_review_comment");
-        pop_result(&self.update_comment_results, "update_review_comment")
+        pop_result(&self.update_comment_results, "update_review_comment").await
     }
 
     async fn delete_review_comment(&self, _comment_id: &str) -> Result<()> {
         self.record_call("delete_review_comment");
-        pop_result(&self.delete_comment_results, "delete_review_comment")
+        pop_result(&self.delete_comment_results, "delete_review_comment").await
     }
 
     async fn add_review_comment_reaction(
@@ -829,7 +861,7 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
         _content: ReactionContent,
     ) -> Result<()> {
         self.record_call("add_review_comment_reaction");
-        pop_result(&self.add_reaction_results, "add_review_comment_reaction")
+        pop_result(&self.add_reaction_results, "add_review_comment_reaction").await
     }
 
     async fn remove_review_comment_reaction(
@@ -842,5 +874,6 @@ impl GitHubReviewMutationApi for FakeGitHubApi {
             &self.remove_reaction_results,
             "remove_review_comment_reaction",
         )
+        .await
     }
 }

@@ -77,6 +77,7 @@ impl AppView {
     }
 
     pub(crate) fn submit_review_thread_reply(&mut self, thread_id: String, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         let Some(pr) = self.selected_pull_request().cloned() else {
             self.review_state
                 .set_review_thread_reply_error(thread_id, "Select a pull request before replying");
@@ -157,7 +158,7 @@ impl AppView {
         self.remeasure_overview_thread_item(&thread_id);
         self.status = format!("Added reply locally on PR #{}; syncing", pr.number);
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let overview_thread_id = thread_id.clone();
 
         cx.spawn(async move |this, cx| {
@@ -165,8 +166,9 @@ impl AppView {
                 .add_review_thread_reply(&thread_id, pending_review_node_id.as_deref(), &body)
                 .await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update review thread reply state",
                 move |view, cx| {
                     match result {

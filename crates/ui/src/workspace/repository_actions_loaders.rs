@@ -62,9 +62,10 @@ impl AppView {
     }
 
     fn spawn_repository_workflows_loader(&mut self, repository: RepoId, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         self.repository_actions_state.start_workflows_load();
         self.status = format!("Loading workflows for {}", repository.full_name());
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         self.tasks.set_repository_actions_task(
             RepositoryActionsTaskKind::Workflows,
@@ -76,8 +77,9 @@ impl AppView {
                         .list_workflows(&repository.owner, &repository.name)
                         .await;
 
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to update repository workflow state",
                         move |view, cx| {
                             if view.current_repository() != Some(&repository) {
@@ -121,13 +123,14 @@ impl AppView {
         repository: RepoId,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         self.repository_actions_state.start_runs_load();
         let workflow_id = self.repository_actions_state.selected_workflow_id();
         self.status = match self.repository_actions_state.selected_workflow() {
             Some(workflow) => format!("Loading runs for {}", workflow.name),
             None => format!("Loading workflow runs for {}", repository.full_name()),
         };
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         self.tasks.set_repository_actions_task(
             RepositoryActionsTaskKind::Runs,
@@ -157,8 +160,9 @@ impl AppView {
                         }
                     };
 
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to update repository workflow run state",
                         move |view, cx| {
                             if view.current_repository() != Some(&repository)
@@ -211,6 +215,7 @@ impl AppView {
     }
 
     pub(crate) fn load_more_repository_workflow_runs(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         if self.repository_actions_state.runs_loading()
             || self.repository_actions_state.is_loading_more_runs()
         {
@@ -229,7 +234,7 @@ impl AppView {
         };
 
         let workflow_id = self.repository_actions_state.selected_workflow_id();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         self.repository_actions_state.start_loading_more_runs();
         self.status = match self.repository_actions_state.selected_workflow() {
             Some(workflow) => format!("Loading more runs for {}", workflow.name),
@@ -264,8 +269,9 @@ impl AppView {
                         }
                     };
 
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to append repository workflow runs",
                         move |view, cx| {
                             if view.current_repository() != Some(&repository)

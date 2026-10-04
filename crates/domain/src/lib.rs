@@ -311,6 +311,9 @@ pub struct ReviewThread {
     pub range: Option<ReviewCommentRange>,
     pub state: ReviewThreadState,
     pub comments: Vec<ReviewComment>,
+    /// False when pagination stopped before all comments were loaded.
+    #[serde(default)]
+    pub comments_complete: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

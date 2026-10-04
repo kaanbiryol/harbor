@@ -111,6 +111,7 @@ fn benchmark_scroll_review_index(cx: &mut TestAppContext) {
         for thread_count in [1_000, 10_000] {
             let threads = (1..=thread_count)
                 .map(|line| harbor_domain::ReviewThread {
+                    comments_complete: true,
                     id: format!("thread-{line}"),
                     path: "src/lib.rs".to_string(),
                     range: Some(harbor_domain::ReviewCommentRange {
@@ -237,7 +238,12 @@ async fn initial_panel_loads_use_skeleton_rows(cx: &mut TestAppContext) {
             view.detail_state.start_checks_load();
             view.detail_state.start_commits_load();
             view.detail_state.start_workflows_load();
-            view.detail_state.log_state.start_loading();
+            view.ensure_workflow_log_view(cx)
+                .unwrap()
+                .update(cx, |logs, cx| {
+                    logs.state.start_loading();
+                    cx.notify();
+                });
             view.review_state.start_reviews_load();
             view.active_tab = PanelTab::Diff;
             cx.notify();
@@ -1468,11 +1474,10 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
                 "short\n{}",
                 format!("{}\n", "wide output ".repeat(100)).repeat(500)
             );
-            view.detail_state
-                .log_state
-                .apply_log_success(harbor_logs::parse_workflow_log(42, &output));
+            view.detail_state.log_chunk =
+                Some(Arc::new(harbor_logs::parse_workflow_log(42, &output)));
             view.active_tab = PanelTab::Logs;
-            view.filter_workflow_logs(cx);
+            view.ensure_workflow_log_view(cx);
         });
         Root::new(view, window, cx)
     });
@@ -1483,10 +1488,13 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
         .debug_bounds("workflow-log-viewport")
         .expect("log viewport is visible");
     assert!(viewport.size.height > px(0.));
-    view.read_with(cx, |view, _| {
+    view.read_with(cx, |view, cx| {
         let scroll = &view
-            .detail_state
-            .log_state
+            .workflow_logs
+            .as_ref()
+            .unwrap()
+            .read(cx)
+            .state
             .list_scroll
             .0
             .borrow()
@@ -1512,9 +1520,12 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
         ..Default::default()
     });
     cx.refresh().unwrap();
-    let offset = view.read_with(cx, |view, _| {
-        view.detail_state
-            .log_state
+    let offset = view.read_with(cx, |view, cx| {
+        view.workflow_logs
+            .as_ref()
+            .unwrap()
+            .read(cx)
+            .state
             .list_scroll
             .0
             .borrow()
@@ -1524,15 +1535,23 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
     assert!(offset.x < px(0.), "horizontal wheel input scrolls output");
     assert!(offset.y < px(0.), "vertical wheel input scrolls output");
     view.update(cx, |view, cx| {
-        view.detail_state.log_state.start_loading();
+        view.ensure_workflow_log_view(cx)
+            .unwrap()
+            .update(cx, |logs, cx| {
+                logs.state.start_loading();
+                cx.notify();
+            });
         cx.notify();
     });
     cx.refresh().unwrap();
     assert_eq!(cx.debug_bounds("workflow-log-viewport"), Some(viewport));
-    view.read_with(cx, |view, _| {
+    view.read_with(cx, |view, cx| {
         assert_eq!(
-            view.detail_state
-                .log_state
+            view.workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
                 .list_scroll
                 .0
                 .borrow()
@@ -1540,7 +1559,16 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
                 .offset(),
             offset
         );
-        assert_eq!(view.detail_state.log_state.visible_lines.len(), 501);
+        assert_eq!(
+            view.workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
+                .visible_lines
+                .len(),
+            501
+        );
     });
     assert!(cx.debug_bounds("logs-loading-skeleton").is_none());
 }

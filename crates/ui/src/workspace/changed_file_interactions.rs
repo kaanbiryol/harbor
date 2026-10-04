@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use gpui::{App, AppContext, Context, ListOffset, ScrollStrategy, px};
 use harbor_domain::{DiffFile, FileViewedState};
@@ -14,9 +14,8 @@ use crate::{
 };
 
 use super::{
-    AppView, ChangedFileFilters, ChangedFileTreeRow, ChangedFileTypeFilter,
-    PullRequestDetailCacheKey, changed_file_tree_rows, changed_file_type_filters,
-    codeowners::codeowners_owned_file_paths, log_entity_update_error,
+    AppView, ChangedFileTreeRow, ChangedFileTypeFilter, PullRequestDetailCacheKey,
+    changed_file_type_filters, codeowners::codeowners_owned_file_paths, log_entity_update_error,
     review_data_loaders::selected_pull_request_matches,
 };
 
@@ -45,25 +44,14 @@ impl AppView {
         &self.changed_files_state.reviewed_file_paths
     }
 
-    pub(crate) fn changed_file_tree_rows(&self, _cx: &App) -> Vec<ChangedFileTreeRow> {
-        let filters = self.changed_file_filters();
-
-        changed_file_tree_rows(
-            self.detail_state.files(),
-            &self.changed_files_state.collapsed_file_tree_folders,
-            &self.changed_files_state.reviewed_file_paths,
-            &filters,
-        )
+    pub(crate) fn changed_file_tree_rows(&self, _cx: &App) -> Arc<[ChangedFileTreeRow]> {
+        self.changed_file_cache
+            .rows(self.detail_state.shared_files(), &self.changed_files_state)
     }
 
-    pub(crate) fn visible_file_indices(&self, cx: &App) -> Vec<usize> {
-        self.changed_file_tree_rows(cx)
-            .into_iter()
-            .filter_map(|row| match row {
-                ChangedFileTreeRow::File(file_row) => Some(file_row.file_index),
-                ChangedFileTreeRow::Folder(_) => None,
-            })
-            .collect()
+    pub(crate) fn visible_file_indices(&self, _cx: &App) -> Arc<[usize]> {
+        self.changed_file_cache
+            .visible_indices(self.detail_state.shared_files(), &self.changed_files_state)
     }
 
     pub(crate) fn reviewed_file_count(&self) -> usize {
@@ -76,14 +64,6 @@ impl AppView {
                     .contains(&file.path)
             })
             .count()
-    }
-
-    pub(crate) fn changed_file_filters(&self) -> ChangedFileFilters {
-        ChangedFileFilters {
-            excluded_file_types: self.changed_files_state.excluded_file_type_filters.clone(),
-            owned_by_current_user_only: self.changed_files_state.show_files_owned_by_current_user,
-            owned_file_paths: self.changed_files_state.owned_file_paths.clone(),
-        }
     }
 
     pub(crate) fn changed_file_type_filters(&self) -> Vec<ChangedFileTypeFilter> {
@@ -118,7 +98,7 @@ impl AppView {
         cx: &App,
     ) -> Option<usize> {
         self.changed_file_tree_rows(cx)
-            .into_iter()
+            .iter()
             .position(|row| matches!(row, ChangedFileTreeRow::File(file_row) if file_row.file_index == file_index))
     }
 
@@ -330,6 +310,7 @@ impl AppView {
         file_index: usize,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         let Some(path) = self
             .detail_state
             .files()
@@ -356,7 +337,7 @@ impl AppView {
         let reviewed = !self.changed_files_state.reviewed_file_paths.contains(&path);
         self.set_changed_file_reviewed_by_path(&path, reviewed);
 
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let detail_key = PullRequestDetailCacheKey::new(
             pull_request.repo.clone(),
             pull_request.number,
@@ -377,8 +358,9 @@ impl AppView {
 
             if let Err(error) = result {
                 let error = error.to_string();
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update pull request file viewed state",
                     move |view, cx| {
                         if !selected_pull_request_matches(view, &detail_key) {
@@ -487,6 +469,8 @@ impl AppView {
     }
 
     pub(crate) fn refresh_owned_file_filters(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
+        let detail_key = self.selected_pull_request_detail_key();
         let Some(current_user_login) = self.review_state.current_user_login().map(str::to_string)
         else {
             self.changed_files_state.owned_file_paths.clear();
@@ -521,6 +505,11 @@ impl AppView {
             let result = task.await;
 
             if let Err(error) = this.update(cx, move |view, cx| {
+                if view.auth_generation != auth_generation
+                    || view.selected_pull_request_detail_key() != detail_key
+                {
+                    return;
+                }
                 if view.current_repository().cloned() != selected_repository
                     || view.selected_pull_request_number() != selected_pr_number
                 {

@@ -60,6 +60,7 @@ impl AppView {
         comment_id: String,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.review_state.is_submitting_review_comment_edit() {
             self.status = "A review comment edit is already being submitted".to_string();
             cx.notify();
@@ -112,13 +113,14 @@ impl AppView {
             .start_review_comment_edit_submission(comment_id.clone());
         self.status = format!("Updating review comment on PR #{}", pr.number);
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn(async move |this, cx| {
             let result = github_api.update_review_comment(&comment_id, &body).await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update review comment edit state",
                 move |view, cx| {
                     view.review_state.finish_review_comment_edit_submission();
@@ -149,6 +151,7 @@ impl AppView {
     }
 
     pub(crate) fn delete_review_comment(&mut self, comment_id: String, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         if self.review_state.comment_action_running() {
             self.status = "A review comment action is already running".to_string();
             cx.notify();
@@ -187,13 +190,14 @@ impl AppView {
             .start_review_comment_action(comment_id.clone());
         self.status = format!("Deleting review comment on PR #{}", pr.number);
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn(async move |this, cx| {
             let result = github_api.delete_review_comment(&comment_id).await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update review comment action state",
                 move |view, cx| {
                     view.review_state.finish_review_comment_action();

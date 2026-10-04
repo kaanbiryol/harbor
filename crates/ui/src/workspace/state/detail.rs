@@ -11,7 +11,6 @@ use crate::{
     diff::ParsedDiff,
     workspace::{
         PendingReviewSession, PullRequestDetailCacheKey, PullRequestDetailSnapshot,
-        WorkflowLogState,
         reviews::{
             remove_review_comment_from_threads, rollback_pending_review_comment_count,
             unresolved_review_thread_count,
@@ -35,7 +34,7 @@ pub(crate) struct PullRequestDetailUiState {
     checks_load: LoadStatus,
     commits_load: LoadStatus,
     workflows_load: LoadStatus,
-    pub(crate) log_state: WorkflowLogState,
+    pub(crate) log_chunk: Option<Arc<harbor_logs::LogChunk>>,
 }
 
 const MAX_PULL_REQUEST_DETAIL_SNAPSHOTS: usize = 8;
@@ -51,11 +50,12 @@ pub(crate) struct PullRequestDetailLoadedState {
 }
 
 impl PullRequestDetailUiState {
-    pub(crate) fn new(
-        files: Vec<DiffFile>,
-        diffs: Vec<Option<ParsedDiff>>,
-        log_state: WorkflowLogState,
-    ) -> Self {
+    pub(crate) fn clear_snapshots(&mut self) {
+        self.pull_request_detail_cache.clear();
+        self.pull_request_detail_cache_order.clear();
+    }
+
+    pub(crate) fn new(files: Vec<DiffFile>, diffs: Vec<Option<ParsedDiff>>) -> Self {
         Self {
             files: Arc::new(files),
             diffs: Arc::new(diffs),
@@ -71,7 +71,7 @@ impl PullRequestDetailUiState {
             checks_load: LoadStatus::Idle,
             commits_load: LoadStatus::Idle,
             workflows_load: LoadStatus::Idle,
-            log_state,
+            log_chunk: None,
         }
     }
 
@@ -254,12 +254,10 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn replace_workflow_runs(&mut self, workflow_runs: Vec<WorkflowRun>) {
-        self.log_state.clear_navigation();
         self.workflow_runs = Arc::new(workflow_runs);
     }
 
     pub(crate) fn restore_workflow_runs(&mut self, workflow_runs: Arc<Vec<WorkflowRun>>) {
-        self.log_state.clear_navigation();
         self.workflow_runs = workflow_runs;
     }
 
@@ -272,16 +270,11 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn clear_workflow_runs(&mut self) {
-        self.log_state.clear_navigation();
         self.workflow_runs = Arc::new(Vec::new());
     }
 
     pub(crate) fn restore_workflow_jobs(&mut self, workflow_jobs: Arc<Vec<WorkflowJob>>) {
         self.workflow_jobs = workflow_jobs;
-    }
-
-    pub(crate) fn workflow_jobs(&self) -> &[WorkflowJob] {
-        self.workflow_jobs.as_slice()
     }
 
     pub(crate) fn shared_workflow_jobs(&self) -> Arc<Vec<WorkflowJob>> {

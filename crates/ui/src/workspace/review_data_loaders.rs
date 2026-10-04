@@ -1,4 +1,4 @@
-use gpui::Context;
+use gpui::{AppContext, Context};
 use harbor_domain::RepoId;
 use harbor_sync::{PullRequestReviewRefreshRequest, SyncTarget, refresh_pull_request_reviews};
 
@@ -65,11 +65,12 @@ impl AppView {
         mode: ReviewDataLoadMode,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         self.review_state.start_reviews_load();
         let cached_current_user_login = self.review_state.current_user_login().map(str::to_string);
         let existing_pending_review = self.review_state.pending_review_cloned();
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let detail_key = target.detail_key();
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Reviews,
@@ -80,7 +81,7 @@ impl AppView {
                 mode = ?mode,
                 "github graphql source: selected pull request review threads"
             );
-            let refresh = refresh_pull_request_reviews(
+            let refresh = cx.background_spawn({ let target = target.clone(); async move { refresh_pull_request_reviews(
                 github_api.as_ref(),
                 PullRequestReviewRefreshRequest {
                     store: store.as_ref(),
@@ -91,9 +92,9 @@ impl AppView {
                     existing_pending_review: existing_pending_review.as_ref(),
                 },
             )
-            .await;
+            .await } }).await;
 
-            this.update_or_log(cx, mode.update_error_log_message(), move |view, cx| {
+            this.update_in_session_or_log(cx, auth_generation, mode.update_error_log_message(), move |view, cx| {
                 if !selected_pull_request_matches(view, &detail_key) {
                     return;
                 }
@@ -104,7 +105,8 @@ impl AppView {
                 if let Some(error) = refresh.cache_error {
                     view.repository_state.set_error(error);
                 }
-                let mut review_error = None;
+                let incomplete_comments = refresh.threads.as_ref().is_ok_and(|threads| threads.iter().any(|thread| !thread.comments_complete));
+                let mut review_error = incomplete_comments.then(|| "Some review comments are not loaded because the pagination limit was reached. Open the thread on GitHub to see the full conversation.".to_string());
                 let current_user_login = match refresh.current_user {
                     Ok(login) => Some(login),
                     Err(error) => {
@@ -137,7 +139,11 @@ impl AppView {
 
                 match (refresh.reviews, refresh.threads) {
                     (Ok(reviews), Ok(threads)) => {
-                        view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
+                        if incomplete_comments {
+                            view.mark_sync_failure(SyncTarget::SelectedPullRequestReviews);
+                        } else {
+                            view.mark_sync_success(SyncTarget::SelectedPullRequestReviews);
+                        }
                         let thread_count = threads.len();
                         view.apply_loaded_review_data(
                             reviews,

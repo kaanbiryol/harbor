@@ -1,4 +1,4 @@
-use gpui::Context;
+use gpui::{AppContext, Context};
 use harbor_sync::{
     PullRequestInboxRefresh, PullRequestInboxRefreshRequest, refresh_pull_request_inbox,
 };
@@ -11,6 +11,7 @@ use crate::workspace::{
 
 impl AppView {
     pub(in crate::workspace) fn load_more_pull_requests(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         if self.pull_request_inbox.is_loading() || self.pull_request_inbox.is_loading_more() {
             return;
         }
@@ -32,8 +33,8 @@ impl AppView {
 
         let mode = self.pull_request_inbox.mode();
         let key = PullRequestInboxCacheKey::new(repo.clone(), mode);
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let previous_pull_requests = self.pull_requests.clone();
 
         self.pull_request_inbox.start_loading_more();
@@ -45,21 +46,29 @@ impl AppView {
 
         self.tasks
             .set_pull_request_list_task(cx.spawn(async move |this, cx| {
-                let refresh = refresh_pull_request_inbox(
-                    github_api.as_ref(),
-                    PullRequestInboxRefreshRequest {
-                        store: store.as_ref(),
-                        repository: &repo,
-                        mode,
-                        page_cursor: Some(page_cursor),
-                        previous_pull_requests: &previous_pull_requests,
-                        force_enrichment: false,
-                    },
-                )
-                .await;
+                let refresh = cx
+                    .background_spawn({
+                        let repo = repo.clone();
+                        async move {
+                            refresh_pull_request_inbox(
+                                github_api.as_ref(),
+                                PullRequestInboxRefreshRequest {
+                                    store: store.as_ref(),
+                                    repository: &repo,
+                                    mode,
+                                    page_cursor: Some(page_cursor),
+                                    previous_pull_requests: &previous_pull_requests,
+                                    force_enrichment: false,
+                                },
+                            )
+                            .await
+                        }
+                    })
+                    .await;
 
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update additional pull request inbox rows",
                     move |view, cx| {
                         if view.current_pull_request_inbox_key().as_ref() != Some(&key) {

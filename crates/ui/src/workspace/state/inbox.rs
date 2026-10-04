@@ -49,6 +49,13 @@ impl PullRequestRowEnrichmentKey {
 }
 
 impl PullRequestInboxState {
+    pub(crate) fn clear_cache(&mut self) {
+        self.cache.clear();
+        self.cache_order.clear();
+        self.counts.clear();
+        self.row_enrichment_attempts.clear();
+    }
+
     pub(crate) fn visible_by_default() -> Self {
         Self {
             visible: true,

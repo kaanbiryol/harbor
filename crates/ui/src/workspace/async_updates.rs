@@ -3,6 +3,38 @@ use gpui::{AppContext, Context, WeakEntity, Window};
 use crate::workspace::{AppView, log_entity_update_error};
 
 pub(crate) trait AppViewAsyncUpdateExt {
+    fn update_in_session_or_log<C, R>(
+        &self,
+        cx: &mut C,
+        generation: u64,
+        context: &'static str,
+        update: impl FnOnce(&mut AppView, &mut Context<AppView>) -> R,
+    ) -> Option<R>
+    where
+        C: AppContext,
+    {
+        self.update_or_log(cx, context, |view, cx| {
+            (view.auth_generation == generation).then(|| update(view, cx))
+        })
+        .flatten()
+    }
+
+    fn update_window_in_session_or_log<C, R>(
+        &self,
+        cx: &mut C,
+        generation: u64,
+        context: &'static str,
+        update: impl FnOnce(&mut AppView, &mut Window, &mut Context<AppView>) -> R,
+    ) -> Option<R>
+    where
+        C: AppContext,
+    {
+        self.update_in_or_log(cx, context, |view, window, cx| {
+            (view.auth_generation == generation).then(|| update(view, window, cx))
+        })
+        .flatten()
+    }
+
     fn update_or_log<C, R>(
         &self,
         cx: &mut C,

@@ -79,6 +79,7 @@ impl SqliteStore {
 
         Self::save_pull_request_detail_section_in_transaction(
             &mut transaction,
+            &self.cache_account,
             repository,
             number,
             head_sha,
@@ -88,11 +89,13 @@ impl SqliteStore {
         .await?;
         Self::record_sync_success_in_transaction(
             &mut transaction,
+            &self.cache_account,
             &detail_target_key(repository, number, PullRequestDetailSection::Reviews),
         )
         .await?;
         Self::save_pull_request_detail_section_in_transaction(
             &mut transaction,
+            &self.cache_account,
             repository,
             number,
             head_sha,
@@ -102,6 +105,7 @@ impl SqliteStore {
         .await?;
         Self::record_sync_success_in_transaction(
             &mut transaction,
+            &self.cache_account,
             &detail_target_key(
                 repository,
                 number,
@@ -111,6 +115,7 @@ impl SqliteStore {
         .await?;
         Self::save_pull_request_detail_section_in_transaction(
             &mut transaction,
+            &self.cache_account,
             repository,
             number,
             head_sha,
@@ -120,6 +125,7 @@ impl SqliteStore {
         .await?;
         Self::record_sync_success_in_transaction(
             &mut transaction,
+            &self.cache_account,
             &detail_target_key(repository, number, PullRequestDetailSection::ReviewThreads),
         )
         .await?;
@@ -249,6 +255,7 @@ impl SqliteStore {
         let mut transaction = self.pool.begin().await?;
         Self::save_pull_request_detail_section_in_transaction(
             &mut transaction,
+            &self.cache_account,
             repository,
             number,
             head_sha,
@@ -258,6 +265,7 @@ impl SqliteStore {
         .await?;
         Self::record_sync_success_in_transaction(
             &mut transaction,
+            &self.cache_account,
             &detail_target_key(repository, number, section),
         )
         .await?;
@@ -268,6 +276,7 @@ impl SqliteStore {
 
     async fn save_pull_request_detail_section_in_transaction<T>(
         transaction: &mut Transaction<'_, Sqlite>,
+        account: &str,
         repository: &RepoId,
         number: u64,
         head_sha: &str,
@@ -279,9 +288,9 @@ impl SqliteStore {
     {
         sqlx::query(
             "INSERT INTO pull_request_detail_cache
-                (owner, name, number, head_sha, section, data_json, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
-             ON CONFLICT(owner, name, number, head_sha, section) DO UPDATE SET
+                (owner, name, number, head_sha, section, data_json, fetched_at, account)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch(), ?7)
+             ON CONFLICT(account, owner, name, number, head_sha, section) DO UPDATE SET
                 data_json = excluded.data_json,
                 fetched_at = unixepoch()",
         )
@@ -291,6 +300,7 @@ impl SqliteStore {
         .bind(head_sha)
         .bind(section.key())
         .bind(serde_json::to_string(value)?)
+        .bind(account)
         .execute(&mut **transaction)
         .await?;
 
@@ -310,13 +320,14 @@ impl SqliteStore {
         let row = sqlx::query(
             "SELECT data_json
              FROM pull_request_detail_cache
-             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5",
+             WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5 AND account = ?6",
         )
         .bind(&repository.owner)
         .bind(&repository.name)
         .bind(number as i64)
         .bind(head_sha)
         .bind(section.key())
+        .bind(&self.cache_account)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -336,13 +347,14 @@ impl SqliteStore {
                 );
                 sqlx::query(
                     "DELETE FROM pull_request_detail_cache
-                     WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5",
+                     WHERE owner = ?1 AND name = ?2 AND number = ?3 AND head_sha = ?4 AND section = ?5 AND account = ?6",
                 )
                 .bind(&repository.owner)
                 .bind(&repository.name)
                 .bind(number as i64)
                 .bind(head_sha)
                 .bind(section.key())
+                .bind(&self.cache_account)
                 .execute(&self.pool)
                 .await?;
                 Ok(None)

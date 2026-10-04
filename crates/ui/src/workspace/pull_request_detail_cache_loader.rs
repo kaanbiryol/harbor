@@ -35,7 +35,7 @@ impl AppView {
         defer_review_load_until_cache: bool,
         cx: &mut Context<Self>,
     ) {
-        let Some(store) = self.repository_state.store() else {
+        let Some(store) = self.cache_store() else {
             return;
         };
 

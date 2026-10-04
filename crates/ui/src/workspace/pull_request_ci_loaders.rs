@@ -1,4 +1,4 @@
-use gpui::Context;
+use gpui::{AppContext, Context};
 use harbor_domain::checks_summary_from_runs;
 use harbor_sync::{
     SyncTarget, refresh_pull_request_check_runs, refresh_pull_request_workflow_runs,
@@ -19,13 +19,14 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_checks() {
             return;
         }
 
         self.detail_state.start_checks_load();
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let detail_key = load.detail_key();
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Checks,
@@ -35,17 +36,24 @@ impl AppView {
                 let head_sha = load.head_sha;
 
                 async move |this, cx| {
-                    let refresh = refresh_pull_request_check_runs(
-                        github_api.as_ref(),
-                        store.as_ref(),
-                        &repo,
-                        number,
-                        &head_sha,
-                    )
-                    .await;
+                    let refresh = cx
+                        .background_spawn({
+                            async move {
+                                refresh_pull_request_check_runs(
+                                    github_api.as_ref(),
+                                    store.as_ref(),
+                                    &repo,
+                                    number,
+                                    &head_sha,
+                                )
+                                .await
+                            }
+                        })
+                        .await;
 
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to update pull request checks state",
                         move |view, cx| {
                             if !selected_pull_request_matches(view, &detail_key) {
@@ -95,13 +103,14 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_workflows() {
             return;
         }
 
         self.detail_state.start_workflows_load();
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let detail_key = load.detail_key();
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Workflows,
@@ -111,17 +120,24 @@ impl AppView {
                 let head_sha = load.head_sha;
 
                 async move |this, cx| {
-                    let refresh = refresh_pull_request_workflow_runs(
-                        github_api.as_ref(),
-                        store.as_ref(),
-                        &repo,
-                        number,
-                        &head_sha,
-                    )
-                    .await;
+                    let refresh = cx
+                        .background_spawn({
+                            async move {
+                                refresh_pull_request_workflow_runs(
+                                    github_api.as_ref(),
+                                    store.as_ref(),
+                                    &repo,
+                                    number,
+                                    &head_sha,
+                                )
+                                .await
+                            }
+                        })
+                        .await;
 
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to update pull request workflow state",
                         move |view, cx| {
                             if !selected_pull_request_matches(view, &detail_key) {
@@ -143,7 +159,6 @@ impl AppView {
                                         format!("Loaded {count} workflow runs for PR #{number}");
 
                                     if view.active_tab == PanelTab::Logs
-                                        && view.detail_state.log_state.error().is_none()
                                         && !view.detail_state.workflow_runs().is_empty()
                                     {
                                         view.load_selected_workflow_logs(cx);

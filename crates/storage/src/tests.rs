@@ -19,7 +19,7 @@ fn initializes_schema_at_current_version() {
         .await
         .expect("connect sqlite store");
 
-        assert_eq!(schema_version(&store).await, 1);
+        assert_eq!(schema_version(&store).await, 2);
 
         cleanup_database(database_path);
     });
@@ -54,7 +54,7 @@ fn upgrades_unversioned_database_without_losing_data() {
             .await
             .expect("load repositories after migration");
 
-        assert_eq!(schema_version(&migrated_store).await, 1);
+        assert_eq!(schema_version(&migrated_store).await, 2);
         assert_eq!(repositories.len(), 1);
         assert_eq!(repositories[0].id, repository);
 
@@ -72,7 +72,7 @@ fn rejects_database_from_newer_harbor_version() {
         let store = SqliteStore::connect(config.clone())
             .await
             .expect("connect sqlite store");
-        sqlx::query("PRAGMA user_version = 2")
+        sqlx::query("PRAGMA user_version = 3")
             .execute(&store.pool)
             .await
             .expect("set newer schema version");
@@ -86,8 +86,8 @@ fn rejects_database_from_newer_harbor_version() {
         assert!(matches!(
             error,
             StorageError::UnsupportedSchemaVersion {
-                found: 2,
-                supported: 1
+                found: 3,
+                supported: 2
             }
         ));
 
@@ -529,6 +529,102 @@ fn saves_and_loads_http_cache_validator() {
 
         assert_eq!(cached, Some(validator));
 
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
+fn account_caches_are_isolated_and_preferences_are_shared() {
+    smol::block_on(async {
+        let database_path = test_database_path("account-cache");
+        let store = SqliteStore::connect(StorageConfig {
+            database_path: database_path.clone(),
+        })
+        .await
+        .unwrap();
+        let alice = store.for_account("Alice");
+        let bob = store.for_account("bob");
+        let pull_request = pull_request(42);
+        let validator = StoredHttpCacheValidator {
+            etag: Some("alice-etag".into()),
+            last_modified: None,
+        };
+        alice
+            .save_pull_request_metadata(&pull_request)
+            .await
+            .unwrap();
+        alice
+            .save_http_cache_validator("request", &validator)
+            .await
+            .unwrap();
+        alice.record_sync_success("target").await.unwrap();
+        alice
+            .set_repository_pinned(&pull_request.repo, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            bob.load_pull_request_metadata(&pull_request.repo, 42, &pull_request.head_sha)
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            bob.load_http_cache_validator("request").await.unwrap(),
+            None
+        );
+        assert_eq!(bob.sync_target_state("target").await.unwrap(), None);
+        assert_eq!(bob.pinned_repositories().await.unwrap().len(), 1);
+        assert_eq!(
+            store
+                .for_account("alice")
+                .load_pull_request_metadata(&pull_request.repo, 42, &pull_request.head_sha)
+                .await
+                .unwrap(),
+            Some(pull_request)
+        );
+        // A response captured before an account switch still writes only to its original namespace.
+        alice
+            .record_sync_failure("target", "late failure")
+            .await
+            .unwrap();
+        assert_eq!(bob.sync_target_state("target").await.unwrap(), None);
+        store.pool.close().await;
+        cleanup_database(database_path);
+    });
+}
+
+#[test]
+fn account_migration_discards_unowned_cache_and_preserves_preferences() {
+    smol::block_on(async {
+        let database_path = test_database_path("legacy-account-cache");
+        let config = StorageConfig {
+            database_path: database_path.clone(),
+        };
+        let store = SqliteStore::connect(config.clone()).await.unwrap();
+        let pull_request = pull_request(42);
+        store
+            .save_pull_request_metadata(&pull_request)
+            .await
+            .unwrap();
+        store
+            .set_repository_pinned(&pull_request.repo, true)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA user_version = 1")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        store.pool.close().await;
+        let migrated = SqliteStore::connect(config).await.unwrap();
+        assert_eq!(
+            migrated
+                .load_pull_request_metadata(&pull_request.repo, 42, &pull_request.head_sha)
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(migrated.pinned_repositories().await.unwrap().len(), 1);
+        migrated.pool.close().await;
         cleanup_database(database_path);
     });
 }

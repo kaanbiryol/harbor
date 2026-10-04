@@ -14,6 +14,7 @@ impl AppView {
         indices: impl IntoIterator<Item = usize>,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         let Some(inbox_key) = self.current_pull_request_inbox_key() else {
             return;
         };
@@ -28,13 +29,14 @@ impl AppView {
             .iter()
             .map(|key| key.node_id().to_string())
             .collect::<Vec<_>>();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn(async move |this, cx| {
             let result = github_api.enrich_pull_requests_by_node_ids(&node_ids).await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update visible pull request row enrichment",
                 move |view, cx| {
                     if view.current_pull_request_inbox_key().as_ref() != Some(&inbox_key) {

@@ -65,7 +65,7 @@ impl AppView {
 
     pub(super) fn render_changed_files_list(
         &self,
-        tree_rows: Vec<ChangedFileTreeRow>,
+        tree_rows: std::sync::Arc<[ChangedFileTreeRow]>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let row_count = tree_rows.len();

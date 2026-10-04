@@ -5,6 +5,7 @@ use harbor_domain::{
     ReviewCommentRange, ReviewThread, SubmitPullRequestReviewEvent, Workflow, WorkflowJob,
     WorkflowRun,
 };
+use std::sync::Arc;
 
 use crate::{
     ConditionalFetch, GitHubRateLimitStatus, HttpCacheValidator, PullRequestListFilter,
@@ -85,11 +86,46 @@ pub trait PullRequestContentSource: Send + Sync {
 }
 
 pub trait GitHubAuthApi: Send + Sync {
+    /// Pins requests to the current credentials, including across multi-request refreshes.
+    /// Implementations with immutable credentials may use the default.
+    fn snapshot(&self) -> Option<Arc<dyn GitHubApi>> {
+        None
+    }
     fn configure_token(&self, token: String) -> Result<()>;
     fn configure_gh_cli(&self) -> Result<()>;
     fn clear_auth(&self) -> Result<()>;
     fn has_auth(&self) -> bool;
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus>;
+}
+
+pub trait GitHubApi:
+    GitHubAuthApi
+    + GitHubPullRequestApi
+    + GitHubPullRequestMutationApi
+    + GitHubRepositoryApi
+    + GitHubReviewApi
+    + GitHubReviewMutationApi
+    + GitHubWorkflowApi
+    + GitHubWorkflowMutationApi
+    + PullRequestCiSource
+    + PullRequestContentSource
+    + PullRequestInboxSource
+{
+}
+
+impl<T> GitHubApi for T where
+    T: GitHubAuthApi
+        + GitHubPullRequestApi
+        + GitHubPullRequestMutationApi
+        + GitHubRepositoryApi
+        + GitHubReviewApi
+        + GitHubReviewMutationApi
+        + GitHubWorkflowApi
+        + GitHubWorkflowMutationApi
+        + PullRequestCiSource
+        + PullRequestContentSource
+        + PullRequestInboxSource
+{
 }
 
 #[async_trait]

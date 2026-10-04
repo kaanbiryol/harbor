@@ -5,7 +5,7 @@ use gpui::TestAppContext;
 use crate::{
     test_fixtures::{patched_diff_file, pull_request, workflow_run},
     workspace::{
-        GitHubAuthStatus,
+        GitHubAuthSource, GitHubAuthStatus, PullRequestInboxCacheKey,
         github_service::{GitHubAuthApi, test_support::FakeGitHubApi},
     },
 };
@@ -45,6 +45,15 @@ async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext)
             .replace_workflow_runs(vec![workflow_run()]);
         view.review_state
             .set_current_user_login(Some("octocat".to_string()));
+        view.cache_current_pull_request_detail_snapshot();
+        view.cache_current_pull_request_inbox_snapshot();
+        let detail_key = view.selected_pull_request_detail_key().unwrap();
+        let inbox_key = PullRequestInboxCacheKey::new(
+            view.pull_requests[0].repo.clone(),
+            view.pull_request_inbox.mode(),
+        );
+        assert!(view.detail_state.snapshot(&detail_key).is_some());
+        assert!(view.pull_request_inbox.snapshot(&inbox_key).is_some());
         view.pull_request_inbox.start_loading();
 
         view.show_github_sign_in_required();
@@ -55,9 +64,36 @@ async fn signed_out_state_clears_visible_github_content(cx: &mut TestAppContext)
         assert!(view.detail_state.workflow_runs().is_empty());
         assert_eq!(view.review_state.current_user_login(), None);
         assert!(!view.pull_request_inbox.is_loading());
+        assert!(view.detail_state.snapshot(&detail_key).is_none());
+        assert!(view.pull_request_inbox.snapshot(&inbox_key).is_none());
         assert_eq!(
             view.status,
             "Choose a GitHub sign-in method to load repositories"
         );
+    });
+}
+
+#[gpui::test]
+async fn delayed_account_response_cannot_replace_new_session(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let old_account = api.pending_current_user();
+    let new_account = api.pending_current_user();
+    let (view_entity, cx) = init_workspace_service_test(cx, api);
+    view_entity.update(cx, |view, cx| {
+        view.finish_authenticated_github_sign_in(GitHubAuthSource::GhCli, cx);
+    });
+    cx.run_until_parked();
+    view_entity.update(cx, |view, cx| {
+        view.finish_authenticated_github_sign_in(GitHubAuthSource::OAuth, cx);
+    });
+    cx.run_until_parked();
+    new_account.send(Ok("new-account".into())).unwrap();
+    cx.run_until_parked();
+    old_account.send(Ok("old-account".into())).unwrap();
+    cx.run_until_parked();
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.cache_account.as_deref(), Some("new-account"));
+        assert_eq!(view.review_state.current_user_login(), Some("new-account"));
+        assert!(matches!(&view.auth_status, GitHubAuthStatus::SignedIn { login: Some(login), .. } if login == "new-account"));
     });
 }

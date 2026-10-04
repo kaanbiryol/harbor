@@ -151,7 +151,15 @@ impl ReviewRuntimeState {
     }
 
     pub(crate) fn apply_reviews_success(&mut self) {
-        self.reviews_load.succeed();
+        if self
+            .review_threads
+            .iter()
+            .any(|thread| !thread.comments_complete)
+        {
+            self.reviews_load.fail("Some review comments are not loaded. Open the thread on GitHub to see the full conversation.");
+        } else {
+            self.reviews_load.succeed();
+        }
     }
 
     pub(crate) fn apply_reviews_failure(&mut self, error: impl Into<String>) {

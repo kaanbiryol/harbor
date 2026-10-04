@@ -242,6 +242,7 @@ where
                         ))
                     })?;
                 thread.comments.extend(page.comments);
+                thread.comments_complete = !page.has_next_page;
 
                 if page.has_next_page {
                     cursor.after = Some(page.end_cursor.ok_or_else(|| {

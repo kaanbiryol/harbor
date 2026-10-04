@@ -101,6 +101,15 @@ async fn cache_review_refresh(
     };
 
     match (reviews, comments, threads) {
+        (Ok(_), Ok(_), Ok(threads)) if threads.iter().any(|thread| !thread.comments_complete) => {
+            store
+                .record_sync_failure(
+                    &detail_target_key(repository, number, PullRequestDetailSection::Reviews),
+                    "Review comment pagination budget reached; some comments are not loaded",
+                )
+                .await
+                .map_err(|error| error.to_string())
+        }
         (Ok(reviews), Ok(comments), Ok(threads)) => store
             .save_pull_request_reviews(repository, number, head_sha, reviews, comments, threads)
             .await
@@ -135,6 +144,78 @@ fn pending_review_rest_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn partial_review_refresh_is_stale_and_does_not_replace_complete_cache() {
+        futures_lite::future::block_on(async {
+            let directory = std::env::temp_dir().join(format!(
+                "harbor-partial-reviews-{}-{}",
+                std::process::id(),
+                chrono::Utc::now().timestamp_nanos_opt().unwrap()
+            ));
+            let store = SqliteStore::connect(harbor_storage::StorageConfig {
+                database_path: directory.join("cache.sqlite"),
+            })
+            .await
+            .unwrap()
+            .for_account("octocat");
+            let repository = RepoId::new("acme", "app");
+            let thread = ReviewThread {
+                id: "thread".into(),
+                path: "file.rs".into(),
+                range: None,
+                state: harbor_domain::ReviewThreadState::Unresolved,
+                comments: Vec::new(),
+                comments_complete: true,
+            };
+            store
+                .save_pull_request_reviews(
+                    &repository,
+                    7,
+                    "sha",
+                    &[],
+                    &[],
+                    std::slice::from_ref(&thread),
+                )
+                .await
+                .unwrap();
+            let mut partial = thread.clone();
+            partial.comments_complete = false;
+            cache_review_refresh(
+                Some(&store),
+                &repository,
+                7,
+                "sha",
+                &Ok(Vec::new()),
+                &Ok(Vec::new()),
+                &Ok(vec![partial]),
+            )
+            .await
+            .unwrap();
+            let state = store
+                .sync_target_state(&detail_target_key(
+                    &repository,
+                    7,
+                    PullRequestDetailSection::Reviews,
+                ))
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(state.stale);
+            assert!(state.last_error.unwrap().contains("pagination"));
+            assert_eq!(
+                store
+                    .load_pull_request_reviews(&repository, 7, "sha")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .2,
+                vec![thread]
+            );
+            drop(store);
+            std::fs::remove_dir_all(directory).unwrap();
+        });
+    }
 
     #[test]
     fn pending_review_id_matches_current_user_and_skips_existing_session() {

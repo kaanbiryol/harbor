@@ -24,6 +24,7 @@ impl AppView {
     }
 
     pub(crate) fn schedule_pull_request_search(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         let query = self.current_pull_request_search_query(cx);
         let Some(repository) = self.current_repository().cloned() else {
             self.clear_pull_request_search();
@@ -39,7 +40,7 @@ impl AppView {
 
         let mode = self.pull_request_inbox.mode();
         let request_id = self.pull_request_search_state.start(query.clone());
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         self.pull_request_switcher_selection = 0;
         self.status = format!("Searching {} on GitHub…", mode.status_label());
 
@@ -58,8 +59,9 @@ impl AppView {
                     )
                     .await;
 
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update pull request search",
                     move |view, cx| {
                         if view.current_repository() != Some(&repository)
@@ -99,6 +101,7 @@ impl AppView {
     }
 
     pub(crate) fn load_more_pull_request_search_results(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         if self.pull_request_search_state.is_loading()
             || self.pull_request_search_state.is_loading_more()
         {
@@ -114,7 +117,7 @@ impl AppView {
         let mode = self.pull_request_inbox.mode();
         let query = self.pull_request_search_state.query().to_string();
         let request_id = self.pull_request_search_state.request_id();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         self.pull_request_search_state.start_loading_more();
 
         self.tasks
@@ -129,8 +132,9 @@ impl AppView {
                     )
                     .await;
 
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update additional pull request search results",
                     move |view, cx| {
                         if view.current_repository() != Some(&repository)

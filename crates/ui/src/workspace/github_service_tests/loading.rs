@@ -33,7 +33,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
     });
     cx.run_until_parked();
 
-    assert_eq!(
+    super::assert_calls_unordered(
         api.calls(),
         vec![
             "get_pull_request",
@@ -42,8 +42,8 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_reviews",
             "list_pull_request_comments",
             "list_review_threads",
-            "list_pull_request_commits"
-        ]
+            "list_pull_request_commits",
+        ],
     );
     view_entity.read_with(cx, |view, _| {
         assert_eq!(view.review_state.review_threads(), &[thread]);
@@ -54,7 +54,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
     });
     cx.run_until_parked();
 
-    assert_eq!(
+    super::assert_calls_unordered(
         api.calls(),
         vec![
             "get_pull_request",
@@ -64,8 +64,8 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_comments",
             "list_review_threads",
             "list_pull_request_commits",
-            "list_check_runs"
-        ]
+            "list_check_runs",
+        ],
     );
 
     view_entity.update(cx, |view, cx| {
@@ -74,7 +74,7 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
     });
     cx.run_until_parked();
 
-    assert_eq!(
+    super::assert_calls_unordered(
         api.calls(),
         vec![
             "get_pull_request",
@@ -84,8 +84,8 @@ async fn loads_diff_review_threads_and_defers_other_panel_fetches(cx: &mut TestA
             "list_pull_request_comments",
             "list_review_threads",
             "list_pull_request_commits",
-            "list_check_runs"
-        ]
+            "list_check_runs",
+        ],
     );
 }
 
@@ -109,7 +109,7 @@ async fn overview_loads_review_activity_for_its_timeline(cx: &mut TestAppContext
     });
     cx.run_until_parked();
 
-    assert_eq!(
+    super::assert_calls_unordered(
         api.calls(),
         vec![
             "get_pull_request",
@@ -118,8 +118,8 @@ async fn overview_loads_review_activity_for_its_timeline(cx: &mut TestAppContext
             "list_pull_request_reviews",
             "list_pull_request_comments",
             "list_review_threads",
-            "list_pull_request_commits"
-        ]
+            "list_pull_request_commits",
+        ],
     );
     view_entity.read_with(cx, |view, _| {
         assert_eq!(view.review_state.review_threads(), &[thread]);
@@ -156,7 +156,7 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
         assert_eq!(view.pull_requests.len(), 1);
         assert!(!view.repository_state.is_loading());
     });
-    assert_eq!(
+    super::assert_calls_unordered(
         api.calls(),
         vec![
             "get_repository",
@@ -168,8 +168,8 @@ async fn typed_repository_lookup_loads_pull_requests_after_validation(cx: &mut T
             "list_pull_request_reviews",
             "list_pull_request_comments",
             "list_review_threads",
-            "list_pull_request_commits"
-        ]
+            "list_pull_request_commits",
+        ],
     );
 }
 

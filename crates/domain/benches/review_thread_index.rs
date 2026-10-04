@@ -9,6 +9,7 @@ fn main() {
     const THREAD_COUNT: usize = 10_000;
     let threads = (1..=THREAD_COUNT)
         .map(|line| ReviewThread {
+            comments_complete: true,
             id: format!("thread-{line}"),
             path: "src/lib.rs".to_string(),
             range: Some(ReviewCommentRange {

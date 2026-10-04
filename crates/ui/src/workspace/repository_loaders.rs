@@ -8,6 +8,7 @@ use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt, github_ser
 
 impl AppView {
     pub(super) fn load_repository_preferences(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         let configured_repo = self.repository_state.configured_repo_cloned();
         let Some(store) = self.repository_state.store() else {
             if self.repository_state.error().is_none() {
@@ -25,7 +26,7 @@ impl AppView {
         self.tasks.set_repository_task(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            this.update_or_log(cx, "failed to update repository store state", move |view, cx| {
+            this.update_in_session_or_log(cx, auth_generation, "failed to update repository store state", move |view, cx| {
                 match result {
                     Ok(load) => {
                         let repository_count = load.pinned_repositories.len();
@@ -79,15 +80,15 @@ impl AppView {
     }
 
     fn refresh_repositories_from_github(&mut self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         self.repository_state.start_loading();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let task = cx.background_spawn(async move { refresh_repositories(github_api).await });
 
         self.tasks.set_repository_task(cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            this.update_or_log(
-                cx,
+            this.update_in_session_or_log(cx, auth_generation,
                 "failed to update repository refresh state",
                 move |view, cx| {
                     view.repository_state.finish_loading();
@@ -170,6 +171,7 @@ impl AppView {
     }
 
     pub(crate) fn toggle_repository_pin(&mut self, repository: RepoId, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         let pinned = !self.repository_state.is_pinned(&repository);
         self.repository_state.set_pinned(repository.clone(), pinned);
         let Some(store) = self.repository_state.store() else {
@@ -183,24 +185,29 @@ impl AppView {
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
-            this.update_or_log(cx, "failed to update repository pin", move |view, cx| {
-                match result {
-                    Ok(()) => {
-                        view.repository_state.clear_error();
-                        view.status = format!(
-                            "{} {}",
-                            if pinned { "Pinned" } else { "Unpinned" },
-                            repository.full_name()
-                        );
+            this.update_in_session_or_log(
+                cx,
+                auth_generation,
+                "failed to update repository pin",
+                move |view, cx| {
+                    match result {
+                        Ok(()) => {
+                            view.repository_state.clear_error();
+                            view.status = format!(
+                                "{} {}",
+                                if pinned { "Pinned" } else { "Unpinned" },
+                                repository.full_name()
+                            );
+                        }
+                        Err(error) => {
+                            view.repository_state
+                                .set_pinned(repository.clone(), !pinned);
+                            view.repository_state.set_error(error.to_string());
+                        }
                     }
-                    Err(error) => {
-                        view.repository_state
-                            .set_pinned(repository.clone(), !pinned);
-                        view.repository_state.set_error(error.to_string());
-                    }
-                }
-                cx.notify();
-            });
+                    cx.notify();
+                },
+            );
         })
         .detach();
         cx.notify();
@@ -211,6 +218,7 @@ impl AppView {
         repository: RepoId,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         self.remember_repository(repository.clone());
 
         let Some(store) = self.repository_state.store() else {
@@ -222,8 +230,9 @@ impl AppView {
         cx.spawn(async move |this, cx| {
             let result = task.await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update repository write state",
                 move |view, cx| {
                     match result {
@@ -247,13 +256,14 @@ impl AppView {
         repository: RepoId,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.github_api.has_auth() {
             self.show_github_sign_in_required();
             cx.notify();
             return;
         }
 
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let requested_repository = repository.clone();
         self.repository_state.start_loading();
         self.status = format!("Opening repository {}", repository.full_name());
@@ -263,8 +273,9 @@ impl AppView {
             .set_repository_task(cx.spawn(async move |this, cx| {
                 let result = task.await;
 
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update repository lookup state",
                     move |view, cx| {
                         view.repository_state.finish_loading();

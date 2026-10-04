@@ -1,17 +1,25 @@
 use crate::gpui_component::{
-    Sizable,
+    Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    list::ListItem,
 };
-use gpui::{AnyElement, Context, div, prelude::*};
-use harbor_domain::{MergeState, PullRequest};
+use gpui::{AnyElement, Context, Div, SharedString, div, prelude::*, px};
+use harbor_domain::{MergeState, PullRequest, ReviewDecision};
 
 use crate::panels::{PullRequestMergeQueueStatus, pull_request_merge_queue_status};
-use crate::{actions::PanelTab, icons::Octicon, visual::Tone, workspace::AppView};
+use crate::{
+    actions::PanelTab,
+    icons::Octicon,
+    visual::{Tone, color, tone_colors},
+    workspace::AppView,
+};
 
-use super::sidebar::{
-    merge_readiness, pull_request_readiness, render_overview_card, render_readiness_row,
-    render_readiness_section_title, render_readiness_status, render_summary_row, review_readiness,
-    review_readiness_description,
+use super::sidebar::render_overview_card;
+use crate::panels::{
+    MergeReadiness, PullRequestReadiness, ReviewReadiness,
+    merge_readiness as classify_merge_readiness,
+    pull_request_readiness as classify_pull_request_readiness,
+    review_readiness as classify_review_readiness,
 };
 
 impl AppView {
@@ -168,4 +176,195 @@ impl AppView {
             )
             .into_any_element()
     }
+}
+
+pub(super) fn render_readiness_row(
+    id: &'static str,
+    label: &'static str,
+    description: impl Into<SharedString>,
+    icon: Octicon,
+    tone: Tone,
+    navigable: bool,
+) -> ListItem {
+    let colors = tone_colors(tone);
+    let description = description.into();
+
+    ListItem::new(id)
+        .w_full()
+        .h(px(52.0))
+        .px_0()
+        .py_0()
+        .rounded_none()
+        .disabled(!navigable)
+        .when(label != "Review", |element| {
+            element.border_t_1().border_color(color::border_subtle())
+        })
+        .child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(icon).xsmall().text_color(colors.text))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap_0p5()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(color::text_primary())
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(color::text_muted())
+                                .child(description),
+                        ),
+                ),
+        )
+}
+
+pub(super) fn render_readiness_status(
+    label: &'static str,
+    description: &'static str,
+    tone: Tone,
+) -> Div {
+    let colors = tone_colors(tone);
+
+    div()
+        .py_3()
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(
+            div()
+                .size(px(44.0))
+                .flex_none()
+                .rounded_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(colors.background)
+                .child(
+                    Icon::new(Octicon::CodeSquare)
+                        .size(px(16.0))
+                        .text_color(colors.text),
+                ),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .child(
+                    div()
+                        .text_size(px(16.0))
+                        .font_medium()
+                        .text_color(colors.text)
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(color::text_muted())
+                        .child(description),
+                ),
+        )
+}
+
+pub(super) fn render_readiness_section_title(title: &'static str) -> Div {
+    div()
+        .mt_2()
+        .pt_3()
+        .pb_1()
+        .border_t_1()
+        .border_color(color::border_subtle())
+        .text_sm()
+        .font_semibold()
+        .text_color(color::text_primary())
+        .child(title)
+}
+
+pub(super) fn render_summary_row(
+    id: &'static str,
+    label: &'static str,
+    value: impl Into<String>,
+    icon: Octicon,
+    tone: Tone,
+) -> impl IntoElement {
+    let colors = tone_colors(tone);
+
+    div()
+        .id(id)
+        .h(px(36.0))
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(Icon::new(icon).xsmall().text_color(colors.text))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .text_color(color::text_secondary())
+                .child(label),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(value.into()),
+        )
+}
+
+pub(super) fn pull_request_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
+    let readiness = classify_pull_request_readiness(pr);
+    let tone = match readiness {
+        PullRequestReadiness::Conflicts
+        | PullRequestReadiness::ChecksFailed
+        | PullRequestReadiness::ChangesRequested => Tone::Danger,
+        PullRequestReadiness::ChecksPending
+        | PullRequestReadiness::ReviewRequired
+        | PullRequestReadiness::ConversationsOpen => Tone::Warning,
+        PullRequestReadiness::Draft => Tone::Neutral,
+        PullRequestReadiness::Ready => Tone::Success,
+    };
+
+    (readiness.label(), readiness.description(), tone)
+}
+
+pub(super) fn review_readiness_description(decision: Option<ReviewDecision>) -> &'static str {
+    classify_review_readiness(decision).description()
+}
+
+pub(super) fn review_readiness(decision: Option<ReviewDecision>) -> (&'static str, Tone) {
+    let readiness = classify_review_readiness(decision);
+    let tone = match readiness {
+        ReviewReadiness::Approved => Tone::Success,
+        ReviewReadiness::ChangesRequested => Tone::Danger,
+        ReviewReadiness::Pending => Tone::Warning,
+    };
+
+    (readiness.label(), tone)
+}
+
+pub(super) fn merge_readiness(pr: &PullRequest) -> (&'static str, &'static str, Tone) {
+    let readiness = classify_merge_readiness(pr);
+    let tone = match readiness {
+        MergeReadiness::Conflicts | MergeReadiness::Blocked => Tone::Danger,
+        MergeReadiness::Behind
+        | MergeReadiness::WaitingForApproval
+        | MergeReadiness::ConversationsOpen
+        | MergeReadiness::ChecksPending => Tone::Warning,
+        MergeReadiness::Unknown => Tone::Neutral,
+        MergeReadiness::Ready => Tone::Success,
+    };
+
+    (readiness.label(), readiness.description(), tone)
 }

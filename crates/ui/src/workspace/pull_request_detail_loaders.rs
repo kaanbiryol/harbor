@@ -75,15 +75,17 @@ impl AppView {
             selected.head_sha.clone(),
         );
 
-        if detail.review_decision.is_none() {
-            detail.review_decision = selected.review_decision;
+        if detail.head_sha == selected.head_sha {
+            if detail.review_decision.is_none() {
+                detail.review_decision = selected.review_decision;
+            }
+            if detail.merge_state.is_none() || detail.merge_state == Some(MergeState::Unknown) {
+                detail.merge_state = selected.merge_state;
+            }
+            detail.checks_summary = selected.checks_summary;
+            detail.merge_capabilities = selected.merge_capabilities;
+            detail.unresolved_threads = selected.unresolved_threads;
         }
-        if detail.merge_state.is_none() || detail.merge_state == Some(MergeState::Unknown) {
-            detail.merge_state = selected.merge_state;
-        }
-        detail.checks_summary = selected.checks_summary;
-        detail.merge_capabilities = selected.merge_capabilities;
-        detail.unresolved_threads = selected.unresolved_threads;
         if detail.created_at.is_none() {
             detail.created_at = selected.created_at;
         }
@@ -91,6 +93,46 @@ impl AppView {
         *selected = detail;
         if description_changed {
             self.overview_state.invalidate_description(&detail_key);
+        }
+    }
+
+    pub(super) fn apply_pull_request_metadata(
+        &mut self,
+        detail: PullRequest,
+        cx: &mut Context<Self>,
+    ) {
+        let head_changed = self
+            .selected_pull_request()
+            .is_some_and(|selected| selected.head_sha != detail.head_sha);
+        let reload_checks = !self.detail_state.should_load_checks();
+        let reload_commits =
+            self.detail_state.commits_loading() || self.detail_state.commits_finished();
+        let reload_workflows = !self.detail_state.should_load_workflows();
+        let reload_reviews =
+            self.review_state.reviews_loading() || self.review_state.reviews_finished();
+        let load = SelectedPullRequestLoad::from_pull_request(&detail);
+        self.replace_selected_pull_request_preserving_row_fields(detail);
+
+        if head_changed {
+            self.reset_selected_pull_request_detail_state(load.number, cx);
+        }
+        self.detail_state.apply_details_success();
+        self.mark_sync_success(harbor_sync::SyncTarget::SelectedPullRequestMetadata);
+
+        if head_changed {
+            self.load_active_panel_data_if_needed(cx);
+            if reload_checks {
+                self.spawn_pull_request_checks_loader(load.clone(), cx);
+            }
+            if reload_commits {
+                self.spawn_pull_request_commits_loader(load.clone(), cx);
+            }
+            if reload_workflows {
+                self.spawn_pull_request_workflows_loader(load.clone(), cx);
+            }
+            if reload_reviews && self.review_state.should_load_reviews() {
+                self.spawn_selected_review_data_loader(load, ReviewDataLoadMode::Initial, cx);
+            }
         }
     }
 
@@ -133,7 +175,7 @@ impl AppView {
         self.reset_selected_pull_request_detail_state(load.number, cx);
         let defer_review_load_until_cache = should_defer_review_load_until_cache(
             fetch_policy,
-            self.repository_state.store().is_some(),
+            self.cache_store().is_some(),
             self.active_tab,
         );
         if defer_review_load_until_cache {
@@ -208,16 +250,10 @@ impl AppView {
                 }
             }
             PanelTab::Logs => {
-                if !self.detail_state.should_load_workflows() {
-                    self.load_workflow_log_navigation(cx);
-                }
                 if self.detail_state.should_load_workflows() {
                     self.spawn_pull_request_workflows_loader(load, cx);
-                } else if !self.detail_state.log_state.is_loading()
-                    && self.detail_state.log_state.chunk().is_none()
-                    && self.detail_state.log_state.error().is_none()
-                {
-                    self.load_selected_workflow_logs(cx);
+                } else {
+                    self.load_workflow_log_navigation(cx);
                 }
             }
         }
@@ -227,7 +263,6 @@ impl AppView {
         self.tasks.cancel_selected_pull_request_tasks();
         self.set_detail_loading(false);
         self.clear_detail_errors();
-        self.clear_log_error();
         self.clear_action_errors();
         self.clear_selected_pull_request_detail_state();
         self.sync_diff_list_items(cx);

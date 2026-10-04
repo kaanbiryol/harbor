@@ -5,6 +5,7 @@ mod auth_cli;
 mod auth_oauth;
 mod auth_state;
 mod cache;
+mod changed_file_cache;
 mod changed_file_interactions;
 mod codeowners;
 mod commands;
@@ -50,11 +51,11 @@ use gpui::{
     Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
     UniformListScrollHandle, px,
 };
-use harbor_domain::{PullRequest, RepoId, WorkflowRun, changed_files};
+use harbor_domain::{PullRequest, RepoId, changed_files};
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
 use crate::actions::PanelTab;
-use crate::panels::{CheckRunFilter, DiffListItem, workflow_run_failed};
+use crate::panels::{CheckRunFilter, DiffListItem};
 
 pub(crate) use cache::{
     PullRequestDetailCacheKey, PullRequestDetailSnapshot, PullRequestInboxCacheKey,
@@ -62,7 +63,7 @@ pub(crate) use cache::{
 };
 pub(crate) use changed_files::{
     ChangedFileFilters, ChangedFileFolderRow, ChangedFileRow, ChangedFileTreeRow,
-    ChangedFileTypeFilter, changed_file_tree_rows, changed_file_type_filters,
+    ChangedFileTypeFilter, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
 pub use github_service::{
@@ -80,7 +81,6 @@ pub(crate) use reviews::{
     ReviewLineSelection, ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
     review_comment_pending_sync, review_range_from_targets, review_reaction,
 };
-pub(crate) use state::WorkflowLogState;
 use state::{
     ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
     PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
@@ -150,6 +150,11 @@ pub struct AppView {
     focus_handle: FocusHandle,
     pull_requests: Vec<PullRequest>,
     github_api: Arc<dyn GitHubApi>,
+    workflow_logs: Option<Entity<crate::workflow_logs::WorkflowLogView>>,
+    workflow_log_input: Entity<InputState>,
+    workflow_log_subscription: Option<Subscription>,
+    auth_generation: u64,
+    cache_account: Option<String>,
     auth_status: GitHubAuthStatus,
     github_cli_availability: GitHubCliAvailability,
     github_auth_popover_open: bool,
@@ -194,6 +199,7 @@ pub struct AppView {
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,
     changed_files_state: ChangedFilesUiState,
+    changed_file_cache: changed_file_cache::ChangedFileTreeCache,
     checks_state: ChecksUiState,
     action_runtime: ActionRuntimeState,
     merge_bypass_enabled: bool,
@@ -262,20 +268,6 @@ impl AppView {
             format!("Expanded {group_name} checks")
         };
         cx.notify();
-    }
-
-    pub(crate) fn selected_workflow_run_for_logs(&self) -> Option<&WorkflowRun> {
-        self.detail_state
-            .workflow_runs()
-            .iter()
-            .find(|run| Some(run.id) == self.detail_state.log_state.selected_run)
-            .or_else(|| {
-                self.detail_state
-                    .workflow_runs()
-                    .iter()
-                    .find(|run| workflow_run_failed(run))
-            })
-            .or_else(|| self.detail_state.workflow_runs().first())
     }
 
     pub(crate) fn select_pull_request(&mut self, index: usize, cx: &mut Context<Self>) {

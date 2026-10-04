@@ -27,10 +27,11 @@ impl AppView {
     }
 
     pub(crate) fn select_commit(&mut self, sha: String, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
         };
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let detail_key = PullRequestDetailCacheKey::new(
             pull_request.repo.clone(),
             pull_request.number,
@@ -48,7 +49,12 @@ impl AppView {
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Files,
             cx.spawn(async move |this, cx| {
-                let result = github_api.list_commit_files(&owner, &name, &sha).await;
+                let result = cx
+                    .background_spawn({
+                        let sha = sha.clone();
+                        async move { github_api.list_commit_files(&owner, &name, &sha).await }
+                    })
+                    .await;
                 let result = match result {
                     Ok(files) => {
                         let diffs = cx
@@ -64,8 +70,11 @@ impl AppView {
                 let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
                 let update_detail_key = detail_key.clone();
                 let update_sha = sha.clone();
-                let applied =
-                    this.update_or_log(cx, "failed to show commit diff", move |view, cx| {
+                let applied = this.update_in_session_or_log(
+                    cx,
+                    auth_generation,
+                    "failed to show commit diff",
+                    move |view, cx| {
                         if !selected_pull_request_matches(view, &update_detail_key)
                             || view.active_commit_sha.as_deref() != Some(update_sha.as_str())
                         {
@@ -91,7 +100,8 @@ impl AppView {
                                 false
                             }
                         }
-                    });
+                    },
+                );
                 if applied != Some(true) {
                     return;
                 }
@@ -116,12 +126,13 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_commits() {
             return;
         }
 
         self.detail_state.start_commits_load();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let detail_key = load.detail_key();
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Commits,
@@ -131,11 +142,16 @@ impl AppView {
                 let number = load.number;
 
                 async move |this, cx| {
-                    let result = github_api
-                        .list_pull_request_commits(&owner, &name, number)
+                    let result = cx
+                        .background_spawn(async move {
+                            github_api
+                                .list_pull_request_commits(&owner, &name, number)
+                                .await
+                        })
                         .await;
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to update pull request commits",
                         move |view, cx| {
                             if !selected_pull_request_matches(view, &detail_key) {

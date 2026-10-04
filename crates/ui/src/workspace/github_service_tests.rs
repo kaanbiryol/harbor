@@ -78,3 +78,10 @@ impl Render for EmptyHarness {
         div()
     }
 }
+
+fn assert_calls_unordered(mut actual: Vec<String>, expected: Vec<&str>) {
+    let mut expected = expected.into_iter().map(str::to_string).collect::<Vec<_>>();
+    actual.sort();
+    expected.sort();
+    assert_eq!(actual, expected);
+}

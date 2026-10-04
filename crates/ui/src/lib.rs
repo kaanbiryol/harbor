@@ -22,3 +22,5 @@ pub use workspace::{
     GitHubPullRequestMutationApi, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
     GitHubWorkflowApi, GitHubWorkflowMutationApi,
 };
+
+mod workflow_logs;

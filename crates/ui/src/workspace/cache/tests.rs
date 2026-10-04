@@ -5,7 +5,7 @@ use harbor_domain::ReviewThreadState;
 use super::*;
 use crate::{
     test_fixtures::{pull_request, review_thread},
-    workspace::state::{PullRequestDetailUiState, PullRequestInboxState, WorkflowLogState},
+    workspace::state::{PullRequestDetailUiState, PullRequestInboxState},
 };
 
 fn detail_snapshot() -> PullRequestDetailSnapshot {
@@ -40,8 +40,7 @@ fn detail_snapshot() -> PullRequestDetailSnapshot {
 
 #[test]
 fn detail_cache_evicts_the_oldest_snapshot() {
-    let mut detail_state =
-        PullRequestDetailUiState::new(Vec::new(), Vec::new(), WorkflowLogState::new());
+    let mut detail_state = PullRequestDetailUiState::new(Vec::new(), Vec::new());
     let repository = RepoId::new("acme", "app");
 
     for number in 1..=9 {
@@ -117,8 +116,7 @@ fn inbox_cache_evicts_the_oldest_snapshot() {
 
 #[test]
 fn detail_cache_helpers_update_review_snapshot_consistently() {
-    let mut detail_state =
-        PullRequestDetailUiState::new(Vec::new(), Vec::new(), WorkflowLogState::new());
+    let mut detail_state = PullRequestDetailUiState::new(Vec::new(), Vec::new());
     let snapshot = detail_snapshot();
     let key = PullRequestDetailCacheKey::new(
         snapshot.pull_request.repo.clone(),

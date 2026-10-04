@@ -21,6 +21,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         let Some(pull_request) = self.selected_pull_request() else {
             return;
         };
@@ -43,14 +44,15 @@ impl AppView {
         self.pull_request_metadata_options.error = None;
         self.pull_request_metadata_options.repository = Some(repository.clone());
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = github_api
                 .list_pull_request_metadata_options(&repository.0, &repository.1)
                 .await;
-            this.update_in_or_log(
+            this.update_window_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update pull request metadata options",
                 move |view, _, cx| {
                     if view.pull_request_metadata_options.repository.as_ref() != Some(&repository) {
@@ -100,6 +102,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.action_runtime.pull_request_metadata_action_running() {
             self.status = "A pull request metadata update is already running".to_string();
             cx.notify();
@@ -119,7 +122,7 @@ impl AppView {
             .start_pull_request_metadata_action(field);
         self.status = request.start_status();
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = match request.field {
@@ -155,8 +158,9 @@ impl AppView {
                 }
             };
 
-            this.update_in_or_log(
+            this.update_window_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update pull request metadata action state",
                 move |view, window, cx| {
                     match result {

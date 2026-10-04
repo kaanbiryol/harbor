@@ -220,9 +220,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
             .replace_workflow_runs(vec![workflow_run()]);
         view.review_state
             .replace_loaded_review_threads(vec![review_thread(ReviewThreadState::Unresolved)]);
-        view.detail_state
-            .log_state
-            .apply_log_success(parse_workflow_log(42, "build"));
+        view.detail_state.log_chunk = Some(Arc::new(parse_workflow_log(42, "build")));
         view.changed_files_state
             .collapsed_file_tree_folders
             .insert("src".to_string());
@@ -255,7 +253,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         assert!(view.detail_state.check_runs().is_empty());
         assert!(view.detail_state.workflow_runs().is_empty());
         assert!(view.review_state.review_threads().is_empty());
-        assert!(view.detail_state.log_state.chunk().is_none());
+        assert!(view.detail_state.log_chunk.is_none());
         assert!(
             view.changed_files_state
                 .collapsed_file_tree_folders
@@ -349,17 +347,58 @@ async fn skipped_jobs_do_not_request_logs(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
     assert_eq!(api.calls(), vec!["list_workflow_jobs_for_run"]);
-    view_entity.read_with(cx, |view, _| {
-        assert!(!view.detail_state.log_state.is_loading());
-        assert!(view.detail_state.log_state.error().is_none());
+    view_entity.read_with(cx, |view, cx| {
         assert!(
-            view.detail_state
-                .log_state
+            !view
+                .workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
+                .is_loading()
+        );
+        assert!(
+            view.workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
+                .error()
+                .is_none()
+        );
+        assert!(
+            view.workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
                 .chunk()
                 .unwrap()
                 .lines
                 .is_empty()
         );
+    });
+}
+
+#[gpui::test]
+async fn switching_accounts_drops_log_loading_and_rejects_its_result(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    api.push_workflow_jobs(Ok(Vec::new()));
+    let old_logs = api.pending_workflow_logs();
+    let (view, cx) = init_workspace_service_test(cx, api);
+    view.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.detail_state
+            .replace_workflow_runs(vec![workflow_run()]);
+        view.load_selected_workflow_logs(cx);
+    });
+    cx.run_until_parked();
+    view.update(cx, |view, _| view.clear_authenticated_github_content());
+    cx.run_until_parked();
+    assert!(old_logs.send(Ok("old account output".into())).is_err());
+    view.read_with(cx, |view, _| {
+        assert!(view.workflow_logs.is_none());
+        assert!(view.detail_state.log_chunk.is_none());
     });
 }
 
@@ -392,12 +431,26 @@ async fn failed_job_opens_its_failed_step(cx: &mut TestAppContext) {
         view.load_selected_workflow_logs(cx);
     });
     cx.run_until_parked();
-    view_entity.read_with(cx, |view, _| {
+    view_entity.read_with(cx, |view, cx| {
         assert_eq!(
-            view.detail_state.log_state.selected_section,
+            view.workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
+                .selected_section,
             Some(("Test".into(), Some("Run tests".into())))
         );
-        assert_eq!(*view.detail_state.log_state.visible_lines, vec![1]);
+        assert_eq!(
+            *view
+                .workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
+                .visible_lines,
+            vec![1]
+        );
     });
 }
 
@@ -433,17 +486,30 @@ async fn logs_load_checks_from_other_workflows_without_downloading_their_output(
     api.push_workflow_jobs(Ok(other_jobs.clone()));
     view.update(cx, |view, cx| view.load_workflow_log_navigation(cx));
     cx.run_until_parked();
-    view.read_with(cx, |view, _| {
+    view.read_with(cx, |view, cx| {
         let jobs = view
-            .detail_state
-            .log_state
+            .workflow_logs
+            .as_ref()
+            .unwrap()
+            .read(cx)
+            .state
             .navigation_jobs
             .get(&84)
             .unwrap()
             .as_ref()
             .unwrap();
         assert_eq!(jobs.as_ref(), &other_jobs);
-        assert_eq!(view.detail_state.log_state.chunk().unwrap().run_id, 42);
+        assert_eq!(
+            view.workflow_logs
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .state
+                .chunk()
+                .unwrap()
+                .run_id,
+            42
+        );
     });
     assert_eq!(
         api.calls()
@@ -458,14 +524,73 @@ async fn logs_load_checks_from_other_workflows_without_downloading_their_output(
         "Android\tBuild\tandroid output\niOS\tBuild\tios output".into()
     ));
     view.update(cx, |view, cx| {
-        view.select_workflow_log_section(84, Some(("Android".into(), None)), cx)
+        view.workflow_logs.as_ref().unwrap().update(cx, |logs, cx| {
+            logs.select_workflow_log_section(84, Some(("Android".into(), None)), cx)
+        })
     });
     cx.run_until_parked();
-    view.read_with(cx, |view, _| {
-        let state = &view.detail_state.log_state;
+    view.read_with(cx, |view, cx| {
+        let state = &view.workflow_logs.as_ref().unwrap().read(cx).state;
         assert_eq!(state.chunk().unwrap().run_id, 84);
         assert_eq!(state.selected_section, Some(("Android".into(), None)));
         assert_eq!(state.visible_lines.as_ref(), &[0]);
         assert_eq!(state.chunk().unwrap().lines[0].text, "android output");
     });
+}
+
+#[gpui::test]
+async fn head_change_restarts_in_flight_content(cx: &mut TestAppContext) {
+    check_head_change(cx, false);
+}
+
+#[gpui::test]
+async fn head_change_discards_content_that_finished_before_metadata(cx: &mut TestAppContext) {
+    check_head_change(cx, true);
+}
+
+fn check_head_change(cx: &mut TestAppContext, files_finish_first: bool) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let metadata = api.pending_detail();
+    let files = api.pending_files();
+    let mut new_file = patched_diff_file();
+    new_file.path = "new-head.rs".into();
+    api.push_files(Ok(vec![new_file]));
+    let (view, cx) = init_workspace_service_test(cx, api.clone());
+    view.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.refresh_selected_pull_request(cx);
+    });
+    cx.run_until_parked();
+
+    let files = if files_finish_first {
+        files
+            .send(Ok(vec![patched_diff_file()]))
+            .expect("deliver old files");
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| assert!(!view.detail_state.files().is_empty()));
+        None
+    } else {
+        Some(files)
+    };
+    let mut updated = pull_request();
+    updated.head_sha = "new-head".into();
+    metadata.send(Ok(updated)).expect("deliver changed head");
+    cx.run_until_parked();
+    if let Some(files) = files {
+        assert!(files.send(Ok(vec![patched_diff_file()])).is_err());
+    }
+
+    view.read_with(cx, |view, _| {
+        assert_eq!(view.selected_pull_request().unwrap().head_sha, "new-head");
+        assert_eq!(view.detail_state.files()[0].path, "new-head.rs");
+        assert!(!view.detail_state.is_any_loading());
+        assert!(!view.review_state.reviews_loading());
+    });
+    assert_eq!(
+        api.calls()
+            .iter()
+            .filter(|call| *call == "list_pull_request_files")
+            .count(),
+        2
+    );
 }

@@ -1,4 +1,4 @@
-use gpui::{Context, ScrollStrategy};
+use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_domain::{PullRequest, RepoId};
 use harbor_sync::{
     PullRequestInboxPageInfo, PullRequestInboxRefresh, PullRequestInboxRefreshRequest,
@@ -165,7 +165,7 @@ impl AppView {
 
         if refresh_intent.resets_detail_state() {
             self.clear_detail_errors();
-            self.clear_log_error();
+
             self.clear_action_errors();
             self.tasks.cancel_selected_pull_request_tasks();
             self.clear_review_data_state();
@@ -173,7 +173,7 @@ impl AppView {
             self.changed_files_state.reset();
             self.clear_detail_loaded_state();
             self.set_detail_loading(false);
-            self.set_log_loading(false);
+
             self.sync_diff_list_items(cx);
         }
 
@@ -196,31 +196,47 @@ impl AppView {
         force_enrichment: bool,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         self.pull_request_inbox.start_loading();
         self.mark_sync_attempt(mode.active_sync_target());
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let previous_pull_requests = self.pull_requests.clone();
 
         self.tasks
             .set_pull_request_list_task(cx.spawn(async move |this, cx| {
-                let refresh = refresh_pull_request_inbox(
-                    github_api.as_ref(),
-                    PullRequestInboxRefreshRequest {
-                        store: store.as_ref(),
-                        repository: &repo,
-                        mode,
-                        page_cursor: None,
-                        previous_pull_requests: &previous_pull_requests,
-                        force_enrichment,
-                    },
-                )
-                .await;
-                let cache_result =
-                    cache_pull_request_inbox_refresh(store.as_ref(), &repo, mode, &refresh).await;
+                let (refresh, cache_result) = cx
+                    .background_spawn({
+                        let repo = repo.clone();
+                        let previous_pull_requests = previous_pull_requests.clone();
+                        async move {
+                            let refresh = refresh_pull_request_inbox(
+                                github_api.as_ref(),
+                                PullRequestInboxRefreshRequest {
+                                    store: store.as_ref(),
+                                    repository: &repo,
+                                    mode,
+                                    page_cursor: None,
+                                    previous_pull_requests: &previous_pull_requests,
+                                    force_enrichment,
+                                },
+                            )
+                            .await;
+                            let cache_result = cache_pull_request_inbox_refresh(
+                                store.as_ref(),
+                                &repo,
+                                mode,
+                                &refresh,
+                            )
+                            .await;
+                            (refresh, cache_result)
+                        }
+                    })
+                    .await;
 
-                this.update_or_log(
+                this.update_in_session_or_log(
                     cx,
+                    auth_generation,
                     "failed to update pull request inbox state",
                     move |view, cx| {
                         if view.current_pull_request_inbox_key().as_ref() != Some(&key) {
@@ -278,7 +294,7 @@ impl AppView {
                                 view.mark_sync_failure(mode.active_sync_target());
                                 let mut status = pull_request_inbox_failed_status(&repo, mode);
                                 view.set_detail_loading(false);
-                                view.set_log_loading(false);
+
                                 view.pull_request_inbox.apply_failure(error.to_string());
                                 if !view.pull_requests.is_empty() {
                                     status = format!("{status}; showing existing data");

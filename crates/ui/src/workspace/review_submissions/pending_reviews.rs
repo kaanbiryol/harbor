@@ -13,6 +13,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.review_state.is_submitting_pending_review()
             || self.action_runtime.pull_request_action_running()
         {
@@ -69,15 +70,16 @@ impl AppView {
             .start_pull_request_action(crate::actions::PullRequestActionKind::Review);
         self.status = format!("Submitting pending review on PR #{}", pr.number);
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = github_api
                 .submit_pull_request_review(&pending_review.node_id, event, body.as_deref())
                 .await;
 
-            this.update_in_or_log(
+            this.update_window_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update pending review submission state",
                 move |view, window, cx| {
                     view.review_state.finish_pending_review_submission();

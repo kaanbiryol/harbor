@@ -28,9 +28,6 @@ mod selection;
 mod sync_runtime;
 #[path = "state/tasks.rs"]
 mod tasks;
-#[path = "state/workflow_log.rs"]
-mod workflow_log;
-
 pub(crate) use changed_files::ChangedFilesUiState;
 pub(crate) use checks::ChecksUiState;
 pub(crate) use detail::{PullRequestDetailLoadedState, PullRequestDetailUiState};
@@ -48,7 +45,6 @@ pub(crate) use review_runtime::ReviewRuntimeState;
 pub(crate) use selection::PullRequestSelectionState;
 pub(crate) use sync_runtime::SyncRuntimeState;
 pub(crate) use tasks::{RepositoryActionsTaskKind, SelectedPullRequestTaskKind, WorkspaceTasks};
-pub(crate) use workflow_log::WorkflowLogState;
 
 #[cfg(test)]
 mod tests {
@@ -59,8 +55,7 @@ mod tests {
 
     #[test]
     fn pull_request_detail_state_tracks_section_load_transitions() {
-        let mut state =
-            PullRequestDetailUiState::new(Vec::new(), Vec::new(), WorkflowLogState::new());
+        let mut state = PullRequestDetailUiState::new(Vec::new(), Vec::new());
 
         assert!(state.should_load_details());
         assert!(!state.details_ready());

@@ -190,7 +190,7 @@ impl AppView {
                 .detail_state
                 .loaded_sections(self.review_state.reviews_finished()),
             pending_review: self.review_state.pending_review_cloned(),
-            log_chunk: self.detail_state.log_state.shared_chunk(),
+            log_chunk: self.detail_state.log_chunk.clone(),
             current_user_login: self.review_state.current_user_login().map(str::to_string),
             changed_files_state: self.changed_files_state.clone(),
             expanded_check_groups: self.checks_state.expanded_groups.clone(),
@@ -253,9 +253,7 @@ impl AppView {
     fn prepare_detail_snapshot_restore(&mut self) {
         self.tasks.cancel_selected_pull_request_tasks();
         self.set_detail_loading(false);
-        self.set_log_loading(false);
         self.clear_detail_errors();
-        self.clear_log_error();
         self.clear_action_errors();
         self.clear_review_submission_errors();
         self.clear_review_composer_state();
@@ -286,10 +284,9 @@ impl AppView {
             snapshot.current_user_login.clone(),
             snapshot.detail_loaded.reviews,
         );
-        self.detail_state
-            .log_state
-            .restore_chunk(snapshot.log_chunk.clone());
-        self.filter_workflow_logs(cx);
+        self.workflow_logs = None;
+        self.workflow_log_subscription = None;
+        self.detail_state.log_chunk = snapshot.log_chunk.clone();
         self.changed_files_state = snapshot.changed_files_state.clone();
         self.checks_state.expanded_groups = snapshot.expanded_check_groups.clone();
         self.selection_state.restore_diff_position(

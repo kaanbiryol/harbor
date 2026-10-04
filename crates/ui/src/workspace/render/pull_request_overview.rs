@@ -17,6 +17,8 @@ mod activity;
 mod description;
 #[path = "pull_request_overview/events.rs"]
 mod events;
+#[path = "pull_request_overview/metadata_picker.rs"]
+mod metadata_picker;
 #[path = "pull_request_overview/model.rs"]
 mod model;
 #[path = "pull_request_overview/readiness.rs"]
@@ -28,6 +30,8 @@ mod timeline;
 
 use events::*;
 use model::*;
+#[cfg(test)]
+use readiness::{merge_readiness, pull_request_readiness};
 use sidebar::*;
 use timeline::*;
 

@@ -23,8 +23,7 @@ use super::{
         ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
         PullRequestDetailUiState, PullRequestInboxState, PullRequestSearchState,
         PullRequestSelectionState, RepositoryActionsUiState, RepositoryUiState,
-        ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkflowLogState,
-        WorkspaceTasks,
+        ReviewComposerState, ReviewRuntimeState, SyncRuntimeState, WorkspaceTasks,
     },
 };
 
@@ -223,22 +222,20 @@ impl AppView {
             "Ready".to_string()
         };
 
-        let mut log_state = WorkflowLogState::new();
         let log_search = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Search logs…")
                 .clean_on_escape()
         });
-        log_state.search_subscription = Some(cx.subscribe(&log_search, |view, _, event, cx| {
-            if matches!(event, crate::gpui_component::input::InputEvent::Change) {
-                view.filter_workflow_logs(cx);
-            }
-        }));
-        log_state.search_input = Some(log_search);
         let mut view = Self {
             focus_handle: cx.focus_handle(),
             pull_requests,
             github_api,
+            workflow_logs: None,
+            workflow_log_input: log_search,
+            workflow_log_subscription: None,
+            auth_generation: 0,
+            cache_account: None,
             auth_status: GitHubAuthStatus::Loading,
             github_cli_availability: GitHubCliAvailability::Checking,
             github_auth_popover_open: false,
@@ -254,7 +251,7 @@ impl AppView {
                 storage,
             ),
             repository_actions_state: RepositoryActionsUiState::new(),
-            detail_state: PullRequestDetailUiState::new(files, diffs, log_state),
+            detail_state: PullRequestDetailUiState::new(files, diffs),
             review_state: ReviewRuntimeState::new(
                 pull_request_reviews,
                 review_threads,
@@ -316,6 +313,7 @@ impl AppView {
             pull_request_search_input,
             external_app_availability: ExternalAppAvailability::default(),
             changed_files_state: ChangedFilesUiState::default(),
+            changed_file_cache: Default::default(),
             checks_state: ChecksUiState::default(),
             action_runtime: ActionRuntimeState::default(),
             merge_bypass_enabled: false,

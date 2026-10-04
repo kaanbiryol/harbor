@@ -426,6 +426,7 @@ impl GraphQlReviewThread {
             range,
             state: map_review_thread_state(self.is_resolved, self.is_outdated),
             comments,
+            comments_complete: !self.comments.page_info.has_next_page,
         }
     }
 }

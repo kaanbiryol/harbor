@@ -161,7 +161,7 @@ impl AppView {
         let visible_file_indices = self.visible_file_indices(cx);
         let mut targets = Vec::new();
 
-        for (file_position, file_index) in visible_file_indices.into_iter().enumerate() {
+        for (file_position, file_index) in visible_file_indices.iter().copied().enumerate() {
             let Some(file) = self.detail_state.files().get(file_index) else {
                 continue;
             };

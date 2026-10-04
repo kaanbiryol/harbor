@@ -231,6 +231,7 @@ impl AppView {
         source: GitHubAuthSource,
         cx: &mut Context<Self>,
     ) {
+        self.clear_authenticated_github_content();
         self.auth_status = GitHubAuthStatus::SignedIn {
             login: None,
             source,
@@ -241,7 +242,6 @@ impl AppView {
             GitHubAuthSource::OAuth => "Signed in to GitHub".to_string(),
             GitHubAuthSource::GhCli => "Signed in with GitHub CLI".to_string(),
         };
-        self.load_repository_preferences(cx);
         self.refresh_authenticated_github_user(cx);
     }
 
@@ -269,14 +269,30 @@ impl AppView {
             .map_err(|error| error.to_string())
     }
 
+    pub(super) fn github_api_for_request(&self) -> std::sync::Arc<dyn super::GitHubApi> {
+        self.github_api
+            .snapshot()
+            .unwrap_or_else(|| self.github_api.clone())
+    }
+
+    pub(super) fn cache_store(&self) -> Option<SqliteStore> {
+        let account = self.cache_account.as_deref()?;
+        self.repository_state
+            .store()
+            .map(|store| store.for_account(account))
+    }
+
     fn refresh_authenticated_github_user(&self, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         let github_api = self.github_api.clone();
+        let task = cx.background_spawn(async move { github_api.current_user().await });
 
         cx.spawn(async move |this, cx| {
-            let result = github_api.current_user().await;
+            let result = task.await;
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update github account state",
                 move |view, cx| match result {
                     Ok(login) => {
@@ -288,13 +304,20 @@ impl AppView {
                                 login: Some(login.clone()),
                                 source,
                             };
+                            view.cache_account = Some(login.clone());
                             view.review_state.set_current_user_login(Some(login));
+                            view.load_repository_preferences(cx);
                             cx.notify();
                         }
                     }
                     Err(error) => {
                         if matches!(view.auth_status, GitHubAuthStatus::SignedIn { .. }) {
                             tracing::warn!(%error, "failed to load signed-in github account");
+                            view.load_repository_preferences(cx);
+                            view.status = format!(
+                                "Could not identify GitHub account; disk cache disabled: {error}"
+                            );
+                            cx.notify();
                         }
                     }
                 },

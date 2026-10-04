@@ -52,6 +52,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self
             .action_runtime
             .pull_request_description_action_running()
@@ -78,15 +79,16 @@ impl AppView {
         self.action_runtime.start_pull_request_description_action();
         self.status = format!("Saving description for PR #{pull_request_number}");
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = github_api
                 .update_pull_request_body(&pull_request_node_id, &body)
                 .await;
 
-            this.update_in_or_log(
+            this.update_window_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update pull request description state",
                 move |view, window, cx| {
                     match result {

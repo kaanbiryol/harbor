@@ -14,72 +14,59 @@ use harbor_domain::{
     PullRequestMetadataOptions, PullRequestReview, ReactionContent, RepoId, ReviewCommentRange,
     ReviewThread, Workflow, WorkflowJob, WorkflowRun,
 };
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct GitHubSession {
-    client: Arc<Mutex<Option<GitHubClient<GitHubTransportSource>>>>,
-    current_user_login: Arc<Mutex<Option<String>>>,
+    state: Arc<Mutex<SessionState>>,
 }
 
-impl Default for GitHubSession {
-    fn default() -> Self {
-        Self {
-            client: Arc::new(Mutex::new(None)),
-            current_user_login: Arc::new(Mutex::new(None)),
-        }
-    }
-}
-
-impl GitHubSession {
-    fn has_configured_client(&self) -> bool {
-        self.client
-            .lock()
-            .map(|client| client.is_some())
-            .unwrap_or(false)
-    }
+#[derive(Clone, Debug, Default)]
+struct SessionState {
+    client: Option<GitHubClient<GitHubTransportSource>>,
+    current_user_login: Option<String>,
+    generation: u64,
 }
 
 impl GitHubSession {
     pub(super) fn client(&self) -> Result<GitHubClient<GitHubTransportSource>> {
-        self.client
+        self.state
             .lock()
             .map_err(|error| GitHubError::Transport(error.to_string()))?
+            .client
             .clone()
             .ok_or(GitHubError::Unauthenticated)
     }
 
-    pub(super) fn cached_current_user_login(&self) -> Result<Option<String>> {
-        self.current_user_login
+    fn replace_client(&self, client: Option<GitHubClient<GitHubTransportSource>>) -> Result<()> {
+        let mut state = self
+            .state
             .lock()
-            .map(|login| login.clone())
-            .map_err(|error| GitHubError::Transport(error.to_string()))
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        state.generation = state.generation.wrapping_add(1);
+        state.client = client;
+        state.current_user_login = None;
+        Ok(())
     }
 
-    pub(super) fn cache_current_user_login(&self, login: String) -> Result<()> {
-        self.current_user_login
+    fn cache_current_user_login(&self, generation: u64, login: String) -> Result<()> {
+        let mut state = self
+            .state
             .lock()
-            .map(|mut cached_login| {
-                *cached_login = Some(login);
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))
-    }
-
-    fn clear_current_user_login(&self) -> Result<()> {
-        self.current_user_login
-            .lock()
-            .map(|mut login| {
-                *login = None;
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))
+            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        if state.generation != generation {
+            return Err(GitHubError::SessionChanged);
+        }
+        state.current_user_login = Some(login);
+        Ok(())
     }
 }
 
 #[async_trait]
 impl PullRequestInboxSource for GitHubSession {
     fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
-        self.client
+        self.state
             .lock()
             .ok()
-            .and_then(|client| client.as_ref().map(GitHubClient::latest_rate_limits))
+            .and_then(|state| state.client.as_ref().map(GitHubClient::latest_rate_limits))
             .unwrap_or_default()
     }
 
@@ -194,49 +181,50 @@ impl PullRequestContentSource for GitHubSession {
 
 #[async_trait]
 impl GitHubAuthApi for GitHubSession {
+    fn snapshot(&self) -> Option<Arc<dyn crate::GitHubApi>> {
+        let state = match self.state.lock() {
+            Ok(state) => state.clone(),
+            Err(error) => {
+                tracing::error!(%error, "failed to snapshot github session");
+                SessionState::default()
+            }
+        };
+        Some(Arc::new(Self {
+            state: Arc::new(Mutex::new(state)),
+        }))
+    }
+
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
-        self.client
-            .lock()
-            .ok()
-            .and_then(|client| client.as_ref().and_then(GitHubClient::latest_rate_limit))
+        self.state.lock().ok().and_then(|state| {
+            state
+                .client
+                .as_ref()
+                .and_then(GitHubClient::latest_rate_limit)
+        })
     }
 
     fn configure_token(&self, token: String) -> Result<()> {
         let transport = OctocrabTransport::with_token(token)?;
-        let mut client = self
-            .client
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        *client = Some(GitHubClient::new(GitHubTransportSource::Token(transport)));
-        self.clear_current_user_login()?;
-        Ok(())
+        self.replace_client(Some(GitHubClient::new(GitHubTransportSource::Token(
+            transport,
+        ))))
     }
 
     fn configure_gh_cli(&self) -> Result<()> {
-        let mut client = self
-            .client
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        *client = Some(GitHubClient::new(GitHubTransportSource::GhCli(
+        self.replace_client(Some(GitHubClient::new(GitHubTransportSource::GhCli(
             GhCliTransport::default(),
-        )));
-        self.clear_current_user_login()?;
-        Ok(())
+        ))))
     }
 
     fn clear_auth(&self) -> Result<()> {
-        self.client
-            .lock()
-            .map(|mut client| {
-                *client = None;
-            })
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
-        self.clear_current_user_login()?;
-        Ok(())
+        self.replace_client(None)
     }
 
     fn has_auth(&self) -> bool {
-        self.has_configured_client()
+        self.state
+            .lock()
+            .map(|state| state.client.is_some())
+            .unwrap_or(false)
     }
 }
 
@@ -261,13 +249,21 @@ impl GitHubRepositoryApi for GitHubSession {
     }
 
     async fn current_user(&self) -> Result<String> {
-        if let Some(login) = self.cached_current_user_login()? {
-            return Ok(login);
-        }
-
-        let login = self.client()?.current_user().await?;
-        self.cache_current_user_login(login.clone())?;
-
+        let (client, generation) = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|error| GitHubError::Transport(error.to_string()))?;
+            if let Some(login) = &state.current_user_login {
+                return Ok(login.clone());
+            }
+            (
+                state.client.clone().ok_or(GitHubError::Unauthenticated)?,
+                state.generation,
+            )
+        };
+        let login = client.current_user().await?;
+        self.cache_current_user_login(generation, login.clone())?;
         Ok(login)
     }
 }
@@ -637,18 +633,51 @@ mod tests {
     fn auth_configuration_clears_cached_user_state() {
         let session = GitHubSession::default();
         session
-            .cache_current_user_login("octocat".to_string())
+            .cache_current_user_login(0, "octocat".to_string())
             .expect("cache current user");
 
         session.configure_gh_cli().expect("configure github cli");
 
         assert!(session.has_auth());
         assert_eq!(
-            session.cached_current_user_login().expect("cached user"),
+            session
+                .state
+                .lock()
+                .expect("session state")
+                .current_user_login,
             None
         );
 
         session.clear_auth().expect("clear github auth");
         assert!(!session.has_auth());
+    }
+    #[test]
+    fn delayed_current_user_cannot_repopulate_a_replaced_session() {
+        let session = GitHubSession::default();
+        session.configure_gh_cli().expect("configure old session");
+        let old_generation = session.state.lock().expect("session state").generation;
+        session.configure_gh_cli().expect("replace session");
+        assert!(matches!(
+            session.cache_current_user_login(old_generation, "old-account".into()),
+            Err(GitHubError::SessionChanged)
+        ));
+        assert!(
+            session
+                .state
+                .lock()
+                .expect("session state")
+                .current_user_login
+                .is_none()
+        );
+    }
+    #[test]
+    fn request_snapshot_keeps_its_credentials_after_sign_out() {
+        let session = GitHubSession::default();
+        session.configure_gh_cli().unwrap();
+        let request = session.snapshot().unwrap();
+        session.clear_auth().unwrap();
+        assert!(!session.has_auth());
+        assert!(request.has_auth());
+        assert!(!session.snapshot().unwrap().has_auth());
     }
 }

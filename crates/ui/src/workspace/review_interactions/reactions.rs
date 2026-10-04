@@ -14,6 +14,7 @@ impl AppView {
         content: ReactionContent,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.review_state.reaction_action_running() {
             self.status = "A review reaction action is already running".to_string();
             cx.notify();
@@ -61,7 +62,7 @@ impl AppView {
         self.remeasure_overview_thread_item_for_comment(&comment_id);
         self.status = format!("Updating reaction on PR #{}", pr.number);
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let overview_comment_id = comment_id.clone();
 
         cx.spawn(async move |this, cx| {
@@ -75,8 +76,9 @@ impl AppView {
                     .await
             };
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update review reaction state",
                 move |view, cx| {
                     view.review_state.finish_review_reaction_action();

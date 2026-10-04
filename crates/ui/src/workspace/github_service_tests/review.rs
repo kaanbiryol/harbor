@@ -11,6 +11,34 @@ use crate::{
 use super::{github_error, init_workspace_service_test};
 
 #[gpui::test]
+async fn incomplete_comments_remain_visible_with_a_warning_after_cache_restore(
+    cx: &mut TestAppContext,
+) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let mut thread = review_thread(ReviewThreadState::Unresolved);
+    thread.comments_complete = false;
+    api.push_current_user(Ok("octocat".into()));
+    api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::new()));
+    api.push_review_threads(Ok(vec![thread.clone()]));
+    let (view, cx) = init_workspace_service_test(cx, api);
+    view.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.load_selected_review_data(cx);
+    });
+    cx.run_until_parked();
+    view.update(cx, |view, cx| {
+        assert_eq!(view.review_state.review_threads(), &[thread.clone()]);
+        assert!(view.review_state.reviews_error().is_some());
+        assert!(!view.review_state.reviews_loading());
+        view.clear_selected_pull_request_detail_state();
+        assert!(view.restore_selected_pull_request_detail_snapshot(cx));
+        assert_eq!(view.review_state.review_threads(), &[thread]);
+        assert!(view.review_state.reviews_error().is_some());
+    });
+}
+
+#[gpui::test]
 async fn refresh_review_data_keeps_reviews_when_threads_fail(cx: &mut TestAppContext) {
     let api = Arc::new(FakeGitHubApi::default());
     let pull_request = pull_request();

@@ -502,6 +502,7 @@ mod tests {
         body: &str,
     ) -> ReviewThread {
         ReviewThread {
+            comments_complete: true,
             id: thread_id.to_string(),
             path: range.path.clone(),
             range: Some(range.clone()),

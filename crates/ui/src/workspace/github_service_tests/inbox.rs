@@ -44,7 +44,7 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
         view.prefetch_visible_pull_request_row_enrichments(0..1, cx);
     });
     cx.run_until_parked();
-    assert_eq!(
+    super::assert_calls_unordered(
         api.calls(),
         vec![
             "list_repository_pull_requests_light",
@@ -55,8 +55,8 @@ async fn loads_pull_request_inbox_success_from_service(cx: &mut TestAppContext) 
             "list_pull_request_reviews",
             "list_pull_request_comments",
             "list_review_threads",
-            "list_pull_request_commits"
-        ]
+            "list_pull_request_commits",
+        ],
     );
     assert_eq!(api.light_pull_request_requests(), vec![(None, 25, false)]);
 }

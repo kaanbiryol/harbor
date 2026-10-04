@@ -93,6 +93,8 @@ pub struct GitHubRequestAttribution {
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum GitHubError {
+    #[error("github authentication changed while the request was running")]
+    SessionChanged,
     #[error("github authentication is required")]
     Unauthenticated,
     #[error("github cli is not installed or not available on PATH")]
@@ -111,7 +113,8 @@ pub enum GitHubError {
     Mapping(String),
 }
 pub use api::{
-    GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi, GitHubRepositoryApi,
-    GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi, GitHubWorkflowMutationApi,
-    PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource,
+    GitHubApi, GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi,
+    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
+    GitHubWorkflowMutationApi, PullRequestCiSource, PullRequestContentSource,
+    PullRequestInboxSource,
 };

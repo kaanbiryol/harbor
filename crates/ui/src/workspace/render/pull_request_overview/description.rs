@@ -19,6 +19,7 @@ impl AppView {
         detail_key: PullRequestDetailCacheKey,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.overview_state.description_ready() {
             return;
         }
@@ -47,8 +48,9 @@ impl AppView {
 
         cx.spawn(async move |this, cx| {
             let blocks = split_markdown.await;
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to prepare pull request description",
                 move |view, cx| {
                     if !view

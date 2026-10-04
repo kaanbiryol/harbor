@@ -586,6 +586,7 @@ mod tests {
         original_line: Option<u32>,
     ) -> ReviewThread {
         ReviewThread {
+            comments_complete: true,
             id: id.to_string(),
             path: path.to_string(),
             range: None,

@@ -7,8 +7,8 @@ use crate::{
     panels::{
         ActionsPanelRenderInput, CheckPanelRenderInput, CommitsPanelRenderInput,
         DiffPanelRenderInput, ReviewPanelRenderInput, navigation_tab, render_actions_panel,
-        render_checks_panel, render_commits_panel, render_diff_panel, render_logs_panel,
-        render_review_panel, render_tab_count,
+        render_checks_panel, render_commits_panel, render_diff_panel, render_review_panel,
+        render_tab_count,
     },
     visual::{Tone, color},
     workspace::AppView,
@@ -227,7 +227,12 @@ impl AppView {
                             cx,
                         )
                         .into_any_element(),
-                        PanelTab::Logs => render_logs_panel(self, cx).into_any_element(),
+                        PanelTab::Logs => div()
+                            .flex_1()
+                            .min_h_0()
+                            .min_w_0()
+                            .children(self.ensure_workflow_log_view(cx))
+                            .into_any_element(),
                     }),
             )
     }

@@ -10,9 +10,10 @@ impl SqliteStore {
         let row = sqlx::query(
             "SELECT etag, last_modified
              FROM http_cache_validators
-             WHERE request_key = ?1",
+             WHERE request_key = ?1 AND account = ?2",
         )
         .bind(request_key)
+        .bind(&self.cache_account)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -34,9 +35,9 @@ impl SqliteStore {
         }
 
         sqlx::query(
-            "INSERT INTO http_cache_validators (request_key, etag, last_modified, updated_at)
-             VALUES (?1, ?2, ?3, unixepoch())
-             ON CONFLICT(request_key) DO UPDATE SET
+            "INSERT INTO http_cache_validators (request_key, etag, last_modified, updated_at, account)
+             VALUES (?1, ?2, ?3, unixepoch(), ?4)
+             ON CONFLICT(account, request_key) DO UPDATE SET
                 etag = excluded.etag,
                 last_modified = excluded.last_modified,
                 updated_at = excluded.updated_at",
@@ -44,6 +45,7 @@ impl SqliteStore {
         .bind(request_key)
         .bind(&validator.etag)
         .bind(&validator.last_modified)
+        .bind(&self.cache_account)
         .execute(&self.pool)
         .await?;
 

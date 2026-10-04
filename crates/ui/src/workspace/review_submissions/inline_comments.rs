@@ -12,6 +12,7 @@ impl AppView {
         submission: ReviewCommentSubmission,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.review_state.is_submitting_review_comment() {
             self.status = "A review comment is already being submitted".to_string();
             cx.notify();
@@ -113,7 +114,7 @@ impl AppView {
             }
         };
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn(async move |this, cx| {
             let result = match submission {
@@ -150,8 +151,9 @@ impl AppView {
                 }
             };
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update review comment submission state",
                 move |view, cx| {
                     if submission == ReviewCommentSubmission::StartReview {

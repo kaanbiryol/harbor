@@ -10,6 +10,7 @@ impl AppView {
         resolved: bool,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.review_state.thread_action_running() {
             self.status = "A review thread action is already running".to_string();
             cx.notify();
@@ -50,7 +51,7 @@ impl AppView {
             format!("Reopening review thread on PR #{}", pr.number)
         };
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
         let overview_thread_id = thread_id.clone();
 
         cx.spawn(async move |this, cx| {
@@ -60,8 +61,9 @@ impl AppView {
                 github_api.unresolve_review_thread(&thread_id).await
             };
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update review thread action state",
                 move |view, cx| {
                     view.review_state.finish_review_thread_action();

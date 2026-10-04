@@ -142,6 +142,7 @@ pub(crate) fn positioned_review_comment() -> ReviewComment {
 
 pub(crate) fn review_thread(state: ReviewThreadState) -> ReviewThread {
     ReviewThread {
+        comments_complete: true,
         id: "thread-1".to_string(),
         path: "src/lib.rs".to_string(),
         range: None,

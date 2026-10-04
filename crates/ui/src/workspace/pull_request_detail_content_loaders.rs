@@ -34,13 +34,14 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_details() {
             return;
         }
 
         self.detail_state.start_details_load();
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let detail_key = load.detail_key();
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Metadata,
@@ -49,16 +50,23 @@ impl AppView {
                 let number = load.number;
 
                 async move |this, cx| {
-                    let refresh = refresh_pull_request_metadata(
-                        github_api.as_ref(),
-                        store.as_ref(),
-                        &repo,
-                        number,
-                    )
-                    .await;
+                    let refresh = cx
+                        .background_spawn({
+                            async move {
+                                refresh_pull_request_metadata(
+                                    github_api.as_ref(),
+                                    store.as_ref(),
+                                    &repo,
+                                    number,
+                                )
+                                .await
+                            }
+                        })
+                        .await;
 
-                    this.update_or_log(
+                    this.update_in_session_or_log(
                         cx,
+                        auth_generation,
                         "failed to update pull request detail state",
                         move |view, cx| {
                             if !selected_pull_request_matches(view, &detail_key) {
@@ -70,11 +78,7 @@ impl AppView {
                             }
                             match refresh.result {
                                 Ok(detail) => {
-                                    view.mark_sync_success(SyncTarget::SelectedPullRequestMetadata);
-                                    view.replace_selected_pull_request_preserving_row_fields(
-                                        detail,
-                                    );
-                                    view.detail_state.apply_details_success();
+                                    view.apply_pull_request_metadata(detail, cx);
                                     view.status = format!("Loaded PR #{number} details");
                                 }
                                 Err(error) => {
@@ -98,13 +102,14 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_files() {
             return;
         }
 
         self.detail_state.start_files_load();
-        let github_api = self.github_api.clone();
-        let store = self.repository_state.store();
+        let github_api = self.github_api_for_request();
+        let store = self.cache_store();
         let detail_key = load.detail_key();
         self.tasks.set_selected_pull_request_task(
             SelectedPullRequestTaskKind::Files,
@@ -115,14 +120,20 @@ impl AppView {
                 let highlight_theme = cx.theme().highlight_theme.clone();
 
                 async move |this, cx| {
-                    let refresh = refresh_pull_request_files(
-                        github_api.as_ref(),
-                        store.as_ref(),
-                        &repo,
-                        number,
-                        &head_sha,
-                    )
-                    .await;
+                    let refresh = cx
+                        .background_spawn({
+                            async move {
+                                refresh_pull_request_files(
+                                    github_api.as_ref(),
+                                    store.as_ref(),
+                                    &repo,
+                                    number,
+                                    &head_sha,
+                                )
+                                .await
+                            }
+                        })
+                        .await;
                     let result = match refresh.result {
                         Ok(files) => Ok(cx
                             .background_spawn(async move {
@@ -135,8 +146,9 @@ impl AppView {
                     let update_detail_key = detail_key.clone();
 
                     let Some(files_for_syntax) = this
-                        .update_or_log(
+                        .update_in_session_or_log(
                             cx,
+                            auth_generation,
                             "failed to update pull request file state",
                             move |view, cx| {
                                 view.apply_pull_request_files_result(

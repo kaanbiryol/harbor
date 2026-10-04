@@ -63,10 +63,13 @@ impl AppView {
     }
 
     pub(super) fn clear_log_content(&mut self) {
-        self.detail_state.log_state.clear_content();
+        self.workflow_logs = None;
+        self.workflow_log_subscription = None;
+        self.detail_state.log_chunk = None;
     }
 
     pub(super) fn clear_selected_pull_request_detail_state(&mut self) {
+        self.sync_runtime.clear_selected_pull_request();
         self.active_commit_sha = None;
         self.pull_request_description_editing = false;
         self.merge_bypass_enabled = false;
@@ -90,22 +93,10 @@ impl AppView {
             .update(cx, |input, cx| input.set_value("", window, cx));
     }
 
-    pub(super) fn clear_log_error(&mut self) {
-        self.detail_state.log_state.clear_error();
-    }
-
-    pub(super) fn set_log_loading(&mut self, loading: bool) {
-        self.detail_state.log_state.set_loading(loading);
-    }
-
     pub(super) fn reset_detail_scrolls(&mut self) {
         self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.reset_diff_list_scroll();
         self.reset_panel_list_scrolls();
-        self.detail_state
-            .log_state
-            .list_scroll
-            .scroll_to_item(0, ScrollStrategy::Top);
     }
 
     pub(super) fn reset_panel_list_scrolls(&mut self) {
@@ -134,6 +125,17 @@ impl AppView {
     }
 
     pub(super) fn clear_authenticated_github_content(&mut self) {
+        self.auth_generation = self.auth_generation.wrapping_add(1);
+        self.cache_account = None;
+        self.tasks.cancel_repository_task();
+        self.pull_request_inbox.clear_cache();
+        self.detail_state.clear_snapshots();
+        self.changed_file_cache.clear();
+        self.diff_display = Default::default();
+        self.sync_runtime.clear();
+        self.action_runtime = Default::default();
+        self.pull_request_metadata_options = Default::default();
+        self.notification_state.notification_dedupe.clear();
         self.tasks.cancel_pull_request_list_task();
         self.clear_pull_request_search();
         self.tasks.cancel_selected_pull_request_tasks();
@@ -156,8 +158,6 @@ impl AppView {
         self.overview_state.clear_cached_content();
         self.clear_review_submission_errors();
         self.clear_log_content();
-        self.clear_log_error();
-        self.set_log_loading(false);
         self.review_state.set_current_user_login(None);
         self.diff_list_items = Arc::from([]);
         self.active_tab = PanelTab::Overview;

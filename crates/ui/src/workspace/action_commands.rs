@@ -76,6 +76,7 @@ impl AppView {
     }
 
     pub(crate) fn run_workflow_action(&mut self, action: WorkflowAction, cx: &mut Context<Self>) {
+        let auth_generation = self.auth_generation;
         self.active_tab = PanelTab::Actions;
 
         if self.action_runtime.workflow_action_running() {
@@ -98,7 +99,7 @@ impl AppView {
         self.action_runtime.start_workflow_action(action);
         self.status = request.start_status();
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn(async move |this, cx| {
             let result = match &request {
@@ -121,8 +122,9 @@ impl AppView {
                 } => github_api.rerun_failed_jobs(owner, repo, *run_id).await,
             };
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update workflow action state",
                 move |view, cx| {
                     match result {
@@ -244,6 +246,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let auth_generation = self.auth_generation;
         if self.review_state.has_pending_review() {
             match action {
                 PullRequestAction::Approve { .. } => {
@@ -288,7 +291,7 @@ impl AppView {
             .start_pull_request_action(request.kind());
         self.status = request.start_status();
         cx.notify();
-        let github_api = self.github_api.clone();
+        let github_api = self.github_api_for_request();
 
         cx.spawn(async move |this, cx| {
             let result = match &request {
@@ -344,8 +347,9 @@ impl AppView {
                 }
             };
 
-            this.update_or_log(
+            this.update_in_session_or_log(
                 cx,
+                auth_generation,
                 "failed to update pull request action state",
                 move |view, cx| {
                     match result {
