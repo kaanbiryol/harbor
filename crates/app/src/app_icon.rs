@@ -1,30 +1,19 @@
 #[cfg(target_os = "macos")]
 pub(crate) fn install() {
-    use cocoa::{
-        appkit::{NSApplication, NSImage},
-        base::{id, nil},
-        foundation::{NSAutoreleasePool, NSData, NSUInteger},
-    };
-    use std::os::raw::c_void;
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
 
     const HARBOR_ICON: &[u8] = include_bytes!("../assets/harbor.icns");
 
-    unsafe {
-        let pool = NSAutoreleasePool::new(nil);
-        let data = NSData::dataWithBytes_length_(
-            nil,
-            HARBOR_ICON.as_ptr().cast::<c_void>(),
-            HARBOR_ICON.len() as NSUInteger,
-        );
-        let image: id = NSImage::initWithData_(NSImage::alloc(nil), data);
-
-        if image != nil {
-            let app = NSApplication::sharedApplication(nil);
-            app.setApplicationIconImage_(image);
-            image.autorelease();
-        }
-
-        pool.drain();
+    let Some(main_thread) = MainThreadMarker::new() else {
+        tracing::warn!("skipping app icon install off the main thread");
+        return;
+    };
+    let data = NSData::with_bytes(HARBOR_ICON);
+    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+        let app = NSApplication::sharedApplication(main_thread);
+        unsafe { app.setApplicationIconImage(Some(&image)) };
     }
 }
 

@@ -190,11 +190,14 @@ pub(super) fn workflow_log_text_from_zip(body: &[u8]) -> Result<String> {
         let mut file = archive
             .by_index(index)
             .map_err(|error| GitHubError::Mapping(error.to_string()))?;
-        if file.is_dir() || file.name().rsplit('/').next() == Some("system.txt") {
+        let name = file
+            .name()
+            .map_err(|error| GitHubError::Mapping(error.to_string()))?
+            .into_owned();
+        if file.is_dir() || name.rsplit('/').next() == Some("system.txt") {
             continue;
         }
 
-        let name = file.name().to_string();
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)
             .map_err(|error| GitHubError::Mapping(error.to_string()))?;

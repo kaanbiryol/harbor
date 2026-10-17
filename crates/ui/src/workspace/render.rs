@@ -1,7 +1,4 @@
-use crate::gpui_component::{
-    Root,
-    resizable::{h_resizable, resizable_panel},
-};
+use crate::gpui_component::resizable::{h_resizable, resizable_panel};
 use gpui::{
     App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, Window, div, prelude::*, px,
 };
@@ -223,6 +220,5 @@ impl Render for AppView {
             .when(self.review_action_comment_target.is_some(), |element| {
                 element.child(self.render_review_action_comment_dialog(cx))
             })
-            .children(Root::render_dialog_layer(window, cx))
     }
 }
