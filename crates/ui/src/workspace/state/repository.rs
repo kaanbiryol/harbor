@@ -6,7 +6,7 @@ use std::{
 use crate::gpui_component::input::InputState;
 use gpui::Entity;
 use harbor_domain::RepoId;
-use harbor_storage::SqliteStore;
+use harbor_sync::SqliteStore;
 
 pub(crate) struct RepositoryUiState {
     repositories: Vec<RepoId>,

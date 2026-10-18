@@ -32,6 +32,16 @@ pub enum SyncDecision {
     Backoff(Duration),
 }
 
+impl SyncDecision {
+    pub fn loop_delay(self) -> Duration {
+        match self {
+            Self::RunNow => Duration::from_secs(1),
+            Self::Wait(delay) | Self::Backoff(delay) => delay,
+            Self::SkipInFlight => Duration::from_secs(5),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SyncState {
     pub last_successful_fetch_at: Option<DateTime<Utc>>,

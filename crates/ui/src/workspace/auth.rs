@@ -1,5 +1,5 @@
 use gpui::{AppContext, Context, Window};
-use harbor_storage::SqliteStore;
+use harbor_sync::SqliteStore;
 
 use crate::{
     actions::SignOutOfGitHub,
@@ -9,7 +9,6 @@ use crate::{
 use super::{GitHubAuthSource, GitHubAuthStatus, GitHubCliAvailability};
 
 pub(super) const GITHUB_CREDENTIAL_URL: &str = "harbor://github/oauth";
-pub(super) const GITHUB_AUTH_SOURCE_SETTING_KEY: &str = "github.auth_source";
 pub(super) const GITHUB_OAUTH_CLIENT_ID_ENV: &str = "HARBOR_GITHUB_OAUTH_CLIENT_ID";
 const DEFAULT_GITHUB_OAUTH_CLIENT_ID: &str = "Ov23liH046TDAFHhtJEU";
 
@@ -331,8 +330,7 @@ pub(super) async fn load_saved_github_auth_source(
     store: Option<SqliteStore>,
 ) -> std::result::Result<Option<GitHubAuthSource>, String> {
     let store = store.ok_or_else(|| "storage was not initialized".to_string())?;
-    let value = store
-        .load_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY)
+    let value = harbor_sync::load_github_auth_source(&store)
         .await
         .map_err(|error| error.to_string())?;
 
@@ -344,8 +342,7 @@ pub(super) async fn save_github_auth_source(
     source: GitHubAuthSource,
 ) -> std::result::Result<(), String> {
     let store = store.ok_or_else(|| "storage was not initialized".to_string())?;
-    store
-        .save_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY, source.storage_value())
+    harbor_sync::save_github_auth_source(&store, source.storage_value())
         .await
         .map_err(|error| error.to_string())
 }
@@ -354,8 +351,7 @@ async fn delete_saved_github_auth_source(
     store: Option<SqliteStore>,
 ) -> std::result::Result<(), String> {
     let store = store.ok_or_else(|| "storage was not initialized".to_string())?;
-    store
-        .delete_app_setting(GITHUB_AUTH_SOURCE_SETTING_KEY)
+    harbor_sync::delete_github_auth_source(&store)
         .await
         .map_err(|error| error.to_string())
 }

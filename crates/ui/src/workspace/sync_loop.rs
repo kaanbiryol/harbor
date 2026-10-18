@@ -91,19 +91,12 @@ impl AppView {
             return IDLE_SYNC_LOOP_DELAY;
         }
 
-        let active_inbox_delay =
-            self.sync_decision_delay(self.active_inbox_sync_decision(SyncReason::Scheduled));
+        let active_inbox_delay = self
+            .active_inbox_sync_decision(SyncReason::Scheduled)
+            .loop_delay();
         let selected_delay = self.next_selected_pull_request_sync_delay();
 
         active_inbox_delay.min(selected_delay)
-    }
-
-    fn sync_decision_delay(&self, decision: SyncDecision) -> Duration {
-        match decision {
-            SyncDecision::RunNow => Duration::from_secs(1),
-            SyncDecision::Wait(delay) | SyncDecision::Backoff(delay) => delay,
-            SyncDecision::SkipInFlight => Duration::from_secs(5),
-        }
     }
 
     fn active_inbox_sync_decision(&self, reason: SyncReason) -> SyncDecision {
@@ -188,10 +181,12 @@ impl AppView {
             return IDLE_SYNC_LOOP_DELAY;
         }
 
-        let mut delay = self.sync_decision_delay(self.sync_decision(
-            SyncTarget::SelectedPullRequestMetadata,
-            SyncReason::Scheduled,
-        ));
+        let mut delay = self
+            .sync_decision(
+                SyncTarget::SelectedPullRequestMetadata,
+                SyncReason::Scheduled,
+            )
+            .loop_delay();
 
         let active_panel_target = match self.active_tab {
             PanelTab::Overview | PanelTab::Review => Some(SyncTarget::SelectedPullRequestReviews),
@@ -201,8 +196,10 @@ impl AppView {
         };
 
         if let Some(target) = active_panel_target {
-            delay = delay
-                .min(self.sync_decision_delay(self.sync_decision(target, SyncReason::Scheduled)));
+            delay = delay.min(
+                self.sync_decision(target, SyncReason::Scheduled)
+                    .loop_delay(),
+            );
         }
 
         delay

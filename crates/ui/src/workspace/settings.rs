@@ -200,7 +200,7 @@ impl AppView {
         };
         self.preferences.loading = true;
         let revision = self.preferences.revision;
-        let task = cx.background_spawn(async move { store.load_preferences().await });
+        let task = cx.background_spawn(async move { harbor_sync::load_preferences(&store).await });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             if let Err(error) = this.update(cx, |view, cx| {
@@ -250,7 +250,7 @@ impl AppView {
                 let store = store.clone();
                 let result = cx
                     .background_executor()
-                    .spawn(async move { store.save_preferences(&preferences).await })
+                    .spawn(async move { harbor_sync::save_preferences(&store, &preferences).await })
                     .await;
                 if let Err(error) = &result {
                     tracing::warn!(%error, "failed to persist preferences");
@@ -400,7 +400,11 @@ mod tests {
         save.await;
         let loaded = cx
             .background_executor
-            .spawn(async move { store.load_preferences().await.expect("saved preferences") })
+            .spawn(async move {
+                harbor_sync::load_preferences(&store)
+                    .await
+                    .expect("saved preferences")
+            })
             .await;
         assert_eq!(loaded.code_font_size, 24.0);
         assert_eq!(loaded.editor, PreferredEditor::Zed);

@@ -45,32 +45,22 @@ impl AppView {
             let repo = load.repo.clone();
             let head_sha = load.head_sha.clone();
             async move {
-                let metadata = store
-                    .load_pull_request_metadata(&repo, load.number, &head_sha)
-                    .await?;
-                let files = store
-                    .load_pull_request_files(&repo, load.number, &head_sha)
-                    .await?
-                    .map(|files| {
+                let cached = harbor_sync::load_cached_pull_request_detail(
+                    &store,
+                    &repo,
+                    load.number,
+                    &head_sha,
+                )
+                .await?;
+                Ok::<_, harbor_sync::StorageError>(CachedSelectedPullRequestDetail {
+                    metadata: cached.metadata,
+                    files: cached.files.map(|files| {
                         let diffs = parse_files(&files);
                         (files, diffs)
-                    });
-                let check_runs = store
-                    .load_pull_request_check_runs(&repo, load.number, &head_sha)
-                    .await?;
-                let workflow_runs = store
-                    .load_pull_request_workflow_runs(&repo, load.number, &head_sha)
-                    .await?;
-                let review_data = store
-                    .load_pull_request_reviews(&repo, load.number, &head_sha)
-                    .await?;
-
-                harbor_storage::Result::Ok(CachedSelectedPullRequestDetail {
-                    metadata,
-                    files,
-                    check_runs,
-                    workflow_runs,
-                    review_data,
+                    }),
+                    check_runs: cached.check_runs,
+                    workflow_runs: cached.workflow_runs,
+                    review_data: cached.review_data,
                 })
             }
         });

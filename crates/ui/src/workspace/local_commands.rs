@@ -76,10 +76,13 @@ impl AppView {
                 .map_err(|error| error.to_string())?;
 
             if let Some(store) = store {
-                store
-                    .set_repository_local_path(&repository_for_task, &local_repository.repo_path)
-                    .await
-                    .map_err(|error| error.to_string())?;
+                harbor_sync::set_repository_local_path(
+                    &store,
+                    &repository_for_task,
+                    &local_repository.repo_path,
+                )
+                .await
+                .map_err(|error| error.to_string())?;
             }
 
             Ok::<PathBuf, String>(local_repository.repo_path)

@@ -6,7 +6,7 @@ use crate::gpui_component::{
 };
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
 use harbor_github::GitHubApi;
-use harbor_storage::SqliteStore;
+use harbor_sync::SqliteStore;
 use harbor_sync::{ActivityState, SyncPolicy};
 
 use crate::{

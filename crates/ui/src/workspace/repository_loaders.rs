@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gpui::{AppContext, Context};
 use harbor_domain::RepoId;
-use harbor_storage::{RecentRepository, SqliteStore, StorageError};
+use harbor_sync::{RecentRepository, StorageError};
 
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 use harbor_github::GitHubApi;
@@ -21,18 +21,21 @@ impl AppView {
             return;
         };
         self.repository_state.start_loading();
-        let task =
-            cx.background_spawn(async move { load_repository_store(store, configured_repo).await });
+        let task = cx.background_spawn(async move {
+            harbor_sync::load_stored_repositories(&store, configured_repo)
+                .await
+                .map(|load| (store, load))
+        });
 
         self.tasks.set_repository_task(cx.spawn(async move |this, cx| {
             let result = task.await;
 
             this.update_in_session_or_log(cx, auth_generation, "failed to update repository store state", move |view, cx| {
                 match result {
-                    Ok(load) => {
+                    Ok((store, load)) => {
                         let repository_count = load.pinned_repositories.len();
                         let last_selected_repository = load.last_selected_repository.clone();
-                        view.repository_state.set_store(load.store);
+                        view.repository_state.set_store(store);
 
                         if !view.github_api.has_auth() {
                             view.show_github_sign_in_required();
@@ -182,7 +185,7 @@ impl AppView {
 
         let task = cx.background_spawn({
             let repository = repository.clone();
-            async move { store.set_repository_pinned(&repository, pinned).await }
+            async move { harbor_sync::set_repository_pinned(&store, &repository, pinned).await }
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -226,7 +229,9 @@ impl AppView {
             return;
         };
 
-        let task = cx.background_spawn(async move { store.record_repository(&repository).await });
+        let task = cx.background_spawn(async move {
+            harbor_sync::record_repository(&store, &repository).await
+        });
 
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -302,41 +307,10 @@ impl AppView {
     }
 }
 
-struct RepositoryLoad {
-    store: SqliteStore,
-    pinned_repositories: Vec<RecentRepository>,
-    repositories_with_local_paths: Vec<RecentRepository>,
-    last_selected_repository: Option<RepoId>,
-}
-
 struct RepositoryRefresh {
     repositories: Vec<RepoId>,
     repository_error: Option<String>,
     repository_notice: Option<String>,
-}
-
-async fn load_repository_store(
-    store: SqliteStore,
-    configured_repo: Option<RepoId>,
-) -> std::result::Result<RepositoryLoad, StorageError> {
-    if let Some(repository) = configured_repo.as_ref() {
-        store.record_repository(repository).await?;
-    }
-
-    let last_selected_repository = if configured_repo.is_none() {
-        store.last_selected_repository().await?
-    } else {
-        configured_repo
-    };
-    let pinned_repositories = store.pinned_repositories().await?;
-    let repositories_with_local_paths = store.repositories_with_local_paths().await?;
-
-    Ok(RepositoryLoad {
-        store,
-        pinned_repositories,
-        repositories_with_local_paths,
-        last_selected_repository,
-    })
 }
 
 async fn refresh_repositories(
