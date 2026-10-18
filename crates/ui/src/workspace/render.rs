@@ -1,4 +1,8 @@
-use crate::gpui_component::resizable::{h_resizable, resizable_panel};
+use crate::gpui_component::{
+    Root, WindowExt,
+    notification::Notification,
+    resizable::{h_resizable, resizable_panel},
+};
 use gpui::{
     App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, StyleRefinement, Window,
     div, prelude::*, px,
@@ -36,6 +40,8 @@ mod tests;
 
 pub(crate) use region::WorkspaceRegions;
 
+struct ErrorToast;
+
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -53,6 +59,21 @@ impl Render for AppView {
                 window.focus(&self.focus_handle, cx);
             }
             self.sync_runtime.mark_focused_once();
+        }
+
+        if !self.pending_error_toasts.is_empty() {
+            let messages = std::mem::take(&mut self.pending_error_toasts);
+            if window.root::<Root>().flatten().is_some() {
+                // Pushing updates the Root entity, which must not happen mid-draw.
+                window.defer(cx, move |window, cx| {
+                    for message in messages {
+                        window.push_notification(
+                            Notification::error(message.clone()).id1::<ErrorToast>(message),
+                            cx,
+                        );
+                    }
+                });
+            }
         }
 
         let regions = self
@@ -157,6 +178,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::toggle_pull_request_inbox))
             .on_action(cx.listener(Self::toggle_repository_switcher))
             .on_action(cx.listener(Self::open_pull_request_search))
+            .on_action(cx.listener(Self::open_command_palette))
             .on_action(cx.listener(Self::close_panel))
             .on_action(cx.listener(Self::refresh_selected))
             .on_action(cx.listener(Self::checkout_pr))

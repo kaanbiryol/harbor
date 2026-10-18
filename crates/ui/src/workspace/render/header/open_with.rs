@@ -10,7 +10,7 @@ use crate::icons::Octicon;
 use crate::workspace::AppView;
 use crate::workspace::settings::{preferred_editor_app, preferred_terminal_app};
 
-pub(super) fn open_with_action(app: ExternalApp) -> Box<dyn gpui::Action> {
+pub(crate) fn open_with_action(app: ExternalApp) -> Box<dyn gpui::Action> {
     match app {
         ExternalApp::VsCode => Box::new(OpenWithVsCode),
         ExternalApp::Cursor => Box::new(OpenWithCursor),

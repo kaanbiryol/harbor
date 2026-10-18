@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::gpui_component::{Root, Theme, ThemeMode};
+use crate::gpui_component::{Root, Theme, ThemeMode, WindowExt};
 use crate::{
     actions::ToggleRepositorySwitcher,
     test_fixtures::{pull_request, review_thread},
@@ -431,4 +431,47 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
         );
     });
     assert!(cx.debug_bounds("logs-loading-skeleton").is_none());
+}
+
+#[gpui::test]
+async fn command_palette_runs_the_confirmed_workspace_action(cx: &mut TestAppContext) {
+    let (view, cx) = crate::workspace::test_support::open_workspace_window(cx, |window, cx| {
+        crate::actions::bind_keys(cx);
+        cx.new(|cx| {
+            let mut view = AppView::new_without_startup_tasks(window, cx);
+            view.pull_requests = vec![pull_request()];
+            view
+        })
+    });
+    cx.run_until_parked();
+
+    cx.simulate_keystrokes("cmd-shift-p");
+    cx.run_until_parked();
+    assert!(cx.update(|window, cx| window.has_active_dialog(cx)));
+
+    cx.simulate_input("go to checks");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+
+    assert!(!cx.update(|window, cx| window.has_active_dialog(cx)));
+    view.read_with(cx, |view, _| assert_eq!(view.active_tab, PanelTab::Checks));
+}
+
+#[gpui::test]
+async fn reported_errors_show_one_toast_per_message(cx: &mut TestAppContext) {
+    let (view, cx) = crate::workspace::test_support::open_workspace_window(cx, |window, cx| {
+        cx.new(|cx| AppView::new_without_startup_tasks(window, cx))
+    });
+    cx.run_until_parked();
+
+    view.update(cx, |view, cx| {
+        view.report_error("Failed to open repository", cx);
+        view.report_error("Failed to open repository", cx);
+    });
+    cx.run_until_parked();
+
+    view.read_with(cx, |view, _| {
+        assert_eq!(view.status, "Failed to open repository")
+    });
+    assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 1);
 }

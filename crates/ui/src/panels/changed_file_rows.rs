@@ -1,4 +1,7 @@
-use crate::gpui_component::{Icon, Sizable, StyledExt};
+use crate::gpui_component::{
+    Icon, Sizable, StyledExt,
+    menu::{ContextMenuExt, PopupMenuItem},
+};
 use gpui::{AnyElement, Context, div, prelude::*, px};
 use harbor_domain::DiffFile;
 
@@ -7,7 +10,9 @@ use crate::{
     icons::Octicon,
     panels::{render_diff_stats, render_file_review_button},
     visual::{color, layout, leading_truncated_path},
-    workspace::{AppView, ChangedFileFolderRow, ChangedFileRow},
+    workspace::{
+        AppView, ChangedFileFolderRow, ChangedFileRow, async_updates::AppViewAsyncUpdateExt,
+    },
 };
 
 pub(crate) fn render_changed_folder_row(
@@ -70,6 +75,7 @@ pub(crate) fn render_changed_file_row(
 ) -> AnyElement {
     let index = row.file_index;
     let review_button = render_file_review_button(format!("file-reviewed-{index}"), reviewed);
+    let view = cx.weak_entity();
 
     div()
         .id(("file-row", index))
@@ -119,6 +125,33 @@ pub(crate) fn render_changed_file_row(
         .child(review_button.on_click(cx.listener(move |view, _, _, cx| {
             view.toggle_changed_file_reviewed(index, cx);
         })))
+        .context_menu(move |menu, _, _| {
+            let context = "failed to run changed file context menu item";
+            let copy_view = view.clone();
+            let open_view = view.clone();
+            let review_view = view.clone();
+            let review_label = if reviewed {
+                "Mark as Not Reviewed"
+            } else {
+                "Mark as Reviewed"
+            };
+            menu.item(PopupMenuItem::new("Copy Path").on_click(move |_, _, cx| {
+                copy_view.update_or_log(cx, context, |view, cx| view.copy_file_path_at(index, cx));
+            }))
+            .item(
+                PopupMenuItem::new("Open on GitHub").on_click(move |_, _, cx| {
+                    open_view.update_or_log(cx, context, |view, cx| {
+                        view.open_file_on_github_at(index, cx)
+                    });
+                }),
+            )
+            .separator()
+            .item(PopupMenuItem::new(review_label).on_click(move |_, _, cx| {
+                review_view.update_or_log(cx, context, |view, cx| {
+                    view.toggle_changed_file_reviewed(index, cx)
+                });
+            }))
+        })
         .into_any_element()
 }
 

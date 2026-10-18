@@ -144,10 +144,12 @@ impl AppView {
             let result = task.await;
 
             this.update_or_log(cx, "failed to update open-with state", move |view, cx| {
-                view.status = match result {
-                    Ok(status) => status,
-                    Err(error) => format!("Failed to open with {app_label}: {error}"),
-                };
+                match result {
+                    Ok(status) => view.status = status,
+                    Err(error) => {
+                        view.report_error(format!("Failed to open with {app_label}: {error}"), cx)
+                    }
+                }
                 view.tasks.clear_local_task();
                 cx.notify();
             });

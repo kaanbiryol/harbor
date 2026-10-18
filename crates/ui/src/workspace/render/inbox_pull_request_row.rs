@@ -1,4 +1,8 @@
-use crate::gpui_component::{Icon, Sizable, tooltip::Tooltip};
+use crate::gpui_component::{
+    Icon, Sizable,
+    menu::{ContextMenuExt, PopupMenuItem},
+    tooltip::Tooltip,
+};
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
 use harbor_domain::{
     ChecksSummary, PullRequest, PullRequestState,
@@ -12,7 +16,7 @@ use crate::{
     date_time::month_day_label,
     icons::Octicon,
     visual::{Tone, color, layout, opacity, tone_colors},
-    workspace::AppView,
+    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
 };
 
 fn render_row_signal(signal: PullRequestRowSignal) -> impl IntoElement {
@@ -124,6 +128,7 @@ pub(super) fn render_pull_request_row(
     let check_indicator = pull_request_check_indicator(pr.checks_summary);
     let metadata_label = pull_request_metadata_label(pr);
     let rail_color = row_rail_color(pull_request_row_rail_tone(pr));
+    let view = cx.weak_entity();
 
     div()
         .id(("pr-row", index))
@@ -228,6 +233,40 @@ pub(super) fn render_pull_request_row(
                         ),
                 ),
         )
+        .context_menu(move |menu, _, _| {
+            let context = "failed to run pull request context menu item";
+            let open_view = view.clone();
+            let link_view = view.clone();
+            let branch_view = view.clone();
+            let checkout_view = view.clone();
+            menu.item(
+                PopupMenuItem::new("Open in Browser").on_click(move |_, _, cx| {
+                    open_view.update_or_log(cx, context, |view, cx| {
+                        view.open_pull_request_at(index, cx)
+                    });
+                }),
+            )
+            .item(PopupMenuItem::new("Copy Link").on_click(move |_, _, cx| {
+                link_view.update_or_log(cx, context, |view, cx| {
+                    view.copy_pull_request_link_at(index, cx)
+                });
+            }))
+            .item(
+                PopupMenuItem::new("Copy Branch Name").on_click(move |_, _, cx| {
+                    branch_view.update_or_log(cx, context, |view, cx| {
+                        view.copy_pull_request_branch_at(index, cx)
+                    });
+                }),
+            )
+            .separator()
+            .item(
+                PopupMenuItem::new("Check Out Locally").on_click(move |_, window, cx| {
+                    checkout_view.update_or_log(cx, context, |view, cx| {
+                        view.checkout_pull_request_at(index, window, cx)
+                    });
+                }),
+            )
+        })
         .into_any_element()
 }
 

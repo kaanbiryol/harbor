@@ -1,8 +1,16 @@
-use crate::gpui_component::StyledExt;
-use gpui::{Context, IntoElement, ListState, div, list, prelude::*};
+use crate::gpui_component::{
+    StyledExt,
+    menu::{ContextMenuExt, PopupMenuItem},
+};
+use gpui::{Context, IntoElement, ListState, SharedString, div, list, prelude::*};
 use harbor_domain::PullRequestCommit;
 
-use crate::{date_time::natural_time_label, icons::Octicon, visual::color, workspace::AppView};
+use crate::{
+    date_time::natural_time_label,
+    icons::Octicon,
+    visual::color,
+    workspace::{AppView, async_updates::AppViewAsyncUpdateExt},
+};
 
 use super::{
     people::render_avatar, render_empty_state, render_error_panel_card,
@@ -101,6 +109,8 @@ fn render_commit_row(commit: &PullRequestCommit, cx: &mut Context<AppView>) -> g
     let short_sha: String = commit.sha.chars().take(7).collect();
     let time = commit.authored_at.map(natural_time_label);
     let sha = commit.sha.clone();
+    let menu_sha = SharedString::from(commit.sha.clone());
+    let view = cx.weak_entity();
 
     div()
         .id(format!("commit-row-{}", commit.sha))
@@ -156,5 +166,23 @@ fn render_commit_row(commit: &PullRequestCommit, cx: &mut Context<AppView>) -> g
                 .text_color(color::text_secondary())
                 .child(short_sha),
         )
+        .context_menu(move |menu, _, _| {
+            let context = "failed to run commit context menu item";
+            let copy_view = view.clone();
+            let open_view = view.clone();
+            let copy_sha = menu_sha.clone();
+            let open_sha = menu_sha.clone();
+            menu.item(PopupMenuItem::new("Copy SHA").on_click(move |_, _, cx| {
+                copy_view
+                    .update_or_log(cx, context, |view, cx| view.copy_commit_sha(&copy_sha, cx));
+            }))
+            .item(
+                PopupMenuItem::new("Open on GitHub").on_click(move |_, _, cx| {
+                    open_view.update_or_log(cx, context, |view, cx| {
+                        view.open_commit_on_github(&open_sha, cx)
+                    });
+                }),
+            )
+        })
         .into_any_element()
 }

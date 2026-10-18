@@ -270,6 +270,33 @@ impl AppView {
     }
 }
 
+impl AppView {
+    pub(crate) fn copy_file_path_at(&mut self, file_index: usize, cx: &mut Context<Self>) {
+        if let Some(path) = self
+            .detail_state
+            .files()
+            .get(file_index)
+            .map(|file| file.path.clone())
+        {
+            let description = path.clone();
+            self.copy_to_clipboard(path, &description, cx);
+        }
+    }
+
+    pub(crate) fn open_file_on_github_at(&mut self, file_index: usize, cx: &mut Context<Self>) {
+        let (Some(pr), Some(file)) = (
+            self.selected_pull_request(),
+            self.detail_state.files().get(file_index),
+        ) else {
+            return;
+        };
+        let url = github_file_url(pr, file).unwrap_or_else(|| format!("{}/files", pr.url));
+        cx.open_url(&url);
+        self.status = format!("Opened {} on GitHub", file.path);
+        cx.notify();
+    }
+}
+
 pub(crate) fn github_file_url(pr: &PullRequest, file: &DiffFile) -> Option<String> {
     if file.status == FileStatus::Removed || pr.head_sha.is_empty() || file.path.is_empty() {
         return None;

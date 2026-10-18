@@ -131,7 +131,7 @@ impl AppView {
                         if let Err(error) = result {
                             let message = format!("Failed to send notification: {error}");
                             view.repository_state.set_error(message.clone());
-                            view.status = message;
+                            view.report_error(message, cx);
                             cx.notify();
                         }
                     },

@@ -210,12 +210,18 @@ impl AppView {
                         let message = error.to_string();
                         if !is_missing_credential_error(&message) {
                             view.auth_status = GitHubAuthStatus::Failed(message.clone());
-                            view.status = format!("Failed to remove GitHub credentials: {message}");
+                            view.report_error(
+                                format!("Failed to remove GitHub credentials: {message}"),
+                                cx,
+                            );
                         }
                     }
                     if let Err(error) = delete_source_result {
                         view.auth_status = GitHubAuthStatus::Failed(error.clone());
-                        view.status = format!("Failed to remove GitHub auth preference: {error}");
+                        view.report_error(
+                            format!("Failed to remove GitHub auth preference: {error}"),
+                            cx,
+                        );
                     }
                     cx.notify();
                 },

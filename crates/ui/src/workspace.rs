@@ -7,6 +7,7 @@ mod auth_state;
 mod cache;
 mod changed_file_cache;
 mod changed_file_interactions;
+mod command_palette;
 mod commands;
 pub(crate) mod diff_display;
 mod external_apps;
@@ -43,10 +44,13 @@ mod workflow_log_loaders;
 
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
-use crate::gpui_component::input::{InputState, TextareaState};
+use crate::gpui_component::{
+    command::CommandState,
+    input::{InputState, TextareaState},
+};
 use gpui::{
-    Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, Subscription,
-    UniformListScrollHandle, px,
+    Context, Entity, FocusHandle, ListOffset, ListState, ScrollStrategy, SharedString,
+    Subscription, UniformListScrollHandle, px,
 };
 use harbor_domain::{PullRequest, RepoId, changed_files};
 use harbor_github::GitHubApi;
@@ -185,6 +189,7 @@ pub struct AppView {
     pull_request_filters: PullRequestFilters,
     pub(crate) file_filter_popover_open: bool,
     review_action_comment_target: Option<ReviewActionCommentTarget>,
+    command_palette: Entity<CommandState>,
     review_action_comment_input: Entity<TextareaState>,
     pub(crate) overview_comment_input: Entity<TextareaState>,
     pub(crate) pull_request_description_editing: bool,
@@ -202,12 +207,22 @@ pub struct AppView {
     pub(crate) action_runtime: ActionRuntimeState,
     merge_bypass_enabled: bool,
     pub(crate) status: String,
+    pending_error_toasts: Vec<SharedString>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl AppView {
     pub(crate) fn set_status(&mut self, status: impl Into<String>, cx: &mut Context<Self>) {
         self.status = status.into();
+        cx.notify();
+    }
+
+    /// Shows `message` in the status bar and as an error toast, for failures
+    /// that have no inline error surface of their own.
+    pub(crate) fn report_error(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
+        let message = message.into();
+        self.pending_error_toasts.push(message.clone().into());
+        self.status = message;
         cx.notify();
     }
 

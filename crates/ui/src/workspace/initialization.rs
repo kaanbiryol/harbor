@@ -2,6 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::gpui_component::{
     ActiveTheme,
+    command::CommandState,
     input::{InputState, TextareaState},
 };
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
@@ -106,6 +107,7 @@ impl AppView {
                 .placeholder("Review summary")
                 .clean_on_escape()
         });
+        let command_palette = cx.new(|cx| CommandState::new(window, cx));
         let review_action_comment_input = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(3, 8)
@@ -303,6 +305,7 @@ impl AppView {
             file_filter_popover_open: false,
             review_action_comment_target: None,
             review_action_comment_input,
+            command_palette,
             overview_comment_input,
             pull_request_description_editing: false,
             pull_request_description_input,
@@ -319,6 +322,7 @@ impl AppView {
             action_runtime: ActionRuntimeState::default(),
             merge_bypass_enabled: false,
             status,
+            pending_error_toasts: Vec::new(),
             _subscriptions: subscriptions,
         };
 

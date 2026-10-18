@@ -296,7 +296,7 @@ impl AppView {
                                 let error =
                                     format!("failed to open repository {repository}: {error}");
                                 view.repository_state.set_error(error.clone());
-                                view.status = error;
+                                view.report_error(error, cx);
                             }
                         }
 

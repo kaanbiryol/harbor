@@ -108,7 +108,10 @@ impl AppView {
                         }
                         Err(error) => {
                             view.repository_state.set_error(error.clone());
-                            view.status = format!("Failed to save local checkout: {error}");
+                            view.report_error(
+                                format!("Failed to save local checkout: {error}"),
+                                cx,
+                            );
                         }
                     }
 
@@ -160,10 +163,12 @@ impl AppView {
             let result = task.await;
 
             this.update_or_log(cx, "failed to update checkout state", move |view, cx| {
-                view.status = match result {
-                    Ok(status) => status,
-                    Err(error) => format!("Failed to prepare PR worktree: {error}"),
-                };
+                match result {
+                    Ok(status) => view.status = status,
+                    Err(error) => {
+                        view.report_error(format!("Failed to prepare PR worktree: {error}"), cx)
+                    }
+                }
                 view.tasks.clear_local_task();
                 cx.notify();
             });

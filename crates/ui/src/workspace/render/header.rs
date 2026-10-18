@@ -1,5 +1,7 @@
 mod github_auth;
 mod open_with;
+
+pub(crate) use open_with::open_with_action;
 mod repository_switcher_rows;
 mod switchers;
 

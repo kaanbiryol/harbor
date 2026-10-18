@@ -1,4 +1,4 @@
-use gpui::{Context, Window};
+use gpui::{ClipboardItem, Context, Window};
 
 use crate::actions::*;
 use crate::workspace::AppView;
@@ -93,4 +93,69 @@ impl AppView {
         self.status = format!("Opened PR #{number} in browser");
         cx.notify();
     }
+
+    pub(crate) fn copy_to_clipboard(
+        &mut self,
+        text: String,
+        description: &str,
+        cx: &mut Context<Self>,
+    ) {
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        self.status = format!("Copied {description}");
+        cx.notify();
+    }
+
+    pub(crate) fn open_pull_request_at(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(pr) = self.pull_requests.get(index) else {
+            return;
+        };
+        cx.open_url(&pr.url);
+        self.status = format!("Opened PR #{} in browser", pr.number);
+        cx.notify();
+    }
+
+    pub(crate) fn copy_pull_request_link_at(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(pr) = self.pull_requests.get(index) {
+            let description = format!("link to PR #{}", pr.number);
+            self.copy_to_clipboard(pr.url.clone(), &description, cx);
+        }
+    }
+
+    pub(crate) fn copy_pull_request_branch_at(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(pr) = self.pull_requests.get(index) {
+            let description = format!("branch {}", pr.head_ref);
+            self.copy_to_clipboard(pr.head_ref.clone(), &description, cx);
+        }
+    }
+
+    pub(crate) fn checkout_pull_request_at(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if index >= self.pull_requests.len() {
+            return;
+        }
+        self.select_pull_request(index, cx);
+        self.checkout_pr(&CheckoutPullRequest, window, cx);
+    }
+
+    pub(crate) fn open_commit_on_github(&mut self, sha: &str, cx: &mut Context<Self>) {
+        let Some(pr) = self.selected_pull_request() else {
+            return;
+        };
+        cx.open_url(&format!("{}/commits/{sha}", pr.url));
+        self.status = format!("Opened commit {} on GitHub", short_commit_sha(sha));
+        cx.notify();
+    }
+
+    pub(crate) fn copy_commit_sha(&mut self, sha: &str, cx: &mut Context<Self>) {
+        let description = format!("commit {}", short_commit_sha(sha));
+        self.copy_to_clipboard(sha.to_string(), &description, cx);
+    }
+}
+
+fn short_commit_sha(sha: &str) -> &str {
+    sha.get(..7).unwrap_or(sha)
 }

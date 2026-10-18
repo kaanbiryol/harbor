@@ -34,6 +34,8 @@ actions!(
         ToggleRepositorySwitcher,
         /// Opens pull request search.
         OpenPullRequestSearch,
+        /// Opens the command palette.
+        OpenCommandPalette,
         /// Closes the active panel or popover.
         ClosePanel,
         /// Refreshes the selected pull request and related data.
@@ -114,6 +116,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-r", RefreshSelectedPullRequest, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-[", TogglePullRequestInbox, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-p", OpenPullRequestSearch, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-shift-p", OpenCommandPalette, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-1", SelectOverviewPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-2", SelectDiffPanel, Some(KEY_CONTEXT)),
         KeyBinding::new("cmd-3", SelectCommitsPanel, Some(KEY_CONTEXT)),
