@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub mod changed_files;
-mod checks;
+pub mod checks;
 pub mod diff;
 pub mod diff_reviews;
 pub mod preferences;

@@ -8,8 +8,10 @@ pub use changes::{PullRequestChangeEvent, PullRequestChangeKind, detect_pull_req
 pub use harbor_github::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 pub use inbox::{
     InboxRefreshKind, PULL_REQUEST_INBOX_PAGE_SIZE, PullRequestInboxMode, PullRequestInboxPageInfo,
-    PullRequestInboxRefresh, PullRequestInboxRefreshRequest, cache_pull_request_inbox_refresh,
-    refresh_pull_request_inbox,
+    PullRequestInboxRefresh, PullRequestInboxRefreshIntent, PullRequestInboxRefreshRequest,
+    append_pull_request_page, cache_pull_request_inbox_refresh, pull_request_inbox_failed_status,
+    pull_request_inbox_loaded_more_status, pull_request_inbox_loaded_status,
+    pull_request_inbox_loading_status, refresh_pull_request_inbox,
 };
 pub use policy::{
     ActivityState, SyncBackoff, SyncDecision, SyncPolicy, SyncReason, SyncState, SyncTarget,

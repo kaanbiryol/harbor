@@ -1,13 +1,10 @@
 use gpui::{AppContext, Context};
 use harbor_sync::{
-    PullRequestInboxRefresh, PullRequestInboxRefreshRequest, refresh_pull_request_inbox,
+    PullRequestInboxRefresh, PullRequestInboxRefreshRequest, append_pull_request_page,
+    pull_request_inbox_loaded_more_status, refresh_pull_request_inbox,
 };
 
-use crate::workspace::{
-    AppView, PullRequestInboxCacheKey,
-    async_updates::AppViewAsyncUpdateExt,
-    pull_request_inbox_refresh::{append_pull_request_page, pull_request_inbox_loaded_more_status},
-};
+use crate::workspace::{AppView, PullRequestInboxCacheKey, async_updates::AppViewAsyncUpdateExt};
 
 impl AppView {
     pub(in crate::workspace) fn load_more_pull_requests(&mut self, cx: &mut Context<Self>) {

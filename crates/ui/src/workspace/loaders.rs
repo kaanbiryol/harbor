@@ -1,17 +1,14 @@
 use gpui::{AppContext, Context, ScrollStrategy};
 use harbor_domain::{PullRequest, RepoId};
 use harbor_sync::{
-    PullRequestInboxPageInfo, PullRequestInboxRefresh, PullRequestInboxRefreshRequest,
-    cache_pull_request_inbox_refresh, detect_pull_request_changes, refresh_pull_request_inbox,
+    PullRequestInboxPageInfo, PullRequestInboxRefresh, PullRequestInboxRefreshIntent,
+    PullRequestInboxRefreshRequest, cache_pull_request_inbox_refresh, detect_pull_request_changes,
+    pull_request_inbox_failed_status, pull_request_inbox_loaded_status,
+    pull_request_inbox_loading_status, refresh_pull_request_inbox,
 };
 
 use crate::workspace::{
-    AppView, PullRequestInboxCacheKey, PullRequestInboxMode,
-    async_updates::AppViewAsyncUpdateExt,
-    pull_request_inbox_refresh::{
-        PullRequestInboxRefreshIntent, pull_request_inbox_failed_status,
-        pull_request_inbox_loaded_status, pull_request_inbox_loading_status,
-    },
+    AppView, PullRequestInboxCacheKey, PullRequestInboxMode, async_updates::AppViewAsyncUpdateExt,
 };
 
 mod load_more;

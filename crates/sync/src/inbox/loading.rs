@@ -1,10 +1,9 @@
 use harbor_domain::{PullRequest, RepoId};
-use harbor_sync::PullRequestInboxPageInfo;
 
-use crate::workspace::PullRequestInboxMode;
+use super::{PullRequestInboxMode, PullRequestInboxPageInfo};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum PullRequestInboxRefreshIntent {
+pub enum PullRequestInboxRefreshIntent {
     PreferCache,
     SwitchMode,
     LightRefresh,
@@ -12,28 +11,28 @@ pub(super) enum PullRequestInboxRefreshIntent {
 }
 
 impl PullRequestInboxRefreshIntent {
-    pub(super) fn uses_cache(self) -> bool {
+    pub fn uses_cache(self) -> bool {
         matches!(self, Self::PreferCache | Self::SwitchMode)
     }
 
-    pub(super) fn resets_detail_state(self) -> bool {
+    pub fn resets_detail_state(self) -> bool {
         matches!(self, Self::PreferCache | Self::SwitchMode)
     }
 
-    pub(super) fn force_enrichment(self) -> bool {
+    pub fn force_enrichment(self) -> bool {
         self == Self::ManualRefresh
     }
 
-    pub(super) fn prefetches_counts(self) -> bool {
+    pub fn prefetches_counts(self) -> bool {
         matches!(self, Self::PreferCache | Self::ManualRefresh)
     }
 
-    pub(super) fn refreshes_counts(self) -> bool {
+    pub fn refreshes_counts(self) -> bool {
         matches!(self, Self::PreferCache | Self::ManualRefresh)
     }
 }
 
-pub(super) fn pull_request_inbox_loading_status(
+pub fn pull_request_inbox_loading_status(
     repository: &RepoId,
     mode: PullRequestInboxMode,
 ) -> String {
@@ -44,7 +43,7 @@ pub(super) fn pull_request_inbox_loading_status(
     )
 }
 
-pub(super) fn pull_request_inbox_loaded_status(
+pub fn pull_request_inbox_loaded_status(
     repository: &RepoId,
     mode: PullRequestInboxMode,
     count: usize,
@@ -69,7 +68,7 @@ pub(super) fn pull_request_inbox_loaded_status(
     }
 }
 
-pub(super) fn pull_request_inbox_loaded_more_status(
+pub fn pull_request_inbox_loaded_more_status(
     repository: &RepoId,
     mode: PullRequestInboxMode,
     appended_count: usize,
@@ -90,10 +89,7 @@ pub(super) fn pull_request_inbox_loaded_more_status(
     }
 }
 
-pub(super) fn pull_request_inbox_failed_status(
-    repository: &RepoId,
-    mode: PullRequestInboxMode,
-) -> String {
+pub fn pull_request_inbox_failed_status(repository: &RepoId, mode: PullRequestInboxMode) -> String {
     format!(
         "Failed to load {} from {}",
         mode.status_label(),
@@ -101,7 +97,7 @@ pub(super) fn pull_request_inbox_failed_status(
     )
 }
 
-pub(super) fn append_pull_request_page(
+pub fn append_pull_request_page(
     pull_requests: &mut Vec<PullRequest>,
     page_pull_requests: Vec<PullRequest>,
 ) -> usize {
@@ -123,10 +119,39 @@ pub(super) fn append_pull_request_page(
 
 #[cfg(test)]
 mod tests {
+    use harbor_domain::{ChecksSummary, MergeState, PullRequestState};
     use harbor_github::PullRequestPageCursor;
 
     use super::*;
-    use crate::test_fixtures::pull_request;
+
+    fn pull_request() -> PullRequest {
+        PullRequest {
+            repo: RepoId::new("acme", "app"),
+            node_id: "pr-node".to_string(),
+            number: 7,
+            title: "Add feature".to_string(),
+            body: None,
+            author: "octocat".to_string(),
+            author_avatar_url: None,
+            url: "https://github.com/acme/app/pull/7".to_string(),
+            state: PullRequestState::Open,
+            is_draft: false,
+            head_ref: "feature".to_string(),
+            base_ref: "main".to_string(),
+            head_sha: "abc123".to_string(),
+            review_decision: None,
+            merge_state: Some(MergeState::Clean),
+            merge_capabilities: Default::default(),
+            labels: Vec::new(),
+            assignees: Vec::new(),
+            requested_reviewers: Vec::new(),
+            requested_teams: Vec::new(),
+            checks_summary: ChecksSummary::default(),
+            unresolved_threads: 0,
+            created_at: None,
+            updated_at: None,
+        }
+    }
 
     #[test]
     fn append_pull_request_page_replaces_existing_rows_and_counts_new_rows() {

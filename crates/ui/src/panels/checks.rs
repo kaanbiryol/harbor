@@ -20,11 +20,10 @@ use super::{
 const CHECK_GROUP_HEADER_HEIGHT: f32 = 42.0;
 const CHECK_RUN_ROW_HEIGHT: f32 = 40.0;
 
-#[path = "checks/model.rs"]
-mod model;
-
-pub(crate) use model::CheckRunFilter;
-use model::{CheckPanelRow, CheckRunGroup, check_panel_rows, check_run_display_name};
+pub(crate) use harbor_domain::checks::CheckRunFilter;
+use harbor_domain::checks::{
+    CheckPanelRow, CheckRunGroup, check_panel_rows, check_run_display_name,
+};
 
 pub(crate) struct CheckPanelRenderInput<'a> {
     pub(crate) summary: ChecksSummary,
@@ -567,113 +566,11 @@ fn check_status_label(status: CheckStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use chrono::{Duration, TimeZone, Utc};
     use harbor_domain::{CheckConclusion, CheckRun, CheckStatus};
 
     use super::*;
     use crate::test_fixtures::check_run;
-
-    #[test]
-    fn groups_checks_by_name_prefix_and_collapses_them_by_default() {
-        let checks = vec![
-            named_check(
-                "ci / unit",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Success),
-            ),
-            named_check(
-                "ci / lint",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Failure),
-            ),
-            named_check("security / scan", CheckStatus::InProgress, None),
-            named_check("external", CheckStatus::Queued, None),
-        ];
-
-        let rows = check_panel_rows(&checks, &HashSet::new(), CheckRunFilter::All);
-
-        assert_eq!(
-            row_labels(&rows),
-            vec![
-                "group:ci:2:closed",
-                "group:other checks:1:closed",
-                "group:security:1:closed",
-            ]
-        );
-    }
-
-    #[test]
-    fn shows_checks_for_expanded_groups() {
-        let checks = vec![
-            named_check(
-                "ci / unit",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Success),
-            ),
-            named_check(
-                "ci / lint",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Failure),
-            ),
-        ];
-        let expanded_groups = HashSet::from(["ci".to_string()]);
-
-        let rows = check_panel_rows(&checks, &expanded_groups, CheckRunFilter::All);
-
-        assert_eq!(
-            row_labels(&rows),
-            vec!["group:ci:2:open", "check:0", "check:1"]
-        );
-    }
-
-    #[test]
-    fn trims_group_prefix_from_check_display_names() {
-        let check = named_check(
-            "ci / unit",
-            CheckStatus::Completed,
-            Some(CheckConclusion::Success),
-        );
-        let external = named_check("external", CheckStatus::Queued, None);
-
-        assert_eq!(check_run_display_name(&check), "unit");
-        assert_eq!(check_run_display_name(&external), "external");
-    }
-
-    #[test]
-    fn filters_checks_by_outcome_before_grouping() {
-        let checks = vec![
-            named_check(
-                "ci / unit",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Success),
-            ),
-            named_check(
-                "ci / lint",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Failure),
-            ),
-            named_check(
-                "deploy / smoke",
-                CheckStatus::Completed,
-                Some(CheckConclusion::Skipped),
-            ),
-            named_check("external", CheckStatus::Queued, None),
-        ];
-
-        let expanded_groups = HashSet::from(["ci".to_string(), "other checks".to_string()]);
-        let rows = check_panel_rows(&checks, &expanded_groups, CheckRunFilter::Failed);
-
-        assert_eq!(row_labels(&rows), vec!["group:ci:1:open", "check:1"]);
-
-        let rows = check_panel_rows(&checks, &expanded_groups, CheckRunFilter::Pending);
-
-        assert_eq!(
-            row_labels(&rows),
-            vec!["group:other checks:1:open", "check:3"]
-        );
-    }
 
     #[test]
     fn formats_check_group_counts_without_false_plurals() {
@@ -797,19 +694,5 @@ mod tests {
         let mut check = check_run(status, conclusion);
         check.name = name.to_string();
         check
-    }
-
-    fn row_labels(rows: &[CheckPanelRow]) -> Vec<String> {
-        rows.iter()
-            .map(|row| match row {
-                CheckPanelRow::Group(group) => format!(
-                    "group:{}:{}:{}",
-                    group.name,
-                    group.summary.total,
-                    if group.expanded { "open" } else { "closed" }
-                ),
-                CheckPanelRow::Check { check_index } => format!("check:{check_index}"),
-            })
-            .collect()
     }
 }

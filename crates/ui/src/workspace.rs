@@ -24,7 +24,6 @@ mod pull_request_detail_cache_loader;
 mod pull_request_detail_content_loaders;
 mod pull_request_detail_loaders;
 mod pull_request_filters;
-mod pull_request_inbox_refresh;
 mod pull_request_metadata_actions;
 mod pull_request_search;
 mod render;

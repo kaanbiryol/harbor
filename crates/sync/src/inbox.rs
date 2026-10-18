@@ -15,9 +15,16 @@ mod enrichment;
 mod http_cache;
 #[path = "inbox/light_refresh.rs"]
 mod light_refresh;
+#[path = "inbox/loading.rs"]
+mod loading;
 
 pub use cache::cache_pull_request_inbox_refresh;
 use light_refresh::refresh_light_pull_request_inbox;
+pub use loading::{
+    PullRequestInboxRefreshIntent, append_pull_request_page, pull_request_inbox_failed_status,
+    pull_request_inbox_loaded_more_status, pull_request_inbox_loaded_status,
+    pull_request_inbox_loading_status,
+};
 
 pub const PULL_REQUEST_INBOX_PAGE_SIZE: usize = 25;
 
