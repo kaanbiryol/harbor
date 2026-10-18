@@ -50,15 +50,15 @@ pub struct ChangedFileTypeFilter {
 }
 
 #[derive(Default)]
-struct ChangedFileTreeNode {
-    folders: BTreeMap<String, ChangedFileTreeNode>,
+struct ChangedFileTreeNode<'a> {
+    folders: BTreeMap<&'a str, ChangedFileTreeNode<'a>>,
     files: Vec<usize>,
     file_count: usize,
     reviewed_file_count: usize,
 }
 
-impl ChangedFileTreeNode {
-    fn add_file(&mut self, file_index: usize, path_segments: &[&str], reviewed: bool) {
+impl<'a> ChangedFileTreeNode<'a> {
+    fn add_file(&mut self, file_index: usize, path_segments: &[&'a str], reviewed: bool) {
         self.file_count += 1;
         if reviewed {
             self.reviewed_file_count += 1;
@@ -74,10 +74,11 @@ impl ChangedFileTreeNode {
             return;
         }
 
-        self.folders
-            .entry((*next_segment).to_string())
-            .or_default()
-            .add_file(file_index, remaining_segments, reviewed);
+        self.folders.entry(next_segment).or_default().add_file(
+            file_index,
+            remaining_segments,
+            reviewed,
+        );
     }
 }
 
@@ -88,17 +89,15 @@ pub fn changed_file_tree_rows(
     filters: &ChangedFileFilters,
 ) -> Vec<ChangedFileTreeRow> {
     let mut root = ChangedFileTreeNode::default();
+    let mut path_segments = Vec::new();
 
     for (file_index, file) in files.iter().enumerate() {
         if !changed_file_matches_filters(file, filters) {
             continue;
         }
 
-        let path_segments = file
-            .path
-            .split('/')
-            .filter(|segment| !segment.is_empty())
-            .collect::<Vec<_>>();
+        path_segments.clear();
+        path_segments.extend(file.path.split('/').filter(|segment| !segment.is_empty()));
         if path_segments.is_empty() {
             continue;
         }
@@ -124,9 +123,10 @@ pub fn changed_file_tree_rows(
 }
 
 pub fn changed_file_matches_filters(file: &DiffFile, filters: &ChangedFileFilters) -> bool {
-    if filters
-        .excluded_file_types
-        .contains(&changed_file_type_key(file))
+    if !filters.excluded_file_types.is_empty()
+        && filters
+            .excluded_file_types
+            .contains(&changed_file_type_key(file))
     {
         return false;
     }
@@ -174,7 +174,7 @@ pub fn changed_file_type_key(file: &DiffFile) -> String {
 }
 
 fn push_changed_file_tree_rows(
-    node: &ChangedFileTreeNode,
+    node: &ChangedFileTreeNode<'_>,
     parent_path: &str,
     depth: usize,
     files: &[DiffFile],
@@ -236,11 +236,11 @@ fn push_changed_file_tree_rows(
     }
 }
 
-fn compact_folder_chain<'a>(
+fn compact_folder_chain<'node, 'path>(
     parent_path: &str,
     folder_name: &str,
-    child_node: &'a ChangedFileTreeNode,
-) -> (String, String, &'a ChangedFileTreeNode) {
+    child_node: &'node ChangedFileTreeNode<'path>,
+) -> (String, String, &'node ChangedFileTreeNode<'path>) {
     let mut path = if parent_path.is_empty() {
         folder_name.to_string()
     } else {
