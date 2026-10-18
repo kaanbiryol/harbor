@@ -10,8 +10,9 @@ mod changed_file_interactions;
 mod commands;
 pub(crate) mod diff_display;
 mod external_apps;
-pub(crate) mod github_service;
 mod initialization;
+#[cfg(test)]
+mod integration_tests;
 mod loaders;
 mod local_commands;
 mod navigation_commands;
@@ -40,6 +41,8 @@ mod state_reset;
 mod status;
 mod switchers;
 mod sync_loop;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod workflow_log_loaders;
 
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
@@ -50,6 +53,7 @@ use gpui::{
     UniformListScrollHandle, px,
 };
 use harbor_domain::{PullRequest, RepoId, changed_files};
+use harbor_github::GitHubApi;
 pub(crate) use harbor_sync::PullRequestInboxMode;
 
 use crate::actions::PanelTab;
@@ -64,11 +68,6 @@ pub(crate) use changed_files::{
     ChangedFileTypeFilter, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
-pub use github_service::{
-    GitHubApi, GitHubAuthApi, GitHubPullRequestApi, GitHubPullRequestMutationApi,
-    GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi, GitHubWorkflowApi,
-    GitHubWorkflowMutationApi,
-};
 pub(crate) use pull_request_filters::{
     PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections, PullRequestFilters,
 };

@@ -5,7 +5,7 @@ use harbor_domain::{PullRequestReview, PullRequestReviewState, ReviewThreadState
 
 use crate::{
     test_fixtures::{pull_request, review_thread, test_time},
-    workspace::github_service::test_support::FakeGitHubApi,
+    workspace::test_support::FakeGitHubApi,
 };
 
 use super::{github_error, init_workspace_service_test};

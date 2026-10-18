@@ -9,7 +9,6 @@ use serde_json::Value;
 
 use crate::{GitHubError, PullRequestEnrichment, Result};
 
-#[path = "dto_pull_requests/file_viewed_states.rs"]
 mod file_viewed_states;
 
 pub(crate) use file_viewed_states::*;
@@ -744,5 +743,4 @@ fn map_file_status(status: &str) -> FileStatus {
 }
 
 #[cfg(test)]
-#[path = "dto_pull_requests/tests.rs"]
 mod tests;

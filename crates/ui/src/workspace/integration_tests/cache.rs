@@ -9,7 +9,7 @@ use crate::{
     diff::parse_files,
     panels::DiffListItem,
     test_fixtures::{diff_file, patched_diff_file, pull_request},
-    workspace::{AppView, PullRequestInboxMode, github_service::test_support::FakeGitHubApi},
+    workspace::{AppView, PullRequestInboxMode, test_support::FakeGitHubApi},
 };
 
 use super::init_workspace_service_test;

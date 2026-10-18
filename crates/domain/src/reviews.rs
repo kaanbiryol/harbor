@@ -5,7 +5,6 @@ use crate::{
     ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState,
 };
 
-#[path = "reviews/reactions.rs"]
 mod reactions;
 
 pub use reactions::{

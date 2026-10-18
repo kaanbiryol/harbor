@@ -7,55 +7,30 @@ use crate::actions::*;
 use crate::visual::{color, font, layout};
 use crate::workspace::AppView;
 
-#[path = "render/auth_gate.rs"]
 mod auth_gate;
-#[path = "render/auth_gate_signed_out.rs"]
 mod auth_gate_signed_out;
-#[path = "render/auth_preview.rs"]
 mod auth_preview;
-#[path = "render/changed_file_filters.rs"]
 mod changed_file_filters;
-#[path = "render/changed_files.rs"]
 mod changed_files;
-#[path = "render/details.rs"]
 mod details;
-#[path = "render/header.rs"]
 pub(crate) mod header;
-#[path = "render/inbox.rs"]
 mod inbox;
-#[path = "render/inbox_body.rs"]
 mod inbox_body;
-#[path = "render/inbox_filters.rs"]
 mod inbox_filters;
-#[path = "render/inbox_header.rs"]
 mod inbox_header;
-#[path = "render/inbox_page_footer.rs"]
 mod inbox_page_footer;
-#[path = "render/inbox_search.rs"]
 mod inbox_search;
-#[path = "render/inbox_search_rows.rs"]
 mod inbox_search_rows;
-#[path = "render/panel.rs"]
 mod panel;
-#[path = "render/pending_review.rs"]
 mod pending_review;
-#[path = "render/pull_request_details_header.rs"]
 mod pull_request_details_header;
-#[path = "render/pull_request_overview.rs"]
 mod pull_request_overview;
-#[path = "render/rate_limits.rs"]
 mod rate_limits;
-#[path = "render/review_action_comment_dialog.rs"]
 mod review_action_comment_dialog;
-#[path = "render/settings.rs"]
 mod settings;
-#[path = "render/settings_account.rs"]
 mod settings_account;
-#[path = "render/settings_auth_methods.rs"]
 mod settings_auth_methods;
-#[path = "render/settings_auth_status.rs"]
 mod settings_auth_status;
-#[path = "render/status_bar.rs"]
 mod status_bar;
 
 impl Focusable for AppView {

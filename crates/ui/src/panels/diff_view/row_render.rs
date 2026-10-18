@@ -390,5 +390,4 @@ pub(crate) fn render_line_number(line: Option<u32>, width: f32) -> impl IntoElem
 }
 
 #[cfg(test)]
-#[path = "row_render_tests.rs"]
 mod tests;

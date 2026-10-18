@@ -1,12 +1,7 @@
-#[path = "dto_checks.rs"]
 mod checks;
-#[path = "dto_pull_requests.rs"]
 mod pull_requests;
-#[path = "dto_repositories.rs"]
 mod repositories;
-#[path = "dto_reviews.rs"]
 mod reviews;
-#[path = "dto_workflows.rs"]
 mod workflows;
 
 pub use checks::*;

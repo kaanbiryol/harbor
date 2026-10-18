@@ -7,7 +7,7 @@ use crate::{
     diff::parse_files,
     panels::DiffListItem,
     test_fixtures::{patched_diff_file, pull_request},
-    workspace::github_service::test_support::FakeGitHubApi,
+    workspace::test_support::FakeGitHubApi,
 };
 
 use super::{github_error, init_workspace_service_test};

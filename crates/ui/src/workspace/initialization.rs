@@ -5,6 +5,7 @@ use crate::gpui_component::{
     input::{InputState, TextareaState},
 };
 use gpui::{AppContext, Context, ListAlignment, ListState, UniformListScrollHandle, Window, px};
+use harbor_github::GitHubApi;
 use harbor_storage::SqliteStore;
 use harbor_sync::{ActivityState, SyncPolicy};
 
@@ -17,7 +18,6 @@ use super::{
     ActionRuntimeState, AppView, DIFF_LIST_OVERDRAW, GitHubAuthStatus, GitHubCliAvailability,
     OVERVIEW_LIST_OVERDRAW, PANEL_LIST_OVERDRAW, PullRequestFilters, SettingsSection,
     external_apps::ExternalAppAvailability,
-    github_service::GitHubApi,
     notifications::{NativeNotificationSink, NotificationSink},
     state::{
         ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
@@ -47,7 +47,7 @@ impl AppView {
     #[cfg(test)]
     pub(crate) fn new_without_startup_tasks(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::new_with_github_api(
-            Arc::new(super::github_service::test_support::FakeGitHubApi::signed_out()),
+            Arc::new(super::test_support::FakeGitHubApi::signed_out()),
             window,
             cx,
         )

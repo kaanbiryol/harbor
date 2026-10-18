@@ -7,15 +7,10 @@ use harbor_storage::SqliteStore;
 
 use crate::SyncTarget;
 
-#[path = "inbox/cache.rs"]
 mod cache;
-#[path = "inbox/enrichment.rs"]
 mod enrichment;
-#[path = "inbox/http_cache.rs"]
 mod http_cache;
-#[path = "inbox/light_refresh.rs"]
 mod light_refresh;
-#[path = "inbox/loading.rs"]
 mod loading;
 
 pub use cache::cache_pull_request_inbox_refresh;

@@ -7,7 +7,7 @@ use harbor_github::{ConditionalFetch, WorkflowRunPage};
 use crate::{
     actions::PanelTab,
     test_fixtures::{patched_diff_file, pull_request, review_thread, test_time, workflow_run},
-    workspace::github_service::test_support::FakeGitHubApi,
+    workspace::test_support::FakeGitHubApi,
 };
 
 use super::{enqueue_successful_detail_load, init_workspace_service_test};

@@ -6,7 +6,6 @@ use crate::diff::DiffLine;
 #[cfg(test)]
 use crate::diff::ParsedDiff;
 
-#[path = "diff_reviews/rows.rs"]
 mod rows;
 
 pub use rows::{

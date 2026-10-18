@@ -9,7 +9,6 @@ use crate::{
     workspace::{AppView, SettingsSection},
 };
 
-#[path = "settings_preferences.rs"]
 mod preferences;
 
 impl AppView {

@@ -544,5 +544,4 @@ fn render_log_line_with_timestamps(
         .into_any_element()
 }
 
-#[path = "logs/navigation.rs"]
 mod navigation;

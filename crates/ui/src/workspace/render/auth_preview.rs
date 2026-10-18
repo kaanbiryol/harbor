@@ -1,12 +1,11 @@
-#[path = "auth_preview_elements.rs"]
-mod auth_preview_elements;
+mod elements;
 
 use crate::gpui_component::StyledExt;
 use gpui::{IntoElement, SharedString, div, prelude::*, px};
 
 use crate::visual::color;
 
-use auth_preview_elements::{
+use elements::{
     render_auth_preview_bar, render_auth_preview_diff_row, render_auth_preview_file_row,
     render_auth_preview_pill, render_auth_preview_skeleton_row, render_auth_preview_tab,
 };

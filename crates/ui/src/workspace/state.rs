@@ -1,32 +1,17 @@
-#[path = "state/changed_files.rs"]
 mod changed_files;
-#[path = "state/checks.rs"]
 mod checks;
-#[path = "state/detail.rs"]
 mod detail;
-#[path = "state/inbox.rs"]
 mod inbox;
-#[path = "state/notification.rs"]
 mod notification;
-#[path = "state/overview.rs"]
 mod overview;
-#[path = "state/panel_lists.rs"]
 mod panel_lists;
-#[path = "state/pull_request_search.rs"]
 mod pull_request_search;
-#[path = "state/repository.rs"]
 mod repository;
-#[path = "state/repository_actions.rs"]
 mod repository_actions;
-#[path = "state/review_composer.rs"]
 mod review_composer;
-#[path = "state/review_runtime.rs"]
 mod review_runtime;
-#[path = "state/selection.rs"]
 mod selection;
-#[path = "state/sync_runtime.rs"]
 mod sync_runtime;
-#[path = "state/tasks.rs"]
 mod tasks;
 pub(crate) use changed_files::ChangedFilesUiState;
 pub(crate) use checks::ChecksUiState;

@@ -1,6 +1,4 @@
-#[path = "reviews/composer.rs"]
 mod composer;
-#[path = "reviews/types.rs"]
 mod types;
 
 pub(crate) use composer::{

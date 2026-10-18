@@ -1,16 +1,9 @@
-#[path = "diff_view/file_section.rs"]
 mod file_section;
-#[path = "diff_view/inline_review_layout.rs"]
 mod inline_review_layout;
-#[path = "diff_view/inline_reviews.rs"]
 mod inline_reviews;
-#[path = "diff_view/layout.rs"]
 mod layout;
-#[path = "diff_view/line_style.rs"]
 mod line_style;
-#[path = "diff_view/row_render.rs"]
 mod row_render;
-#[path = "diff_view/row_state.rs"]
 mod row_state;
 
 pub(crate) use inline_reviews::{
@@ -29,10 +22,10 @@ use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{DiffFile, PullRequest, ReviewThread};
 
 use crate::diff::ParsedDiff;
-use crate::diff_reviews::ReviewThreadIndex;
 use crate::icons::Octicon;
 use crate::visual::color;
 use crate::workspace::{AppView, ReviewComposer};
+use harbor_domain::diff_reviews::ReviewThreadIndex;
 
 use file_section::render_diff_file_section_header;
 use layout::continuous_diff_section_for_item;

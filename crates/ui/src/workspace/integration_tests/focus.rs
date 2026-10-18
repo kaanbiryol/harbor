@@ -7,7 +7,7 @@ use harbor_sync::{SyncState, SyncTarget};
 
 use crate::{
     test_fixtures::pull_request,
-    workspace::{PullRequestInboxMode, github_service::test_support::FakeGitHubApi},
+    workspace::{PullRequestInboxMode, test_support::FakeGitHubApi},
 };
 
 use super::init_workspace_service_test;

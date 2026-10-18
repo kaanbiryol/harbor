@@ -238,7 +238,6 @@ fn markdown_language_registered(language: &str) -> bool {
     LanguageRegistry::singleton().language(language).is_some()
 }
 
-#[path = "review_markdown/preparation.rs"]
 mod preparation;
 pub(crate) use preparation::review_markdown_has_suggestion;
 use preparation::{ReviewMarkdownSection, review_markdown_sections};

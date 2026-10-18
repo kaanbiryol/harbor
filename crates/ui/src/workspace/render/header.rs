@@ -1,10 +1,6 @@
-#[path = "header/github_auth.rs"]
 mod github_auth;
-#[path = "header/open_with.rs"]
 mod open_with;
-#[path = "header/repository_switcher_rows.rs"]
 mod repository_switcher_rows;
-#[path = "header/switchers.rs"]
 mod switchers;
 
 use crate::gpui_component::{StyledExt, TitleBar};

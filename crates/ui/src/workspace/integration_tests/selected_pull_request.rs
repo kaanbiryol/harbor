@@ -9,7 +9,7 @@ use harbor_logs::parse_workflow_log;
 use crate::{
     actions::PanelTab,
     test_fixtures::{check_run, patched_diff_file, pull_request, review_thread, workflow_run},
-    workspace::github_service::test_support::FakeGitHubApi,
+    workspace::test_support::FakeGitHubApi,
 };
 
 use super::init_workspace_service_test;

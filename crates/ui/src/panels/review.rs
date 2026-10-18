@@ -25,9 +25,7 @@ use super::{
     render_status_pill, sync_virtual_list_item_count,
 };
 
-#[path = "review/diff_preview.rs"]
 mod diff_preview;
-#[path = "review/model.rs"]
 mod model;
 
 #[cfg(test)]
@@ -658,5 +656,4 @@ fn render_time_metadata(
 }
 
 #[cfg(test)]
-#[path = "review/tests.rs"]
 mod tests;

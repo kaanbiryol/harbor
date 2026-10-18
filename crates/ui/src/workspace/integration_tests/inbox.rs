@@ -9,8 +9,8 @@ use harbor_github::{
 use crate::{
     test_fixtures::pull_request,
     workspace::{
-        PullRequestInboxCacheKey, PullRequestInboxMode,
-        github_service::test_support::FakeGitHubApi, notifications::RecordingNotificationSink,
+        PullRequestInboxCacheKey, PullRequestInboxMode, notifications::RecordingNotificationSink,
+        test_support::FakeGitHubApi,
     },
 };
 

@@ -1,4 +1,3 @@
-#[path = "github_service_test_support/queues.rs"]
 mod queues;
 
 use std::sync::{

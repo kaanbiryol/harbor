@@ -10,28 +10,18 @@ use harbor_github::GitHubError;
 
 use crate::{
     test_fixtures::patched_diff_file,
-    workspace::{AppView, github_service::test_support::FakeGitHubApi},
+    workspace::{AppView, test_support::FakeGitHubApi},
 };
 
-#[path = "github_service_tests/action_results.rs"]
 mod action_results;
-#[path = "github_service_tests/auth.rs"]
 mod auth;
-#[path = "github_service_tests/cache.rs"]
 mod cache;
-#[path = "github_service_tests/file_viewed_state.rs"]
 mod file_viewed_state;
-#[path = "github_service_tests/focus.rs"]
 mod focus;
-#[path = "github_service_tests/inbox.rs"]
 mod inbox;
-#[path = "github_service_tests/loading.rs"]
 mod loading;
-#[path = "github_service_tests/review.rs"]
 mod review;
-#[path = "github_service_tests/search.rs"]
 mod search;
-#[path = "github_service_tests/selected_pull_request.rs"]
 mod selected_pull_request;
 
 fn init_workspace_service_test(

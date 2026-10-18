@@ -1,26 +1,14 @@
-#[path = "panels/changed_file_rows.rs"]
 mod changed_file_rows;
-#[path = "panels/checks.rs"]
 mod checks;
-#[path = "panels/chrome.rs"]
 mod chrome;
-#[path = "panels/commits.rs"]
 mod commits;
-#[path = "panels/diff_view.rs"]
 mod diff_view;
-#[path = "panels/logs.rs"]
 mod logs;
-#[path = "panels/pull_request.rs"]
 mod pull_request;
-#[path = "panels/review.rs"]
 mod review;
-#[path = "panels/review_markdown.rs"]
 mod review_markdown;
-#[path = "panels/review_thread_chrome.rs"]
 pub(crate) mod review_thread_chrome;
-#[path = "panels/review_thread_rows.rs"]
 mod review_thread_rows;
-#[path = "panels/workflows.rs"]
 mod workflows;
 
 pub(crate) use changed_file_rows::*;

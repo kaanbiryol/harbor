@@ -5,7 +5,6 @@ use harbor_domain::{
     ReviewThreadState,
 };
 
-use crate::diff_reviews::ReviewThreadIndex;
 use crate::workspace::{
     PendingReviewSession, ReviewCommentUiError, ReviewComposerState, ReviewReactionAction,
     ReviewReactionKey, ReviewThreadUiError,
@@ -18,10 +17,9 @@ use crate::workspace::{
     },
     status::LoadStatus,
 };
+use harbor_domain::diff_reviews::ReviewThreadIndex;
 
-#[path = "review_runtime/actions.rs"]
 mod actions;
-#[path = "review_runtime/optimistic_comments.rs"]
 mod optimistic_comments;
 
 pub(crate) struct ReviewRuntimeState {

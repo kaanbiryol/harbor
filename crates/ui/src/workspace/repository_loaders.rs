@@ -4,7 +4,8 @@ use gpui::{AppContext, Context};
 use harbor_domain::RepoId;
 use harbor_storage::{RecentRepository, SqliteStore, StorageError};
 
-use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt, github_service::GitHubApi};
+use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
+use harbor_github::GitHubApi;
 
 impl AppView {
     pub(super) fn load_repository_preferences(&mut self, cx: &mut Context<Self>) {

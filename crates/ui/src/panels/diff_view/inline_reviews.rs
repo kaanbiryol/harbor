@@ -1,12 +1,7 @@
-#[path = "inline_review_avatars.rs"]
 mod avatars;
-#[path = "inline_review_comment_actions.rs"]
 mod comment_actions;
-#[path = "inline_review_comments.rs"]
 mod comments;
-#[path = "inline_review_reactions.rs"]
 mod reactions;
-#[path = "inline_review_threads.rs"]
 mod threads;
 
 pub(crate) use comment_actions::{
@@ -485,5 +480,4 @@ fn render_review_menu_marker(width: f32) -> impl IntoElement {
 }
 
 #[cfg(test)]
-#[path = "inline_reviews/tests.rs"]
 mod tests;

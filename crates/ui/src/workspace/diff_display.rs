@@ -74,7 +74,7 @@ mod tests {
             actions::PanelTab,
             gpui_component::{Root, Theme, ThemeMode},
             test_fixtures::{diff_file, pull_request},
-            workspace::github_service::test_support::FakeGitHubApi,
+            workspace::test_support::FakeGitHubApi,
         };
         use harbor_domain::FileStatus;
         cx.update(|cx| {

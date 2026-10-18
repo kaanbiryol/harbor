@@ -567,5 +567,4 @@ fn map_review_thread_state(is_resolved: bool, is_outdated: bool) -> ReviewThread
 }
 
 #[cfg(test)]
-#[path = "dto_reviews/tests.rs"]
 mod tests;

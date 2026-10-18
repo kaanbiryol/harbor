@@ -6,7 +6,7 @@ use harbor_domain::{MergeQueueState, PullRequestComment, PullRequestMergeCapabil
 use crate::{
     actions::{PullRequestAction, PullRequestMetadataField, WorkflowAction},
     test_fixtures::{pull_request, workflow_run},
-    workspace::github_service::test_support::FakeGitHubApi,
+    workspace::test_support::FakeGitHubApi,
 };
 
 use super::{github_error, init_workspace_service_test};

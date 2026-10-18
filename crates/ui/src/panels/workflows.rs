@@ -15,9 +15,7 @@ use super::{
     render_panel_header, sync_virtual_list_item_count,
 };
 
-#[path = "workflows/runs.rs"]
 mod runs;
-#[path = "workflows/sidebar.rs"]
 mod sidebar;
 
 use runs::{RepositoryWorkflowRunsRenderInput, render_repository_workflow_runs};

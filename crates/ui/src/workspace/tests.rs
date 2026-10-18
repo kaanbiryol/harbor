@@ -6,7 +6,7 @@ use crate::{
     actions::{CloseSettings, OpenSettings, ToggleRepositorySwitcher},
     test_fixtures::{pull_request, review_thread, test_time},
     visual::layout,
-    workspace::github_service::test_support::FakeGitHubApi,
+    workspace::test_support::FakeGitHubApi,
 };
 use gpui::{
     AppContext, Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext,
@@ -130,9 +130,11 @@ fn benchmark_scroll_review_index(cx: &mut TestAppContext) {
 
             let started_at = Instant::now();
             for _ in 0..REBUILD_ITERATIONS {
-                black_box(Arc::new(crate::diff_reviews::ReviewThreadIndex::new(
-                    black_box(state.review_threads()),
-                )));
+                black_box(Arc::new(
+                    harbor_domain::diff_reviews::ReviewThreadIndex::new(black_box(
+                        state.review_threads(),
+                    )),
+                ));
             }
             let rebuild_time = started_at.elapsed() / REBUILD_ITERATIONS;
 

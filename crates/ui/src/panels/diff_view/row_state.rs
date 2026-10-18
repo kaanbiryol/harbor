@@ -4,11 +4,11 @@ use crate::gpui_component::{ActiveTheme, input::TextareaState};
 use gpui::{App, Entity, SharedString};
 use harbor_domain::ReviewThread;
 
-use crate::diff_reviews::ReviewThreadIndex;
 use crate::workspace::{
     AppView, PendingReviewSession, ReviewCommentUiError, ReviewComposer, ReviewLineSelection,
     ReviewReactionAction, ReviewThreadUiError,
 };
+use harbor_domain::diff_reviews::ReviewThreadIndex;
 
 pub(super) struct DiffRowRenderState<'a> {
     pub(super) review_threads: &'a [ReviewThread],

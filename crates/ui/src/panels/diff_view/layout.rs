@@ -1,9 +1,9 @@
 use std::{collections::HashSet, ops::Range, sync::Arc};
 
 use gpui::ListState;
-use harbor_domain::{DiffFile, ReviewThread};
+use harbor_domain::{DiffFile, ReviewThread, diff_reviews::ReviewThreadIndex};
 
-use crate::{diff::ParsedDiff, diff_reviews::ReviewThreadIndex, workspace::ReviewComposer};
+use crate::{diff::ParsedDiff, workspace::ReviewComposer};
 
 use super::{
     LINE_NUMBER_DIGIT_WIDTH, LINE_NUMBER_PADDING, MIN_LINE_NUMBER_WIDTH,
@@ -334,5 +334,4 @@ pub(super) fn line_number_width_for_diff(diff: &ParsedDiff) -> f32 {
 }
 
 #[cfg(test)]
-#[path = "layout/tests.rs"]
 mod tests;

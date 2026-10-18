@@ -269,7 +269,7 @@ impl AppView {
             .map_err(|error| error.to_string())
     }
 
-    pub(super) fn github_api_for_request(&self) -> std::sync::Arc<dyn super::GitHubApi> {
+    pub(super) fn github_api_for_request(&self) -> std::sync::Arc<dyn harbor_github::GitHubApi> {
         self.github_api
             .snapshot()
             .unwrap_or_else(|| self.github_api.clone())

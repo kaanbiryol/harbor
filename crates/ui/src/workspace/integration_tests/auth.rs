@@ -5,10 +5,10 @@ use gpui::TestAppContext;
 use crate::{
     test_fixtures::{patched_diff_file, pull_request, workflow_run},
     workspace::{
-        GitHubAuthSource, GitHubAuthStatus, PullRequestInboxCacheKey,
-        github_service::{GitHubAuthApi, test_support::FakeGitHubApi},
+        GitHubAuthSource, GitHubAuthStatus, PullRequestInboxCacheKey, test_support::FakeGitHubApi,
     },
 };
+use harbor_github::GitHubAuthApi;
 
 use super::init_workspace_service_test;
 

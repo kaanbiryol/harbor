@@ -5,7 +5,6 @@ use gpui_kit::component as gpui_component;
 mod actions;
 mod date_time;
 mod diff;
-mod diff_reviews;
 mod dropdown;
 mod file_icons;
 mod github;
@@ -17,10 +16,6 @@ mod visual;
 mod workspace;
 
 pub use actions::bind_keys;
-pub use workspace::{
-    AppView, GitHubApi, GitHubAuthApi, GitHubAuthSource, GitHubPullRequestApi,
-    GitHubPullRequestMutationApi, GitHubRepositoryApi, GitHubReviewApi, GitHubReviewMutationApi,
-    GitHubWorkflowApi, GitHubWorkflowMutationApi,
-};
+pub use workspace::{AppView, GitHubAuthSource};
 
 mod workflow_logs;
