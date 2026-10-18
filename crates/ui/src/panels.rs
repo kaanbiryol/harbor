@@ -11,7 +11,6 @@ mod pull_request_overview;
 mod review;
 mod review_markdown;
 pub(crate) mod review_thread_chrome;
-mod review_thread_rows;
 mod workflows;
 
 pub(crate) use changed_file_rows::*;

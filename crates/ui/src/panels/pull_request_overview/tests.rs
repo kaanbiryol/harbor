@@ -7,7 +7,7 @@ use gpui::{
 };
 use harbor_domain::{
     Label, MergeState, PullRequestComment, PullRequestCommit, PullRequestReview,
-    PullRequestReviewState, ReviewDecision, ReviewThreadState,
+    PullRequestReviewState, ReviewDecision, ReviewThread, ReviewThreadState,
 };
 
 use super::{
@@ -76,6 +76,7 @@ fn finds_thread_index_in_virtual_overview_items() {
         &[],
         &[thread],
         None,
+        false,
     );
 
     assert_eq!(overview_thread_item_index(&items, "thread-1"), Some(3));
@@ -110,11 +111,48 @@ fn preserves_scroll_anchor_when_timeline_item_is_inserted_above() {
 }
 
 #[test]
-fn overview_rows_include_description_and_activity_in_one_list() {
-    let keys = overview_panel_items(OverviewDescriptionItems::Empty, &[], &[], &[], &[], None)
+fn unresolved_filter_keeps_only_unresolved_threads_until_none_remain() {
+    let mut unresolved = review_thread(ReviewThreadState::Unresolved);
+    unresolved.id = "thread-unresolved".to_string();
+    let mut resolved = review_thread(ReviewThreadState::Resolved);
+    resolved.id = "thread-resolved".to_string();
+    let activity_keys = |threads: &[ReviewThread]| {
+        overview_panel_items(
+            OverviewDescriptionItems::Empty,
+            &[],
+            &[],
+            &[],
+            threads,
+            None,
+            true,
+        )
         .iter()
         .map(OverviewPanelItem::key)
-        .collect::<Vec<_>>();
+        .filter(|key| key.starts_with("thread:"))
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        activity_keys(&[unresolved, resolved.clone()]),
+        vec!["thread:thread-unresolved"]
+    );
+    assert_eq!(activity_keys(&[resolved]), vec!["thread:thread-resolved"]);
+}
+
+#[test]
+fn overview_rows_include_description_and_activity_in_one_list() {
+    let keys = overview_panel_items(
+        OverviewDescriptionItems::Empty,
+        &[],
+        &[],
+        &[],
+        &[],
+        None,
+        false,
+    )
+    .iter()
+    .map(OverviewPanelItem::key)
+    .collect::<Vec<_>>();
 
     assert_eq!(
         keys,
@@ -137,6 +175,7 @@ fn description_markdown_blocks_are_individual_overview_rows() {
         &[],
         &[],
         None,
+        false,
     )
     .iter()
     .map(OverviewPanelItem::key)
@@ -633,7 +672,7 @@ async fn overview_panel_renders_description_and_editable_metadata(cx: &mut TestA
         cx.debug_bounds("pull-request-unresolved-conversations")
             .is_some()
     );
-    assert!(cx.debug_bounds("review-tab-unresolved-count").is_some());
+    assert!(cx.debug_bounds("overview-tab-unresolved-count").is_some());
     assert!(cx.debug_bounds("commits-tab-count").is_some());
     let author_chip = cx
         .debug_bounds("pull-request-person-octocat")

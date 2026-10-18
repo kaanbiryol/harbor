@@ -3,8 +3,8 @@ use harbor_domain::ReviewThreadState;
 
 use crate::{
     panels::review_thread_chrome::{
-        ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
-        render_review_thread_actions, render_review_thread_status_pill,
+        ReviewThreadActionIds, ReviewThreadActionsState, render_review_thread_actions,
+        render_review_thread_status_pill,
     },
     visual::color,
     workspace::AppView,
@@ -71,7 +71,6 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
             can_toggle_resolution,
             show_reply_button: true,
             show_toggle_icon: true,
-            chrome: ReviewThreadActionsChrome::Inline,
             view_entity,
         }))
 }

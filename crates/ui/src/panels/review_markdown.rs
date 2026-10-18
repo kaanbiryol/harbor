@@ -27,10 +27,6 @@ struct ReviewSuggestionDisplayLine {
     tone: Tone,
 }
 
-pub(crate) fn render_review_markdown_body(id: impl Into<String>, body: &str) -> AnyElement {
-    render_review_markdown_body_with_context(id, body, None)
-}
-
 pub(crate) fn render_review_markdown_body_with_context(
     id: impl Into<String>,
     body: &str,

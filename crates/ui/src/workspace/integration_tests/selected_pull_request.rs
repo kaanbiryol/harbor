@@ -243,7 +243,7 @@ async fn selecting_uncached_pull_request_clears_previous_detail_state(cx: &mut T
         view.changed_files_state
             .owned_file_paths
             .insert("src/lib.rs".to_string());
-        view.active_tab = PanelTab::Review;
+        view.active_tab = PanelTab::Checks;
 
         view.select_pull_request(1, cx);
 
@@ -306,7 +306,7 @@ async fn selecting_cached_pull_request_restores_detail_without_refetch(cx: &mut 
         view.detail_state.apply_workflows_success();
         view.review_state.apply_reviews_success();
         view.selection_state.set_diff_position(0, 3);
-        view.active_tab = PanelTab::Review;
+        view.active_tab = PanelTab::Checks;
         view.cache_current_pull_request_detail_snapshot();
 
         view.selection_state.set_pull_request_index(1);
@@ -314,7 +314,7 @@ async fn selecting_cached_pull_request_restores_detail_without_refetch(cx: &mut 
         view.select_pull_request(0, cx);
 
         assert_eq!(view.selected_pull_request_index(), 0);
-        assert_eq!(view.active_tab, PanelTab::Review);
+        assert_eq!(view.active_tab, PanelTab::Checks);
         assert_eq!(view.active_hunk_index(), 3);
         assert_eq!(view.detail_state.files().len(), 1);
         assert_eq!(view.detail_state.check_runs().len(), 1);

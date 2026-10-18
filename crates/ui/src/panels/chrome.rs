@@ -387,16 +387,6 @@ pub(crate) fn ci_status_icon(
     }
 }
 
-pub(crate) fn render_metric_pill(
-    label: impl Into<String>,
-    value: usize,
-    tone: Tone,
-) -> impl IntoElement {
-    let label = label.into();
-
-    render_status_pill(format!("{label} {value}"), tone)
-}
-
 pub(crate) fn sync_virtual_list_item_count(list_state: &ListState, item_count: usize) {
     let current_item_count = list_state.item_count();
     if current_item_count == item_count {

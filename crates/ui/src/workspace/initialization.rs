@@ -290,7 +290,6 @@ impl AppView {
                 ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
                 ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
                 ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
-                ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             ),
             selection_state: PullRequestSelectionState::default(),
             active_tab: PanelTab::Overview,

@@ -40,7 +40,7 @@ async fn cached_detail_restore_preserves_diff_position_without_refetch(cx: &mut 
             vec![None],
         );
         view.selection_state.set_diff_position(0, 0);
-        view.active_tab = PanelTab::Review;
+        view.active_tab = PanelTab::Checks;
 
         assert!(view.restore_selected_pull_request_detail_snapshot(cx));
         assert!(Arc::ptr_eq(

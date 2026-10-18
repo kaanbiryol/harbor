@@ -144,7 +144,7 @@ impl AppView {
         }
 
         let target = match self.active_tab {
-            PanelTab::Overview | PanelTab::Review => Some(SyncTarget::SelectedPullRequestReviews),
+            PanelTab::Overview => Some(SyncTarget::SelectedPullRequestReviews),
             PanelTab::Checks => Some(SyncTarget::SelectedPullRequestChecks),
             PanelTab::Actions | PanelTab::Logs => Some(SyncTarget::SelectedPullRequestWorkflows),
             PanelTab::Diff | PanelTab::Commits => None,
@@ -189,7 +189,7 @@ impl AppView {
             .loop_delay();
 
         let active_panel_target = match self.active_tab {
-            PanelTab::Overview | PanelTab::Review => Some(SyncTarget::SelectedPullRequestReviews),
+            PanelTab::Overview => Some(SyncTarget::SelectedPullRequestReviews),
             PanelTab::Checks => Some(SyncTarget::SelectedPullRequestChecks),
             PanelTab::Actions | PanelTab::Logs => Some(SyncTarget::SelectedPullRequestWorkflows),
             PanelTab::Diff | PanelTab::Commits => None,

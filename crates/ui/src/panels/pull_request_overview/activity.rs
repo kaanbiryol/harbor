@@ -3,7 +3,7 @@ use crate::gpui_component::{
     button::{Button, ButtonVariants},
     input::Textarea,
 };
-use gpui::{AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
+use gpui::{AnyElement, Context, Entity, IntoElement, ListOffset, div, prelude::*, px};
 use harbor_domain::{PullRequest, ReviewThread};
 
 use crate::{
@@ -95,6 +95,27 @@ impl AppView {
         cx.notify();
     }
 
+    pub(crate) fn set_overview_unresolved_threads_only(
+        &mut self,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.overview_state.set_unresolved_threads_only(enabled);
+        if enabled
+            && let Some(header_index) = self
+                .overview_state
+                .list_item_keys
+                .iter()
+                .position(|key| *key == OverviewPanelItem::ActivityHeader.key())
+        {
+            self.overview_state.list_state.scroll_to(ListOffset {
+                item_ix: header_index,
+                offset_in_item: px(0.0),
+            });
+        }
+        cx.notify();
+    }
+
     pub(crate) fn remeasure_overview_thread_item(&self, thread_id: &str) {
         let panel_items = overview_panel_items(
             self.overview_description_items(),
@@ -103,6 +124,7 @@ impl AppView {
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
             self.review_state.reviews_error(),
+            self.overview_state.unresolved_threads_only(),
         );
         let Some(index) = overview_thread_item_index(&panel_items, thread_id) else {
             return;
@@ -147,6 +169,7 @@ impl AppView {
             self.review_state.pull_request_comments(),
             self.review_state.review_threads(),
             self.review_state.reviews_error(),
+            self.overview_state.unresolved_threads_only(),
         );
         let panel_item_keys = panel_items.iter().map(OverviewPanelItem::key).collect();
         sync_overview_list_items(

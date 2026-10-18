@@ -5,9 +5,14 @@ use crate::gpui_component::{
     spinner::Spinner,
 };
 use gpui::{AnyElement, Context, IntoElement, div, list, prelude::*, px};
-use harbor_domain::PullRequest;
+use harbor_domain::{PullRequest, ReviewThreadState};
 
-use crate::{icons::Octicon, panels::render_empty_state, visual::color, workspace::AppView};
+use crate::{
+    icons::Octicon,
+    panels::render_empty_state,
+    visual::{Tone, color, tone_colors},
+    workspace::AppView,
+};
 
 const OVERVIEW_SIDEBAR_WIDTH: f32 = 280.0;
 
@@ -133,6 +138,12 @@ impl AppView {
         let overview_ready = self.overview_state.is_ready();
         let activity_loading =
             self.review_state.reviews_loading() || self.detail_state.commits_loading();
+        let unresolved_thread_count = self
+            .review_state
+            .review_threads()
+            .iter()
+            .filter(|thread| thread.state == ReviewThreadState::Unresolved)
+            .count();
         let panel_items = overview_panel_items(
             self.overview_description_items(),
             self.detail_state.commits(),
@@ -142,6 +153,7 @@ impl AppView {
             self.review_state
                 .reviews_error()
                 .or_else(|| self.detail_state.commits_error()),
+            self.overview_state.unresolved_threads_only(),
         );
         let panel_item_keys = panel_items.iter().map(OverviewPanelItem::key).collect();
         sync_overview_list_items(
@@ -167,9 +179,13 @@ impl AppView {
                         }
                         OverviewPanelItem::DescriptionEmpty => view.render_empty_description(),
                         OverviewPanelItem::DescriptionEditor => view.render_description_editor(cx),
-                        OverviewPanelItem::ActivityHeader => {
-                            render_overview_activity_header(activity_loading).into_any_element()
-                        }
+                        OverviewPanelItem::ActivityHeader => render_overview_activity_header(
+                            activity_loading,
+                            unresolved_thread_count,
+                            view.overview_state.unresolved_threads_only(),
+                            cx,
+                        )
+                        .into_any_element(),
                         OverviewPanelItem::Commit { sha } => view
                             .detail_state
                             .commits()
@@ -410,7 +426,14 @@ fn render_overview_activity_skeleton_row(selector: &'static str, compact: bool) 
         .into_any_element()
 }
 
-fn render_overview_activity_header(loading: bool) -> impl IntoElement {
+fn render_overview_activity_header(
+    loading: bool,
+    unresolved_thread_count: usize,
+    unresolved_threads_only: bool,
+    cx: &mut Context<AppView>,
+) -> impl IntoElement {
+    let colors = tone_colors(Tone::Warning);
+
     div()
         .debug_selector(|| "pull-request-overview-activity-header".to_string())
         .w_full()
@@ -421,10 +444,56 @@ fn render_overview_activity_header(loading: bool) -> impl IntoElement {
         .justify_between()
         .child(
             div()
-                .text_sm()
-                .font_medium()
-                .text_color(color::text_primary())
-                .child("Activity"),
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_medium()
+                        .text_color(color::text_primary())
+                        .child("Activity"),
+                )
+                .when(unresolved_thread_count > 0, |element| {
+                    element.child(
+                        div()
+                            .id("overview-unresolved-filter")
+                            .debug_selector(|| "overview-unresolved-filter".to_string())
+                            .flex_none()
+                            .rounded_xs()
+                            .border_1()
+                            .border_color(if unresolved_threads_only {
+                                colors.text
+                            } else {
+                                colors.border
+                            })
+                            .bg(if unresolved_threads_only {
+                                color::row_selected()
+                            } else {
+                                colors.background
+                            })
+                            .px_1()
+                            .py_0p5()
+                            .text_xs()
+                            .font_medium()
+                            .text_color(colors.text)
+                            .cursor_pointer()
+                            .hover(move |style| {
+                                style.bg(if unresolved_threads_only {
+                                    color::row_selected_active()
+                                } else {
+                                    color::row_hover()
+                                })
+                            })
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.set_overview_unresolved_threads_only(
+                                    !unresolved_threads_only,
+                                    cx,
+                                );
+                            }))
+                            .child(format!("unresolved {unresolved_thread_count}")),
+                    )
+                }),
         )
         .child(
             div()

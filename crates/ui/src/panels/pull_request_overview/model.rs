@@ -1,6 +1,6 @@
 use gpui::{ListOffset, px};
 use harbor_domain::{
-    PullRequestComment, PullRequestCommit, PullRequestReview, ReviewThread,
+    PullRequestComment, PullRequestCommit, PullRequestReview, ReviewThread, ReviewThreadState,
     reviews::{OverviewTimelineItem, overview_timeline_items},
 };
 
@@ -107,6 +107,12 @@ pub(super) fn sync_overview_list_items(
     *previous_keys = next_keys;
 }
 
+pub(super) fn overview_has_unresolved_threads(threads: &[ReviewThread]) -> bool {
+    threads
+        .iter()
+        .any(|thread| thread.state == ReviewThreadState::Unresolved)
+}
+
 pub(super) fn overview_thread_item_index(
     items: &[OverviewPanelItem],
     thread_id: &str,
@@ -123,8 +129,16 @@ pub(super) fn overview_panel_items(
     comments: &[PullRequestComment],
     threads: &[ReviewThread],
     error: Option<&str>,
+    unresolved_threads_only: bool,
 ) -> Vec<OverviewPanelItem> {
-    let timeline_items = overview_timeline_items(commits, reviews, comments, threads);
+    let mut timeline_items = overview_timeline_items(commits, reviews, comments, threads);
+    // The filter is ignored once nothing is unresolved so resolving the last thread
+    // falls back to the full timeline instead of an empty list.
+    if unresolved_threads_only && overview_has_unresolved_threads(threads) {
+        timeline_items.retain(|item| {
+            matches!(item, OverviewTimelineItem::Thread(thread) if thread.state == ReviewThreadState::Unresolved)
+        });
+    }
     let description_item_count = match description {
         OverviewDescriptionItems::Blocks(block_count) => block_count,
         OverviewDescriptionItems::Empty | OverviewDescriptionItems::Editor => 1,

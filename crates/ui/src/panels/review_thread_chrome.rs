@@ -46,12 +46,6 @@ pub(crate) enum ReviewThreadReplyComposerChrome {
     Panel,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum ReviewThreadActionsChrome {
-    Inline,
-    Panel,
-}
-
 pub(crate) struct ReviewThreadActionsState {
     pub(crate) ids: ReviewThreadActionIds,
     pub(crate) thread_id: String,
@@ -62,7 +56,6 @@ pub(crate) struct ReviewThreadActionsState {
     pub(crate) can_toggle_resolution: bool,
     pub(crate) show_reply_button: bool,
     pub(crate) show_toggle_icon: bool,
-    pub(crate) chrome: ReviewThreadActionsChrome,
     pub(crate) view_entity: Entity<AppView>,
 }
 
@@ -87,15 +80,6 @@ impl ReviewThreadActionIds {
             toggle_debug_selector: format!("inline-review-toggle-{thread_id}"),
         }
     }
-
-    pub(crate) fn review_panel(thread_id: &str) -> Self {
-        Self {
-            reply_button: format!("review-panel-reply-thread-{thread_id}"),
-            reply_debug_selector: format!("review-panel-reply-thread-{thread_id}"),
-            toggle_button: format!("review-panel-toggle-thread-{thread_id}"),
-            toggle_debug_selector: format!("review-panel-toggle-thread-{thread_id}"),
-        }
-    }
 }
 
 impl ReviewThreadReplyComposerIds {
@@ -105,15 +89,6 @@ impl ReviewThreadReplyComposerIds {
             cancel_debug_selector: format!("inline-review-reply-cancel-{thread_id}"),
             submit_button: format!("submit-thread-reply-{thread_id}"),
             submit_debug_selector: format!("inline-review-reply-submit-{thread_id}"),
-        }
-    }
-
-    pub(crate) fn review_panel(thread_id: &str) -> Self {
-        Self {
-            cancel_button: format!("review-panel-cancel-thread-reply-{thread_id}"),
-            cancel_debug_selector: format!("review-panel-cancel-thread-reply-{thread_id}"),
-            submit_button: format!("review-panel-submit-thread-reply-{thread_id}"),
-            submit_debug_selector: format!("review-panel-submit-thread-reply-{thread_id}"),
         }
     }
 
@@ -159,7 +134,6 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         can_toggle_resolution,
         show_reply_button,
         show_toggle_icon,
-        chrome,
         view_entity,
     } = state;
     let toggle_label = if is_resolved { "Reopen" } else { "Resolve" };
@@ -168,14 +142,9 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         .label(if active_reply { "Replying" } else { "Reply" })
         .xsmall()
         .disabled(reply_button_disabled);
-    let reply_button = if matches!(chrome, ReviewThreadActionsChrome::Panel) {
-        reply_button.compact()
-    } else {
-        reply_button
-    };
     let reply_button = if active_reply {
         reply_button.primary()
-    } else if matches!(chrome, ReviewThreadActionsChrome::Panel) || is_resolved {
+    } else if is_resolved {
         reply_button.ghost()
     } else {
         reply_button.outline()
@@ -209,12 +178,7 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
                 .xsmall()
                 .loading(action_running)
                 .disabled(!can_toggle_resolution || action_running);
-            let button = if matches!(chrome, ReviewThreadActionsChrome::Panel) {
-                button.compact()
-            } else {
-                button
-            };
-            let button = if matches!(chrome, ReviewThreadActionsChrome::Panel) || is_resolved {
+            let button = if is_resolved {
                 button.ghost()
             } else {
                 button.outline()

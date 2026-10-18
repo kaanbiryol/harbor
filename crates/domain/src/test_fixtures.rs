@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 
 use crate::{
-    ChecksSummary, MergeState, PullRequest, PullRequestComment, PullRequestState, RepoId,
-    ReviewComment, ReviewCommentPosition, ReviewSide, ReviewThread, ReviewThreadState,
+    ChecksSummary, MergeState, PullRequest, PullRequestState, RepoId, ReviewComment,
+    ReviewCommentPosition, ReviewSide, ReviewThread, ReviewThreadState,
 };
 
 pub(crate) fn test_time() -> DateTime<Utc> {
@@ -75,16 +75,5 @@ pub(crate) fn review_thread(state: ReviewThreadState) -> ReviewThread {
             viewer_can_react: true,
             reactions: Vec::new(),
         }],
-    }
-}
-
-pub(crate) fn pull_request_comment(id: &str, body: &str) -> PullRequestComment {
-    PullRequestComment {
-        id: id.to_string(),
-        author: "alex".to_string(),
-        author_avatar_url: None,
-        body: body.to_string(),
-        created_at: test_time(),
-        updated_at: None,
     }
 }

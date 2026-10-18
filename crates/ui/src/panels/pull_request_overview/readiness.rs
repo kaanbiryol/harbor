@@ -8,7 +8,6 @@ use harbor_domain::{MergeState, PullRequest, ReviewDecision};
 
 use crate::panels::{PullRequestMergeQueueStatus, pull_request_merge_queue_status};
 use crate::{
-    actions::PanelTab,
     icons::Octicon,
     visual::{Tone, color, tone_colors},
     workspace::AppView,
@@ -108,7 +107,7 @@ impl AppView {
                             true,
                         )
                         .on_click(cx.listener(|view, _, _, cx| {
-                            view.select_panel_tab(PanelTab::Review, cx);
+                            view.set_overview_unresolved_threads_only(true, cx);
                         })),
                     ),
             )

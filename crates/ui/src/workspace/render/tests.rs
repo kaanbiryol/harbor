@@ -216,7 +216,7 @@ async fn non_diff_panel_uses_full_workspace_width(cx: &mut TestAppContext) {
             .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
         view.update(cx, |view, cx| {
             view.pull_requests = vec![pull_request()];
-            view.active_tab = PanelTab::Review;
+            view.active_tab = PanelTab::Checks;
             cx.notify();
         });
         view

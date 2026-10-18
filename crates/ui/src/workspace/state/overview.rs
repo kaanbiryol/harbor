@@ -28,6 +28,7 @@ pub(crate) struct OverviewUiState {
     content: OverviewContentState,
     cached_content: HashMap<PullRequestDetailCacheKey, OverviewContentState>,
     cached_content_order: VecDeque<PullRequestDetailCacheKey>,
+    unresolved_threads_only: bool,
     pub(crate) list_state: ListState,
     pub(crate) list_item_keys: Vec<String>,
 }
@@ -41,6 +42,7 @@ impl OverviewUiState {
             content: OverviewContentState::default(),
             cached_content: HashMap::new(),
             cached_content_order: VecDeque::new(),
+            unresolved_threads_only: false,
             list_state,
             list_item_keys: Vec::new(),
         }
@@ -82,6 +84,7 @@ impl OverviewUiState {
 
         self.cache_current_content();
         self.clear_current_content();
+        self.unresolved_threads_only = false;
         self.pull_request_key = Some(key.clone());
 
         let cached = self.cached_content.remove(&key);
@@ -246,6 +249,14 @@ impl OverviewUiState {
             .markdown_states
             .get(key)
             .map(|state| state.source.as_str())
+    }
+
+    pub(crate) fn unresolved_threads_only(&self) -> bool {
+        self.unresolved_threads_only
+    }
+
+    pub(crate) fn set_unresolved_threads_only(&mut self, enabled: bool) {
+        self.unresolved_threads_only = enabled;
     }
 
     pub(crate) fn thread_expansion_override(&self, thread_id: &str) -> Option<bool> {

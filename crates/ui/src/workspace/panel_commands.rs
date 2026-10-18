@@ -32,15 +32,6 @@ impl AppView {
         self.select_panel_tab(PanelTab::Diff, cx);
     }
 
-    pub(super) fn select_review_panel(
-        &mut self,
-        _: &SelectReviewPanel,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.select_panel_tab(PanelTab::Review, cx);
-    }
-
     pub(super) fn select_checks_panel(
         &mut self,
         _: &SelectChecksPanel,

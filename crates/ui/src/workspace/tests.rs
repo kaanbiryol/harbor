@@ -201,7 +201,6 @@ async fn initial_panel_loads_use_skeleton_rows(cx: &mut TestAppContext) {
     assert!(cx.debug_bounds("changed-files-loading-skeleton").is_some());
 
     for (tab, selector) in [
-        (PanelTab::Review, "review-loading-skeleton"),
         (PanelTab::Checks, "checks-loading-skeleton"),
         (PanelTab::Commits, "commits-loading-skeleton"),
         (PanelTab::Logs, "logs-loading-skeleton"),

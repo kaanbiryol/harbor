@@ -104,10 +104,6 @@ impl AppView {
             item_ix: 0,
             offset_in_item: px(0.0),
         });
-        self.panel_list_state.review.scroll_to(ListOffset {
-            item_ix: 0,
-            offset_in_item: px(0.0),
-        });
         self.panel_list_state.checks.scroll_to(ListOffset {
             item_ix: 0,
             offset_in_item: px(0.0),

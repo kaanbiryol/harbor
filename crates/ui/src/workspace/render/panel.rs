@@ -6,9 +6,8 @@ use crate::{
     actions::PanelTab,
     panels::{
         ActionsPanelRenderInput, CheckPanelRenderInput, CommitsPanelRenderInput,
-        DiffPanelRenderInput, ReviewPanelRenderInput, navigation_tab, render_actions_panel,
-        render_checks_panel, render_commits_panel, render_diff_panel, render_review_panel,
-        render_tab_count,
+        DiffPanelRenderInput, navigation_tab, render_actions_panel, render_checks_panel,
+        render_commits_panel, render_diff_panel, render_tab_count,
     },
     visual::{Tone, color},
     workspace::AppView,
@@ -32,10 +31,10 @@ impl AppView {
         let tabs = PanelTab::ALL.into_iter().map(|tab| {
             navigation_tab(tab.label())
                 .prefix(div().mr_0p5().child(Icon::new(tab.icon()).xsmall()))
-                .when(tab == PanelTab::Review && unresolved_threads > 0, |tab| {
+                .when(tab == PanelTab::Overview && unresolved_threads > 0, |tab| {
                     tab.suffix(
                         div()
-                            .debug_selector(|| "review-tab-unresolved-count".to_string())
+                            .debug_selector(|| "overview-tab-unresolved-count".to_string())
                             .child(render_tab_count(unresolved_threads, Tone::Warning)),
                     )
                 })
@@ -145,18 +144,6 @@ impl AppView {
                             )
                             .into_any_element()
                         }
-                        PanelTab::Review => render_review_panel(
-                            ReviewPanelRenderInput {
-                                reviews: self.review_state.pull_request_reviews(),
-                                comments: self.review_state.pull_request_comments(),
-                                threads: self.review_state.review_threads(),
-                                is_loading: self.review_state.reviews_loading(),
-                                error: self.review_state.reviews_error(),
-                                review_list_state: self.panel_list_state.review.clone(),
-                            },
-                            cx,
-                        )
-                        .into_any_element(),
                         PanelTab::Checks => render_checks_panel(
                             CheckPanelRenderInput {
                                 summary: pr.map(|pr| pr.checks_summary).unwrap_or_default(),

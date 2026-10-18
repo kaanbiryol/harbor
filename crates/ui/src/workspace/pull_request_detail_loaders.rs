@@ -222,7 +222,7 @@ impl AppView {
         }
 
         match self.active_tab {
-            PanelTab::Overview | PanelTab::Diff | PanelTab::Review => {
+            PanelTab::Overview | PanelTab::Diff => {
                 if self.review_state.should_load_reviews() {
                     self.spawn_selected_review_data_loader(
                         load.clone(),
@@ -335,10 +335,7 @@ fn should_defer_review_load_until_cache(
 ) -> bool {
     fetch_policy == PullRequestDetailFetchPolicy::PreferCache
         && has_store
-        && matches!(
-            active_tab,
-            PanelTab::Overview | PanelTab::Diff | PanelTab::Review
-        )
+        && matches!(active_tab, PanelTab::Overview | PanelTab::Diff)
 }
 
 #[cfg(test)]
@@ -351,11 +348,6 @@ mod tests {
             PullRequestDetailFetchPolicy::PreferCache,
             true,
             PanelTab::Diff
-        ));
-        assert!(should_defer_review_load_until_cache(
-            PullRequestDetailFetchPolicy::PreferCache,
-            true,
-            PanelTab::Review
         ));
         assert!(should_defer_review_load_until_cache(
             PullRequestDetailFetchPolicy::PreferCache,
