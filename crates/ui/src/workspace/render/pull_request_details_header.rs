@@ -2,7 +2,7 @@ use crate::gpui_component::{
     ActiveTheme, Disableable, Sizable, StyledExt,
     button::{Button, ButtonVariants, DropdownButton},
     clipboard::Clipboard,
-    popover::Popover,
+    menu::DropdownMenu,
 };
 use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
 use harbor_domain::{
@@ -18,9 +18,8 @@ use crate::{
         OpenRequestChangesCommentDialog, PullRequestAction, PullRequestActionKind,
         RebasePullRequest, ToggleMergeRequirementsBypass,
     },
-    dropdown::{dropdown_menu_item, dropdown_menu_surface},
     icons::Octicon,
-    panels::{ImmediateTooltip, PullRequestMergeQueueStatus, review_action_blocker},
+    panels::{PullRequestMergeQueueStatus, review_action_blocker},
     visual::{color, layout},
     workspace::{AppView, log_entity_update_error},
 };
@@ -53,7 +52,6 @@ impl AppView {
         let branch_name = pr.head_ref.clone();
         let head_sha = pr.head_sha.clone();
         let short_head_sha = short_commit_sha(&head_sha);
-        let view = cx.entity().clone();
         let bypass_in_merge_menu = bypass_placement == Some(MergeBypassPlacement::MergeMenu);
         let show_merge_bypass_options = bypass_placement == Some(MergeBypassPlacement::Separate);
         let header_actions = div()
@@ -211,7 +209,6 @@ impl AppView {
                         controls.child(render_merge_bypass_options(
                             bypass_enabled,
                             pull_request_action_running,
-                            view,
                         ))
                     })
             });
@@ -383,45 +380,20 @@ fn render_merge_queue_status(status: PullRequestMergeQueueStatus) -> impl IntoEl
         .tooltip(status.description())
 }
 
-fn render_merge_bypass_options(
-    bypass_enabled: bool,
-    action_running: bool,
-    view: gpui::Entity<AppView>,
-) -> impl IntoElement {
-    Popover::new("pull-request-merge-options")
-        .appearance(false)
-        .anchor(Anchor::TopRight)
-        .trigger(ImmediateTooltip::new(
-            "pull-request-merge-options-tooltip",
-            "Merge options",
-            Button::new("pull-request-merge-options-trigger")
-                .icon(Octicon::KebabHorizontal)
-                .xsmall()
-                .compact()
-                .ghost()
-                .disabled(action_running),
-        ))
-        .content(move |_, _window, popover_cx| {
-            let popover = popover_cx.entity().clone();
-            let view = view.clone();
-
-            dropdown_menu_surface(popover_cx, 232.0).p_0p5().child(
-                dropdown_menu_item(
-                    "toggle-merge-requirements-bypass",
-                    "Bypass merge requirements",
-                    None,
-                    bypass_enabled,
-                    bypass_enabled,
-                    action_running,
-                )
-                .on_click(move |_, window, cx| {
-                    view.update(cx, |view, cx| {
-                        view.set_merge_bypass_enabled(!bypass_enabled, cx);
-                    });
-                    popover.update(cx, |popover, cx| {
-                        popover.dismiss(window, cx);
-                    });
-                }),
+fn render_merge_bypass_options(bypass_enabled: bool, action_running: bool) -> impl IntoElement {
+    Button::new("pull-request-merge-options-trigger")
+        .icon(Octicon::KebabHorizontal)
+        .xsmall()
+        .compact()
+        .ghost()
+        .tooltip("Merge options")
+        .disabled(action_running)
+        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+            menu.menu_with_check_and_disabled(
+                "Bypass merge requirements",
+                bypass_enabled,
+                Box::new(ToggleMergeRequirementsBypass),
+                action_running,
             )
         })
 }

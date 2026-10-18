@@ -1,17 +1,20 @@
 use crate::gpui_component::{
     Icon, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    empty::{Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle},
     skeleton::Skeleton,
     tab::Tab,
+    tag::Tag,
     tooltip::Tooltip,
 };
 use gpui::{
-    AnyElement, Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div, prelude::*,
-    px,
+    Action, AnyElement, Div, ElementId, IntoElement, ListState, RenderOnce, SharedString, div,
+    prelude::*, px,
 };
 
 use harbor_domain::{CheckConclusion, CheckStatus};
 
+use crate::actions::KEY_CONTEXT;
 use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
 
@@ -22,6 +25,7 @@ where
 {
     id: ElementId,
     label: SharedString,
+    action: Option<Box<dyn Action>>,
     trigger: T,
 }
 
@@ -37,8 +41,14 @@ where
         Self {
             id: id.into(),
             label: label.into(),
+            action: None,
             trigger,
         }
+    }
+
+    pub(crate) fn action(mut self, action: Box<dyn Action>) -> Self {
+        self.action = Some(action);
+        self
     }
 }
 
@@ -62,11 +72,19 @@ where
 {
     fn render(self, _: &mut gpui::Window, _: &mut gpui::App) -> impl IntoElement {
         let label = self.label;
+        let action = self.action;
 
         div()
             .id(self.id)
             .child(self.trigger)
-            .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
+            .tooltip(move |window, cx| {
+                let tooltip = Tooltip::new(label.clone());
+                match &action {
+                    Some(action) => tooltip.action(action.as_ref(), Some(KEY_CONTEXT)),
+                    None => tooltip,
+                }
+                .build(window, cx)
+            })
     }
 }
 
@@ -115,45 +133,33 @@ pub(crate) fn render_empty_state(
     title: impl Into<String>,
     description: impl Into<String>,
 ) -> Div {
-    div()
-        .flex_1()
-        .min_h_0()
-        .w_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap_2()
-        .px_5()
-        .py_8()
-        .text_center()
-        .child(
-            div()
-                .mb_2()
-                .size(px(44.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .border_1()
-                .border_color(color::border_strong())
-                .bg(color::row_selected_subtle())
-                .child(Icon::new(icon).large().text_color(color::accent())),
-        )
-        .child(
-            div()
-                .text_lg()
-                .font_semibold()
-                .text_color(color::text_primary())
-                .child(title.into()),
-        )
-        .child(
-            div()
+    div().flex_1().min_h_0().w_full().flex().child(
+        Empty::new().px_5().py_8().gap_2().header(
+            EmptyHeader::new()
                 .max_w(px(420.0))
-                .text_sm()
-                .text_color(color::text_muted())
-                .child(description.into()),
-        )
+                .media(
+                    EmptyMedia::new()
+                        .size(px(44.0))
+                        .rounded_full()
+                        .border_1()
+                        .border_color(color::border_strong())
+                        .bg(color::row_selected_subtle())
+                        .child(Icon::new(icon).large().text_color(color::accent())),
+                )
+                .title(
+                    EmptyTitle::new()
+                        .text_lg()
+                        .font_semibold()
+                        .text_color(color::text_primary())
+                        .child(title.into()),
+                )
+                .description(
+                    EmptyDescription::new()
+                        .text_color(color::text_muted())
+                        .child(description.into()),
+                ),
+        ),
+    )
 }
 
 pub(crate) fn render_loading_panel_skeleton(
@@ -327,42 +333,44 @@ pub(crate) fn navigation_tab(label: &'static str) -> Tab {
 
 pub(crate) fn render_tab_count(count: usize, tone: Tone) -> impl IntoElement {
     let colors = tone_colors(tone);
+    let text = match tone {
+        Tone::Neutral if count > 0 => color::text_secondary(),
+        _ => colors.text,
+    };
 
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .ml(px(2.0))
-        .min_w(px(20.0))
-        .h(px(18.0))
-        .px(px(5.0))
-        .rounded_full()
-        .bg(colors.background)
-        .text_size(px(11.0))
-        .font_medium()
-        .text_color(match tone {
-            Tone::Neutral if count > 0 => color::text_secondary(),
-            _ => colors.text,
-        })
-        .child(count.to_string())
+    Tag::custom(
+        colors.background.into(),
+        text.into(),
+        colors.background.into(),
+    )
+    .rounded_full()
+    .flex_none()
+    .justify_center()
+    .ml(px(2.0))
+    .min_w(px(20.0))
+    .h(px(18.0))
+    .px(px(5.0))
+    .py_0()
+    .text_size(px(11.0))
+    .font_medium()
+    .child(count.to_string())
 }
 
-pub(crate) fn render_status_pill(label: impl Into<String>, tone: Tone) -> Div {
+pub(crate) fn render_status_pill(label: impl Into<SharedString>, tone: Tone) -> Tag {
     let colors = tone_colors(tone);
 
-    div()
-        .flex_none()
-        .rounded_xs()
-        .border_1()
-        .border_color(colors.border)
-        .bg(colors.background)
-        .px_1()
-        .py_0p5()
-        .text_xs()
-        .font_medium()
-        .text_color(colors.text)
-        .child(label.into())
+    Tag::custom(
+        colors.background.into(),
+        colors.text.into(),
+        colors.border.into(),
+    )
+    .flex_none()
+    .rounded_xs()
+    .px_1()
+    .py_0p5()
+    .text_xs()
+    .font_medium()
+    .child(label.into())
 }
 
 pub(crate) fn ci_status_icon(

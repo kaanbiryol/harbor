@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::gpui_component::{Icon, Sizable, StyledExt};
+use crate::gpui_component::{Icon, Sizable, StyledExt, tag::Tag};
 use chrono::Duration;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{CheckConclusion, CheckRun, CheckStatus, ChecksSummary};
@@ -203,34 +203,28 @@ fn render_check_filter_pill(
     };
     let label = format!("{} {value}", filter.status_label());
 
+    let background = if is_active {
+        color::row_selected()
+    } else {
+        colors.background
+    };
+
     div()
         .id(("check-filter", filter.id()))
         .flex_none()
-        .rounded_xs()
-        .border_1()
-        .border_color(border_color)
-        .bg(if is_active {
-            color::row_selected()
-        } else {
-            colors.background
-        })
-        .px_1()
-        .py_0p5()
-        .text_xs()
-        .font_medium()
-        .text_color(colors.text)
         .cursor_pointer()
-        .hover(move |style| {
-            style.bg(if is_active {
-                color::row_selected_active()
-            } else {
-                color::row_hover()
-            })
-        })
         .on_click(cx.listener(move |view, _, _, cx| {
             view.set_checks_filter(filter, cx);
         }))
-        .child(label)
+        .child(
+            Tag::custom(background.into(), colors.text.into(), border_color.into())
+                .rounded_xs()
+                .px_1()
+                .py_0p5()
+                .text_xs()
+                .font_medium()
+                .child(label),
+        )
 }
 
 fn render_check_completion_summary(summary: ChecksSummary) -> impl IntoElement {

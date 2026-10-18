@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::{
+    actions::OpenPullRequestSearch,
     dropdown::{dropdown_menu_section, dropdown_menu_surface},
     icons::Octicon,
     panels::ImmediateTooltip,
@@ -75,16 +76,19 @@ impl AppView {
                     });
                 }
             })
-            .trigger(ImmediateTooltip::new(
-                "search-pull-request-inbox-tooltip",
-                "Search pull requests",
-                Button::new("search-pull-request-inbox")
-                    .ghost()
-                    .small()
-                    .compact()
-                    .icon(Octicon::Search)
-                    .disabled(!has_current_repository),
-            ))
+            .trigger(
+                ImmediateTooltip::new(
+                    "search-pull-request-inbox-tooltip",
+                    "Search pull requests",
+                    Button::new("search-pull-request-inbox")
+                        .ghost()
+                        .small()
+                        .compact()
+                        .icon(Octicon::Search)
+                        .disabled(!has_current_repository),
+                )
+                .action(Box::new(OpenPullRequestSearch)),
+            )
             .content(move |_, _window, popover_cx| {
                 let view = view.clone();
                 let popover = popover_cx.entity().clone();

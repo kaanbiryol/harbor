@@ -1,4 +1,4 @@
-use gpui::{App, KeyBinding, actions};
+use gpui::{Action, App, KeyBinding, actions};
 use harbor_domain::MergeMethod;
 
 use crate::icons::Octicon;
@@ -155,6 +155,17 @@ impl PanelTab {
             Self::Checks => "Checks",
             Self::Actions => "Actions",
             Self::Logs => "Logs",
+        }
+    }
+
+    pub(crate) fn select_action(self) -> Box<dyn Action> {
+        match self {
+            Self::Overview => Box::new(SelectOverviewPanel),
+            Self::Diff => Box::new(SelectDiffPanel),
+            Self::Commits => Box::new(SelectCommitsPanel),
+            Self::Checks => Box::new(SelectChecksPanel),
+            Self::Actions => Box::new(SelectActionsPanel),
+            Self::Logs => Box::new(SelectLogsPanel),
         }
     }
 

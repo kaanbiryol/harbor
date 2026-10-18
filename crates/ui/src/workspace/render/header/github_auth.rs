@@ -2,6 +2,7 @@ use crate::gpui_component::{
     Icon, Sizable, StyledExt,
     avatar::Avatar,
     button::{Button, ButtonVariants},
+    list::ListItem,
     popover::Popover,
 };
 use gpui::{Anchor, AnyElement, App, Context, Entity, IntoElement, div, prelude::*, px};
@@ -269,30 +270,29 @@ fn render_github_account_menu_row(
     icon: Octicon,
     label: &'static str,
     danger: bool,
-) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
+) -> ListItem {
+    let (text_color, icon_color) = if danger {
+        (color::danger(), color::danger())
+    } else {
+        (color::text_primary(), color::text_muted())
+    };
+
+    ListItem::new(id)
         .h_7()
         .w_full()
-        .flex()
-        .items_center()
-        .gap_2()
-        .rounded_xs()
         .px_2()
+        .py_0()
+        .rounded_xs()
         .text_sm()
-        .cursor_pointer()
-        .text_color(if danger {
-            color::danger()
-        } else {
-            color::text_primary()
-        })
-        .hover(|element| element.bg(color::row_hover()))
-        .child(Icon::new(icon).xsmall().text_color(if danger {
-            color::danger()
-        } else {
-            color::text_muted()
-        }))
-        .child(div().flex_1().child(label))
+        .text_color(text_color)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(icon).xsmall().text_color(icon_color))
+                .child(div().flex_1().child(label)),
+        )
 }
 
 fn render_github_account_avatar(login: Option<&str>, size: f32) -> AnyElement {

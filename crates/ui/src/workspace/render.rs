@@ -190,8 +190,5 @@ impl Render for AppView {
             .when(!show_auth_gate, |element| {
                 element.child(self.render_status_bar(cx))
             })
-            .when(self.review_action_comment_target.is_some(), |element| {
-                element.child(self.render_review_action_comment_dialog(cx))
-            })
     }
 }

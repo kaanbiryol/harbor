@@ -1,3 +1,4 @@
+use crate::gpui_component::tag::Tag;
 use gpui::{IntoElement, Rgba, div, prelude::*, px};
 
 use crate::visual::color;
@@ -96,23 +97,22 @@ pub(super) fn render_auth_preview_diff_row(index: usize) -> impl IntoElement {
 }
 
 pub(super) fn render_auth_preview_pill(label: &'static str, selected: bool) -> impl IntoElement {
-    div()
-        .border_1()
-        .border_color(if selected {
-            color::border_strong()
-        } else {
-            color::border()
-        })
-        .bg(if selected {
-            color::row_selected()
-        } else {
-            color::content_background()
-        })
-        .px_2()
-        .py_1()
-        .text_xs()
-        .text_color(color::text_secondary())
-        .child(label)
+    let (background, border) = if selected {
+        (color::row_selected(), color::border_strong())
+    } else {
+        (color::content_background(), color::border())
+    };
+
+    Tag::custom(
+        background.into(),
+        color::text_secondary().into(),
+        border.into(),
+    )
+    .rounded_none()
+    .px_2()
+    .py_1()
+    .text_xs()
+    .child(label)
 }
 
 pub(super) fn render_auth_preview_tab(label: &'static str, selected: bool) -> impl IntoElement {

@@ -1,3 +1,4 @@
+use crate::gpui_component::WindowExt;
 use gpui::{Context, Window};
 use harbor_domain::MergeMethod;
 use harbor_domain::SubmitPullRequestReviewEvent;
@@ -441,6 +442,9 @@ impl AppView {
         self.review_action_comment_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
             input.set_placeholder(target.placeholder(), window, cx);
+        });
+        self.open_review_action_comment_dialog_window(window, cx);
+        self.review_action_comment_input.update(cx, |input, cx| {
             input.focus(window, cx);
         });
         self.status = format!("Opened {}", target.title().to_lowercase());
@@ -486,6 +490,7 @@ impl AppView {
         self.review_action_comment_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
         });
+        window.close_dialog(cx);
         self.run_pull_request_action(action, window, cx);
     }
 

@@ -1,4 +1,4 @@
-use crate::gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button};
+use crate::gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button, tag::Tag};
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 
 use crate::{
@@ -98,19 +98,19 @@ fn render_auth_method_action(
 }
 
 fn render_current_auth_badge() -> impl IntoElement {
-    div()
-        .h_6()
-        .px_2()
-        .flex()
-        .items_center()
-        .gap_1()
-        .rounded_xs()
-        .bg(color::row_selected())
-        .text_xs()
-        .font_medium()
-        .text_color(color::text_primary())
-        .child(Icon::new(Octicon::Check).xsmall())
-        .child("Current")
+    Tag::custom(
+        color::row_selected().into(),
+        color::text_primary().into(),
+        color::row_selected().into(),
+    )
+    .h_6()
+    .px_2()
+    .gap_1()
+    .rounded_xs()
+    .text_xs()
+    .font_medium()
+    .child(Icon::new(Octicon::Check).xsmall())
+    .child("Current")
 }
 
 fn render_auth_method_row(

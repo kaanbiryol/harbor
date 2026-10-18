@@ -132,23 +132,14 @@ impl AppView {
                             chip.value
                         );
 
-                        div()
-                            .id(chip_id)
-                            .h(px(24.))
+                        Button::new(chip_id)
+                            .small()
+                            .outline()
                             .max_w(px(232.))
                             .min_w_0()
-                            .flex()
-                            .items_center()
                             .gap_1()
-                            .rounded_xs()
-                            .border_1()
-                            .border_color(color::border_strong())
-                            .bg(color::elevated_background())
-                            .px_2()
                             .text_xs()
                             .text_color(color::text_secondary())
-                            .cursor_pointer()
-                            .hover(|element| element.bg(color::row_hover()))
                             .on_click(move |_, _, cx| {
                                 view.update(cx, |view, cx| {
                                     view.remove_pull_request_filter(chip.facet, &chip.value, cx);

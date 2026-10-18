@@ -2,10 +2,17 @@ use crate::gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
     progress::ProgressCircle,
+    status_bar::StatusBar,
+    tooltip::Tooltip,
 };
-use gpui::{Context, Div, IntoElement, div, prelude::*, px};
+use gpui::{Context, IntoElement, div, prelude::*};
 
-use crate::{actions::TogglePullRequestInbox, icons::Octicon, visual::color, workspace::AppView};
+use crate::{
+    actions::{KEY_CONTEXT, TogglePullRequestInbox},
+    icons::Octicon,
+    visual::color,
+    workspace::AppView,
+};
 
 use super::rate_limits::{
     GitHubRateLimitIndicator, github_rate_limit_indicator, github_rate_limit_indicator_color,
@@ -54,13 +61,8 @@ impl AppView {
             None
         };
 
-        div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .px_2()
-            .py_1()
-            .text_xs()
+        StatusBar::new()
+            .bg(color::app_background())
             .text_color(color::text_muted())
             .border_1()
             .border_color(color::border())
@@ -70,60 +72,48 @@ impl AppView {
                     .small()
                     .compact()
                     .icon(inbox_toggle_icon)
-                    .tooltip(inbox_toggle_tooltip)
+                    .tooltip_with_action(
+                        inbox_toggle_tooltip,
+                        &TogglePullRequestInbox,
+                        Some(KEY_CONTEXT),
+                    )
                     .on_click(cx.listener(|view, _, window, cx| {
                         view.toggle_pull_request_inbox(&TogglePullRequestInbox, window, cx);
                     })),
             )
             .child(div().min_w_0().flex_1().truncate().child(status_label))
             .when_some(rate_limit_indicator, |element, indicator| {
-                element.child(render_rate_limit_indicator(indicator))
+                element.right(render_rate_limit_indicator(indicator))
             })
     }
 }
 
 fn render_rate_limit_indicator(indicator: GitHubRateLimitIndicator) -> impl IntoElement {
-    let details = indicator.details.clone();
+    let details = indicator.details;
 
     div()
         .id("github-rate-limit-indicator")
-        .group("github-rate-limit-indicator")
-        .relative()
         .flex_none()
         .flex()
         .items_center()
         .justify_center()
         .size_5()
+        .tooltip(move |window, cx| {
+            let details = details.clone();
+            Tooltip::element(move |_, _| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .whitespace_nowrap()
+                    .children(details.iter().map(|detail| div().child(detail.clone())))
+            })
+            .build(window, cx)
+        })
         .child(
             ProgressCircle::new("github-rate-limit-progress")
                 .small()
                 .value(indicator.value)
                 .color(github_rate_limit_indicator_color(indicator.tone)),
         )
-        .child(
-            render_rate_limit_tooltip(details)
-                .absolute()
-                .right_0()
-                .bottom(px(24.0))
-                .invisible()
-                .group_hover("github-rate-limit-indicator", |element| element.visible()),
-        )
-}
-
-fn render_rate_limit_tooltip(details: Vec<String>) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .whitespace_nowrap()
-        .rounded_xs()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::elevated_background())
-        .px_2()
-        .py_1()
-        .shadow_lg()
-        .text_xs()
-        .text_color(color::text_secondary())
-        .children(details.into_iter().map(|detail| div().child(detail)))
 }

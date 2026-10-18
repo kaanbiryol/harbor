@@ -1,9 +1,9 @@
-use crate::gpui_component::{Icon, Sizable, tab::TabBar};
+use crate::gpui_component::{Icon, Sizable, tab::TabBar, tooltip::Tooltip};
 use gpui::{Context, IntoElement, div, prelude::*};
 use harbor_domain::PullRequest;
 
 use crate::{
-    actions::PanelTab,
+    actions::{KEY_CONTEXT, PanelTab},
     panels::{
         ActionsPanelRenderInput, CheckPanelRenderInput, CommitsPanelRenderInput,
         DiffPanelRenderInput, navigation_tab, render_actions_panel, render_checks_panel,
@@ -30,6 +30,11 @@ impl AppView {
             .unwrap_or_default();
         let tabs = PanelTab::ALL.into_iter().map(|tab| {
             navigation_tab(tab.label())
+                .tooltip(move |window, cx| {
+                    Tooltip::new(tab.label())
+                        .action(tab.select_action().as_ref(), Some(KEY_CONTEXT))
+                        .build(window, cx)
+                })
                 .prefix(div().mr_0p5().child(Icon::new(tab.icon()).xsmall()))
                 .when(tab == PanelTab::Overview && unresolved_threads > 0, |tab| {
                     tab.suffix(
