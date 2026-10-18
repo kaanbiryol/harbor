@@ -6,9 +6,7 @@ use crate::{
     workspace::{
         AppView, PullRequestDetailCacheKey, SelectedPullRequestTaskKind,
         async_updates::AppViewAsyncUpdateExt,
-        review_data_loaders::{
-            ReviewDataLoadMode, ReviewDataLoadTarget, selected_pull_request_matches,
-        },
+        reviews::{ReviewDataLoadMode, ReviewDataLoadTarget},
     },
 };
 
@@ -278,7 +276,7 @@ impl AppView {
         mode: ReviewDataLoadMode,
         cx: &mut Context<Self>,
     ) {
-        let review_data_generation = self.next_review_data_generation();
+        let review_data_generation = self.review_state.next_review_data_generation();
         self.spawn_review_data_loader(
             ReviewDataLoadTarget::new(
                 load.repo,
@@ -321,6 +319,13 @@ impl AppView {
             }),
         );
     }
+}
+
+pub(super) fn selected_pull_request_matches(
+    view: &AppView,
+    detail_key: &PullRequestDetailCacheKey,
+) -> bool {
+    view.selected_pull_request_detail_key().as_ref() == Some(detail_key)
 }
 
 fn should_defer_review_load_until_cache(

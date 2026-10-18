@@ -1,26 +1,25 @@
 use std::{cell::OnceCell, collections::HashMap, sync::Arc};
 
+use chrono::Utc;
 use harbor_domain::{
-    PullRequestComment, PullRequestReview, ReactionContent, ReviewComment, ReviewThread,
-    ReviewThreadState,
+    PullRequestComment, PullRequestReview, ReactionContent, ReviewComment, ReviewCommentPosition,
+    ReviewCommentRange, ReviewThread, ReviewThreadState, diff_reviews::ReviewThreadIndex,
 };
 
 use crate::workspace::{
     PendingReviewSession, ReviewCommentUiError, ReviewComposerState, ReviewReactionAction,
     ReviewReactionKey, ReviewThreadUiError,
     reviews::{
-        apply_review_reaction_overrides, apply_review_thread_state_overrides,
-        increment_pending_review_comment_count, merge_optimistic_review_threads,
-        pending_review_from_reviews, remove_review_comment_from_threads,
+        LOCAL_REVIEW_COMMENT_ID_PREFIX, LOCAL_REVIEW_THREAD_ID_PREFIX,
+        OptimisticReviewCommentHandle, apply_review_reaction_overrides,
+        apply_review_thread_state_overrides, increment_pending_review_comment_count,
+        merge_optimistic_review_threads, pending_review_from_reviews,
+        remove_review_comment_from_threads, review_position_from_range,
         rollback_pending_review_comment_count, set_review_comment_reaction_state,
         unresolved_review_thread_count,
     },
     status::LoadStatus,
 };
-use harbor_domain::diff_reviews::ReviewThreadIndex;
-
-mod actions;
-mod optimistic_comments;
 
 pub(crate) struct ReviewRuntimeState {
     pull_request_reviews: Arc<Vec<PullRequestReview>>,
@@ -29,23 +28,23 @@ pub(crate) struct ReviewRuntimeState {
     review_thread_index: OnceCell<Arc<ReviewThreadIndex>>,
     pub(crate) review_composer_state: ReviewComposerState,
     pending_review: Option<PendingReviewSession>,
-    is_submitting_review_comment: bool,
-    is_submitting_review_thread_reply: bool,
-    is_submitting_review_comment_edit: bool,
-    is_submitting_pending_review: bool,
-    review_thread_action_thread_id: Option<String>,
-    review_comment_action_comment_id: Option<String>,
-    review_reaction_action: Option<ReviewReactionAction>,
+    pub(super) is_submitting_review_comment: bool,
+    pub(super) is_submitting_review_thread_reply: bool,
+    pub(super) is_submitting_review_comment_edit: bool,
+    pub(super) is_submitting_pending_review: bool,
+    pub(super) review_thread_action_thread_id: Option<String>,
+    pub(super) review_comment_action_comment_id: Option<String>,
+    pub(super) review_reaction_action: Option<ReviewReactionAction>,
     review_thread_state_overrides: HashMap<String, ReviewThreadState>,
     review_reaction_overrides: HashMap<ReviewReactionKey, bool>,
     reviews_load: LoadStatus,
-    review_comment_error: Option<String>,
-    review_thread_reply_error: Option<ReviewThreadUiError>,
-    review_thread_action_error: Option<ReviewThreadUiError>,
-    review_comment_edit_error: Option<ReviewCommentUiError>,
-    review_comment_action_error: Option<ReviewCommentUiError>,
-    review_reaction_error: Option<ReviewCommentUiError>,
-    pending_review_error: Option<String>,
+    pub(super) review_comment_error: Option<String>,
+    pub(super) review_thread_reply_error: Option<ReviewThreadUiError>,
+    pub(super) review_thread_action_error: Option<ReviewThreadUiError>,
+    pub(super) review_comment_edit_error: Option<ReviewCommentUiError>,
+    pub(super) review_comment_action_error: Option<ReviewCommentUiError>,
+    pub(super) review_reaction_error: Option<ReviewCommentUiError>,
+    pub(super) pending_review_error: Option<String>,
     current_user_login: Option<String>,
     local_review_comment_sequence: u64,
     review_data_generation: u64,
@@ -397,5 +396,96 @@ impl ReviewRuntimeState {
         for thread_id in thread_ids {
             self.review_thread_state_overrides.remove(&thread_id);
         }
+    }
+}
+
+impl ReviewRuntimeState {
+    pub(crate) fn insert_optimistic_review_thread(
+        &mut self,
+        range: ReviewCommentRange,
+        body: String,
+    ) -> OptimisticReviewCommentHandle {
+        let sequence = self.next_local_review_comment_sequence();
+        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
+        let comment = self.optimistic_review_comment(
+            comment_id.clone(),
+            Some(review_position_from_range(&range)),
+            body,
+        );
+
+        self.review_threads_mut().push(ReviewThread {
+            comments_complete: true,
+            id: format!("{LOCAL_REVIEW_THREAD_ID_PREFIX}{sequence}"),
+            path: range.path.clone(),
+            range: Some(range),
+            state: ReviewThreadState::Unresolved,
+            comments: vec![comment],
+        });
+
+        OptimisticReviewCommentHandle { comment_id }
+    }
+
+    pub(crate) fn append_optimistic_review_reply(
+        &mut self,
+        thread_id: &str,
+        body: String,
+    ) -> Option<OptimisticReviewCommentHandle> {
+        let thread_index = self
+            .review_threads
+            .iter()
+            .position(|thread| thread.id == thread_id)?;
+
+        let position = self.review_threads[thread_index]
+            .range
+            .as_ref()
+            .map(review_position_from_range)
+            .or_else(|| {
+                self.review_threads[thread_index]
+                    .comments
+                    .iter()
+                    .find_map(|comment| comment.position.clone())
+            });
+        let sequence = self.next_local_review_comment_sequence();
+        let comment_id = format!("{LOCAL_REVIEW_COMMENT_ID_PREFIX}{sequence}");
+        let comment = self.optimistic_review_comment(comment_id.clone(), position, body);
+
+        self.review_threads_mut()[thread_index]
+            .comments
+            .push(comment);
+
+        Some(OptimisticReviewCommentHandle { comment_id })
+    }
+
+    fn optimistic_review_comment(
+        &self,
+        id: String,
+        position: Option<ReviewCommentPosition>,
+        body: String,
+    ) -> ReviewComment {
+        ReviewComment {
+            id,
+            url: None,
+            pull_request_review_id: None,
+            pull_request_review_node_id: None,
+            author: self
+                .current_user_login
+                .clone()
+                .unwrap_or_else(|| "you".to_string()),
+            author_avatar_url: None,
+            body,
+            created_at: Utc::now(),
+            updated_at: None,
+            position,
+            viewer_did_author: true,
+            viewer_can_update: false,
+            viewer_can_delete: false,
+            viewer_can_react: false,
+            reactions: Vec::new(),
+        }
+    }
+
+    fn next_local_review_comment_sequence(&mut self) -> u64 {
+        self.local_review_comment_sequence = self.local_review_comment_sequence.saturating_add(1);
+        self.local_review_comment_sequence
     }
 }

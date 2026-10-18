@@ -1,9 +1,15 @@
+mod action_state;
 mod composer;
-mod types;
+mod loading;
+mod mutations;
+mod state;
 
+pub(crate) use action_state::{
+    ReviewCommentSubmission, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError,
+};
 pub(crate) use composer::{
-    ReviewComposer, ReviewLineSelection, ReviewLineTarget, review_comment_range_label,
-    review_composer_from_selection, review_range_from_targets,
+    ReviewComposer, ReviewComposerState, ReviewLineSelection, ReviewLineTarget,
+    review_range_from_targets,
 };
 pub(crate) use harbor_domain::reviews::{
     LOCAL_REVIEW_COMMENT_ID_PREFIX, LOCAL_REVIEW_THREAD_ID_PREFIX, OptimisticReviewCommentHandle,
@@ -14,6 +20,5 @@ pub(crate) use harbor_domain::reviews::{
     review_reaction, rollback_pending_review_comment_count, set_review_comment_reaction_state,
     unresolved_review_thread_count,
 };
-pub(crate) use types::{
-    ReviewCommentSubmission, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError,
-};
+pub(in crate::workspace) use loading::{ReviewDataLoadMode, ReviewDataLoadTarget};
+pub(crate) use state::ReviewRuntimeState;

@@ -75,7 +75,7 @@ impl AppView {
             return;
         };
 
-        let Some(comment) = self.review_comment(&comment_id) else {
+        let Some(comment) = self.review_state.review_comment(&comment_id) else {
             self.review_state
                 .set_review_comment_edit_error(comment_id, "Review comment is no longer loaded");
             self.status = "Review comment is no longer loaded".to_string();
@@ -127,7 +127,8 @@ impl AppView {
 
                     match result {
                         Ok(()) => {
-                            if let Some(comment) = view.review_comment_mut(&comment_id) {
+                            if let Some(comment) = view.review_state.review_comment_mut(&comment_id)
+                            {
                                 comment.body = body;
                             }
                             view.review_state.review_composer_state.clear();
@@ -168,7 +169,7 @@ impl AppView {
             return;
         };
 
-        let Some(comment) = self.review_comment(&comment_id) else {
+        let Some(comment) = self.review_state.review_comment(&comment_id) else {
             self.review_state
                 .set_review_comment_action_error(comment_id, "Review comment is no longer loaded");
             self.status = "Review comment is no longer loaded".to_string();
@@ -204,7 +205,7 @@ impl AppView {
 
                     match result {
                         Ok(()) => {
-                            view.remove_review_comment(&comment_id);
+                            view.review_state.remove_review_comment(&comment_id);
                             view.review_state
                                 .review_composer_state
                                 .take_active_comment_edit_if(|active_id| active_id == comment_id);

@@ -1,18 +1,15 @@
 use gpui::{AppContext, Context};
-use harbor_domain::RepoId;
+use harbor_domain::{PullRequestComment, PullRequestReview, RepoId, ReviewThread};
 use harbor_sync::{PullRequestReviewRefreshRequest, SyncTarget, refresh_pull_request_reviews};
 
 use crate::workspace::{
     AppView, PullRequestDetailCacheKey, SelectedPullRequestTaskKind,
     async_updates::AppViewAsyncUpdateExt,
+    pull_request_detail_loaders::selected_pull_request_matches,
 };
 
-mod load_mode;
-
-pub(super) use load_mode::ReviewDataLoadMode;
-
 #[derive(Clone, Debug)]
-pub(super) struct ReviewDataLoadTarget {
+pub(in crate::workspace) struct ReviewDataLoadTarget {
     repo: RepoId,
     number: u64,
     head_sha: String,
@@ -20,7 +17,7 @@ pub(super) struct ReviewDataLoadTarget {
 }
 
 impl ReviewDataLoadTarget {
-    pub(super) fn new(
+    pub(in crate::workspace) fn new(
         repo: RepoId,
         number: u64,
         head_sha: impl Into<String>,
@@ -40,6 +37,75 @@ impl ReviewDataLoadTarget {
 }
 
 impl AppView {
+    pub(crate) fn apply_loaded_review_data(
+        &mut self,
+        reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
+        review_threads: Vec<ReviewThread>,
+        current_user_login: Option<String>,
+        pending_review_comment_count: Option<usize>,
+    ) -> usize {
+        let unresolved_count = self.update_overview_review_data(move |review_state| {
+            review_state.apply_loaded_review_data(
+                reviews,
+                pull_request_comments,
+                review_threads,
+                current_user_login,
+                pending_review_comment_count,
+            )
+        });
+
+        self.set_selected_unresolved_thread_count(unresolved_count);
+        unresolved_count
+    }
+
+    pub(crate) fn replace_pull_request_comments(
+        &mut self,
+        pull_request_comments: Vec<PullRequestComment>,
+    ) {
+        self.update_overview_review_data(move |review_state| {
+            review_state.replace_pull_request_comments(pull_request_comments);
+        });
+    }
+
+    pub(crate) fn replace_loaded_review_threads(&mut self, review_threads: Vec<ReviewThread>) {
+        let unresolved_count = self.update_overview_review_data(move |review_state| {
+            review_state.replace_loaded_review_threads(review_threads)
+        });
+        self.set_selected_unresolved_thread_count(unresolved_count);
+    }
+
+    pub(crate) fn replace_reviews_and_loaded_threads(
+        &mut self,
+        reviews: Vec<PullRequestReview>,
+        pull_request_comments: Vec<PullRequestComment>,
+        review_threads: Vec<ReviewThread>,
+    ) {
+        let unresolved_count = self.update_overview_review_data(move |review_state| {
+            review_state.replace_reviews_and_loaded_threads(
+                reviews,
+                pull_request_comments,
+                review_threads,
+            )
+        });
+        self.set_selected_unresolved_thread_count(unresolved_count);
+    }
+
+    pub(in crate::workspace) fn sync_unresolved_thread_count(&mut self) -> usize {
+        let unresolved_count = self.review_state.unresolved_thread_count();
+        self.set_selected_unresolved_thread_count(unresolved_count);
+        unresolved_count
+    }
+
+    fn set_selected_unresolved_thread_count(&mut self, unresolved_count: usize) {
+        if let Some(selected) = self
+            .pull_requests
+            .get_mut(self.selection_state.pull_request_index())
+        {
+            selected.unresolved_threads = unresolved_count;
+        }
+    }
+
     pub(crate) fn load_selected_review_data(&mut self, cx: &mut Context<Self>) {
         let Some(pull_request) = self.selected_pull_request().cloned() else {
             return;
@@ -52,14 +118,14 @@ impl AppView {
         self.status = format!("Refreshing review data for PR #{number}");
         cx.notify();
 
-        let review_data_generation = self.next_review_data_generation();
+        let review_data_generation = self.review_state.next_review_data_generation();
         let target =
             ReviewDataLoadTarget::new(repo, number, pull_request.head_sha, review_data_generation);
 
         self.spawn_review_data_loader(target, ReviewDataLoadMode::Refresh, cx);
     }
 
-    pub(super) fn spawn_review_data_loader(
+    pub(in crate::workspace) fn spawn_review_data_loader(
         &mut self,
         target: ReviewDataLoadTarget,
         mode: ReviewDataLoadMode,
@@ -98,7 +164,7 @@ impl AppView {
                 if !selected_pull_request_matches(view, &detail_key) {
                     return;
                 }
-                if view.review_data_generation() != target.generation {
+                if view.review_state.review_data_generation() != target.generation {
                     return;
                 }
 
@@ -211,16 +277,81 @@ impl AppView {
     }
 }
 
-pub(super) fn selected_pull_request_matches(
-    view: &AppView,
-    detail_key: &PullRequestDetailCacheKey,
-) -> bool {
-    view.selected_pull_request_detail_key().as_ref() == Some(detail_key)
-}
-
 fn append_review_error(error: &mut Option<String>, message: String) {
     *error = Some(match error.take() {
         Some(existing) => format!("{existing}; {message}"),
         None => message,
     });
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::workspace) enum ReviewDataLoadMode {
+    Initial,
+    Refresh,
+}
+
+impl ReviewDataLoadMode {
+    fn loaded_review_data_status(
+        self,
+        number: u64,
+        thread_count: usize,
+        has_warnings: bool,
+    ) -> String {
+        match (self, has_warnings) {
+            (Self::Initial, false) => {
+                format!("Loaded review history and {thread_count} threads for PR #{number}")
+            }
+            (Self::Initial, true) => {
+                format!(
+                    "Loaded {thread_count} review threads for PR #{number}, with review warnings"
+                )
+            }
+            (Self::Refresh, false) => {
+                format!("Refreshed review data and {thread_count} threads for PR #{number}")
+            }
+            (Self::Refresh, true) => {
+                format!(
+                    "Refreshed review data and {thread_count} threads for PR #{number}, with warnings"
+                )
+            }
+        }
+    }
+
+    fn loaded_threads_only_status(self, number: u64, thread_count: usize) -> String {
+        match self {
+            Self::Initial => {
+                format!(
+                    "Loaded {thread_count} review threads for PR #{number}, with review warnings"
+                )
+            }
+            Self::Refresh => {
+                format!(
+                    "Refreshed {thread_count} review threads for PR #{number}, but review history failed"
+                )
+            }
+        }
+    }
+
+    fn loaded_reviews_only_status(self, number: u64) -> String {
+        match self {
+            Self::Initial => format!("Failed to load review data for PR #{number}"),
+            Self::Refresh => {
+                format!("Refreshed review history for PR #{number}, but threads failed")
+            }
+        }
+    }
+
+    fn failed_status(self, number: u64) -> String {
+        match self {
+            Self::Initial => format!("Failed to load review data for PR #{number}"),
+            Self::Refresh => format!("Failed to refresh review data for PR #{number}"),
+        }
+    }
+
+    fn update_error_log_message(self) -> &'static str {
+        match self {
+            Self::Initial => "failed to update pull request review state",
+            Self::Refresh => "failed to update refreshed review state",
+        }
+    }
 }

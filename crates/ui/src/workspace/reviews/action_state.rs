@@ -1,6 +1,31 @@
-use crate::workspace::{
-    ReviewCommentUiError, ReviewReactionAction, ReviewRuntimeState, ReviewThreadUiError,
-};
+use harbor_domain::ReactionContent;
+
+use crate::workspace::ReviewRuntimeState;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReviewCommentSubmission {
+    SingleComment,
+    StartReview,
+    AddToReview,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewThreadUiError {
+    pub(crate) thread_id: String,
+    pub(crate) message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewCommentUiError {
+    pub(crate) comment_id: String,
+    pub(crate) message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewReactionAction {
+    pub(crate) comment_id: String,
+    pub(crate) content: ReactionContent,
+}
 
 impl ReviewRuntimeState {
     pub(crate) fn is_submitting_review_comment(&self) -> bool {

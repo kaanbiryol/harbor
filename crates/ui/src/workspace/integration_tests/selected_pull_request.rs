@@ -143,9 +143,9 @@ async fn ignores_stale_pull_request_detail_results_after_selection_changes(
     view_entity.update(cx, |view, cx| {
         view.pull_requests = vec![first_pull_request, second_pull_request.clone()];
         view.selection_state.reset_pull_request_index();
-        let generation_before = view.review_data_generation();
+        let generation_before = view.review_state.review_data_generation();
         view.refresh_selected_pull_request(cx);
-        assert!(view.review_data_generation() > generation_before);
+        assert!(view.review_state.review_data_generation() > generation_before);
         view.selection_state.set_pull_request_index(1);
     });
     cx.run_until_parked();

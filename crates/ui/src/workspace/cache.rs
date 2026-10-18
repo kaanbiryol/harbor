@@ -256,7 +256,7 @@ impl AppView {
         self.clear_detail_errors();
         self.clear_action_errors();
         self.clear_review_submission_errors();
-        self.clear_review_composer_state();
+        self.review_state.clear_composer_and_action_state();
     }
 
     fn apply_detail_snapshot(

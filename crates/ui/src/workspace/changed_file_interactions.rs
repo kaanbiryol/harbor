@@ -16,7 +16,7 @@ use crate::{
 use super::{
     AppView, ChangedFileTreeRow, ChangedFileTypeFilter, PullRequestDetailCacheKey,
     changed_file_type_filters, log_entity_update_error,
-    review_data_loaders::selected_pull_request_matches,
+    pull_request_detail_loaders::selected_pull_request_matches,
 };
 
 impl AppView {
@@ -141,7 +141,7 @@ impl AppView {
 
         if let Some(file_index) = visible_files.first().copied() {
             self.select_diff_file_index(file_index);
-            self.clear_review_composer_state();
+            self.review_state.clear_composer_and_action_state();
             self.sync_diff_list_items(cx);
             if let Some(row_index) = self.file_tree_row_index_for_file(file_index, cx) {
                 self.file_list_scroll
@@ -222,7 +222,7 @@ impl AppView {
         {
             self.select_diff_file_index(index);
             self.active_tab = PanelTab::Diff;
-            self.clear_review_composer_state();
+            self.review_state.clear_composer_and_action_state();
             self.sync_diff_list_items(cx);
             if let Some(row_index) = self.file_tree_row_index_for_file(index, cx) {
                 self.file_list_scroll

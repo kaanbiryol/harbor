@@ -8,8 +8,6 @@ mod panel_lists;
 mod pull_request_search;
 mod repository;
 mod repository_actions;
-mod review_composer;
-mod review_runtime;
 mod selection;
 mod sync_runtime;
 mod tasks;
@@ -23,10 +21,6 @@ pub(crate) use panel_lists::PanelListState;
 pub(crate) use pull_request_search::PullRequestSearchState;
 pub(crate) use repository::RepositoryUiState;
 pub(crate) use repository_actions::RepositoryActionsUiState;
-#[cfg(test)]
-pub(crate) use review_composer::ReviewComposerMode;
-pub(crate) use review_composer::ReviewComposerState;
-pub(crate) use review_runtime::ReviewRuntimeState;
 pub(crate) use selection::PullRequestSelectionState;
 pub(crate) use sync_runtime::SyncRuntimeState;
 pub(crate) use tasks::{RepositoryActionsTaskKind, SelectedPullRequestTaskKind, WorkspaceTasks};
@@ -34,9 +28,6 @@ pub(crate) use tasks::{RepositoryActionsTaskKind, SelectedPullRequestTaskKind, W
 #[cfg(test)]
 mod tests {
     use super::*;
-    use harbor_domain::{ReviewCommentRange, ReviewSide};
-
-    use crate::workspace::{ReviewComposer, ReviewLineSelection, ReviewLineTarget};
 
     #[test]
     fn pull_request_detail_state_tracks_section_load_transitions() {
@@ -108,58 +99,5 @@ mod tests {
         state.reset_pull_request_index();
         state.reset_diff_selection();
         assert_eq!(state, PullRequestSelectionState::default());
-    }
-
-    #[test]
-    fn review_composer_modes_are_mutually_exclusive() {
-        let target = ReviewLineTarget {
-            hunk_index: 0,
-            line_index: 1,
-            range: ReviewCommentRange {
-                path: "src/lib.rs".to_string(),
-                line: 10,
-                side: ReviewSide::Right,
-                start_line: None,
-                start_side: None,
-            },
-        };
-        let selection = ReviewLineSelection {
-            anchor: target.clone(),
-            current: target.clone(),
-        };
-        let composer = ReviewComposer {
-            anchor: target,
-            range: selection.current.range.clone(),
-        };
-
-        let modes = [
-            ReviewComposerMode::Idle,
-            ReviewComposerMode::Selecting {
-                line_selection: selection.clone(),
-            },
-            ReviewComposerMode::Inline {
-                composer,
-                line_selection: selection,
-            },
-            ReviewComposerMode::ThreadReply {
-                thread_id: "thread-1".to_string(),
-            },
-            ReviewComposerMode::CommentEdit {
-                comment_id: "comment-1".to_string(),
-            },
-        ];
-
-        for mode in modes {
-            let active_count = [
-                matches!(mode, ReviewComposerMode::Selecting { .. }),
-                matches!(mode, ReviewComposerMode::Inline { .. }),
-                matches!(mode, ReviewComposerMode::ThreadReply { .. }),
-                matches!(mode, ReviewComposerMode::CommentEdit { .. }),
-            ]
-            .into_iter()
-            .filter(|active| *active)
-            .count();
-            assert!(active_count <= 1);
-        }
     }
 }

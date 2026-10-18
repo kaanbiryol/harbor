@@ -1,4 +1,5 @@
 use gpui::{Context, Window};
+use harbor_domain::ReviewThreadState;
 
 use crate::workspace::{
     AppView, PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt,
@@ -138,8 +139,9 @@ impl AppView {
         };
         let detail_key =
             PullRequestDetailCacheKey::new(pr.repo.clone(), pr.number, pr.head_sha.clone());
-        let Some(optimistic_comment) =
-            self.append_optimistic_review_reply(&thread_id, body.clone())
+        let Some(optimistic_comment) = self
+            .review_state
+            .append_optimistic_review_reply(&thread_id, body.clone())
         else {
             self.review_state
                 .set_review_thread_reply_error(thread_id, "Review thread is no longer loaded");
@@ -235,6 +237,113 @@ fn quote_review_comment_body(body: &str) -> String {
         .join("\n");
     quoted.push_str("\n\n");
     quoted
+}
+
+impl AppView {
+    pub(crate) fn set_review_thread_resolved(
+        &mut self,
+        thread_id: String,
+        resolved: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let auth_generation = self.auth_generation;
+        if self.review_state.thread_action_running() {
+            self.status = "A review thread action is already running".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(pr) = self.selected_pull_request().cloned() else {
+            self.review_state.set_review_thread_action_error(
+                thread_id,
+                "Select a pull request before updating a thread",
+            );
+            self.status = "Select a pull request before updating a thread".to_string();
+            cx.notify();
+            return;
+        };
+
+        let desired_state = if resolved {
+            ReviewThreadState::Resolved
+        } else {
+            ReviewThreadState::Unresolved
+        };
+        let previous_state = self
+            .review_state
+            .review_threads()
+            .iter()
+            .find(|thread| thread.id == thread_id)
+            .map(|thread| thread.state);
+        self.review_state
+            .set_review_thread_state(&thread_id, desired_state);
+        self.review_state
+            .set_review_thread_state_override(thread_id.clone(), desired_state);
+        self.sync_unresolved_thread_count();
+        self.review_state
+            .start_review_thread_action(thread_id.clone());
+        self.remeasure_overview_thread_item(&thread_id);
+        self.status = if resolved {
+            format!("Resolving review thread on PR #{}", pr.number)
+        } else {
+            format!("Reopening review thread on PR #{}", pr.number)
+        };
+        cx.notify();
+        let github_api = self.github_api_for_request();
+        let overview_thread_id = thread_id.clone();
+
+        cx.spawn(async move |this, cx| {
+            let result = if resolved {
+                github_api.resolve_review_thread(&thread_id).await
+            } else {
+                github_api.unresolve_review_thread(&thread_id).await
+            };
+
+            this.update_in_session_or_log(
+                cx,
+                auth_generation,
+                "failed to update review thread action state",
+                move |view, cx| {
+                    view.review_state.finish_review_thread_action();
+
+                    match result {
+                        Ok(()) => {
+                            view.review_state
+                                .set_review_thread_state(&thread_id, desired_state);
+                            view.sync_unresolved_thread_count();
+                            view.review_state.clear_review_thread_action_error();
+                            view.status = if resolved {
+                                format!("Resolved review thread on PR #{}", pr.number)
+                            } else {
+                                format!("Reopened review thread on PR #{}", pr.number)
+                            };
+                            view.load_selected_review_data(cx);
+                        }
+                        Err(error) => {
+                            view.review_state
+                                .remove_review_thread_state_override(&thread_id);
+                            if let Some(previous_state) = previous_state {
+                                view.review_state
+                                    .set_review_thread_state(&thread_id, previous_state);
+                                view.sync_unresolved_thread_count();
+                            }
+                            let message = if resolved {
+                                format!("Failed to resolve review thread: {error}")
+                            } else {
+                                format!("Failed to reopen review thread: {error}")
+                            };
+                            view.review_state
+                                .set_review_thread_action_error(thread_id, message.clone());
+                            view.status = message;
+                        }
+                    }
+
+                    view.remeasure_overview_thread_item(&overview_thread_id);
+                    cx.notify();
+                },
+            );
+        })
+        .detach();
+    }
 }
 
 #[cfg(test)]

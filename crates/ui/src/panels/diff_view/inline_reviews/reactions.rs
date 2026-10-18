@@ -147,7 +147,7 @@ fn render_add_reaction_popover(
                 let (comment, reaction_action) = {
                     let view = view_entity.read(popover_cx);
                     (
-                        view.review_comment(&comment_id).cloned(),
+                        view.review_state.review_comment(&comment_id).cloned(),
                         view.review_state.review_reaction_action().cloned(),
                     )
                 };

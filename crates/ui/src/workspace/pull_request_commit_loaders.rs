@@ -6,7 +6,7 @@ use crate::{actions::PanelTab, diff::parse_files};
 use crate::workspace::{
     AppView, PullRequestDetailCacheKey, SelectedPullRequestTaskKind,
     async_updates::AppViewAsyncUpdateExt, pull_request_detail_loaders::SelectedPullRequestLoad,
-    review_data_loaders::selected_pull_request_matches,
+    pull_request_detail_loaders::selected_pull_request_matches,
 };
 
 impl AppView {

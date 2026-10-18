@@ -11,7 +11,7 @@ use crate::{
     workspace::{
         AppView, PullRequestDetailCacheKey, SelectedPullRequestTaskKind,
         async_updates::AppViewAsyncUpdateExt, pull_request_detail_loaders::SelectedPullRequestLoad,
-        review_data_loaders::selected_pull_request_matches,
+        pull_request_detail_loaders::selected_pull_request_matches,
     },
 };
 
@@ -178,7 +178,7 @@ impl AppView {
                 self.reset_changed_file_filters();
                 self.sync_reviewed_file_paths_from_files();
                 self.ensure_active_file_visible(cx);
-                self.clear_review_composer_state();
+                self.review_state.clear_composer_and_action_state();
                 self.sync_diff_list_items(cx);
                 self.refresh_owned_file_filters(cx);
                 let row_index = self
@@ -199,7 +199,7 @@ impl AppView {
                 self.reset_changed_file_filters();
                 self.changed_files_state.owned_file_paths.clear();
                 self.reset_diff_selection();
-                self.clear_review_composer_state();
+                self.review_state.clear_composer_and_action_state();
                 self.sync_diff_list_items(cx);
                 self.file_list_scroll.scroll_to_item(0, ScrollStrategy::Top);
                 self.reset_diff_list_scroll();

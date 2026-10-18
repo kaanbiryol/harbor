@@ -30,10 +30,6 @@ mod pull_request_search;
 mod render;
 mod repository_actions_loaders;
 mod repository_loaders;
-mod review_data_loaders;
-mod review_interactions;
-mod review_state;
-mod review_submissions;
 mod reviews;
 mod settings;
 mod state;
@@ -78,15 +74,16 @@ use pull_request_metadata_actions::PullRequestMetadataOptionsState;
 use reviews::ReviewReactionKey;
 pub(crate) use reviews::{
     PendingReviewSession, ReviewCommentSubmission, ReviewCommentUiError, ReviewComposer,
-    ReviewLineSelection, ReviewLineTarget, ReviewReactionAction, ReviewThreadUiError,
-    review_comment_pending_sync, review_range_from_targets, review_reaction,
+    ReviewComposerState, ReviewLineSelection, ReviewLineTarget, ReviewReactionAction,
+    ReviewRuntimeState, ReviewThreadUiError, review_comment_pending_sync,
+    review_range_from_targets, review_reaction,
 };
 use state::{
     ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
     PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
     PullRequestSearchState, PullRequestSelectionState, RepositoryActionsTaskKind,
-    RepositoryActionsUiState, RepositoryUiState, ReviewComposerState, ReviewRuntimeState,
-    SelectedPullRequestTaskKind, SyncRuntimeState, WorkspaceTasks,
+    RepositoryActionsUiState, RepositoryUiState, SelectedPullRequestTaskKind, SyncRuntimeState,
+    WorkspaceTasks,
 };
 use status::ActionRuntimeState;
 

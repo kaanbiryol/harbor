@@ -29,7 +29,7 @@ impl AppView {
             return;
         };
 
-        let Some(comment) = self.review_comment(&comment_id) else {
+        let Some(comment) = self.review_state.review_comment(&comment_id) else {
             self.review_state
                 .set_review_reaction_error(comment_id, "Review comment is no longer loaded");
             self.status = "Review comment is no longer loaded".to_string();
@@ -51,7 +51,8 @@ impl AppView {
             review_reaction(comment, content).is_some_and(|reaction| reaction.viewer_has_reacted);
         let viewer_has_reacted = !had_reacted;
         let reaction_key = ReviewReactionKey::new(comment_id.clone(), content);
-        self.set_review_comment_reaction(&comment_id, content, viewer_has_reacted);
+        self.review_state
+            .set_review_comment_reaction(&comment_id, content, viewer_has_reacted);
         self.review_state
             .set_review_reaction_override(reaction_key.clone(), viewer_has_reacted);
         self.review_state
@@ -92,7 +93,11 @@ impl AppView {
                         Err(error) => {
                             view.review_state
                                 .remove_review_reaction_override(&reaction_key);
-                            view.set_review_comment_reaction(&comment_id, content, had_reacted);
+                            view.review_state.set_review_comment_reaction(
+                                &comment_id,
+                                content,
+                                had_reacted,
+                            );
                             let message = format!("Failed to update reaction: {error}");
                             view.review_state
                                 .set_review_reaction_error(comment_id, message.clone());
