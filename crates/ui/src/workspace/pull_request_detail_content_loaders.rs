@@ -34,7 +34,6 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
-        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_details() {
             return;
         }
@@ -43,57 +42,32 @@ impl AppView {
         let github_api = self.github_api_for_request();
         let store = self.cache_store();
         let detail_key = load.detail_key();
-        self.tasks.set_selected_pull_request_task(
+        let SelectedPullRequestLoad { repo, number, .. } = load;
+        self.spawn_selected_pull_request_load(
             SelectedPullRequestTaskKind::Metadata,
-            cx.spawn({
-                let repo = load.repo;
-                let number = load.number;
-
-                async move |this, cx| {
-                    let refresh = cx
-                        .background_spawn({
-                            async move {
-                                refresh_pull_request_metadata(
-                                    github_api.as_ref(),
-                                    store.as_ref(),
-                                    &repo,
-                                    number,
-                                )
-                                .await
-                            }
-                        })
-                        .await;
-
-                    this.update_in_session_or_log(
-                        cx,
-                        auth_generation,
-                        "failed to update pull request detail state",
-                        move |view, cx| {
-                            if !selected_pull_request_matches(view, &detail_key) {
-                                return;
-                            }
-
-                            if let Some(error) = refresh.cache_error {
-                                view.repository_state.set_error(error);
-                            }
-                            match refresh.result {
-                                Ok(detail) => {
-                                    view.apply_pull_request_metadata(detail, cx);
-                                    view.status = format!("Loaded PR #{number} details");
-                                }
-                                Err(error) => {
-                                    view.mark_sync_failure(SyncTarget::SelectedPullRequestMetadata);
-                                    view.detail_state.apply_details_failure(error.to_string());
-                                    view.status = format!("Failed to load PR #{number} details");
-                                }
-                            }
-
-                            view.cache_current_pull_request_detail_snapshot();
-                            cx.notify();
-                        },
-                    );
+            detail_key,
+            "failed to update pull request detail state",
+            async move {
+                refresh_pull_request_metadata(github_api.as_ref(), store.as_ref(), &repo, number)
+                    .await
+            },
+            move |view, refresh, cx| {
+                if let Some(error) = refresh.cache_error {
+                    view.repository_state.set_error(error);
                 }
-            }),
+                match refresh.result {
+                    Ok(detail) => {
+                        view.apply_pull_request_metadata(detail, cx);
+                        view.status = format!("Loaded PR #{number} details");
+                    }
+                    Err(error) => {
+                        view.mark_sync_failure(SyncTarget::SelectedPullRequestMetadata);
+                        view.detail_state.apply_details_failure(error.to_string());
+                        view.status = format!("Failed to load PR #{number} details");
+                    }
+                }
+            },
+            cx,
         );
     }
 

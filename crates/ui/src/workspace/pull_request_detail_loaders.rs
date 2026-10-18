@@ -1,11 +1,14 @@
-use gpui::Context;
+use gpui::{AppContext, Context};
 use harbor_domain::{MergeState, PullRequest, RepoId};
 
 use crate::{
     actions::PanelTab,
     workspace::{
-        AppView, PullRequestDetailCacheKey,
-        review_data_loaders::{ReviewDataLoadMode, ReviewDataLoadTarget},
+        AppView, PullRequestDetailCacheKey, SelectedPullRequestTaskKind,
+        async_updates::AppViewAsyncUpdateExt,
+        review_data_loaders::{
+            ReviewDataLoadMode, ReviewDataLoadTarget, selected_pull_request_matches,
+        },
     },
 };
 
@@ -285,6 +288,37 @@ impl AppView {
             ),
             mode,
             cx,
+        );
+    }
+
+    pub(super) fn spawn_selected_pull_request_load<T: Send + 'static>(
+        &mut self,
+        kind: SelectedPullRequestTaskKind,
+        detail_key: PullRequestDetailCacheKey,
+        update_error_context: &'static str,
+        load: impl Future<Output = T> + Send + 'static,
+        apply: impl FnOnce(&mut AppView, T, &mut Context<AppView>) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let auth_generation = self.auth_generation;
+        self.tasks.set_selected_pull_request_task(
+            kind,
+            cx.spawn(async move |this, cx| {
+                let result = cx.background_spawn(load).await;
+                this.update_in_session_or_log(
+                    cx,
+                    auth_generation,
+                    update_error_context,
+                    move |view, cx| {
+                        if !selected_pull_request_matches(view, &detail_key) {
+                            return;
+                        }
+                        apply(view, result, cx);
+                        view.cache_current_pull_request_detail_snapshot();
+                        cx.notify();
+                    },
+                );
+            }),
         );
     }
 }

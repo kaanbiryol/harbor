@@ -126,7 +126,6 @@ impl AppView {
         load: SelectedPullRequestLoad,
         cx: &mut Context<Self>,
     ) {
-        let auth_generation = self.auth_generation;
         if !self.detail_state.should_load_commits() {
             return;
         }
@@ -134,52 +133,35 @@ impl AppView {
         self.detail_state.start_commits_load();
         let github_api = self.github_api_for_request();
         let detail_key = load.detail_key();
-        self.tasks.set_selected_pull_request_task(
+        let SelectedPullRequestLoad {
+            owner,
+            name,
+            number,
+            ..
+        } = load;
+        self.spawn_selected_pull_request_load(
             SelectedPullRequestTaskKind::Commits,
-            cx.spawn({
-                let owner = load.owner;
-                let name = load.name;
-                let number = load.number;
-
-                async move |this, cx| {
-                    let result = cx
-                        .background_spawn(async move {
-                            github_api
-                                .list_pull_request_commits(&owner, &name, number)
-                                .await
-                        })
-                        .await;
-                    this.update_in_session_or_log(
-                        cx,
-                        auth_generation,
-                        "failed to update pull request commits",
-                        move |view, cx| {
-                            if !selected_pull_request_matches(view, &detail_key) {
-                                return;
-                            }
-
-                            match result {
-                                Ok(commits) => {
-                                    let count = commits.len();
-                                    view.detail_state.replace_commits(commits);
-                                    view.detail_state.apply_commits_success();
-                                    view.status =
-                                        format!("Loaded {count} commits for PR #{number}");
-                                }
-                                Err(error) => {
-                                    view.detail_state.clear_commits();
-                                    view.detail_state.apply_commits_failure(error.to_string());
-                                    view.status =
-                                        format!("Failed to load commits for PR #{number}");
-                                }
-                            }
-
-                            view.cache_current_pull_request_detail_snapshot();
-                            cx.notify();
-                        },
-                    );
+            detail_key,
+            "failed to update pull request commits",
+            async move {
+                github_api
+                    .list_pull_request_commits(&owner, &name, number)
+                    .await
+            },
+            move |view, result, _| match result {
+                Ok(commits) => {
+                    let count = commits.len();
+                    view.detail_state.replace_commits(commits);
+                    view.detail_state.apply_commits_success();
+                    view.status = format!("Loaded {count} commits for PR #{number}");
                 }
-            }),
+                Err(error) => {
+                    view.detail_state.clear_commits();
+                    view.detail_state.apply_commits_failure(error.to_string());
+                    view.status = format!("Failed to load commits for PR #{number}");
+                }
+            },
+            cx,
         );
     }
 }
