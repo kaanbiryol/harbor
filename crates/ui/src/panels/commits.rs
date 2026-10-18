@@ -5,8 +5,9 @@ use harbor_domain::PullRequestCommit;
 use crate::{date_time::natural_time_label, icons::Octicon, visual::color, workspace::AppView};
 
 use super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
-    render_panel_header, render_review_avatar, sync_virtual_list_item_count,
+    people::render_avatar, render_empty_state, render_error_panel_card,
+    render_loading_panel_skeleton, render_panel_card, render_panel_header,
+    sync_virtual_list_item_count,
 };
 
 pub(crate) struct CommitsPanelRenderInput<'a> {
@@ -117,7 +118,7 @@ fn render_commit_row(commit: &PullRequestCommit, cx: &mut Context<AppView>) -> g
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_commit(sha.clone(), cx);
         }))
-        .child(render_review_avatar(
+        .child(render_avatar(
             &commit.author,
             commit.author_avatar_url.as_deref(),
             24.0,

@@ -1,5 +1,5 @@
+use crate::gpui_component::StyledExt;
 use crate::gpui_component::input::TextareaState;
-use crate::gpui_component::{StyledExt, tooltip::Tooltip};
 use gpui::{AnyElement, Entity, SharedString, div, prelude::*, px};
 use harbor_domain::{ReviewComment, ReviewThread, ReviewThreadState};
 
@@ -9,11 +9,11 @@ use crate::{
 };
 
 use super::{
-    review::{
-        ReviewDiffPreview, render_review_author_link, render_review_avatar,
-        render_review_diff_preview, review_comment_time_label, review_comment_time_tooltip,
-        review_thread_location,
+    people::{
+        render_author_link, render_avatar, render_time_metadata, review_comment_time_label,
+        review_comment_time_tooltip,
     },
+    review::{ReviewDiffPreview, render_review_diff_preview, review_thread_location},
     review_markdown::{ReviewSuggestionContext, render_review_markdown_body_with_context},
     review_thread_chrome::{
         ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
@@ -336,7 +336,7 @@ fn render_review_thread_comment(
                         .items_center()
                         .gap_2()
                         .text_xs()
-                        .child(render_review_author_link(
+                        .child(render_author_link(
                             author_id,
                             comment.author.clone(),
                             style.author_color,
@@ -368,7 +368,7 @@ fn render_review_thread_comment_gutter(
         .min_h(px(32.0))
         .w(px(24.0))
         .flex_none()
-        .child(render_review_avatar(
+        .child(render_avatar(
             &comment.author,
             comment.author_avatar_url.as_deref(),
             24.0,
@@ -384,22 +384,6 @@ fn render_review_thread_comment_gutter(
                     .bg(rail_color),
             )
         })
-}
-
-fn render_time_metadata(
-    id: String,
-    label: String,
-    tooltip: Option<String>,
-    text_color: gpui::Rgba,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .text_xs()
-        .text_color(text_color)
-        .when_some(tooltip, |element, tooltip| {
-            element.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        })
-        .child(label)
 }
 
 fn review_thread_metadata(thread: &ReviewThread, location: &str) -> String {

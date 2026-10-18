@@ -12,8 +12,8 @@ use crate::visual::{Tone, color, tone_colors};
 use crate::workspace::AppView;
 
 use super::super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
-    render_status_pill,
+    ci_status_icon, render_empty_state, render_error_panel_card, render_loading_panel_skeleton,
+    render_panel_card, render_status_pill,
 };
 
 pub(super) struct RepositoryWorkflowRunsRenderInput<'a> {
@@ -230,7 +230,7 @@ fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {
         .items_center()
         .gap_3()
         .child(
-            Icon::new(workflow_status_icon(run.conclusion, run.status))
+            Icon::new(ci_status_icon(run.conclusion, run.status))
                 .small()
                 .text_color(colors.text),
         )
@@ -323,20 +323,6 @@ fn run_duration_label(run: &WorkflowRun) -> String {
     }
 
     short_duration_label(duration)
-}
-
-fn workflow_status_icon(conclusion: Option<WorkflowConclusion>, status: WorkflowStatus) -> Octicon {
-    match (status, conclusion) {
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => Octicon::CheckCircle,
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Failure)) => Octicon::XCircle,
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::TimedOut)) => Octicon::Alert,
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::ActionRequired)) => Octicon::Alert,
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Cancelled)) => Octicon::XCircle,
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => Octicon::Clock,
-        (WorkflowStatus::Completed, None) => Octicon::XCircle,
-        (WorkflowStatus::InProgress, _) => Octicon::Sync,
-        (WorkflowStatus::Queued, _) => Octicon::Clock,
-    }
 }
 
 pub(crate) fn workflow_run_label(run: &WorkflowRun) -> String {

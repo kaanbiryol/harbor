@@ -13,8 +13,8 @@ use crate::{
 };
 
 use super::{
-    render_empty_state, render_error_panel_card, render_loading_panel_skeleton, render_panel_card,
-    render_panel_header, sync_virtual_list_item_count,
+    ci_status_icon, render_empty_state, render_error_panel_card, render_loading_panel_skeleton,
+    render_panel_card, render_panel_header, sync_virtual_list_item_count,
 };
 
 const CHECK_GROUP_HEADER_HEIGHT: f32 = 42.0;
@@ -357,7 +357,7 @@ pub(crate) fn render_check_run(check_index: usize, check_run: &CheckRun) -> impl
     let click_url = check_url.clone();
     let display_name = check_run_display_name(check_run);
     let (_, tone) = check_conclusion_label(check_run.conclusion, check_run.status);
-    let status_icon = check_status_icon(check_run.conclusion, check_run.status);
+    let status_icon = ci_status_icon(check_run.conclusion, check_run.status);
 
     div()
         .id(("check-run", check_index))
@@ -498,25 +498,6 @@ fn check_group_status_icon(summary: ChecksSummary) -> Octicon {
     }
 }
 
-fn check_status_icon(conclusion: Option<CheckConclusion>, status: CheckStatus) -> Octicon {
-    match (status, conclusion) {
-        (CheckStatus::Completed, Some(CheckConclusion::Success)) => Octicon::CheckCircle,
-        (CheckStatus::Completed, Some(CheckConclusion::Skipped | CheckConclusion::Neutral)) => {
-            Octicon::Clock
-        }
-        (
-            CheckStatus::Completed,
-            Some(CheckConclusion::TimedOut | CheckConclusion::ActionRequired),
-        ) => Octicon::Alert,
-        (
-            CheckStatus::Completed,
-            Some(CheckConclusion::Cancelled | CheckConclusion::Failure) | None,
-        ) => Octicon::XCircle,
-        (CheckStatus::InProgress, _) => Octicon::Sync,
-        (CheckStatus::Queued, _) => Octicon::Clock,
-    }
-}
-
 fn render_check_outcome_label(label: impl Into<String>, tone: Tone) -> impl IntoElement {
     let colors = tone_colors(tone);
 
@@ -650,22 +631,25 @@ mod tests {
     #[test]
     fn uses_actions_status_icons_for_check_runs() {
         assert_eq!(
-            check_status_icon(CheckConclusion::Success.into(), CheckStatus::Completed),
+            ci_status_icon(Some(CheckConclusion::Success), CheckStatus::Completed),
             Octicon::CheckCircle
         );
         assert_eq!(
-            check_status_icon(CheckConclusion::Failure.into(), CheckStatus::Completed),
+            ci_status_icon(Some(CheckConclusion::Failure), CheckStatus::Completed),
             Octicon::XCircle
         );
         assert_eq!(
-            check_status_icon(CheckConclusion::TimedOut.into(), CheckStatus::Completed),
+            ci_status_icon(Some(CheckConclusion::TimedOut), CheckStatus::Completed),
             Octicon::Alert
         );
         assert_eq!(
-            check_status_icon(None, CheckStatus::InProgress),
+            ci_status_icon(None::<CheckConclusion>, CheckStatus::InProgress),
             Octicon::Sync
         );
-        assert_eq!(check_status_icon(None, CheckStatus::Queued), Octicon::Clock);
+        assert_eq!(
+            ci_status_icon(None::<CheckConclusion>, CheckStatus::Queued),
+            Octicon::Clock
+        );
     }
 
     #[test]

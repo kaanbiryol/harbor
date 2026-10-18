@@ -7,7 +7,6 @@ mod date_time;
 mod diff;
 mod dropdown;
 mod file_icons;
-mod github;
 mod icons;
 mod panels;
 #[cfg(test)]

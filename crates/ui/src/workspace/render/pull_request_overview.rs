@@ -24,7 +24,6 @@ use events::*;
 use model::*;
 #[cfg(test)]
 use readiness::{merge_readiness, pull_request_readiness};
-use sidebar::*;
 use timeline::*;
 
 impl AppView {
@@ -450,8 +449,8 @@ mod tests {
     use super::{
         OverviewDescriptionItems, OverviewPanelItem, OverviewTimelineItem, merge_readiness,
         overview_panel_items, overview_review_visible, overview_thread_expanded,
-        overview_thread_item_index, overview_timeline_items, parse_label_color,
-        pull_request_readiness, sync_overview_list_items,
+        overview_thread_item_index, overview_timeline_items, pull_request_readiness,
+        sidebar::parse_label_color, sync_overview_list_items,
     };
     use crate::test_fixtures::{pull_request, review_thread, test_time};
     use crate::visual::Tone;

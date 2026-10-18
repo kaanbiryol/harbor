@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::{CheckConclusion, CheckStatus};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum WorkflowStatus {
     Queued,
@@ -16,6 +18,29 @@ pub enum WorkflowConclusion {
     Skipped,
     TimedOut,
     ActionRequired,
+}
+
+impl From<WorkflowStatus> for CheckStatus {
+    fn from(status: WorkflowStatus) -> Self {
+        match status {
+            WorkflowStatus::Queued => Self::Queued,
+            WorkflowStatus::InProgress => Self::InProgress,
+            WorkflowStatus::Completed => Self::Completed,
+        }
+    }
+}
+
+impl From<WorkflowConclusion> for CheckConclusion {
+    fn from(conclusion: WorkflowConclusion) -> Self {
+        match conclusion {
+            WorkflowConclusion::Success => Self::Success,
+            WorkflowConclusion::Failure => Self::Failure,
+            WorkflowConclusion::Cancelled => Self::Cancelled,
+            WorkflowConclusion::Skipped => Self::Skipped,
+            WorkflowConclusion::TimedOut => Self::TimedOut,
+            WorkflowConclusion::ActionRequired => Self::ActionRequired,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

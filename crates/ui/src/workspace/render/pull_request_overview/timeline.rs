@@ -3,18 +3,21 @@ use crate::gpui_component::{
     button::{Button, ButtonVariants},
     input::TextareaState,
     list::ListItem,
-    tooltip::Tooltip,
 };
 use gpui::{AnyElement, Entity, IntoElement, SharedString, div, prelude::*, px};
-use harbor_domain::{PullRequestPerson, PullRequestReviewState, ReviewThread, ReviewThreadState};
+use harbor_domain::{PullRequestReviewState, ReviewThread, ReviewThreadState};
 
 use crate::{
-    date_time::{full_time_label_with_edit, natural_time_label_with_edit},
     icons::Octicon,
     panels::{
-        ReviewCommentActionsMenuState, ReviewDiffPreview, render_review_comment_actions_menu,
-        render_review_comment_edit_composer, render_review_diff_preview, render_review_reactions,
-        render_status_pill, review_comment_ui_state,
+        ReviewCommentActionsMenuState, ReviewDiffPreview,
+        people::{
+            render_avatar, render_time_metadata, review_comment_time_label,
+            review_comment_time_tooltip,
+        },
+        render_review_comment_actions_menu, render_review_comment_edit_composer,
+        render_review_diff_preview, render_review_reactions, render_status_pill,
+        review_comment_ui_state,
         review_thread_chrome::{
             ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
             ReviewThreadReplyComposerState, render_review_thread_reply_composer,
@@ -25,7 +28,7 @@ use crate::{
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError},
 };
 
-use super::{model::OverviewTimelineMessage, render_person_avatar_with_size};
+use super::model::OverviewTimelineMessage;
 
 pub(super) struct OverviewThreadRenderState<'a> {
     pub(super) thread: &'a ReviewThread,
@@ -337,12 +340,6 @@ pub(super) fn render_overview_thread_comment(
         action_error,
         view_entity,
     } = state;
-    let person = PullRequestPerson {
-        login: comment.author.clone(),
-        avatar_url: comment.author_avatar_url.clone(),
-    };
-    let time_label = natural_time_label_with_edit(comment.created_at, comment.updated_at);
-    let time_tooltip = full_time_label_with_edit(comment.created_at, comment.updated_at);
     let selector = format!("overview-thread-comment-{thread_id}-{index}");
     let reaction_error = reaction_error
         .filter(|error| error.comment_id == comment.id)
@@ -372,7 +369,11 @@ pub(super) fn render_overview_thread_comment(
         .when(index > 0, |element| {
             element.border_t_1().border_color(color::border_subtle())
         })
-        .child(render_person_avatar_with_size(&person, 24.0))
+        .child(render_avatar(
+            &comment.author,
+            comment.author_avatar_url.as_deref(),
+            24.0,
+        ))
         .child(
             div()
                 .min_w_0()
@@ -396,10 +397,11 @@ pub(super) fn render_overview_thread_comment(
                                         .text_color(color::text_primary())
                                         .child(comment.author.clone()),
                                 )
-                                .child(render_timeline_time(
+                                .child(render_time_metadata(
                                     format!("overview-thread-comment-time-{}", comment.id),
-                                    time_label,
-                                    time_tooltip,
+                                    review_comment_time_label(comment),
+                                    Some(review_comment_time_tooltip(comment)),
+                                    color::text_muted(),
                                 )),
                         )
                         .child(render_review_comment_actions_menu(
@@ -586,12 +588,4 @@ pub(super) fn render_timeline_icon(icon: Octicon, tone: Tone) -> AnyElement {
         .bg(colors.background)
         .child(Icon::new(icon).xsmall().text_color(colors.text))
         .into_any_element()
-}
-
-pub(super) fn render_timeline_time(id: String, label: String, tooltip: String) -> impl IntoElement {
-    div()
-        .id(id)
-        .text_color(color::text_muted())
-        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        .child(label)
 }

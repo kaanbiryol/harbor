@@ -9,9 +9,8 @@ use gpui::{Anchor, AnyElement, App, Context, Entity, IntoElement, div, prelude::
 use crate::{
     actions::SignOutOfGitHub,
     dropdown::dropdown_menu_surface,
-    github::avatar_url,
     icons::Octicon,
-    panels::ImmediateTooltip,
+    panels::{ImmediateTooltip, people::avatar_url},
     visual::color,
     workspace::{AppView, GitHubAuthSource, GitHubAuthStatus},
 };

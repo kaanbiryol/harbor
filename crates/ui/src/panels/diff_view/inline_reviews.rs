@@ -1,4 +1,3 @@
-mod avatars;
 mod comment_actions;
 mod comments;
 mod reactions;
@@ -20,7 +19,13 @@ use gpui::{Entity, IntoElement, div, prelude::*, px};
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
-    panels::ReviewSuggestionContext,
+    panels::{
+        ReviewSuggestionContext,
+        review_thread_chrome::{
+            ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
+            ReviewThreadReplyComposerState, render_review_thread_reply_composer,
+        },
+    },
     visual::{color, font, opacity},
     workspace::{AppView, ReviewCommentSubmission, ReviewComposer, ReviewThreadUiError},
 };
@@ -31,10 +36,7 @@ use super::{
 };
 pub(super) use comments::ReviewCommentListRenderState;
 use comments::{ReviewCommentRenderState, render_review_comment_inline};
-use threads::{
-    ReviewThreadHeaderState, ReviewThreadReplyComposerState, render_review_thread_header,
-    render_review_thread_reply_composer,
-};
+use threads::{ReviewThreadHeaderState, render_review_thread_header};
 
 const INLINE_REVIEW_THREAD_RECENT_REPLY_LIMIT: usize = 20;
 
@@ -354,11 +356,14 @@ pub(super) fn render_review_thread_inline(
                 move |element| {
                     element.child(render_review_thread_reply_composer(
                         ReviewThreadReplyComposerState {
+                            ids: ReviewThreadReplyComposerIds::inline(&thread_id),
                             thread_id: thread_id.clone(),
                             input: review_thread_reply_input.clone(),
+                            input_height: px(DIFF_ROW_HEIGHT * 2.0),
                             disabled: ui_state.reply_disabled,
                             submitting: ui_state.reply_submitting,
                             error: reply_error.clone(),
+                            chrome: ReviewThreadReplyComposerChrome::Inline,
                             view_entity: view_entity.clone(),
                         },
                     ))

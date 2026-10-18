@@ -1,17 +1,18 @@
-use crate::gpui_component::{StyledExt, input::TextareaState, tooltip::Tooltip};
+use crate::gpui_component::input::TextareaState;
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 use harbor_domain::ReviewComment;
 
 use crate::{
-    date_time::{full_time_label_with_edit, natural_time_label_with_edit},
-    github::profile_url,
+    panels::people::{
+        render_author_link, render_avatar, render_time_metadata, review_comment_time_label,
+        review_comment_time_tooltip,
+    },
     panels::review_markdown::{ReviewSuggestionContext, render_review_markdown_body_with_context},
     visual::color,
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, review_comment_pending_sync},
 };
 
 use super::{
-    avatars::render_review_comment_avatar,
     comment_actions::{
         ReviewCommentActionsMenuState, render_review_comment_actions_menu,
         render_review_comment_edit_composer, review_comment_action_visibility,
@@ -178,20 +179,17 @@ pub(super) fn render_review_comment_inline(state: ReviewCommentRenderState<'_>) 
                                 .items_center()
                                 .gap_2()
                                 .text_xs()
-                                .child(render_review_comment_author_link(
-                                    comment_id.clone(),
+                                .child(render_author_link(
+                                    format!("review-comment-author-link-{comment_id}"),
                                     author,
                                     author_color,
                                 ))
-                                .child(
-                                    div()
-                                        .id(format!("review-comment-time-{comment_id}"))
-                                        .text_color(metadata_color)
-                                        .tooltip(move |window, cx| {
-                                            Tooltip::new(time_tooltip.clone()).build(window, cx)
-                                        })
-                                        .child(time_label),
-                                )
+                                .child(render_time_metadata(
+                                    format!("review-comment-time-{comment_id}"),
+                                    time_label,
+                                    Some(time_tooltip),
+                                    metadata_color,
+                                ))
                                 .when(review_comment_pending_sync(comment), |element| {
                                     element.child(
                                         div()
@@ -286,7 +284,11 @@ fn render_review_comment_gutter(
         .min_h(px(28.0))
         .w(px(20.0))
         .flex_none()
-        .child(render_review_comment_avatar(comment))
+        .child(div().mt(px(1.0)).flex_none().child(render_avatar(
+            &comment.author,
+            comment.author_avatar_url.as_deref(),
+            20.0,
+        )))
         .when(show_thread_rail, |element| {
             element.child(
                 div()
@@ -317,25 +319,6 @@ fn render_review_comment_body(
         ))
 }
 
-fn render_review_comment_author_link(
-    comment_id: String,
-    author: String,
-    color: gpui::Rgba,
-) -> impl IntoElement {
-    let profile_url = profile_url(&author);
-
-    div()
-        .id(format!("review-comment-author-link-{comment_id}"))
-        .font_medium()
-        .text_color(color)
-        .cursor_pointer()
-        .hover(|element| element.text_color(color::accent_hover()))
-        .on_click(move |_, _, cx| {
-            cx.open_url(&profile_url);
-        })
-        .child(author)
-}
-
 pub(crate) fn review_comment_ui_state(
     comment: &ReviewComment,
     active_review_comment_edit: Option<&str>,
@@ -353,14 +336,6 @@ pub(crate) fn review_comment_ui_state(
         edit_submitting: active_edit && is_submitting_edit,
         action_running: action_comment_id == Some(comment.id.as_str()),
     }
-}
-
-fn review_comment_time_label(comment: &ReviewComment) -> String {
-    natural_time_label_with_edit(comment.created_at, comment.updated_at)
-}
-
-fn review_comment_time_tooltip(comment: &ReviewComment) -> String {
-    full_time_label_with_edit(comment.created_at, comment.updated_at)
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use crate::gpui_component::{
-    Disableable, Sizable, StyledExt,
+    Disableable, Sizable,
     button::{Button, ButtonVariants},
     input::{Textarea, TextareaState},
 };
@@ -9,7 +9,7 @@ use harbor_domain::{ReviewThread, ReviewThreadState};
 use crate::{
     icons::Octicon,
     panels::chrome::render_status_pill,
-    visual::{Tone, color, tone_colors},
+    visual::{Tone, color},
     workspace::AppView,
 };
 
@@ -263,19 +263,8 @@ pub(crate) fn render_review_thread_status_pill(state: ReviewThreadState) -> AnyE
         return render_status_pill(label, tone).into_any_element();
     }
 
-    let colors = tone_colors(Tone::Neutral);
-    div()
-        .flex_none()
-        .rounded_xs()
-        .border_1()
-        .border_color(colors.border)
-        .bg(colors.background)
-        .px_1()
-        .py_0p5()
-        .text_xs()
-        .font_medium()
+    render_status_pill(label, Tone::Neutral)
         .text_color(color::text_disabled())
-        .child(label)
         .into_any_element()
 }
 

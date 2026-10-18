@@ -1,6 +1,6 @@
-use crate::gpui_component::{StyledExt, tooltip::Tooltip};
+use crate::gpui_component::StyledExt;
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use harbor_domain::{PullRequestComment, PullRequestCommit, PullRequestPerson, PullRequestReview};
+use harbor_domain::{PullRequestComment, PullRequestCommit, PullRequestReview};
 
 use crate::{
     date_time::{
@@ -8,7 +8,10 @@ use crate::{
         natural_time_label_with_edit,
     },
     icons::Octicon,
-    panels::render_status_pill,
+    panels::{
+        people::{render_avatar, render_time_metadata},
+        render_status_pill, review_time_label, review_time_tooltip,
+    },
     visual::{color, tone_colors},
     workspace::AppView,
 };
@@ -18,10 +21,6 @@ pub(super) fn render_overview_commit_event(
     index: usize,
     cx: &mut Context<AppView>,
 ) -> AnyElement {
-    let person = PullRequestPerson {
-        login: commit.author.clone(),
-        avatar_url: commit.author_avatar_url.clone(),
-    };
     let subject = commit
         .message
         .lines()
@@ -32,7 +31,7 @@ pub(super) fn render_overview_commit_event(
     let sha = commit.sha.clone();
 
     render_timeline_row(
-        render_person_avatar_with_size(&person, 24.0),
+        render_avatar(&commit.author, commit.author_avatar_url.as_deref(), 24.0),
         div()
             .debug_selector({
                 let sha = commit.sha.clone();
@@ -71,10 +70,11 @@ pub(super) fn render_overview_commit_event(
                     .child(short_sha),
             )
             .when_some(commit.authored_at, |element, authored_at| {
-                element.child(render_timeline_time(
+                element.child(render_time_metadata(
                     format!("overview-commit-time-{}", commit.sha),
                     natural_time_label(authored_at),
-                    full_time_label(authored_at),
+                    Some(full_time_label(authored_at)),
+                    color::text_muted(),
                 ))
             })
             .into_any_element(),
@@ -82,27 +82,18 @@ pub(super) fn render_overview_commit_event(
     )
 }
 
-use super::{
-    render_person_avatar_with_size,
-    timeline::{
-        overview_review_state, render_timeline_icon, render_timeline_row, render_timeline_time,
-    },
-};
+use super::timeline::{overview_review_state, render_timeline_icon, render_timeline_row};
 
 pub(super) fn render_overview_comment_event(
     comment: &PullRequestComment,
     index: usize,
     markdown: AnyElement,
 ) -> AnyElement {
-    let person = PullRequestPerson {
-        login: comment.author.clone(),
-        avatar_url: comment.author_avatar_url.clone(),
-    };
     let time_label = natural_time_label_with_edit(comment.created_at, comment.updated_at);
     let time_tooltip = full_time_label_with_edit(comment.created_at, comment.updated_at);
 
     render_timeline_row(
-        render_person_avatar_with_size(&person, 24.0),
+        render_avatar(&comment.author, comment.author_avatar_url.as_deref(), 24.0),
         div()
             .id(("overview-comment", index))
             .w_full()
@@ -128,10 +119,11 @@ pub(super) fn render_overview_comment_event(
                             .child(comment.author.clone()),
                     )
                     .child(div().text_color(color::text_muted()).child("commented"))
-                    .child(render_timeline_time(
+                    .child(render_time_metadata(
                         format!("overview-comment-time-{}", comment.id),
                         time_label,
-                        time_tooltip,
+                        Some(time_tooltip),
+                        color::text_muted(),
                     )),
             )
             .child(
@@ -154,11 +146,6 @@ pub(super) fn render_overview_review_event(
 ) -> AnyElement {
     let selector = format!("overview-review-{}", review.id);
     let (action, status, tone) = overview_review_state(review.state);
-    let time_label = review
-        .submitted_at
-        .map(natural_time_label)
-        .unwrap_or_else(|| "not submitted".to_string());
-    let time_tooltip = review.submitted_at.map(full_time_label);
     let colors = tone_colors(tone);
 
     render_timeline_row(
@@ -193,17 +180,12 @@ pub(super) fn render_overview_review_event(
                                     .child(review.author.clone()),
                             )
                             .child(div().text_color(color::text_secondary()).child(action))
-                            .child(
-                                div()
-                                    .id(format!("overview-review-time-{}", review.id))
-                                    .text_color(color::text_muted())
-                                    .when_some(time_tooltip, |element, tooltip| {
-                                        element.tooltip(move |window, cx| {
-                                            Tooltip::new(tooltip.clone()).build(window, cx)
-                                        })
-                                    })
-                                    .child(time_label),
-                            ),
+                            .child(render_time_metadata(
+                                format!("overview-review-time-{}", review.id),
+                                review_time_label(review),
+                                review_time_tooltip(review),
+                                color::text_muted(),
+                            )),
                     )
                     .child(render_status_pill(status, tone)),
             )

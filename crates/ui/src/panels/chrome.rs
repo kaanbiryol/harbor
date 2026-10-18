@@ -10,6 +10,8 @@ use gpui::{
     px,
 };
 
+use harbor_domain::{CheckConclusion, CheckStatus};
+
 use crate::icons::Octicon;
 use crate::visual::{Tone, color, tone_colors};
 
@@ -346,7 +348,7 @@ pub(crate) fn render_tab_count(count: usize, tone: Tone) -> impl IntoElement {
         .child(count.to_string())
 }
 
-pub(crate) fn render_status_pill(label: impl Into<String>, tone: Tone) -> impl IntoElement {
+pub(crate) fn render_status_pill(label: impl Into<String>, tone: Tone) -> Div {
     let colors = tone_colors(tone);
 
     div()
@@ -361,6 +363,28 @@ pub(crate) fn render_status_pill(label: impl Into<String>, tone: Tone) -> impl I
         .font_medium()
         .text_color(colors.text)
         .child(label.into())
+}
+
+pub(crate) fn ci_status_icon(
+    conclusion: Option<impl Into<CheckConclusion>>,
+    status: impl Into<CheckStatus>,
+) -> Octicon {
+    match (status.into(), conclusion.map(Into::into)) {
+        (CheckStatus::Completed, Some(CheckConclusion::Success)) => Octicon::CheckCircle,
+        (CheckStatus::Completed, Some(CheckConclusion::Skipped | CheckConclusion::Neutral)) => {
+            Octicon::Clock
+        }
+        (
+            CheckStatus::Completed,
+            Some(CheckConclusion::TimedOut | CheckConclusion::ActionRequired),
+        ) => Octicon::Alert,
+        (
+            CheckStatus::Completed,
+            Some(CheckConclusion::Cancelled | CheckConclusion::Failure) | None,
+        ) => Octicon::XCircle,
+        (CheckStatus::InProgress, _) => Octicon::Sync,
+        (CheckStatus::Queued, _) => Octicon::Clock,
+    }
 }
 
 pub(crate) fn render_metric_pill(

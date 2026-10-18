@@ -1,10 +1,7 @@
-use crate::gpui_component::{
-    ActiveTheme, Icon, Sizable, StyledExt, avatar::Avatar, spinner::Spinner, tooltip::Tooltip,
-};
+use crate::gpui_component::{ActiveTheme, Icon, Sizable, StyledExt, spinner::Spinner};
 use gpui::{AnyElement, Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{
-    PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewComment, ReviewThread,
-    ReviewThreadState,
+    PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThread, ReviewThreadState,
 };
 
 use crate::{
@@ -12,12 +9,12 @@ use crate::{
         full_time_label, full_time_label_with_edit, natural_time_label,
         natural_time_label_with_edit,
     },
-    github::{avatar_initial, avatar_url as github_avatar_url, profile_url},
     icons::Octicon,
     visual::{Tone, color, leading_truncated_path},
     workspace::AppView,
 };
 
+use super::people::{render_author_link, render_avatar, render_time_metadata};
 use super::review_markdown::{render_review_markdown_body, review_markdown_body};
 use super::review_thread_rows::{ReviewThreadRowRenderState, render_review_thread_row};
 use super::{
@@ -351,8 +348,8 @@ fn render_review_file_header(path: &str, thread_count: usize) -> impl IntoElemen
 }
 
 fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -> AnyElement {
-    let time_label = pull_request_comment_time_label(comment);
-    let time_tooltip = pull_request_comment_time_tooltip(comment);
+    let time_label = natural_time_label_with_edit(comment.created_at, comment.updated_at);
+    let time_tooltip = full_time_label_with_edit(comment.created_at, comment.updated_at);
 
     div()
         .id(("pull-request-comment-row", index))
@@ -386,7 +383,7 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .child(render_review_avatar(
+                                .child(render_avatar(
                                     &comment.author,
                                     comment.author_avatar_url.as_deref(),
                                     24.0,
@@ -398,7 +395,7 @@ fn render_pull_request_comment_row(comment: &PullRequestComment, index: usize) -
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(render_review_author_link(
+                                        .child(render_author_link(
                                             format!(
                                                 "pull-request-comment-author-link-{}",
                                                 comment.id
@@ -478,7 +475,7 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .child(render_review_avatar(&review.author, None, 24.0))
+                                .child(render_avatar(&review.author, None, 24.0))
                                 .child(
                                     div()
                                         .min_w_0()
@@ -486,7 +483,7 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(render_review_author_link(
+                                        .child(render_author_link(
                                             format!(
                                                 "pull-request-review-author-link-{}",
                                                 review.id
@@ -521,60 +518,6 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
 
 fn comment_body_text(body: &str) -> String {
     review_markdown_body(body)
-}
-
-pub(super) fn render_review_avatar(
-    author: &str,
-    avatar_url: Option<&str>,
-    size: f32,
-) -> AnyElement {
-    if let Some(avatar_url) = avatar_url
-        .map(str::to_string)
-        .or_else(|| github_avatar_url(author))
-    {
-        return Avatar::new()
-            .rounded_full()
-            .src(avatar_url)
-            .name(author.to_string())
-            .with_size(px(size))
-            .into_any_element();
-    }
-
-    div()
-        .size(px(size))
-        .flex()
-        .items_center()
-        .justify_center()
-        .flex_none()
-        .rounded_full()
-        .border_1()
-        .border_color(color::border_strong())
-        .bg(color::row_selected_subtle())
-        .text_size(px((size * 0.52).max(10.0)))
-        .line_height(px(size))
-        .font_semibold()
-        .text_color(color::accent())
-        .child(avatar_initial(author))
-        .into_any_element()
-}
-
-pub(super) fn render_review_author_link(
-    id: String,
-    author: String,
-    text_color: gpui::Rgba,
-) -> impl IntoElement {
-    let profile_url = profile_url(&author);
-
-    div()
-        .id(id)
-        .font_medium()
-        .text_color(text_color)
-        .cursor_pointer()
-        .hover(|element| element.text_color(color::accent_hover()))
-        .on_click(move |_, _, cx| {
-            cx.open_url(&profile_url);
-        })
-        .child(author)
 }
 
 pub(crate) fn review_thread_counts(threads: &[ReviewThread]) -> (usize, usize, usize) {
@@ -619,40 +562,8 @@ pub(crate) fn review_time_label(review: &PullRequestReview) -> String {
         .unwrap_or_else(|| "not submitted".to_string())
 }
 
-fn review_time_tooltip(review: &PullRequestReview) -> Option<String> {
+pub(crate) fn review_time_tooltip(review: &PullRequestReview) -> Option<String> {
     review.submitted_at.map(full_time_label)
-}
-
-pub(super) fn review_comment_time_label(comment: &ReviewComment) -> String {
-    natural_time_label_with_edit(comment.created_at, comment.updated_at)
-}
-
-pub(super) fn review_comment_time_tooltip(comment: &ReviewComment) -> String {
-    full_time_label_with_edit(comment.created_at, comment.updated_at)
-}
-
-fn pull_request_comment_time_label(comment: &PullRequestComment) -> String {
-    natural_time_label_with_edit(comment.created_at, comment.updated_at)
-}
-
-fn pull_request_comment_time_tooltip(comment: &PullRequestComment) -> String {
-    full_time_label_with_edit(comment.created_at, comment.updated_at)
-}
-
-fn render_time_metadata(
-    id: String,
-    label: String,
-    tooltip: Option<String>,
-    text_color: gpui::Rgba,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .text_xs()
-        .text_color(text_color)
-        .when_some(tooltip, |element, tooltip| {
-            element.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        })
-        .child(label)
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ mod chrome;
 mod commits;
 mod diff_view;
 mod logs;
+pub(crate) mod people;
 mod pull_request;
 mod review;
 mod review_markdown;

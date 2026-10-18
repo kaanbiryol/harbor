@@ -1,8 +1,9 @@
-use super::sidebar::{parse_label_color, render_fallback_avatar};
+use super::sidebar::parse_label_color;
 use crate::gpui_component::{
     Icon, Sizable, avatar::Avatar, button::Button, input::Input, list::ListItem, popover::Popover,
     scroll::ScrollableElement, spinner::Spinner,
 };
+use crate::panels::people::render_initial_avatar;
 use crate::{
     actions::PullRequestMetadataField,
     dropdown::dropdown_menu_surface,
@@ -341,7 +342,7 @@ fn render_metadata_choice_leading(
                     .with_size(px(20.0))
                     .into_any_element()
             } else {
-                render_fallback_avatar(name, 20.0).into_any_element()
+                render_initial_avatar(name, 20.0).into_any_element()
             }
         }
         PullRequestMetadataField::Label => div()

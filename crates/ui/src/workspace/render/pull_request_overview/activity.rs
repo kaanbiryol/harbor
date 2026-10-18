@@ -4,7 +4,7 @@ use crate::gpui_component::{
     input::Textarea,
 };
 use gpui::{AnyElement, Context, Entity, IntoElement, div, prelude::*, px};
-use harbor_domain::{PullRequest, PullRequestPerson, ReviewThread};
+use harbor_domain::{PullRequest, ReviewThread};
 
 use crate::{
     panels::{
@@ -16,7 +16,8 @@ use crate::{
     workspace::{AppView, ReviewRuntimeState, state::OverviewMarkdownState},
 };
 
-use super::{model::*, sidebar::render_person_avatar_with_size, timeline::*};
+use super::{model::*, timeline::*};
+use crate::panels::people::render_avatar;
 
 impl AppView {
     pub(super) fn ensure_overview_markdown_state(
@@ -306,16 +307,13 @@ impl AppView {
             .action_runtime
             .pull_request_action_error()
             .map(str::to_string);
-        let commenter = PullRequestPerson {
-            login: self
-                .review_state
-                .current_user_login()
-                .map_or_else(|| pr.author.clone(), str::to_string),
-            avatar_url: None,
-        };
+        let commenter = self
+            .review_state
+            .current_user_login()
+            .unwrap_or(pr.author.as_str());
 
         render_timeline_row(
-            render_person_avatar_with_size(&commenter, 24.0),
+            render_avatar(commenter, None, 24.0),
             div()
                 .debug_selector(|| "pull-request-overview-comment-composer".to_string())
                 .w_full()

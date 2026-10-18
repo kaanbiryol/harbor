@@ -1,9 +1,11 @@
-use crate::gpui_component::{Icon, Sizable, StyledExt, avatar::Avatar};
+use crate::gpui_component::{Icon, Sizable, StyledExt};
 use crate::{
     actions::PullRequestMetadataField,
-    github::{avatar_initial, avatar_url},
     icons::Octicon,
-    panels::ImmediateTooltip,
+    panels::{
+        ImmediateTooltip,
+        people::{render_avatar, render_initial_avatar},
+    },
     visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
@@ -283,7 +285,11 @@ fn render_person_chip(person: &PullRequestPerson) -> AnyElement {
     let selector = format!("pull-request-person-{login}");
     render_chip()
         .debug_selector(move || selector.clone())
-        .child(render_person_avatar(person))
+        .child(render_avatar(
+            &person.login,
+            person.avatar_url.as_deref(),
+            16.0,
+        ))
         .child(render_chip_label(login))
         .into_any_element()
 }
@@ -297,7 +303,11 @@ fn render_reviewer_chip(reviewer: &SidebarReviewer) -> AnyElement {
 
     render_chip()
         .debug_selector(move || selector.clone())
-        .child(render_person_avatar(&reviewer.person))
+        .child(render_avatar(
+            &reviewer.person.login,
+            reviewer.person.avatar_url.as_deref(),
+            16.0,
+        ))
         .child(render_chip_label(login.clone()))
         .child(ImmediateTooltip::new(
             format!("pull-request-review-status-tooltip-{login}"),
@@ -322,7 +332,7 @@ fn render_team_chip(team: &PullRequestTeam) -> AnyElement {
     };
 
     render_chip()
-        .child(render_team_avatar(&label))
+        .child(render_initial_avatar(&label, 16.0))
         .child(render_chip_label(label))
         .into_any_element()
 }
@@ -361,50 +371,6 @@ fn render_chip() -> Div {
         .py_0p5()
         .text_xs()
         .text_color(color::text_secondary())
-}
-
-fn render_person_avatar(person: &PullRequestPerson) -> AnyElement {
-    render_person_avatar_with_size(person, 16.0)
-}
-
-pub(super) fn render_person_avatar_with_size(person: &PullRequestPerson, size: f32) -> AnyElement {
-    let avatar_url = person
-        .avatar_url
-        .clone()
-        .or_else(|| avatar_url(&person.login));
-
-    if let Some(avatar_url) = avatar_url {
-        return Avatar::new()
-            .rounded_full()
-            .src(avatar_url)
-            .name(person.login.clone())
-            .with_size(px(size))
-            .into_any_element();
-    }
-
-    render_fallback_avatar(&person.login, size).into_any_element()
-}
-
-fn render_team_avatar(label: &str) -> AnyElement {
-    render_fallback_avatar(label, 16.0).into_any_element()
-}
-
-pub(super) fn render_fallback_avatar(label: &str, size: f32) -> impl IntoElement {
-    div()
-        .size(px(size))
-        .flex()
-        .items_center()
-        .justify_center()
-        .flex_none()
-        .rounded_full()
-        .border_1()
-        .border_color(color::border_strong())
-        .bg(color::row_selected_subtle())
-        .text_size(px((size * 0.52).max(9.0)))
-        .line_height(px(size))
-        .font_semibold()
-        .text_color(color::accent())
-        .child(avatar_initial(label))
 }
 
 pub(super) fn parse_label_color(color: &str) -> Option<Rgba> {

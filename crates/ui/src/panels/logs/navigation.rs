@@ -3,7 +3,7 @@ use crate::gpui_component::{
     list::ListItem,
     scroll::{Scrollbar, ScrollbarMode},
 };
-use crate::panels::workflows::workflow_conclusion_tone;
+use crate::panels::{ci_status_icon, workflows::workflow_conclusion_tone};
 use crate::{
     icons::Octicon,
     visual::{Tone, color, tone_text},
@@ -121,7 +121,7 @@ pub(super) fn navigation_rows(
             } else {
                 tone
             },
-            icon: status_icon(run.conclusion, run.status),
+            icon: ci_status_icon(run.conclusion, run.status),
         });
         let Some(Ok(jobs)) = jobs else {
             continue;
@@ -136,7 +136,7 @@ pub(super) fn navigation_rows(
                 label: job.name.clone(),
                 status: status.into(),
                 tone,
-                icon: status_icon(job.conclusion, job.status),
+                icon: ci_status_icon(job.conclusion, job.status),
             });
             if selected_run != Some(run.id)
                 || state
@@ -161,27 +161,12 @@ pub(super) fn navigation_rows(
                     label: step.name.clone(),
                     status: format!("{status}{duration}"),
                     tone,
-                    icon: status_icon(step.conclusion, step.status),
+                    icon: ci_status_icon(step.conclusion, step.status),
                 });
             }
         }
     }
     rows
-}
-
-fn status_icon(
-    conclusion: Option<harbor_domain::WorkflowConclusion>,
-    status: harbor_domain::WorkflowStatus,
-) -> Octicon {
-    use harbor_domain::{WorkflowConclusion, WorkflowStatus};
-    match conclusion {
-        Some(WorkflowConclusion::Success) => Octicon::CheckCircle,
-        Some(WorkflowConclusion::Failure | WorkflowConclusion::TimedOut) => Octicon::XCircle,
-        Some(WorkflowConclusion::Cancelled) => Octicon::X,
-        Some(WorkflowConclusion::ActionRequired) => Octicon::Alert,
-        _ if status == WorkflowStatus::InProgress => Octicon::Sync,
-        _ => Octicon::Clock,
-    }
 }
 
 pub(super) fn render_log_navigation(
