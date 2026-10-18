@@ -47,7 +47,7 @@ struct ApiPullRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct ApiUser {
+pub(super) struct ApiUser {
     login: String,
     #[serde(default, alias = "avatarUrl")]
     avatar_url: Option<String>,
@@ -81,7 +81,7 @@ struct ApiRef {
 }
 
 #[derive(Debug, Deserialize)]
-struct ApiLabel {
+pub(super) struct ApiLabel {
     name: String,
     color: Option<String>,
 }
@@ -431,14 +431,7 @@ impl ApiPullRequest {
                 .map(map_merge_state)
                 .or(Some(MergeState::Unknown)),
             merge_capabilities: PullRequestMergeCapabilities::default(),
-            labels: self
-                .labels
-                .into_iter()
-                .map(|label| Label {
-                    name: label.name,
-                    color: label.color,
-                })
-                .collect(),
+            labels: self.labels.into_iter().map(ApiLabel::into_domain).collect(),
             assignees: self
                 .assignees
                 .into_iter()
@@ -567,10 +560,19 @@ impl GraphQlPullRequestEnrichmentNode {
 }
 
 impl ApiUser {
-    fn into_domain(self) -> PullRequestPerson {
+    pub(super) fn into_domain(self) -> PullRequestPerson {
         PullRequestPerson {
             login: self.login,
             avatar_url: self.avatar_url,
+        }
+    }
+}
+
+impl ApiLabel {
+    pub(super) fn into_domain(self) -> Label {
+        Label {
+            name: self.name,
+            color: self.color,
         }
     }
 }

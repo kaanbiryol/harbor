@@ -4,7 +4,9 @@ use crate::gpui_component::{ActiveTheme, highlighter::HighlightTheme};
 use futures::stream::{FuturesUnordered, StreamExt};
 use gpui::{AppContext, AsyncApp, Context, ScrollStrategy, Task, WeakEntity};
 use harbor_domain::DiffFile;
-use harbor_sync::{SyncTarget, refresh_pull_request_files, refresh_pull_request_metadata};
+use harbor_sync::{
+    StorageError, SyncTarget, refresh_pull_request_files, refresh_pull_request_metadata,
+};
 
 use crate::{
     diff::{ParsedDiff, parse_files, parse_unified_diff_with_syntax},
@@ -53,7 +55,7 @@ impl AppView {
             },
             move |view, refresh, cx| {
                 if let Some(error) = refresh.cache_error {
-                    view.repository_state.set_error(error);
+                    view.repository_state.set_error(error.to_string());
                 }
                 match refresh.result {
                     Ok(detail) => {
@@ -156,7 +158,7 @@ impl AppView {
         &mut self,
         detail_key: &PullRequestDetailCacheKey,
         result: PullRequestFilesResult,
-        cache_error: Option<String>,
+        cache_error: Option<StorageError>,
         cx: &mut Context<Self>,
     ) -> Option<Vec<DiffFile>> {
         if !selected_pull_request_matches(self, detail_key) {
@@ -165,7 +167,7 @@ impl AppView {
         let number = detail_key.number();
 
         if let Some(error) = cache_error {
-            self.repository_state.set_error(error);
+            self.repository_state.set_error(error.to_string());
         }
         let files_for_syntax = result.as_ref().ok().map(|(files, _)| files.clone());
         match result {

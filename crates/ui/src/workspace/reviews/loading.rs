@@ -169,7 +169,7 @@ impl AppView {
                 }
 
                 if let Some(error) = refresh.cache_error {
-                    view.repository_state.set_error(error);
+                    view.repository_state.set_error(error.to_string());
                 }
                 let incomplete_comments = refresh.threads.as_ref().is_ok_and(|threads| threads.iter().any(|thread| !thread.comments_complete));
                 let mut review_error = incomplete_comments.then(|| "Some review comments are not loaded because the pagination limit was reached. Open the thread on GitHub to see the full conversation.".to_string());

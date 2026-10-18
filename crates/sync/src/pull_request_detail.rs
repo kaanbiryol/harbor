@@ -3,7 +3,7 @@ use harbor_domain::{
     WorkflowRun,
 };
 use harbor_github::{PullRequestCiSource, PullRequestContentSource, Result};
-use harbor_storage::{PullRequestDetailSection, SqliteStore, detail_target_key};
+use harbor_storage::{PullRequestDetailSection, SqliteStore, StorageError, detail_target_key};
 
 #[derive(Clone, Debug, Default)]
 pub struct CachedPullRequestDetail {
@@ -45,7 +45,7 @@ pub async fn load_cached_pull_request_detail(
 
 pub struct PullRequestDetailRefresh<T> {
     pub result: Result<T>,
-    pub cache_error: Option<String>,
+    pub cache_error: Option<StorageError>,
 }
 
 pub async fn refresh_pull_request_metadata<S>(
@@ -61,19 +61,16 @@ where
         .get_pull_request(&repository.owner, &repository.name, number)
         .await;
     let cache_error = match (store, result.as_ref()) {
-        (Some(store), Ok(pull_request)) => store
-            .save_pull_request_metadata(pull_request)
-            .await
-            .err()
-            .map(|error| error.to_string()),
+        (Some(store), Ok(pull_request)) => {
+            store.save_pull_request_metadata(pull_request).await.err()
+        }
         (Some(store), Err(error)) => store
             .record_sync_failure(
                 &detail_target_key(repository, number, PullRequestDetailSection::Metadata),
                 &error.to_string(),
             )
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (None, _) => None,
     };
 
@@ -100,16 +97,14 @@ where
         (Some(store), Ok(files)) => store
             .save_pull_request_files(repository, number, head_sha, files)
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (Some(store), Err(error)) => store
             .record_sync_failure(
                 &detail_target_key(repository, number, PullRequestDetailSection::Files),
                 &error.to_string(),
             )
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (None, _) => None,
     };
 
@@ -140,16 +135,14 @@ where
         (Some(store), Ok(check_runs)) => store
             .save_pull_request_check_runs(repository, number, head_sha, check_runs)
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (Some(store), Err(error)) => store
             .record_sync_failure(
                 &detail_target_key(repository, number, PullRequestDetailSection::CheckRuns),
                 &error.to_string(),
             )
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (None, _) => None,
     };
 
@@ -180,16 +173,14 @@ where
         (Some(store), Ok(workflow_runs)) => store
             .save_pull_request_workflow_runs(repository, number, head_sha, workflow_runs)
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (Some(store), Err(error)) => store
             .record_sync_failure(
                 &detail_target_key(repository, number, PullRequestDetailSection::WorkflowRuns),
                 &error.to_string(),
             )
             .await
-            .err()
-            .map(|error| error.to_string()),
+            .err(),
         (None, _) => None,
     };
 

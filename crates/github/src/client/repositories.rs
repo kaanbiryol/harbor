@@ -1,9 +1,6 @@
-use harbor_domain::{Label, PullRequestPerson, RepoId};
-use serde::Deserialize;
+use harbor_domain::RepoId;
 
-use crate::{
-    GitHubError, GitHubTransport, PullRequestMetadataOptions, RepositoryList, Result, dto,
-};
+use crate::{GitHubTransport, PullRequestMetadataOptions, RepositoryList, Result, dto};
 
 use super::{
     GitHubClient,
@@ -70,73 +67,9 @@ where
             .await?;
 
         Ok(PullRequestMetadataOptions {
-            reviewers: reviewers_from_value(reviewers)?,
-            assignees: people_from_value(assignees)?,
-            labels: labels_from_value(labels)?,
+            reviewers: dto::reviewers_from_value(reviewers)?,
+            assignees: dto::people_from_value(assignees)?,
+            labels: dto::labels_from_value(labels)?,
         })
     }
-}
-
-#[derive(Deserialize)]
-struct ApiPerson {
-    login: String,
-    #[serde(default)]
-    avatar_url: Option<String>,
-    #[serde(default)]
-    permissions: Option<ApiPermissions>,
-}
-
-#[derive(Deserialize)]
-struct ApiPermissions {
-    #[serde(default)]
-    push: bool,
-}
-
-#[derive(Deserialize)]
-struct ApiLabel {
-    name: String,
-    #[serde(default)]
-    color: Option<String>,
-}
-
-fn people_from_value(value: serde_json::Value) -> Result<Vec<PullRequestPerson>> {
-    let people: Vec<ApiPerson> =
-        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
-    Ok(people
-        .into_iter()
-        .map(|person| PullRequestPerson {
-            login: person.login,
-            avatar_url: person.avatar_url,
-        })
-        .collect())
-}
-
-fn reviewers_from_value(value: serde_json::Value) -> Result<Vec<PullRequestPerson>> {
-    let people: Vec<ApiPerson> =
-        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
-    Ok(people
-        .into_iter()
-        .filter(|person| {
-            person
-                .permissions
-                .as_ref()
-                .is_some_and(|permissions| permissions.push)
-        })
-        .map(|person| PullRequestPerson {
-            login: person.login,
-            avatar_url: person.avatar_url,
-        })
-        .collect())
-}
-
-fn labels_from_value(value: serde_json::Value) -> Result<Vec<Label>> {
-    let labels: Vec<ApiLabel> =
-        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
-    Ok(labels
-        .into_iter()
-        .map(|label| Label {
-            name: label.name,
-            color: label.color,
-        })
-        .collect())
 }

@@ -242,7 +242,7 @@ impl AppView {
 
                         view.pull_request_inbox.apply_success();
                         if let Err(error) = cache_result {
-                            view.repository_state.set_error(error);
+                            view.repository_state.set_error(error.to_string());
                         }
 
                         match refresh {

@@ -47,7 +47,7 @@ impl AppView {
             },
             move |view, refresh, _| {
                 if let Some(error) = refresh.cache_error {
-                    view.repository_state.set_error(error);
+                    view.repository_state.set_error(error.to_string());
                 }
                 match refresh.result {
                     Ok(check_runs) => {
@@ -113,7 +113,7 @@ impl AppView {
             },
             move |view, refresh, cx| {
                 if let Some(error) = refresh.cache_error {
-                    view.repository_state.set_error(error);
+                    view.repository_state.set_error(error.to_string());
                 }
                 match refresh.result {
                     Ok(workflow_runs) => {

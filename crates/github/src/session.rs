@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::{
     ConditionalFetch, GhCliTransport, GitHubAuthApi, GitHubClient, GitHubError,
@@ -27,20 +27,21 @@ struct SessionState {
 }
 
 impl GitHubSession {
+    // A panic while holding the lock cannot leave SessionState half-updated, so recover the
+    // inner value instead of reporting the user as signed out.
+    fn state(&self) -> MutexGuard<'_, SessionState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     pub(super) fn client(&self) -> Result<GitHubClient<GitHubTransportSource>> {
-        self.state
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?
+        self.state()
             .client
             .clone()
             .ok_or(GitHubError::Unauthenticated)
     }
 
     fn replace_client(&self, client: Option<GitHubClient<GitHubTransportSource>>) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        let mut state = self.state();
         state.generation = state.generation.wrapping_add(1);
         state.client = client;
         state.current_user_login = None;
@@ -48,10 +49,7 @@ impl GitHubSession {
     }
 
     fn cache_current_user_login(&self, generation: u64, login: String) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|error| GitHubError::Transport(error.to_string()))?;
+        let mut state = self.state();
         if state.generation != generation {
             return Err(GitHubError::SessionChanged);
         }
@@ -63,10 +61,10 @@ impl GitHubSession {
 #[async_trait]
 impl PullRequestInboxSource for GitHubSession {
     fn latest_rate_limits(&self) -> Vec<GitHubRateLimitStatus> {
-        self.state
-            .lock()
-            .ok()
-            .and_then(|state| state.client.as_ref().map(GitHubClient::latest_rate_limits))
+        self.state()
+            .client
+            .as_ref()
+            .map(GitHubClient::latest_rate_limits)
             .unwrap_or_default()
     }
 
@@ -182,25 +180,16 @@ impl PullRequestContentSource for GitHubSession {
 #[async_trait]
 impl GitHubAuthApi for GitHubSession {
     fn snapshot(&self) -> Option<Arc<dyn crate::GitHubApi>> {
-        let state = match self.state.lock() {
-            Ok(state) => state.clone(),
-            Err(error) => {
-                tracing::error!(%error, "failed to snapshot github session");
-                SessionState::default()
-            }
-        };
         Some(Arc::new(Self {
-            state: Arc::new(Mutex::new(state)),
+            state: Arc::new(Mutex::new(self.state().clone())),
         }))
     }
 
     fn latest_rate_limit(&self) -> Option<GitHubRateLimitStatus> {
-        self.state.lock().ok().and_then(|state| {
-            state
-                .client
-                .as_ref()
-                .and_then(GitHubClient::latest_rate_limit)
-        })
+        self.state()
+            .client
+            .as_ref()
+            .and_then(GitHubClient::latest_rate_limit)
     }
 
     fn configure_token(&self, token: String) -> Result<()> {
@@ -221,10 +210,7 @@ impl GitHubAuthApi for GitHubSession {
     }
 
     fn has_auth(&self) -> bool {
-        self.state
-            .lock()
-            .map(|state| state.client.is_some())
-            .unwrap_or(false)
+        self.state().client.is_some()
     }
 }
 
@@ -250,10 +236,7 @@ impl GitHubRepositoryApi for GitHubSession {
 
     async fn current_user(&self) -> Result<String> {
         let (client, generation) = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|error| GitHubError::Transport(error.to_string()))?;
+            let state = self.state();
             if let Some(login) = &state.current_user_login {
                 return Ok(login.clone());
             }
@@ -679,5 +662,23 @@ mod tests {
         assert!(!session.has_auth());
         assert!(request.has_auth());
         assert!(!session.snapshot().unwrap().has_auth());
+    }
+
+    #[test]
+    fn poisoned_session_keeps_its_credentials() {
+        let session = GitHubSession::default();
+        session.configure_gh_cli().unwrap();
+        let poisoner = session.clone();
+        std::thread::spawn(move || {
+            let _guard = poisoner.state.lock().unwrap();
+            panic!("poison session lock");
+        })
+        .join()
+        .unwrap_err();
+
+        assert!(session.state.is_poisoned());
+        assert!(session.has_auth());
+        assert!(session.snapshot().unwrap().has_auth());
+        assert!(session.client().is_ok());
     }
 }

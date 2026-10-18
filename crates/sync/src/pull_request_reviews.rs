@@ -4,7 +4,7 @@ use harbor_domain::{
     reviews::PendingReviewSession,
 };
 use harbor_github::{GitHubRepositoryApi, GitHubReviewApi, Result};
-use harbor_storage::{PullRequestDetailSection, SqliteStore, detail_target_key};
+use harbor_storage::{PullRequestDetailSection, SqliteStore, StorageError, detail_target_key};
 
 pub struct PullRequestReviewRefresh {
     pub current_user: Result<String>,
@@ -12,7 +12,7 @@ pub struct PullRequestReviewRefresh {
     pub pending_review_comment_count: Option<Result<usize>>,
     pub comments: Result<Vec<PullRequestComment>>,
     pub threads: Result<Vec<ReviewThread>>,
-    pub cache_error: Option<String>,
+    pub cache_error: Option<StorageError>,
 }
 
 pub struct PullRequestReviewRefreshRequest<'a> {
@@ -95,7 +95,7 @@ async fn cache_review_refresh(
     reviews: &Result<Vec<PullRequestReview>>,
     comments: &Result<Vec<PullRequestComment>>,
     threads: &Result<Vec<ReviewThread>>,
-) -> std::result::Result<(), String> {
+) -> std::result::Result<(), StorageError> {
     let Some(store) = store else {
         return Ok(());
     };
@@ -108,19 +108,20 @@ async fn cache_review_refresh(
                     "Review comment pagination budget reached; some comments are not loaded",
                 )
                 .await
-                .map_err(|error| error.to_string())
         }
-        (Ok(reviews), Ok(comments), Ok(threads)) => store
-            .save_pull_request_reviews(repository, number, head_sha, reviews, comments, threads)
-            .await
-            .map_err(|error| error.to_string()),
-        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => store
-            .record_sync_failure(
-                &detail_target_key(repository, number, PullRequestDetailSection::Reviews),
-                &error.to_string(),
-            )
-            .await
-            .map_err(|error| error.to_string()),
+        (Ok(reviews), Ok(comments), Ok(threads)) => {
+            store
+                .save_pull_request_reviews(repository, number, head_sha, reviews, comments, threads)
+                .await
+        }
+        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => {
+            store
+                .record_sync_failure(
+                    &detail_target_key(repository, number, PullRequestDetailSection::Reviews),
+                    &error.to_string(),
+                )
+                .await
+        }
     }
 }
 

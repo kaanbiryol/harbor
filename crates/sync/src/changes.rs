@@ -37,6 +37,23 @@ impl PullRequestChangeKind {
             }
     }
 
+    // Part of notification dedupe keys, so values must stay stable across variant renames.
+    fn key(self) -> &'static str {
+        match self {
+            Self::NewPullRequest => "NewPullRequest",
+            Self::Closed => "Closed",
+            Self::Merged => "Merged",
+            Self::ReviewDecisionChanged => "ReviewDecisionChanged",
+            Self::Approved => "Approved",
+            Self::ChangesRequested => "ChangesRequested",
+            Self::ReviewActivity => "ReviewActivity",
+            Self::CheckFailed => "CheckFailed",
+            Self::CheckPassed => "CheckPassed",
+            Self::HeadChanged => "HeadChanged",
+            Self::MergeStateChanged => "MergeStateChanged",
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::NewPullRequest => "New pull request",
@@ -66,10 +83,10 @@ pub struct PullRequestChangeEvent {
 impl PullRequestChangeEvent {
     pub fn dedupe_key(&self) -> String {
         format!(
-            "{}#{}:{:?}:{}",
+            "{}#{}:{}:{}",
             self.repo.full_name(),
             self.number,
-            self.kind,
+            self.kind.key(),
             self.version
         )
     }
@@ -130,12 +147,12 @@ fn detect_state_change(
         return;
     }
 
-    let kind = match current.state {
-        PullRequestState::Merged => PullRequestChangeKind::Merged,
-        PullRequestState::Closed => PullRequestChangeKind::Closed,
+    let (kind, version) = match current.state {
+        PullRequestState::Merged => (PullRequestChangeKind::Merged, "Merged"),
+        PullRequestState::Closed => (PullRequestChangeKind::Closed, "Closed"),
         PullRequestState::Open => return,
     };
-    events.push(event(current, kind, format!("{:?}", current.state)));
+    events.push(event(current, kind, version.to_string()));
 }
 
 fn detect_review_decision_change(
@@ -147,16 +164,19 @@ fn detect_review_decision_change(
         return;
     }
 
-    let kind = match current.review_decision {
-        Some(ReviewDecision::Approved) => PullRequestChangeKind::Approved,
-        Some(ReviewDecision::ChangesRequested) => PullRequestChangeKind::ChangesRequested,
-        _ => PullRequestChangeKind::ReviewDecisionChanged,
+    let (kind, version) = match current.review_decision {
+        Some(ReviewDecision::Approved) => (PullRequestChangeKind::Approved, "Some(Approved)"),
+        Some(ReviewDecision::ChangesRequested) => (
+            PullRequestChangeKind::ChangesRequested,
+            "Some(ChangesRequested)",
+        ),
+        Some(ReviewDecision::ReviewRequired) => (
+            PullRequestChangeKind::ReviewDecisionChanged,
+            "Some(ReviewRequired)",
+        ),
+        None => (PullRequestChangeKind::ReviewDecisionChanged, "None"),
     };
-    events.push(event(
-        current,
-        kind,
-        format!("{:?}", current.review_decision),
-    ));
+    events.push(event(current, kind, version.to_string()));
 }
 
 fn detect_review_activity(
@@ -256,9 +276,15 @@ fn check_version(pull_request: &PullRequest) -> String {
 }
 
 fn merge_state_version(state: Option<MergeState>) -> String {
-    state
-        .map(|state| format!("{state:?}"))
-        .unwrap_or_else(|| "none".to_string())
+    match state {
+        Some(MergeState::Clean) => "Clean",
+        Some(MergeState::Dirty) => "Dirty",
+        Some(MergeState::Blocked) => "Blocked",
+        Some(MergeState::Behind) => "Behind",
+        Some(MergeState::Unknown) => "Unknown",
+        None => "none",
+    }
+    .to_string()
 }
 
 #[cfg(test)]
@@ -345,6 +371,29 @@ mod tests {
         assert_eq!(
             change.dedupe_key(),
             "acme/app#7:CheckFailed:abc:0:1:0".to_string()
+        );
+    }
+
+    #[test]
+    fn notification_keys_use_stable_state_names() {
+        let previous = pull_request(7);
+        let mut current = previous.clone();
+        current.state = PullRequestState::Merged;
+        current.review_decision = Some(ReviewDecision::ChangesRequested);
+        current.merge_state = None;
+
+        let keys = detect_pull_request_changes(&[previous], &[current])
+            .iter()
+            .map(PullRequestChangeEvent::dedupe_key)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            keys,
+            [
+                "acme/app#7:Merged:Merged",
+                "acme/app#7:ChangesRequested:Some(ChangesRequested)",
+                "acme/app#7:MergeStateChanged:none",
+            ]
         );
     }
 

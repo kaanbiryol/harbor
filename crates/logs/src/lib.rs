@@ -238,139 +238,6 @@ fn contains_ignore_ascii_case(value: &str, pattern: &str) -> bool {
         .any(|window| window.eq_ignore_ascii_case(pattern.as_bytes()))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_log_lines_with_severity() {
-        let chunk = parse_workflow_log(42, "build\nwarning: slow\n::error::failed\n");
-
-        assert_eq!(chunk.run_id, 42);
-        assert_eq!(chunk.lines.len(), 3);
-        assert_eq!(chunk.lines[0].number, 1);
-        assert_eq!(chunk.lines[0].severity, LogSeverity::Info);
-        assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
-        assert_eq!(chunk.lines[2].severity, LogSeverity::Error);
-        assert_eq!(chunk.warning_line_indices, [1]);
-        assert_eq!(chunk.error_line_indices, [2]);
-    }
-
-    #[test]
-    fn incrementally_parses_lines_split_across_chunks() {
-        let mut parser = WorkflowLogParser::new(42);
-        parser.push("build\nwarn");
-        parser.push("ing: slow\r\n::error::failed");
-        let chunk = parser.finish();
-
-        assert_eq!(
-            chunk
-                .lines
-                .iter()
-                .map(|line| line.text.as_str())
-                .collect::<Vec<_>>(),
-            ["build", "warning: slow", "::error::failed"]
-        );
-        assert_eq!(chunk.warning_line_indices, [1]);
-        assert_eq!(chunk.error_line_indices, [2]);
-    }
-
-    #[test]
-    fn classifies_mixed_case_severity_without_normalizing_line_text() {
-        let chunk = parse_workflow_log(42, "ERROR: failed\n[Warning] slow\n::Debug::details\n");
-
-        assert_eq!(chunk.lines[0].severity, LogSeverity::Error);
-        assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
-        assert_eq!(chunk.lines[2].severity, LogSeverity::Trace);
-        assert_eq!(chunk.lines[0].text, "ERROR: failed");
-    }
-}
-
-#[cfg(test)]
-mod context_tests {
-    use super::*;
-
-    #[test]
-    fn maps_combined_job_output_to_steps_using_timestamps() {
-        use chrono::{TimeZone, Utc};
-        use harbor_domain::{WorkflowStatus, WorkflowStep};
-
-        let start = Utc.with_ymd_and_hms(2026, 9, 7, 12, 0, 0).unwrap();
-        let jobs = [WorkflowJob {
-            id: 1,
-            name: "build / test".to_string(),
-            status: WorkflowStatus::Completed,
-            conclusion: None,
-            steps: ["Set up job", "Run / tests"]
-                .into_iter()
-                .enumerate()
-                .map(|(index, name)| WorkflowStep {
-                    name: name.to_string(),
-                    number: index as u32 + 1,
-                    status: WorkflowStatus::Completed,
-                    conclusion: None,
-                    started_at: Some(start + chrono::Duration::seconds(index as i64 * 10)),
-                    completed_at: Some(start + chrono::Duration::seconds((index as i64 + 1) * 10)),
-                })
-                .collect(),
-        }];
-        let chunk = parse_workflow_log_with_jobs(
-            1,
-            concat!(
-                "build _ test\tOutput\t2026-09-07T12:00:01Z setup\n",
-                "build _ test\tUNKNOWN STEP\t2026-09-07T12:00:10.100Z test output\n",
-                "build _ test\tRun _ tests\toutput without timestamp\n",
-                "build _ test\tOutput\t2026-09-07T12:00:20.500Z final output\n",
-                "build _ test\tOutput\t2026-09-07T12:00:30Z outside any step\n",
-            ),
-            &jobs,
-        );
-
-        assert_eq!(chunk.lines[0].step.as_deref(), Some("Set up job"));
-        assert_eq!(chunk.lines[4].step.as_deref(), Some("Output"));
-        assert_eq!(
-            filter_log_lines(
-                &chunk,
-                Some(&("build / test".into(), Some("Run / tests".into()))),
-                ""
-            ),
-            [1, 2, 3]
-        );
-    }
-
-    #[test]
-    fn displays_terminal_output_without_escape_sequences_or_runner_markers() {
-        let chunk = parse_workflow_log(
-            1,
-            concat!(
-                "job\tTest\t2026-09-07T12:00:00Z ##[group]Run tests\n",
-                "job\tTest\t2026-09-07T12:00:00Z ##[command]cargo test\n",
-                "job\tTest\t\u{1b}[31merror: failed café\u{1b}[0m\n",
-                "job\tTest\t\u{1b}]8;;https://example.com\u{1b}\\details\u{1b}]8;;\u{1b}\\\n",
-                "job\tTest\t2026-09-07T12:00:01Z ##[endgroup]\n",
-            ),
-        );
-        assert_eq!(chunk.lines.len(), 4);
-        assert_eq!(chunk.lines[0].text, "2026-09-07T12:00:00Z Run tests");
-        assert_eq!(chunk.lines[1].text, "2026-09-07T12:00:00Z cargo test");
-        assert_eq!(chunk.lines[2].text, "error: failed café");
-        assert_eq!(chunk.lines[3].text, "details");
-        assert_eq!(chunk.error_line_indices, [2]);
-    }
-
-    #[test]
-    fn preserves_job_step_and_output_tabs() {
-        let chunk = parse_workflow_log(
-            1,
-            "test (2)\tRun tests\t2026-01-01T00:00:00Z error: a\tb\nplain",
-        );
-        assert_eq!(chunk.lines[0].job.as_deref(), Some("test (2)"));
-        assert_eq!(chunk.lines[0].step.as_deref(), Some("Run tests"));
-        assert!(chunk.lines[0].text.ends_with("a\tb"));
-        assert_eq!(chunk.lines[1].job, None);
-    }
-}
-
 /// Returns source line indices without copying log output.
 pub fn filter_log_lines(
     chunk: &LogChunk,
@@ -389,10 +256,20 @@ pub fn filter_log_lines(
                     && step
                         .as_ref()
                         .is_none_or(|step| line.step.as_ref() == Some(step))
-            }) && (query.is_empty() || line.text.to_lowercase().contains(&query))
+            }) && (query.is_empty() || contains_lowercase_query(&line.text, &query))
         })
         .map(|(index, _)| index)
         .collect()
+}
+
+// Avoids allocating a lowercase copy of every line when both sides are ASCII; non-ASCII lines
+// fall back to Unicode lowercasing because characters like the Kelvin sign lowercase to ASCII.
+fn contains_lowercase_query(text: &str, lowercase_query: &str) -> bool {
+    if text.is_ascii() && lowercase_query.is_ascii() {
+        contains_ignore_ascii_case(text, lowercase_query)
+    } else {
+        text.to_lowercase().contains(lowercase_query)
+    }
 }
 
 /// Returns the position within `indices` of the longest line, which sizes horizontal scrolling.
@@ -615,6 +492,15 @@ mod search_tests {
         );
         assert!(filter_log_lines(&chunk, None, "missing").is_empty());
     }
+
+    #[test]
+    fn query_matching_preserves_unicode_lowercasing() {
+        let chunk = parse_workflow_log(1, "Build OK\n\u{212A}elvin\nÉCHEC du test\nplain");
+        assert_eq!(filter_log_lines(&chunk, None, "build ok"), vec![0]);
+        assert_eq!(filter_log_lines(&chunk, None, "kelvin"), vec![1]);
+        assert_eq!(filter_log_lines(&chunk, None, "échec"), vec![2]);
+        assert_eq!(filter_log_lines(&chunk, None, "\u{212A}"), vec![0, 1]);
+    }
     #[test]
     fn measures_and_joins_visible_lines() {
         let chunk = parse_workflow_log(1, "short\nthe longest line\nmid line");
@@ -696,5 +582,138 @@ mod archive_job_tests {
             filter_log_lines(&chunk, Some(&("profile / branch".into(), None)), ""),
             vec![0]
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_log_lines_with_severity() {
+        let chunk = parse_workflow_log(42, "build\nwarning: slow\n::error::failed\n");
+
+        assert_eq!(chunk.run_id, 42);
+        assert_eq!(chunk.lines.len(), 3);
+        assert_eq!(chunk.lines[0].number, 1);
+        assert_eq!(chunk.lines[0].severity, LogSeverity::Info);
+        assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
+        assert_eq!(chunk.lines[2].severity, LogSeverity::Error);
+        assert_eq!(chunk.warning_line_indices, [1]);
+        assert_eq!(chunk.error_line_indices, [2]);
+    }
+
+    #[test]
+    fn incrementally_parses_lines_split_across_chunks() {
+        let mut parser = WorkflowLogParser::new(42);
+        parser.push("build\nwarn");
+        parser.push("ing: slow\r\n::error::failed");
+        let chunk = parser.finish();
+
+        assert_eq!(
+            chunk
+                .lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            ["build", "warning: slow", "::error::failed"]
+        );
+        assert_eq!(chunk.warning_line_indices, [1]);
+        assert_eq!(chunk.error_line_indices, [2]);
+    }
+
+    #[test]
+    fn classifies_mixed_case_severity_without_normalizing_line_text() {
+        let chunk = parse_workflow_log(42, "ERROR: failed\n[Warning] slow\n::Debug::details\n");
+
+        assert_eq!(chunk.lines[0].severity, LogSeverity::Error);
+        assert_eq!(chunk.lines[1].severity, LogSeverity::Warning);
+        assert_eq!(chunk.lines[2].severity, LogSeverity::Trace);
+        assert_eq!(chunk.lines[0].text, "ERROR: failed");
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+
+    #[test]
+    fn maps_combined_job_output_to_steps_using_timestamps() {
+        use chrono::{TimeZone, Utc};
+        use harbor_domain::{WorkflowStatus, WorkflowStep};
+
+        let start = Utc.with_ymd_and_hms(2026, 9, 7, 12, 0, 0).unwrap();
+        let jobs = [WorkflowJob {
+            id: 1,
+            name: "build / test".to_string(),
+            status: WorkflowStatus::Completed,
+            conclusion: None,
+            steps: ["Set up job", "Run / tests"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, name)| WorkflowStep {
+                    name: name.to_string(),
+                    number: index as u32 + 1,
+                    status: WorkflowStatus::Completed,
+                    conclusion: None,
+                    started_at: Some(start + chrono::Duration::seconds(index as i64 * 10)),
+                    completed_at: Some(start + chrono::Duration::seconds((index as i64 + 1) * 10)),
+                })
+                .collect(),
+        }];
+        let chunk = parse_workflow_log_with_jobs(
+            1,
+            concat!(
+                "build _ test\tOutput\t2026-09-07T12:00:01Z setup\n",
+                "build _ test\tUNKNOWN STEP\t2026-09-07T12:00:10.100Z test output\n",
+                "build _ test\tRun _ tests\toutput without timestamp\n",
+                "build _ test\tOutput\t2026-09-07T12:00:20.500Z final output\n",
+                "build _ test\tOutput\t2026-09-07T12:00:30Z outside any step\n",
+            ),
+            &jobs,
+        );
+
+        assert_eq!(chunk.lines[0].step.as_deref(), Some("Set up job"));
+        assert_eq!(chunk.lines[4].step.as_deref(), Some("Output"));
+        assert_eq!(
+            filter_log_lines(
+                &chunk,
+                Some(&("build / test".into(), Some("Run / tests".into()))),
+                ""
+            ),
+            [1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn displays_terminal_output_without_escape_sequences_or_runner_markers() {
+        let chunk = parse_workflow_log(
+            1,
+            concat!(
+                "job\tTest\t2026-09-07T12:00:00Z ##[group]Run tests\n",
+                "job\tTest\t2026-09-07T12:00:00Z ##[command]cargo test\n",
+                "job\tTest\t\u{1b}[31merror: failed café\u{1b}[0m\n",
+                "job\tTest\t\u{1b}]8;;https://example.com\u{1b}\\details\u{1b}]8;;\u{1b}\\\n",
+                "job\tTest\t2026-09-07T12:00:01Z ##[endgroup]\n",
+            ),
+        );
+        assert_eq!(chunk.lines.len(), 4);
+        assert_eq!(chunk.lines[0].text, "2026-09-07T12:00:00Z Run tests");
+        assert_eq!(chunk.lines[1].text, "2026-09-07T12:00:00Z cargo test");
+        assert_eq!(chunk.lines[2].text, "error: failed café");
+        assert_eq!(chunk.lines[3].text, "details");
+        assert_eq!(chunk.error_line_indices, [2]);
+    }
+
+    #[test]
+    fn preserves_job_step_and_output_tabs() {
+        let chunk = parse_workflow_log(
+            1,
+            "test (2)\tRun tests\t2026-01-01T00:00:00Z error: a\tb\nplain",
+        );
+        assert_eq!(chunk.lines[0].job.as_deref(), Some("test (2)"));
+        assert_eq!(chunk.lines[0].step.as_deref(), Some("Run tests"));
+        assert!(chunk.lines[0].text.ends_with("a\tb"));
+        assert_eq!(chunk.lines[1].job, None);
     }
 }

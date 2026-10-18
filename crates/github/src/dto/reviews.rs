@@ -221,13 +221,6 @@ struct GraphQlReactionUsers {
     total_count: usize,
 }
 
-pub fn current_user_login_from_value(value: Value) -> Result<String> {
-    let user: ApiUser =
-        serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;
-
-    Ok(user.login)
-}
-
 pub fn pull_request_reviews_from_value(value: Value) -> Result<Vec<PullRequestReview>> {
     let reviews: Vec<ApiPullRequestReview> =
         serde_json::from_value(value).map_err(|error| GitHubError::Mapping(error.to_string()))?;

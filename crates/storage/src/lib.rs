@@ -28,19 +28,11 @@ pub enum StorageError {
     #[error("database schema version {found} is newer than the supported version {supported}")]
     UnsupportedSchemaVersion { found: i64, supported: i64 },
     #[error("storage operation failed: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("storage operation failed: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[error("storage operation failed: {0}")]
     Operation(String),
-}
-
-impl From<sqlx::Error> for StorageError {
-    fn from(error: sqlx::Error) -> Self {
-        Self::Operation(error.to_string())
-    }
-}
-
-impl From<serde_json::Error> for StorageError {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Operation(error.to_string())
-    }
 }
 
 #[derive(Clone)]
