@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use gpui::{
-    AnyElement, Entity, IntoElement, MouseButton, SharedString, StyledText, div, prelude::*, px,
+    AnyElement, Entity, HighlightStyle, IntoElement, MouseButton, SharedString, StyledText,
+    combine_highlights, div, prelude::*, px,
 };
 use harbor_domain::{DiffFile, ReviewThreadState};
 
@@ -24,7 +25,7 @@ use super::{
         render_review_composer_inline, render_review_marker, render_review_thread_inline,
     },
     layout::{DiffListItem, file_is_reviewed, line_number_width_for_diff, parsed_diff_for_file},
-    line_style::{DiffLineStyleInput, diff_line_style},
+    line_style::{DiffLineStyleInput, changed_text_background, diff_line_style},
     row_state::DiffRowRenderState,
 };
 
@@ -306,6 +307,20 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         has_thread_range,
         has_syntax_highlights: !line.syntax_highlights.is_empty(),
     });
+    let highlights = match (&line.changed_range, changed_text_background(line.kind)) {
+        (Some(changed_range), Some(background)) => combine_highlights(
+            line.syntax_highlights.iter().cloned(),
+            [(
+                changed_range.clone(),
+                HighlightStyle {
+                    background_color: Some(background.into()),
+                    ..HighlightStyle::default()
+                },
+            )],
+        )
+        .collect(),
+        _ => line.syntax_highlights.clone(),
+    };
 
     div()
         .id(line_id)
@@ -340,10 +355,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
                 .text_color(style.code_text_color)
                 .when(wrap_lines, |element| element.whitespace_normal())
                 .when(!wrap_lines, |element| element.whitespace_nowrap())
-                .child(
-                    StyledText::new(line.text.clone())
-                        .with_highlights(line.syntax_highlights.clone()),
-                ),
+                .child(StyledText::new(line.text.clone()).with_highlights(highlights)),
         )
         .when_some(review_line_target, move |element, target| {
             let view_entity = view_entity.clone();

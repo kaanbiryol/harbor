@@ -593,6 +593,7 @@ fn large_test_diff(hunk_count: usize, lines_per_hunk: usize) -> ParsedDiff {
                     new_line: Some(line_number),
                     text: format!("line {line_number}"),
                     syntax_highlights: Vec::new(),
+                    changed_range: None,
                 }
             })
             .collect();

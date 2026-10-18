@@ -91,6 +91,7 @@ impl Render for DiffLineWrapHarness {
             new_line: Some(12),
             text: "this long diff line should wrap within the narrow panel ".repeat(8),
             syntax_highlights: Vec::new(),
+            changed_range: None,
         };
 
         div().children([
@@ -127,6 +128,7 @@ impl Render for DiffLineWrapHarness {
                         new_line: Some(143),
                         text: "short line".to_string(),
                         syntax_highlights: Vec::new(),
+                        changed_range: None,
                     },
                     thread_count: 0,
                     has_unresolved_thread: false,
@@ -148,6 +150,7 @@ impl Render for DiffLineWrapHarness {
                                 new_line: Some(143),
                                 text: "short line".to_string(),
                                 syntax_highlights: Vec::new(),
+                                changed_range: None,
                             }],
                         }],
                     }),

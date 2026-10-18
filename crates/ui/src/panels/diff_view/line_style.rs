@@ -67,6 +67,15 @@ pub(super) fn diff_line_style(input: DiffLineStyleInput) -> DiffLineStyle {
     }
 }
 
+/// Background for the words that changed within a paired removed/added line.
+pub(super) fn changed_text_background(kind: DiffLineKind) -> Option<Rgba> {
+    match kind {
+        DiffLineKind::Added => Some(rgb(0x1f5537)),
+        DiffLineKind::Removed => Some(rgb(0x5a2630)),
+        DiffLineKind::Context | DiffLineKind::Metadata => None,
+    }
+}
+
 struct BaseDiffLineStyle {
     prefix: &'static str,
     background: Rgba,

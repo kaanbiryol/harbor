@@ -82,6 +82,7 @@ fn indexed_review_threads(state: &ReviewRuntimeState, line: u32) -> Vec<usize> {
         new_line: Some(line),
         text: String::new(),
         syntax_highlights: Vec::new(),
+        changed_range: None,
     };
     let mut indices = Vec::new();
     state

@@ -28,6 +28,8 @@ pub struct DiffLine<T = ()> {
     pub new_line: Option<u32>,
     pub text: String,
     pub syntax_highlights: Vec<(Range<usize>, T)>,
+    /// Byte range of the text that differs from the paired removed/added line.
+    pub changed_range: Option<Range<usize>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,7 +52,8 @@ pub fn parse_unified_diff_with_syntax_payload<T>(patch: &str) -> ParsedDiff<T> {
 
     for raw_line in patch.lines() {
         if let Some((old_start, old_lines, new_start, new_lines)) = parse_hunk_header(raw_line) {
-            if let Some(hunk) = current_hunk.take() {
+            if let Some(mut hunk) = current_hunk.take() {
+                mark_changed_ranges(&mut hunk.lines);
                 hunks.push(hunk);
             }
 
@@ -78,6 +81,7 @@ pub fn parse_unified_diff_with_syntax_payload<T>(patch: &str) -> ParsedDiff<T> {
                 new_line: Some(new_line),
                 text: text.to_string(),
                 syntax_highlights: Vec::new(),
+                changed_range: None,
             });
             new_line += 1;
         } else if let Some(text) = raw_line.strip_prefix('-') {
@@ -87,6 +91,7 @@ pub fn parse_unified_diff_with_syntax_payload<T>(patch: &str) -> ParsedDiff<T> {
                 new_line: None,
                 text: text.to_string(),
                 syntax_highlights: Vec::new(),
+                changed_range: None,
             });
             old_line += 1;
         } else if let Some(text) = raw_line.strip_prefix(' ') {
@@ -96,6 +101,7 @@ pub fn parse_unified_diff_with_syntax_payload<T>(patch: &str) -> ParsedDiff<T> {
                 new_line: Some(new_line),
                 text: text.to_string(),
                 syntax_highlights: Vec::new(),
+                changed_range: None,
             });
             old_line += 1;
             new_line += 1;
@@ -106,15 +112,111 @@ pub fn parse_unified_diff_with_syntax_payload<T>(patch: &str) -> ParsedDiff<T> {
                 new_line: None,
                 text: raw_line.to_string(),
                 syntax_highlights: Vec::new(),
+                changed_range: None,
             });
         }
     }
 
-    if let Some(hunk) = current_hunk {
+    if let Some(mut hunk) = current_hunk {
+        mark_changed_ranges(&mut hunk.lines);
         hunks.push(hunk);
     }
 
     ParsedDiff { hunks }
+}
+
+/// Pairs each run of removed lines with the added lines that follow it and
+/// marks the differing span on both sides, so edits within a line stand out.
+fn mark_changed_ranges<T>(lines: &mut [DiffLine<T>]) {
+    let mut index = 0;
+    while index < lines.len() {
+        let removed_start = index;
+        while lines
+            .get(index)
+            .is_some_and(|line| line.kind == DiffLineKind::Removed)
+        {
+            index += 1;
+        }
+        let added_start = index;
+        while lines
+            .get(index)
+            .is_some_and(|line| line.kind == DiffLineKind::Added)
+        {
+            index += 1;
+        }
+        if index == removed_start {
+            index += 1;
+            continue;
+        }
+
+        let pair_count = (added_start - removed_start).min(index - added_start);
+        for offset in 0..pair_count {
+            let removed_index = removed_start + offset;
+            let added_index = added_start + offset;
+            if let Some((removed_range, added_range)) =
+                changed_ranges(&lines[removed_index].text, &lines[added_index].text)
+            {
+                lines[removed_index].changed_range = Some(removed_range);
+                lines[added_index].changed_range = Some(added_range);
+            }
+        }
+    }
+}
+
+/// Returns the differing middle of two lines after trimming their common
+/// prefix and suffix, widened to word boundaries. Returns `None` when the
+/// lines share nothing, since highlighting the whole line adds no signal.
+fn changed_ranges(old: &str, new: &str) -> Option<(Range<usize>, Range<usize>)> {
+    fn is_word(character: char) -> bool {
+        character.is_alphanumeric() || character == '_'
+    }
+    fn starts_with_word(text: &str) -> bool {
+        text.chars().next().is_some_and(is_word)
+    }
+    fn ends_with_word(text: &str) -> bool {
+        text.chars().next_back().is_some_and(is_word)
+    }
+
+    let mut prefix = old
+        .char_indices()
+        .zip(new.chars())
+        .find(|((_, old_char), new_char)| old_char != new_char)
+        .map_or(old.len().min(new.len()), |((index, _), _)| index);
+    if ends_with_word(&old[..prefix])
+        && (starts_with_word(&old[prefix..]) || starts_with_word(&new[prefix..]))
+    {
+        prefix = old[..prefix]
+            .char_indices()
+            .rev()
+            .find(|(_, character)| !is_word(*character))
+            .map_or(0, |(index, character)| index + character.len_utf8());
+    }
+
+    let old_rest = &old[prefix..];
+    let new_rest = &new[prefix..];
+    let mut suffix = old_rest
+        .chars()
+        .rev()
+        .zip(new_rest.chars().rev())
+        .take_while(|(old_char, new_char)| old_char == new_char)
+        .map(|(character, _)| character.len_utf8())
+        .sum::<usize>();
+    let old_end = old.len() - suffix;
+    let new_end = new.len() - suffix;
+    if starts_with_word(&old[old_end..])
+        && (ends_with_word(&old[prefix..old_end]) || ends_with_word(&new[prefix..new_end]))
+    {
+        let common = &old[old_end..];
+        suffix = common
+            .char_indices()
+            .find(|(_, character)| !is_word(*character))
+            .map_or(0, |(index, _)| common.len() - index);
+    }
+
+    if prefix + suffix == 0 {
+        return None;
+    }
+    Some((prefix..old.len() - suffix, prefix..new.len() - suffix))
 }
 
 fn parse_hunk_header(line: &str) -> Option<(u32, u32, u32, u32)> {
@@ -179,6 +281,50 @@ mod tests {
         assert_eq!(parsed.hunks[0].old_lines, 1);
         assert_eq!(parsed.hunks[0].new_start, 20);
         assert_eq!(parsed.hunks[0].new_lines, 1);
+    }
+
+    #[test]
+    fn marks_changed_words_within_paired_lines() {
+        let parsed = parse_unified_diff(
+            "@@ -1,3 +1,3 @@\n fixture: true\n-mode: base\n+mode: review-inbox-large\n",
+        );
+        let lines = &parsed.hunks[0].lines;
+
+        assert_eq!(lines[0].changed_range, None);
+        assert_eq!(lines[1].changed_range, Some(6..10));
+        assert_eq!(lines[2].changed_range, Some(6..24));
+    }
+
+    #[test]
+    fn widens_changed_ranges_to_word_boundaries() {
+        assert_eq!(
+            changed_ranges("let foo_bar = 1;", "let foo_baz = 1;"),
+            Some((4..11, 4..11))
+        );
+        assert_eq!(
+            changed_ranges("call(a, b)", "call(a, b, c)"),
+            Some((9..9, 9..12))
+        );
+    }
+
+    #[test]
+    fn skips_changed_ranges_for_unrelated_or_unpaired_lines() {
+        assert_eq!(changed_ranges("alpha", "omega"), None);
+
+        let parsed = parse_unified_diff("@@ -1,2 +1,1 @@\n-first\n-second line\n+second\n");
+        let lines = &parsed.hunks[0].lines;
+
+        assert_eq!(lines[0].changed_range, None);
+        assert_eq!(lines[1].changed_range, None);
+        assert_eq!(lines[2].changed_range, None);
+    }
+
+    #[test]
+    fn handles_multibyte_characters_in_changed_ranges() {
+        assert_eq!(
+            changed_ranges("name: café", "name: cafés"),
+            Some((6..11, 6..12))
+        );
     }
 
     #[test]

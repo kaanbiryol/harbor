@@ -46,6 +46,7 @@ fn main() {
             new_line: Some(line as u32),
             text: String::new(),
             syntax_highlights: Vec::new(),
+            changed_range: None,
         };
         index.for_each_thread_for_line(&file, &diff_line, |_| matches += 1);
     }
