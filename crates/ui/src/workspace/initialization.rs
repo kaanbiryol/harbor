@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use crate::gpui_component::{
     ActiveTheme,
@@ -267,7 +267,7 @@ impl AppView {
             ),
             notification_state: NotificationState {
                 notification_sink,
-                notification_dedupe: HashSet::new(),
+                notification_dedupe: Default::default(),
             },
             sync_runtime: SyncRuntimeState::new(
                 if window.is_window_active() {

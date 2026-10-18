@@ -9,7 +9,8 @@ use harbor_github::{
 use crate::{
     test_fixtures::pull_request,
     workspace::{
-        PullRequestInboxCacheKey, PullRequestInboxMode, notifications::RecordingNotificationSink,
+        PullRequestInboxCacheKey, PullRequestInboxMode,
+        notifications::{NotificationResponse, RecordingNotificationSink},
         test_support::FakeGitHubApi,
     },
 };
@@ -123,13 +124,60 @@ async fn open_inbox_loads_and_enriches_twenty_five_rows_in_two_requests(cx: &mut
     );
     assert_eq!(api.light_pull_request_requests(), vec![(None, 25, false)]);
     let notifications = notifications.notifications.lock().unwrap();
-    assert_eq!(notifications.len(), 25);
-    for number in 1..=25 {
-        assert!(notifications.iter().any(|notification| {
-            notification.summary == format!("Checks failed #{number}")
-                && notification.body == "acme/app: Add feature"
-        }));
-    }
+    assert_eq!(notifications.len(), 1);
+    assert_eq!(notifications[0].summary, "25 pull requests updated");
+    assert_eq!(
+        notifications[0].body,
+        "#1 Checks failed: Add feature\n#2 Checks failed: Add feature\n#3 Checks failed: Add feature\nand 22 more"
+    );
+    assert_eq!(notifications[0].pull_request, None);
+}
+
+#[gpui::test]
+async fn clicking_pull_request_notification_selects_that_pull_request(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let notifications = Arc::new(RecordingNotificationSink {
+        response: NotificationResponse::Clicked,
+        ..Default::default()
+    });
+    let first_pull_request = pull_request();
+    let mut second_pull_request = pull_request();
+    second_pull_request.number = 8;
+    second_pull_request.node_id = "pr-node-8".to_string();
+    let mut refreshed_second_pull_request = second_pull_request.clone();
+    refreshed_second_pull_request.head_sha = "def456".to_string();
+    let refreshed = vec![
+        first_pull_request.clone(),
+        refreshed_second_pull_request.clone(),
+    ];
+    api.push_light_pull_requests(Ok(ConditionalFetch::Modified {
+        value: refreshed.clone(),
+        validator: None,
+    }));
+    api.push_pull_request_enrichments(Ok(refreshed.iter().map(enrichment).collect()));
+    enqueue_successful_detail_load(&api, &refreshed_second_pull_request);
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.notification_state.notification_sink = notifications.clone();
+        view.repository_state
+            .select_repository(first_pull_request.repo.clone());
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = vec![first_pull_request.clone(), second_pull_request.clone()];
+        view.refresh_pull_requests_light(first_pull_request.repo.clone(), cx);
+    });
+    cx.run_until_parked();
+
+    let recorded = notifications.notifications.lock().unwrap().clone();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].summary, "Pull request updated #8");
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(
+            view.selected_pull_request()
+                .map(|pull_request| pull_request.number),
+            Some(8)
+        );
+    });
 }
 
 #[gpui::test]
