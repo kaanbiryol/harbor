@@ -1,6 +1,9 @@
 use futures::{StreamExt, stream};
 use gpui::{AppContext, Context, ScrollStrategy};
-use harbor_logs::{parse_workflow_log, parse_workflow_log_with_jobs};
+use harbor_logs::{
+    filter_log_lines, first_failed_section, joined_log_text, parse_workflow_log,
+    parse_workflow_log_with_jobs, widest_line_position,
+};
 use std::sync::Arc;
 
 use super::WorkflowLogView;
@@ -132,70 +135,89 @@ impl WorkflowLogView {
         let run_label = workflow_run_label(&run);
         let github_api = self.github_api.clone();
 
-        self.state
-            .set_task(cx.spawn(async move |this, cx| {
-                let jobs_result = cx.background_spawn({
+        self.state.set_task(cx.spawn(async move |this, cx| {
+            let jobs_result = cx
+                .background_spawn({
                     let github_api = github_api.clone();
                     let owner = owner.clone();
                     let name = name.clone();
-                    async move { github_api.list_workflow_jobs_for_run(&owner, &name, run_id, run.run_attempt).await.map(Arc::new) }
-                }).await;
-                let jobs_for_logs = jobs_result.as_ref().cloned().unwrap_or_default();
-                let all_skipped = jobs_result.as_ref().is_ok_and(|jobs| !jobs.is_empty() && jobs.iter().all(|job| job.conclusion == Some(harbor_domain::WorkflowConclusion::Skipped)));
-                this.update(cx, move |view, cx| {
-                    if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) { return; }
-                        match jobs_result {
-                            Ok(jobs) => {
-                                view.state.navigation_jobs.insert(run_id, Ok(jobs.clone()));
-                                view.jobs = jobs;
-                            }
-                            Err(error) => {
-                                view.state.navigation_jobs.insert(run_id, Err(error.to_string()));
-                                view.state.apply_jobs_failure(format!(
-                                    "Failed to load workflow jobs: {error}"
-                                ));
-                            }
-                        }
-                    cx.notify();
-                }).unwrap_or_else(|error| tracing::debug!(%error, "failed to update workflow jobs"));
-                let log_result = cx.background_spawn(async move {
-                    if all_skipped { return Ok(parse_workflow_log(run_id, "")); }
-                    github_api.workflow_run_log(&owner, &name, run_id, run.run_attempt).await
+                    async move {
+                        github_api
+                            .list_workflow_jobs_for_run(&owner, &name, run_id, run.run_attempt)
+                            .await
+                            .map(Arc::new)
+                    }
+                })
+                .await;
+            let jobs_for_logs = jobs_result.as_ref().cloned().unwrap_or_default();
+            let all_skipped = jobs_result.as_ref().is_ok_and(|jobs| {
+                !jobs.is_empty()
+                    && jobs.iter().all(|job| {
+                        job.conclusion == Some(harbor_domain::WorkflowConclusion::Skipped)
+                    })
+            });
+            this.update(cx, move |view, cx| {
+                if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
+                    return;
+                }
+                match jobs_result {
+                    Ok(jobs) => {
+                        view.state.navigation_jobs.insert(run_id, Ok(jobs.clone()));
+                        view.jobs = jobs;
+                    }
+                    Err(error) => {
+                        view.state
+                            .navigation_jobs
+                            .insert(run_id, Err(error.to_string()));
+                        view.state
+                            .apply_jobs_failure(format!("Failed to load workflow jobs: {error}"));
+                    }
+                }
+                cx.notify();
+            })
+            .unwrap_or_else(|error| tracing::debug!(%error, "failed to update workflow jobs"));
+            let log_result = cx
+                .background_spawn(async move {
+                    if all_skipped {
+                        return Ok(parse_workflow_log(run_id, ""));
+                    }
+                    github_api
+                        .workflow_run_log(&owner, &name, run_id, run.run_attempt)
+                        .await
                         .map(|text| parse_workflow_log_with_jobs(run_id, &text, &jobs_for_logs))
-                }).await;
+                })
+                .await;
 
-                this.update(cx,
-                    move |view, cx| {
-                        if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
-                            return;
+            this.update(cx, move |view, cx| {
+                if view.selected_workflow_run_for_logs().map(|run| run.id) != Some(run_id) {
+                    return;
+                }
+
+                match log_result {
+                    Ok(chunk) => {
+                        view.state.apply_log_success(chunk);
+                        if !refresh && view.state.selected_section.is_none() {
+                            view.state.selected_section = first_failed_section(&view.jobs);
                         }
-
-                        match log_result {
-                            Ok(chunk) => {
-                                view.state.apply_log_success(chunk);
-                                let failed = view.jobs.as_slice().iter().find(|job| matches!(job.conclusion, Some(harbor_domain::WorkflowConclusion::Failure | harbor_domain::WorkflowConclusion::TimedOut)));
-                                if !refresh && view.state.selected_section.is_none() { view.state.selected_section = failed.map(|job| (job.name.clone(), job.steps.iter().find(|step| matches!(step.conclusion, Some(harbor_domain::WorkflowConclusion::Failure | harbor_domain::WorkflowConclusion::TimedOut))).map(|step| step.name.clone()))); }
-                                view.filter_workflow_logs_with_scroll(!refresh, cx);
-                                if !view.state.has_error() {
-                                    view.status = format!("Loaded logs for {run_label}");
-                                } else {
-                                    view.status =
-                                        format!("Loaded logs for {run_label}, but jobs failed");
-                                }
-                            }
-                            Err(error) => {
-                                let message = workflow_log_error_message(&error);
-                                view.state
-                                    .apply_log_failure(message.clone());
-                                view.status = message;
-                            }
+                        view.filter_workflow_logs_with_scroll(!refresh, cx);
+                        if !view.state.has_error() {
+                            view.status = format!("Loaded logs for {run_label}");
+                        } else {
+                            view.status = format!("Loaded logs for {run_label}, but jobs failed");
                         }
+                    }
+                    Err(error) => {
+                        let message = workflow_log_error_message(&error);
+                        view.state.apply_log_failure(message.clone());
+                        view.status = message;
+                    }
+                }
 
-                        view.publish(cx);
-                        cx.notify();
-                    },
-                ).unwrap_or_else(|error| tracing::debug!(%error, "failed to update workflow log state"));
-            }));
+                view.publish(cx);
+                cx.notify();
+            })
+            .unwrap_or_else(|error| tracing::debug!(%error, "failed to update workflow log state"));
+        }));
     }
 }
 
@@ -220,18 +242,8 @@ impl WorkflowLogView {
         state.filter_task = Some(cx.spawn(async move |this, cx| {
             let (indices, widest_line) = cx
                 .background_spawn(async move {
-                    let indices = harbor_logs::filter_log_lines(&chunk, section.as_ref(), &query);
-                    let widest = indices
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(position, index)| {
-                            chunk
-                                .lines
-                                .get(*index)
-                                .map(|line| (position, line.text.chars().count()))
-                        })
-                        .max_by_key(|(_, width)| *width)
-                        .map(|(position, _)| position);
+                    let indices = filter_log_lines(&chunk, section.as_ref(), &query);
+                    let widest = widest_line_position(&chunk, &indices);
                     (indices, widest)
                 })
                 .await;
@@ -287,12 +299,7 @@ impl WorkflowLogView {
             };
             let result = cx
                 .background_spawn(async move {
-                    let text = indices
-                        .iter()
-                        .filter_map(|index| chunk.lines.get(*index))
-                        .map(|line| line.text.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let text = joined_log_text(&chunk, &indices);
                     if let Some(path) = path {
                         std::fs::write(path, text).map(|()| None)
                     } else {

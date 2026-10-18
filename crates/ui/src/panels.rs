@@ -12,8 +12,6 @@ mod diff_view;
 mod logs;
 #[path = "panels/pull_request.rs"]
 mod pull_request;
-#[path = "panels/pull_request_signals.rs"]
-mod pull_request_signals;
 #[path = "panels/review.rs"]
 mod review;
 #[path = "panels/review_markdown.rs"]
@@ -30,14 +28,14 @@ pub(crate) use checks::*;
 pub(crate) use chrome::*;
 pub(crate) use commits::*;
 pub(crate) use diff_view::*;
-pub(crate) use logs::*;
-pub(crate) use pull_request::*;
-pub(crate) use pull_request_signals::{
+pub(crate) use harbor_domain::pull_request_signals::{
     MergeReadiness, PullRequestMergeQueueStatus, PullRequestReadiness, ReviewReadiness,
     merge_blocker, merge_readiness, merge_when_ready_blocker, merge_without_requirements_blocker,
     pull_request_merge_queue_status, pull_request_readiness, review_action_blocker,
     review_readiness,
 };
+pub(crate) use logs::*;
+pub(crate) use pull_request::*;
 pub(crate) use review::*;
 pub(crate) use review_markdown::{
     ReviewSuggestionContext, overview_markdown_blocks, render_review_markdown_body_with_context,

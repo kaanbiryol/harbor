@@ -6,6 +6,7 @@ mod checks;
 pub mod diff;
 pub mod diff_reviews;
 pub mod preferences;
+pub mod pull_request_signals;
 mod repository;
 pub mod reviews;
 mod workflows;

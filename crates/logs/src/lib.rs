@@ -1,4 +1,4 @@
-use harbor_domain::WorkflowJob;
+use harbor_domain::{WorkflowConclusion, WorkflowJob};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -391,6 +391,47 @@ pub fn filter_log_lines(
         .collect()
 }
 
+/// Returns the position within `indices` of the longest line, which sizes horizontal scrolling.
+pub fn widest_line_position(chunk: &LogChunk, indices: &[usize]) -> Option<usize> {
+    indices
+        .iter()
+        .enumerate()
+        .filter_map(|(position, index)| {
+            chunk
+                .lines
+                .get(*index)
+                .map(|line| (position, line.text.chars().count()))
+        })
+        .max_by_key(|(_, width)| *width)
+        .map(|(position, _)| position)
+}
+
+pub fn joined_log_text(chunk: &LogChunk, indices: &[usize]) -> String {
+    indices
+        .iter()
+        .filter_map(|index| chunk.lines.get(*index))
+        .map(|line| line.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Returns the first failed job and its first failed step, used as the initial log section.
+pub fn first_failed_section(jobs: &[WorkflowJob]) -> Option<(String, Option<String>)> {
+    let is_failure = |conclusion: Option<WorkflowConclusion>| {
+        matches!(
+            conclusion,
+            Some(WorkflowConclusion::Failure | WorkflowConclusion::TimedOut)
+        )
+    };
+    let job = jobs.iter().find(|job| is_failure(job.conclusion))?;
+    let step = job
+        .steps
+        .iter()
+        .find(|step| is_failure(step.conclusion))
+        .map(|step| step.name.clone());
+    Some((job.name.clone(), step))
+}
+
 #[cfg(test)]
 mod search_tests {
     use super::*;
@@ -414,6 +455,60 @@ mod search_tests {
         );
         assert!(filter_log_lines(&chunk, None, "missing").is_empty());
     }
+    #[test]
+    fn measures_and_joins_visible_lines() {
+        let chunk = parse_workflow_log(1, "short\nthe longest line\nmid line");
+        assert_eq!(widest_line_position(&chunk, &[0, 1, 2]), Some(1));
+        assert_eq!(widest_line_position(&chunk, &[2, 0]), Some(0));
+        assert_eq!(widest_line_position(&chunk, &[]), None);
+        assert_eq!(joined_log_text(&chunk, &[2, 0, 99]), "mid line\nshort");
+    }
+
+    #[test]
+    fn selects_first_failed_job_and_step() {
+        use harbor_domain::{WorkflowStatus, WorkflowStep};
+        let job =
+            |name: &str, conclusion, steps: Vec<(&str, Option<WorkflowConclusion>)>| WorkflowJob {
+                id: 1,
+                name: name.to_string(),
+                status: WorkflowStatus::Completed,
+                conclusion,
+                steps: steps
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (name, conclusion))| WorkflowStep {
+                        name: name.to_string(),
+                        number: index as u32 + 1,
+                        status: WorkflowStatus::Completed,
+                        conclusion,
+                        started_at: None,
+                        completed_at: None,
+                    })
+                    .collect(),
+            };
+        let jobs = [
+            job("lint", Some(WorkflowConclusion::Success), Vec::new()),
+            job(
+                "test",
+                Some(WorkflowConclusion::TimedOut),
+                vec![
+                    ("Checkout", Some(WorkflowConclusion::Success)),
+                    ("Run tests", Some(WorkflowConclusion::Failure)),
+                ],
+            ),
+            job("build", Some(WorkflowConclusion::Failure), Vec::new()),
+        ];
+        assert_eq!(
+            first_failed_section(&jobs),
+            Some(("test".to_string(), Some("Run tests".to_string())))
+        );
+        assert_eq!(
+            first_failed_section(&jobs[2..]),
+            Some(("build".to_string(), None))
+        );
+        assert_eq!(first_failed_section(&jobs[..1]), None);
+    }
+
     #[test]
     fn indexes_large_logs() {
         let text = "job\tstep\t2026-01-01T00:00:00Z output\n".repeat(100_000);

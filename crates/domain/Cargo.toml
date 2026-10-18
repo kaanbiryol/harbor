@@ -13,3 +13,7 @@ serde.workspace = true
 [[bench]]
 name = "review_thread_index"
 harness = false
+
+[[bench]]
+name = "large_pull_request"
+harness = false

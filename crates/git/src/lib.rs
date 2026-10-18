@@ -6,8 +6,10 @@ use std::{
 
 use thiserror::Error;
 
+mod codeowners;
 mod external_apps;
 
+pub use codeowners::codeowners_owned_paths;
 pub use external_apps::{ExternalApp, ExternalAppKind, OpenTarget, open_external_app};
 
 pub type Result<T> = std::result::Result<T, GitError>;
@@ -28,6 +30,11 @@ pub enum GitError {
     UnsupportedPlatform,
     #[error("git command failed: {0}")]
     Command(String),
+    #[error("failed to read {}: {source}", path.display())]
+    ReadFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -368,6 +375,56 @@ mod tests {
         assert!(!status_output_is_dirty("   \n"));
         assert!(status_output_is_dirty(" M src/main.rs\n"));
         assert!(status_output_is_dirty("?? src/new.rs\n"));
+    }
+
+    #[test]
+    fn validates_repository_paths_against_the_github_remote() {
+        let fixture = LocalGitFixture::new("validate-repository");
+        fixture.commit_and_publish_pull_request("first\n");
+        let nested = fixture.source.join("nested");
+        std::fs::create_dir_all(&nested).expect("create nested directory");
+
+        let repository = validate_repository_path(&nested, "Acme", "App").expect("valid repo");
+        assert_eq!(
+            repository.repo_path.canonicalize().expect("repo path"),
+            fixture.source.canonicalize().expect("source path")
+        );
+        assert_eq!(repository.remote_name, "origin");
+
+        assert!(matches!(
+            validate_repository_path(&fixture.source, "acme", "other"),
+            Err(GitError::RemoteMismatch { .. })
+        ));
+        assert!(matches!(
+            validate_repository_path(&fixture.root.join("missing"), "acme", "app"),
+            Err(GitError::InvalidRepositoryPath(_))
+        ));
+        assert!(matches!(
+            validate_repository_path(&fixture.source.join("README.md"), "acme", "app"),
+            Err(GitError::InvalidRepositoryPath(_))
+        ));
+        assert!(matches!(
+            validate_repository_path(&fixture.root, "acme", "app"),
+            Err(GitError::Command(_))
+        ));
+
+        fixture.cleanup();
+    }
+
+    #[test]
+    fn reports_tracked_and_untracked_worktree_changes() {
+        let fixture = LocalGitFixture::new("worktree-changes");
+        fixture.commit_and_publish_pull_request("first\n");
+        assert!(!worktree_has_changes(&fixture.source).expect("clean status"));
+
+        std::fs::write(fixture.source.join("new.txt"), "new\n").expect("untracked file");
+        assert!(worktree_has_changes(&fixture.source).expect("untracked status"));
+
+        std::fs::remove_file(fixture.source.join("new.txt")).expect("remove untracked file");
+        std::fs::write(fixture.source.join("README.md"), "edited\n").expect("edit file");
+        assert!(worktree_has_changes(&fixture.source).expect("modified status"));
+
+        fixture.cleanup();
     }
 
     #[test]

@@ -7,7 +7,6 @@ mod auth_state;
 mod cache;
 mod changed_file_cache;
 mod changed_file_interactions;
-mod codeowners;
 mod commands;
 pub(crate) mod diff_display;
 mod external_apps;

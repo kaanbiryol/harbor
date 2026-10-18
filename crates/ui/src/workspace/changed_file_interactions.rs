@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     AppView, ChangedFileTreeRow, ChangedFileTypeFilter, PullRequestDetailCacheKey,
-    changed_file_type_filters, codeowners::codeowners_owned_file_paths, log_entity_update_error,
+    changed_file_type_filters, log_entity_update_error,
     review_data_loaders::selected_pull_request_matches,
 };
 
@@ -498,7 +498,11 @@ impl AppView {
         let selected_repository = self.current_repository().cloned();
         let selected_pr_number = self.selected_pull_request_number();
         let task = cx.background_spawn(async move {
-            codeowners_owned_file_paths(&repository_path, &files, &current_user_login)
+            harbor_git::codeowners_owned_paths(
+                &repository_path,
+                files.iter().map(|file| file.path.as_str()),
+                &current_user_login,
+            )
         });
 
         cx.spawn(async move |this, cx| {

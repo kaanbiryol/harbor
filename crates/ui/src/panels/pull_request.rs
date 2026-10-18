@@ -1,14 +1,16 @@
 use crate::gpui_component::{Icon, Sizable, tooltip::Tooltip};
 use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
-use harbor_domain::{ChecksSummary, PullRequest, PullRequestState};
+use harbor_domain::{
+    ChecksSummary, PullRequest, PullRequestState,
+    pull_request_signals::{
+        PullRequestRowRailTone, PullRequestRowSignal, pull_request_row_rail_tone,
+        pull_request_row_signal,
+    },
+};
 
 use crate::{
     date_time::month_day_label,
     icons::Octicon,
-    panels::pull_request_signals::{
-        PullRequestRowRailTone, PullRequestRowSignal, pull_request_row_rail_tone,
-        pull_request_row_signal,
-    },
     visual::{Tone, color, layout, opacity, tone_colors},
     workspace::AppView,
 };
