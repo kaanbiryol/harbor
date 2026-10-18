@@ -76,11 +76,7 @@ impl WorkflowLogView {
         self.runs
             .iter()
             .find(|run| Some(run.id) == self.state.selected_run)
-            .or_else(|| {
-                self.runs
-                    .iter()
-                    .find(|run| crate::panels::workflow_run_failed(run))
-            })
+            .or_else(|| self.runs.iter().find(|run| run.failed()))
             .or_else(|| self.runs.first())
     }
 

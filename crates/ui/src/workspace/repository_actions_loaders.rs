@@ -3,7 +3,6 @@ use harbor_domain::RepoId;
 
 use crate::{
     actions::PanelTab,
-    panels::workflow_run_label,
     workspace::{AppView, RepositoryActionsTaskKind, async_updates::AppViewAsyncUpdateExt},
 };
 
@@ -175,8 +174,10 @@ impl AppView {
                             match result {
                                 Ok(page) => {
                                     let count = page.workflow_runs.len();
-                                    let first_run =
-                                        page.workflow_runs.first().map(workflow_run_label);
+                                    let first_run = page
+                                        .workflow_runs
+                                        .first()
+                                        .map(|run| run.label().to_string());
                                     view.repository_actions_state.replace_workflow_runs(
                                         page.workflow_runs,
                                         page.total_count,

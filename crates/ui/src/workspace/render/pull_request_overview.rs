@@ -439,30 +439,17 @@ fn render_overview_activity_header(loading: bool) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
     use crate::gpui_component::{Root, Theme, ThemeMode};
-    use chrono::Duration;
     use gpui::{AppContext, ListAlignment, ListOffset, ListState, TestAppContext, px};
-    use harbor_domain::{
-        MergeState, PullRequestComment, PullRequestCommit, PullRequestReview,
-        PullRequestReviewState, ReviewDecision, ReviewThreadState,
-    };
+    use harbor_domain::{MergeState, ReviewDecision, ReviewThreadState};
 
     use super::{
-        OverviewDescriptionItems, OverviewPanelItem, OverviewTimelineItem, merge_readiness,
-        overview_panel_items, overview_review_visible, overview_thread_expanded,
-        overview_thread_item_index, overview_timeline_items, pull_request_readiness,
-        sidebar::parse_label_color, sync_overview_list_items,
+        OverviewDescriptionItems, OverviewPanelItem, merge_readiness, overview_panel_items,
+        overview_thread_expanded, overview_thread_item_index, pull_request_readiness,
+        sync_overview_list_items,
     };
-    use crate::test_fixtures::{pull_request, review_thread, test_time};
+    use crate::test_fixtures::{pull_request, review_thread};
     use crate::visual::Tone;
     use crate::workspace::AppView;
-
-    #[test]
-    fn parses_github_label_colors() {
-        assert!(parse_label_color("34d399").is_some());
-        assert!(parse_label_color("#34d399").is_some());
-        assert!(parse_label_color("bad").is_none());
-        assert!(parse_label_color("zzzzzz").is_none());
-    }
 
     #[test]
     fn clean_merge_state_still_requires_approval_and_resolved_conversations() {
@@ -487,104 +474,6 @@ mod tests {
 
         pull_request.unresolved_threads = 0;
         assert_eq!(merge_readiness(&pull_request).0, "Ready");
-    }
-
-    #[test]
-    fn orders_timeline_activity_and_hides_pending_reviews() {
-        let time = test_time();
-        let commits = vec![PullRequestCommit {
-            sha: "abc123".to_string(),
-            message: "Initial commit".to_string(),
-            author: "octocat".to_string(),
-            author_avatar_url: None,
-            authored_at: Some(time),
-        }];
-        let comments = vec![PullRequestComment {
-            id: "comment".to_string(),
-            author: "octocat".to_string(),
-            author_avatar_url: None,
-            body: "comment".to_string(),
-            created_at: time + Duration::minutes(2),
-            updated_at: None,
-        }];
-        let reviews = vec![
-            PullRequestReview {
-                id: "submitted".to_string(),
-                node_id: None,
-                author: "reviewer".to_string(),
-                author_avatar_url: None,
-                state: PullRequestReviewState::Approved,
-                body: None,
-                submitted_at: Some(time + Duration::minutes(1)),
-            },
-            PullRequestReview {
-                id: "pending".to_string(),
-                node_id: None,
-                author: "reviewer".to_string(),
-                author_avatar_url: None,
-                state: PullRequestReviewState::Pending,
-                body: None,
-                submitted_at: Some(time),
-            },
-            PullRequestReview {
-                id: "empty-commented".to_string(),
-                node_id: None,
-                author: "reviewer".to_string(),
-                author_avatar_url: None,
-                state: PullRequestReviewState::Commented,
-                body: None,
-                submitted_at: Some(time),
-            },
-        ];
-        let mut thread = review_thread(ReviewThreadState::Unresolved);
-        thread.comments[0].created_at = time + Duration::minutes(3);
-        let threads = vec![thread];
-
-        let items = overview_timeline_items(&commits, &reviews, &comments, &threads);
-
-        assert_eq!(items.len(), 4);
-        assert!(matches!(items[0], OverviewTimelineItem::Commit(_)));
-        assert!(matches!(items[1], OverviewTimelineItem::Review(_)));
-        assert!(matches!(items[2], OverviewTimelineItem::Comment(_)));
-        assert!(matches!(items[3], OverviewTimelineItem::Thread(_)));
-    }
-
-    #[test]
-    fn keeps_only_meaningful_review_events() {
-        let review = |state, body: Option<&str>| PullRequestReview {
-            id: "review".to_string(),
-            node_id: None,
-            author: "reviewer".to_string(),
-            author_avatar_url: None,
-            state,
-            body: body.map(str::to_string),
-            submitted_at: Some(test_time()),
-        };
-
-        assert!(!overview_review_visible(&review(
-            PullRequestReviewState::Pending,
-            None
-        )));
-        assert!(!overview_review_visible(&review(
-            PullRequestReviewState::Commented,
-            None
-        )));
-        assert!(!overview_review_visible(&review(
-            PullRequestReviewState::Commented,
-            Some("  \n")
-        )));
-        assert!(overview_review_visible(&review(
-            PullRequestReviewState::Commented,
-            Some("Review summary")
-        )));
-        assert!(overview_review_visible(&review(
-            PullRequestReviewState::Approved,
-            None
-        )));
-        assert!(overview_review_visible(&review(
-            PullRequestReviewState::ChangesRequested,
-            None
-        )));
     }
 
     #[test]

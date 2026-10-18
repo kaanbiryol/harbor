@@ -1,30 +1,20 @@
 use crate::gpui_component::input::{InputEvent, InputState};
 use gpui::{App, Context, Entity, Window};
-use harbor_domain::{PullRequest, RepoId};
+use harbor_domain::{
+    PullRequest, RepoId,
+    repository_switcher::{
+        RepositorySwitcherChoice, next_switcher_index, normalized_search_query,
+        repository_matches_query, repository_switcher_accepted_choice,
+        repository_switcher_choices_for_query,
+    },
+};
 
 use crate::workspace::AppView;
-
-#[cfg(test)]
-mod tests;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum RepositorySwitcherChoice {
-    Cached(RepoId),
-    Typed(RepoId),
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PullRequestSwitcherResult {
     pub(crate) inbox_index: Option<usize>,
     pub(crate) pull_request: PullRequest,
-}
-
-impl RepositorySwitcherChoice {
-    pub(crate) fn repository(&self) -> &RepoId {
-        match self {
-            Self::Cached(repository) | Self::Typed(repository) => repository,
-        }
-    }
 }
 
 impl AppView {
@@ -262,99 +252,5 @@ impl AppView {
                 self.open_typed_repository_from_switcher(repository, cx);
             }
         }
-    }
-}
-
-pub(crate) fn normalized_search_query(query: &str) -> String {
-    query.trim().to_lowercase()
-}
-
-pub(crate) fn repository_switcher_choices_for_query(
-    repositories: Vec<RepoId>,
-    query: &str,
-) -> Vec<RepositorySwitcherChoice> {
-    let typed_repository = parse_repo_id(query);
-    let exact_match_index = typed_repository.as_ref().and_then(|typed_repository| {
-        repositories
-            .iter()
-            .position(|repository| repository_ids_match(repository, typed_repository))
-    });
-
-    match (typed_repository, exact_match_index) {
-        (Some(_), Some(index)) => {
-            let mut choices = Vec::with_capacity(repositories.len());
-            choices.push(RepositorySwitcherChoice::Cached(
-                repositories[index].clone(),
-            ));
-            choices.extend(
-                repositories
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(repository_index, _)| *repository_index != index)
-                    .map(|(_, repository)| RepositorySwitcherChoice::Cached(repository)),
-            );
-            choices
-        }
-        (Some(repository), None) => {
-            let mut choices = Vec::with_capacity(repositories.len() + 1);
-            choices.push(RepositorySwitcherChoice::Typed(repository));
-            choices.extend(
-                repositories
-                    .into_iter()
-                    .map(RepositorySwitcherChoice::Cached),
-            );
-            choices
-        }
-        (None, None) => repositories
-            .into_iter()
-            .map(RepositorySwitcherChoice::Cached)
-            .collect(),
-        (None, Some(_)) => unreachable!("exact match requires a typed repository"),
-    }
-}
-
-pub(crate) fn repository_switcher_accepted_choice(
-    choices: &[RepositorySwitcherChoice],
-    selected_index: usize,
-) -> Option<RepositorySwitcherChoice> {
-    choices
-        .get(selected_index.min(choices.len().saturating_sub(1)))
-        .cloned()
-}
-
-pub(crate) fn repository_matches_query(repository: &RepoId, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-
-    repository.full_name().to_lowercase().contains(query)
-}
-
-fn repository_ids_match(left: &RepoId, right: &RepoId) -> bool {
-    left.owner.eq_ignore_ascii_case(&right.owner) && left.name.eq_ignore_ascii_case(&right.name)
-}
-
-pub(crate) fn next_switcher_index(current: usize, len: usize, delta: isize) -> usize {
-    if len == 0 {
-        return 0;
-    }
-
-    let current = current.min(len - 1) as isize;
-    (current + delta).rem_euclid(len as isize) as usize
-}
-
-pub(crate) fn parse_repo_id(value: &str) -> Option<RepoId> {
-    let value = value.trim();
-    let (owner, name) = value.split_once('/')?;
-
-    if owner.is_empty()
-        || name.is_empty()
-        || name.contains('/')
-        || owner.chars().any(char::is_whitespace)
-        || name.chars().any(char::is_whitespace)
-    {
-        None
-    } else {
-        Some(RepoId::new(owner, name))
     }
 }

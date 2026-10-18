@@ -6,16 +6,20 @@ pub mod checks;
 pub mod diff;
 pub mod diff_reviews;
 pub mod preferences;
+pub mod pull_request_filters;
 pub mod pull_request_signals;
 mod repository;
+pub mod repository_switcher;
 pub mod reviews;
+#[cfg(test)]
+mod test_fixtures;
 mod workflows;
 
 pub use checks::checks_summary_from_runs;
 pub use repository::{RepoId, Repository};
 pub use workflows::{
     Workflow, WorkflowConclusion, WorkflowJob, WorkflowRun, WorkflowState, WorkflowStatus,
-    WorkflowStep,
+    WorkflowStep, workflow_outcome_label,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -1,7 +1,11 @@
 use crate::gpui_component::{ActiveTheme, Icon, Sizable, StyledExt, spinner::Spinner};
 use gpui::{AnyElement, Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{
-    PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThread, ReviewThreadState,
+    PullRequestComment, PullRequestReview, PullRequestReviewState, ReviewThread,
+    reviews::{
+        ReviewPanelItem, ReviewPanelSection, review_content_item_count, review_panel_items,
+        review_thread_counts,
+    },
 };
 
 use crate::{
@@ -23,7 +27,6 @@ use super::{
 };
 
 mod diff_preview;
-mod model;
 
 #[cfg(test)]
 use diff_preview::ReviewDiffPreviewLine;
@@ -32,44 +35,19 @@ pub(crate) use diff_preview::{
     review_thread_suggestion_context,
 };
 
-#[cfg(test)]
-use model::{ReviewConversationItemKind, review_conversation_items};
-use model::{ReviewPanelItem, ReviewPanelSection, review_content_item_count, review_panel_items};
-
-impl ReviewPanelSection {
-    fn id(self) -> &'static str {
-        match self {
-            Self::NeedsAttention => "review-section-needs-attention",
-            Self::Conversation => "review-section-conversation",
-            Self::Resolved => "review-section-resolved",
-        }
+fn review_section_id(section: ReviewPanelSection) -> &'static str {
+    match section {
+        ReviewPanelSection::NeedsAttention => "review-section-needs-attention",
+        ReviewPanelSection::Conversation => "review-section-conversation",
+        ReviewPanelSection::Resolved => "review-section-resolved",
     }
+}
 
-    fn title(self) -> &'static str {
-        match self {
-            Self::NeedsAttention => "Needs attention",
-            Self::Conversation => "Conversation & activity",
-            Self::Resolved => "Resolved & outdated",
-        }
-    }
-
-    fn tone(self) -> Tone {
-        match self {
-            Self::NeedsAttention => Tone::Warning,
-            Self::Conversation => Tone::Info,
-            Self::Resolved => Tone::Neutral,
-        }
-    }
-
-    fn count_label(self, item_count: usize) -> String {
-        let noun = match self {
-            Self::NeedsAttention | Self::Resolved if item_count == 1 => "thread",
-            Self::NeedsAttention | Self::Resolved => "threads",
-            Self::Conversation if item_count == 1 => "item",
-            Self::Conversation => "items",
-        };
-
-        format!("{item_count} {noun}")
+fn review_section_tone(section: ReviewPanelSection) -> Tone {
+    match section {
+        ReviewPanelSection::NeedsAttention => Tone::Warning,
+        ReviewPanelSection::Conversation => Tone::Info,
+        ReviewPanelSection::Resolved => Tone::Neutral,
     }
 }
 
@@ -274,7 +252,7 @@ fn render_review_section_header(
     item_count: usize,
 ) -> impl IntoElement {
     div()
-        .id(section.id())
+        .id(review_section_id(section))
         .w_full()
         .min_w_0()
         .flex()
@@ -294,7 +272,7 @@ fn render_review_section_header(
         )
         .child(render_status_pill(
             section.count_label(item_count),
-            section.tone(),
+            review_section_tone(section),
         ))
 }
 
@@ -518,31 +496,6 @@ fn render_pull_request_review_row(review: &PullRequestReview, index: usize) -> A
 
 fn comment_body_text(body: &str) -> String {
     review_markdown_body(body)
-}
-
-pub(crate) fn review_thread_counts(threads: &[ReviewThread]) -> (usize, usize, usize) {
-    let mut unresolved = 0;
-    let mut resolved = 0;
-    let mut outdated = 0;
-
-    for thread in threads {
-        match thread.state {
-            ReviewThreadState::Unresolved => unresolved += 1,
-            ReviewThreadState::Resolved => resolved += 1,
-            ReviewThreadState::Outdated => outdated += 1,
-        }
-    }
-
-    (unresolved, resolved, outdated)
-}
-
-pub(crate) fn review_thread_location(thread: &ReviewThread) -> String {
-    thread
-        .comments
-        .iter()
-        .find_map(|comment| comment.position.as_ref())
-        .and_then(|position| position.line.or(position.original_line))
-        .map_or_else(|| "file".to_string(), |line| format!("line {line}"))
 }
 
 fn pull_request_review_state_tone(state: PullRequestReviewState) -> (&'static str, Tone) {

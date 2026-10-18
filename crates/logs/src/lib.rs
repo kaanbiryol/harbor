@@ -1,4 +1,8 @@
-use harbor_domain::{WorkflowConclusion, WorkflowJob};
+use std::{collections::HashMap, sync::Arc};
+
+use harbor_domain::{
+    WorkflowConclusion, WorkflowJob, WorkflowRun, WorkflowStatus, workflow_outcome_label,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -430,6 +434,162 @@ pub fn first_failed_section(jobs: &[WorkflowJob]) -> Option<(String, Option<Stri
         .find(|step| is_failure(step.conclusion))
         .map(|step| step.name.clone());
     Some((job.name.clone(), step))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LogNavigationRow {
+    pub id: String,
+    pub run_id: u64,
+    pub job: Option<String>,
+    pub step: Option<String>,
+    pub label: String,
+    pub detail: String,
+    pub status: WorkflowStatus,
+    pub conclusion: Option<WorkflowConclusion>,
+    pub jobs_unavailable: bool,
+}
+
+pub fn navigation_rows(
+    runs: &[WorkflowRun],
+    jobs_by_run: &HashMap<u64, Result<Arc<Vec<WorkflowJob>>, String>>,
+    selected_run: Option<u64>,
+    selected_job: Option<&str>,
+) -> Vec<LogNavigationRow> {
+    let mut rows = Vec::new();
+    for run in runs {
+        let jobs = jobs_by_run.get(&run.id);
+        rows.push(LogNavigationRow {
+            id: format!("run-{}", run.id),
+            run_id: run.id,
+            job: None,
+            step: None,
+            label: run.label().to_string(),
+            detail: match jobs {
+                Some(Ok(jobs)) => format!(
+                    "{} checks · {}",
+                    jobs.len(),
+                    workflow_outcome_label(run.status, run.conclusion)
+                ),
+                Some(Err(error)) => format!("Checks unavailable: {error}"),
+                None => "Loading checks…".to_string(),
+            },
+            status: run.status,
+            conclusion: run.conclusion,
+            jobs_unavailable: jobs.is_some_and(Result::is_err),
+        });
+        let Some(Ok(jobs)) = jobs else {
+            continue;
+        };
+        for job in jobs.iter() {
+            rows.push(LogNavigationRow {
+                id: format!("{}-{}", run.id, job.id),
+                run_id: run.id,
+                job: Some(job.name.clone()),
+                step: None,
+                label: job.name.clone(),
+                detail: workflow_outcome_label(job.status, job.conclusion).to_string(),
+                status: job.status,
+                conclusion: job.conclusion,
+                jobs_unavailable: false,
+            });
+            if selected_run != Some(run.id) || selected_job != Some(job.name.as_str()) {
+                continue;
+            }
+            for step in &job.steps {
+                let duration = step
+                    .started_at
+                    .zip(step.completed_at)
+                    .map(|(start, end)| format!(" · {}s", (end - start).num_seconds().max(0)))
+                    .unwrap_or_default();
+                rows.push(LogNavigationRow {
+                    id: format!("{}-{}-{}", run.id, job.id, step.number),
+                    run_id: run.id,
+                    job: Some(job.name.clone()),
+                    step: Some(step.name.clone()),
+                    label: step.name.clone(),
+                    detail: format!(
+                        "{}{duration}",
+                        workflow_outcome_label(step.status, step.conclusion)
+                    ),
+                    status: step.status,
+                    conclusion: step.conclusion,
+                    jobs_unavailable: false,
+                });
+            }
+        }
+    }
+    rows
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use harbor_domain::WorkflowStep;
+    use std::collections::HashSet;
+
+    #[test]
+    fn navigation_includes_checks_from_every_workflow_and_expands_only_the_selected_job() {
+        let time = Utc
+            .with_ymd_and_hms(2026, 5, 1, 10, 0, 0)
+            .single()
+            .expect("valid test timestamp");
+        let first = WorkflowRun {
+            id: 42,
+            workflow_id: Some(9),
+            name: "build".to_string(),
+            workflow_name: Some("CI".to_string()),
+            status: WorkflowStatus::Completed,
+            conclusion: Some(WorkflowConclusion::Failure),
+            head_branch: "feature".to_string(),
+            head_sha: "abc123".to_string(),
+            event: "pull_request".to_string(),
+            url: "https://api.github.com/repos/acme/app/actions/runs/42".to_string(),
+            html_url: "https://github.com/acme/app/actions/runs/42".to_string(),
+            created_at: time,
+            updated_at: time,
+            run_number: Some(7),
+            run_attempt: Some(1),
+            actor_login: Some("octocat".to_string()),
+            run_started_at: Some(time),
+        };
+        let mut second = first.clone();
+        second.id = 84;
+        let job = |name: &str| WorkflowJob {
+            id: 1,
+            name: name.into(),
+            status: WorkflowStatus::Completed,
+            conclusion: None,
+            steps: vec![WorkflowStep {
+                number: 1,
+                name: "Run tests".into(),
+                status: WorkflowStatus::Completed,
+                conclusion: None,
+                started_at: None,
+                completed_at: None,
+            }],
+        };
+        let mut jobs_by_run = HashMap::new();
+        jobs_by_run.insert(first.id, Ok(Arc::new(vec![job("PR Title")])));
+        jobs_by_run.insert(second.id, Ok(Arc::new(vec![job("Android")])));
+
+        let rows = navigation_rows(&[first, second], &jobs_by_run, Some(84), Some("Android"));
+
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.job.is_some())
+                .map(|row| row.label.as_str())
+                .collect::<Vec<_>>(),
+            ["PR Title", "Android", "Run tests"]
+        );
+        let ids = rows.iter().map(|row| &row.id).collect::<HashSet<_>>();
+        assert_eq!(ids.len(), rows.len());
+        assert!(
+            rows.iter()
+                .filter(|row| row.step.is_some())
+                .all(|row| row.run_id == 84)
+        );
+    }
 }
 
 #[cfg(test)]

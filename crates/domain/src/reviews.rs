@@ -1,12 +1,17 @@
 use std::collections::HashMap;
 
 use crate::{
-    PullRequestReview, PullRequestReviewState, ReviewComment, ReviewCommentPosition,
-    ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState,
+    PullRequestPerson, PullRequestReview, PullRequestReviewState, ReviewComment,
+    ReviewCommentPosition, ReviewCommentRange, ReviewSide, ReviewThread, ReviewThreadState,
 };
 
+mod activity;
 mod reactions;
 
+pub use activity::{
+    OverviewTimelineItem, ReviewPanelItem, ReviewPanelSection, overview_timeline_items,
+    review_content_item_count, review_panel_items, review_thread_counts, review_thread_location,
+};
 pub use reactions::{
     ReviewReactionKey, apply_review_reaction_overrides, review_reaction,
     set_review_comment_reaction_state,
@@ -244,6 +249,82 @@ pub fn review_position_from_range(range: &ReviewCommentRange) -> ReviewCommentPo
 
 pub fn review_comment_pending_sync(comment: &ReviewComment) -> bool {
     is_local_review_comment(comment)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewerStatus {
+    Requested,
+    Commented,
+    Approved,
+    ChangesRequested,
+}
+
+impl ReviewerStatus {
+    fn from_review_state(state: PullRequestReviewState) -> Option<Self> {
+        match state {
+            PullRequestReviewState::Pending | PullRequestReviewState::Dismissed => None,
+            PullRequestReviewState::Commented => Some(Self::Commented),
+            PullRequestReviewState::Approved => Some(Self::Approved),
+            PullRequestReviewState::ChangesRequested => Some(Self::ChangesRequested),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullRequestReviewer {
+    pub person: PullRequestPerson,
+    pub status: ReviewerStatus,
+}
+
+pub fn pull_request_reviewers(
+    requested_reviewers: &[PullRequestPerson],
+    reviews: &[PullRequestReview],
+) -> Vec<PullRequestReviewer> {
+    let mut reviewers = requested_reviewers
+        .iter()
+        .cloned()
+        .map(|person| PullRequestReviewer {
+            person,
+            status: ReviewerStatus::Requested,
+        })
+        .collect::<Vec<_>>();
+
+    for review in reviews {
+        if review.author.eq_ignore_ascii_case("ghost") {
+            continue;
+        }
+
+        let existing_index = reviewers
+            .iter()
+            .position(|reviewer| reviewer.person.login.eq_ignore_ascii_case(&review.author));
+        if existing_index.is_some_and(|index| reviewers[index].status == ReviewerStatus::Requested)
+        {
+            continue;
+        }
+
+        let Some(status) = ReviewerStatus::from_review_state(review.state) else {
+            if review.state == PullRequestReviewState::Dismissed
+                && let Some(index) = existing_index
+            {
+                reviewers.remove(index);
+            }
+            continue;
+        };
+
+        if let Some(index) = existing_index {
+            reviewers[index].status = status;
+        } else {
+            reviewers.push(PullRequestReviewer {
+                person: PullRequestPerson {
+                    login: review.author.clone(),
+                    avatar_url: review.author_avatar_url.clone(),
+                },
+                status,
+            });
+        }
+    }
+
+    reviewers
 }
 
 #[cfg(test)]
@@ -540,5 +621,85 @@ mod tests {
             start_line: None,
             start_side: None,
         }
+    }
+
+    fn reviewer_review(author: &str, state: PullRequestReviewState) -> PullRequestReview {
+        PullRequestReview {
+            id: format!("{author}-{state:?}"),
+            node_id: None,
+            author: author.to_string(),
+            author_avatar_url: None,
+            state,
+            body: None,
+            submitted_at: None,
+        }
+    }
+
+    #[test]
+    fn combines_requested_and_submitted_reviewers() {
+        let requested = vec![PullRequestPerson {
+            login: "waiting".to_string(),
+            avatar_url: Some("waiting.png".to_string()),
+        }];
+        let reviews = vec![
+            reviewer_review("approved", PullRequestReviewState::Approved),
+            reviewer_review("changes", PullRequestReviewState::ChangesRequested),
+        ];
+
+        let reviewers = pull_request_reviewers(&requested, &reviews);
+
+        assert_eq!(reviewers.len(), 3);
+        assert_eq!(reviewers[0].person, requested[0]);
+        assert_eq!(reviewers[0].status, ReviewerStatus::Requested);
+        assert_eq!(reviewers[1].person.login, "approved");
+        assert_eq!(reviewers[1].status, ReviewerStatus::Approved);
+        assert_eq!(reviewers[2].person.login, "changes");
+        assert_eq!(reviewers[2].status, ReviewerStatus::ChangesRequested);
+    }
+
+    #[test]
+    fn keeps_request_status_and_latest_submitted_review_state() {
+        let requested = vec![PullRequestPerson {
+            login: "waiting".to_string(),
+            avatar_url: None,
+        }];
+        let reviews = vec![
+            reviewer_review("waiting", PullRequestReviewState::Approved),
+            reviewer_review("reviewer", PullRequestReviewState::Commented),
+            reviewer_review("reviewer", PullRequestReviewState::Approved),
+        ];
+
+        let reviewers = pull_request_reviewers(&requested, &reviews);
+
+        assert_eq!(reviewers.len(), 2);
+        assert_eq!(reviewers[0].status, ReviewerStatus::Requested);
+        assert_eq!(reviewers[1].person.login, "reviewer");
+        assert_eq!(reviewers[1].status, ReviewerStatus::Approved);
+    }
+
+    #[test]
+    fn uses_submitted_reviewer_avatar() {
+        let mut submitted_review = reviewer_review("cursor[bot]", PullRequestReviewState::Approved);
+        submitted_review.author_avatar_url =
+            Some("https://avatars.githubusercontent.com/in/12345?v=4".to_string());
+
+        let reviewers = pull_request_reviewers(&[], &[submitted_review]);
+
+        assert_eq!(
+            reviewers[0].person.avatar_url.as_deref(),
+            Some("https://avatars.githubusercontent.com/in/12345?v=4")
+        );
+    }
+
+    #[test]
+    fn excludes_pending_ghost_and_dismissed_reviews() {
+        let reviews = vec![
+            reviewer_review("ghost", PullRequestReviewState::Approved),
+            reviewer_review("pending", PullRequestReviewState::Pending),
+            reviewer_review("dismissed", PullRequestReviewState::Approved),
+            reviewer_review("dismissed", PullRequestReviewState::Dismissed),
+        ];
+
+        assert!(pull_request_reviewers(&[], &reviews).is_empty());
     }
 }

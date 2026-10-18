@@ -11,8 +11,8 @@ use crate::{
 };
 use gpui::{AnyElement, Context, Div, IntoElement, Rgba, div, prelude::*, px, rgb};
 use harbor_domain::{
-    Label, PullRequest, PullRequestPerson, PullRequestReview, PullRequestReviewState,
-    PullRequestTeam,
+    Label, PullRequest, PullRequestPerson, PullRequestTeam,
+    reviews::{PullRequestReviewer, ReviewerStatus, pull_request_reviewers},
 };
 
 impl AppView {
@@ -25,7 +25,7 @@ impl AppView {
             login: pr.author.clone(),
             avatar_url: pr.author_avatar_url.clone(),
         };
-        let reviewers = reviewers_for_sidebar(
+        let reviewers = pull_request_reviewers(
             &pr.requested_reviewers,
             self.review_state.pull_request_reviews(),
         );
@@ -172,92 +172,19 @@ fn render_people_row(people: &[PullRequestPerson]) -> AnyElement {
     render_wrapping_row(people.iter().map(render_person_chip).collect())
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ReviewerStatus {
-    Requested,
-    Commented,
-    Approved,
-    ChangesRequested,
-}
-
-impl ReviewerStatus {
-    fn from_review_state(state: PullRequestReviewState) -> Option<Self> {
-        match state {
-            PullRequestReviewState::Pending | PullRequestReviewState::Dismissed => None,
-            PullRequestReviewState::Commented => Some(Self::Commented),
-            PullRequestReviewState::Approved => Some(Self::Approved),
-            PullRequestReviewState::ChangesRequested => Some(Self::ChangesRequested),
-        }
-    }
-
-    fn presentation(self) -> (&'static str, Octicon, Tone) {
-        match self {
-            Self::Requested => ("Review requested", Octicon::Clock, Tone::Warning),
-            Self::Commented => ("Commented", Octicon::Eye, Tone::Info),
-            Self::Approved => ("Approved", Octicon::Check, Tone::Success),
-            Self::ChangesRequested => ("Changes requested", Octicon::X, Tone::Danger),
-        }
+fn reviewer_status_presentation(status: ReviewerStatus) -> (&'static str, Octicon, Tone) {
+    match status {
+        ReviewerStatus::Requested => ("Review requested", Octicon::Clock, Tone::Warning),
+        ReviewerStatus::Commented => ("Commented", Octicon::Eye, Tone::Info),
+        ReviewerStatus::Approved => ("Approved", Octicon::Check, Tone::Success),
+        ReviewerStatus::ChangesRequested => ("Changes requested", Octicon::X, Tone::Danger),
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct SidebarReviewer {
-    person: PullRequestPerson,
-    status: ReviewerStatus,
-}
-
-fn reviewers_for_sidebar(
-    requested_reviewers: &[PullRequestPerson],
-    reviews: &[PullRequestReview],
-) -> Vec<SidebarReviewer> {
-    let mut reviewers = requested_reviewers
-        .iter()
-        .cloned()
-        .map(|person| SidebarReviewer {
-            person,
-            status: ReviewerStatus::Requested,
-        })
-        .collect::<Vec<_>>();
-
-    for review in reviews {
-        if review.author.eq_ignore_ascii_case("ghost") {
-            continue;
-        }
-
-        let existing_index = reviewers
-            .iter()
-            .position(|reviewer| reviewer.person.login.eq_ignore_ascii_case(&review.author));
-        if existing_index.is_some_and(|index| reviewers[index].status == ReviewerStatus::Requested)
-        {
-            continue;
-        }
-
-        let Some(status) = ReviewerStatus::from_review_state(review.state) else {
-            if review.state == PullRequestReviewState::Dismissed
-                && let Some(index) = existing_index
-            {
-                reviewers.remove(index);
-            }
-            continue;
-        };
-
-        if let Some(index) = existing_index {
-            reviewers[index].status = status;
-        } else {
-            reviewers.push(SidebarReviewer {
-                person: PullRequestPerson {
-                    login: review.author.clone(),
-                    avatar_url: review.author_avatar_url.clone(),
-                },
-                status,
-            });
-        }
-    }
-
-    reviewers
-}
-
-fn render_reviewers_row(reviewers: &[SidebarReviewer], teams: &[PullRequestTeam]) -> AnyElement {
+fn render_reviewers_row(
+    reviewers: &[PullRequestReviewer],
+    teams: &[PullRequestTeam],
+) -> AnyElement {
     let mut chips = Vec::with_capacity(reviewers.len() + teams.len());
     chips.extend(reviewers.iter().map(render_reviewer_chip));
     chips.extend(teams.iter().map(render_team_chip));
@@ -294,11 +221,11 @@ fn render_person_chip(person: &PullRequestPerson) -> AnyElement {
         .into_any_element()
 }
 
-fn render_reviewer_chip(reviewer: &SidebarReviewer) -> AnyElement {
+fn render_reviewer_chip(reviewer: &PullRequestReviewer) -> AnyElement {
     let login = reviewer.person.login.clone();
     let selector = format!("pull-request-person-{login}");
     let status_selector = format!("pull-request-review-status-{login}");
-    let (status_label, status_icon, status_tone) = reviewer.status.presentation();
+    let (status_label, status_icon, status_tone) = reviewer_status_presentation(reviewer.status);
     let status_colors = tone_colors(status_tone);
 
     render_chip()
@@ -386,83 +313,11 @@ pub(super) fn parse_label_color(color: &str) -> Option<Rgba> {
 mod tests {
     use super::*;
 
-    fn review(author: &str, state: PullRequestReviewState) -> PullRequestReview {
-        PullRequestReview {
-            id: format!("{author}-{state:?}"),
-            node_id: None,
-            author: author.to_string(),
-            author_avatar_url: None,
-            state,
-            body: None,
-            submitted_at: None,
-        }
-    }
-
     #[test]
-    fn combines_requested_and_submitted_reviewers() {
-        let requested = vec![PullRequestPerson {
-            login: "waiting".to_string(),
-            avatar_url: Some("waiting.png".to_string()),
-        }];
-        let reviews = vec![
-            review("approved", PullRequestReviewState::Approved),
-            review("changes", PullRequestReviewState::ChangesRequested),
-        ];
-
-        let reviewers = reviewers_for_sidebar(&requested, &reviews);
-
-        assert_eq!(reviewers.len(), 3);
-        assert_eq!(reviewers[0].person, requested[0]);
-        assert_eq!(reviewers[0].status, ReviewerStatus::Requested);
-        assert_eq!(reviewers[1].person.login, "approved");
-        assert_eq!(reviewers[1].status, ReviewerStatus::Approved);
-        assert_eq!(reviewers[2].person.login, "changes");
-        assert_eq!(reviewers[2].status, ReviewerStatus::ChangesRequested);
-    }
-
-    #[test]
-    fn keeps_request_status_and_latest_submitted_review_state() {
-        let requested = vec![PullRequestPerson {
-            login: "waiting".to_string(),
-            avatar_url: None,
-        }];
-        let reviews = vec![
-            review("waiting", PullRequestReviewState::Approved),
-            review("reviewer", PullRequestReviewState::Commented),
-            review("reviewer", PullRequestReviewState::Approved),
-        ];
-
-        let reviewers = reviewers_for_sidebar(&requested, &reviews);
-
-        assert_eq!(reviewers.len(), 2);
-        assert_eq!(reviewers[0].status, ReviewerStatus::Requested);
-        assert_eq!(reviewers[1].person.login, "reviewer");
-        assert_eq!(reviewers[1].status, ReviewerStatus::Approved);
-    }
-
-    #[test]
-    fn uses_submitted_reviewer_avatar() {
-        let mut submitted_review = review("cursor[bot]", PullRequestReviewState::Approved);
-        submitted_review.author_avatar_url =
-            Some("https://avatars.githubusercontent.com/in/12345?v=4".to_string());
-
-        let reviewers = reviewers_for_sidebar(&[], &[submitted_review]);
-
-        assert_eq!(
-            reviewers[0].person.avatar_url.as_deref(),
-            Some("https://avatars.githubusercontent.com/in/12345?v=4")
-        );
-    }
-
-    #[test]
-    fn excludes_pending_ghost_and_dismissed_reviews() {
-        let reviews = vec![
-            review("ghost", PullRequestReviewState::Approved),
-            review("pending", PullRequestReviewState::Pending),
-            review("dismissed", PullRequestReviewState::Approved),
-            review("dismissed", PullRequestReviewState::Dismissed),
-        ];
-
-        assert!(reviewers_for_sidebar(&[], &reviews).is_empty());
+    fn parses_github_label_colors() {
+        assert!(parse_label_color("34d399").is_some());
+        assert!(parse_label_color("#34d399").is_some());
+        assert!(parse_label_color("bad").is_none());
+        assert!(parse_label_color("zzzzzz").is_none());
     }
 }

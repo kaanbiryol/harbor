@@ -1,45 +1,5 @@
-use chrono::DateTime;
-
 use super::*;
-use crate::{ChecksSummary, PullRequestMergeCapabilities, RepoId};
-
-fn pull_request() -> PullRequest {
-    let created_at = DateTime::parse_from_rfc3339("2026-05-01T10:00:00Z")
-        .expect("valid test timestamp")
-        .to_utc();
-    PullRequest {
-        repo: RepoId::new("acme", "app"),
-        node_id: "pr-node".to_string(),
-        number: 7,
-        title: "Add feature".to_string(),
-        body: None,
-        author: "octocat".to_string(),
-        author_avatar_url: None,
-        url: "https://github.com/acme/app/pull/7".to_string(),
-        state: PullRequestState::Open,
-        is_draft: false,
-        head_ref: "feature".to_string(),
-        base_ref: "main".to_string(),
-        head_sha: "abc123".to_string(),
-        review_decision: None,
-        merge_state: Some(MergeState::Clean),
-        merge_capabilities: Default::default(),
-        labels: Vec::new(),
-        assignees: Vec::new(),
-        requested_reviewers: Vec::new(),
-        requested_teams: Vec::new(),
-        checks_summary: ChecksSummary {
-            total: 1,
-            passed: 1,
-            failed: 0,
-            pending: 0,
-            skipped: 0,
-        },
-        unresolved_threads: 0,
-        created_at: Some(created_at),
-        updated_at: Some(created_at),
-    }
-}
+use crate::{ChecksSummary, PullRequestMergeCapabilities, test_fixtures::pull_request};
 
 #[test]
 fn missing_checks_and_review_do_not_add_a_row_signal() {
@@ -281,6 +241,106 @@ fn admin_bypass_ignores_requirements_but_not_conflicts() {
         merge_without_requirements_blocker(&pr).as_deref(),
         Some("PR #7 has merge conflicts")
     );
+}
+
+#[test]
+fn merge_plan_uses_direct_merge_when_queue_is_disabled() {
+    let mut pr = pull_request();
+    pr.merge_capabilities.queue_state = MergeQueueState::Disabled;
+
+    let plan = merge_action_plan(&pr, false, false);
+
+    assert_eq!(plan.control, MergeControl::Merge);
+    assert!(!plan.disabled);
+    assert_eq!(plan.tooltip, "Merge pull request");
+    assert_eq!(plan.bypass_placement, None);
+
+    pr.checks_summary.failed = 1;
+    let plan = merge_action_plan(&pr, false, false);
+
+    assert!(plan.disabled);
+    assert_eq!(plan.tooltip, "PR #7 still has failing checks");
+}
+
+#[test]
+fn merge_plan_waits_for_queue_settings() {
+    let plan = merge_action_plan(&pull_request(), false, false);
+
+    assert_eq!(plan.control, MergeControl::Merge);
+    assert!(plan.disabled);
+    assert_eq!(plan.tooltip, "Loading merge queue settings from GitHub");
+}
+
+#[test]
+fn merge_plan_queues_when_merge_queue_is_enabled() {
+    let mut pr = pull_request();
+    pr.merge_capabilities = PullRequestMergeCapabilities {
+        queue_state: MergeQueueState::Enabled,
+        viewer_can_queue: true,
+        ..Default::default()
+    };
+
+    let plan = merge_action_plan(&pr, false, false);
+
+    assert_eq!(plan.control, MergeControl::MergeWhenReady);
+    assert_eq!(
+        plan.tooltip,
+        "Add pull request to the merge queue when requirements are met"
+    );
+
+    pr.merge_capabilities.auto_merge_enabled = true;
+    assert_eq!(
+        merge_action_plan(&pr, false, false).control,
+        MergeControl::QueueStatus(PullRequestMergeQueueStatus::Waiting)
+    );
+}
+
+#[test]
+fn merge_plan_places_admin_bypass_in_menu_only_when_merge_is_actionable() {
+    let mut pr = pull_request();
+    pr.merge_capabilities = PullRequestMergeCapabilities {
+        queue_state: MergeQueueState::Enabled,
+        viewer_can_queue: true,
+        viewer_can_merge_as_admin: true,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        merge_action_plan(&pr, false, false).bypass_placement,
+        Some(MergeBypassPlacement::MergeMenu)
+    );
+    assert_eq!(
+        merge_action_plan(&pr, false, true).bypass_placement,
+        Some(MergeBypassPlacement::Separate)
+    );
+
+    pr.merge_capabilities.queue_state = MergeQueueState::Queued;
+    let plan = merge_action_plan(&pr, false, false);
+    assert_eq!(
+        plan.control,
+        MergeControl::QueueStatus(PullRequestMergeQueueStatus::Queued)
+    );
+    assert_eq!(plan.bypass_placement, Some(MergeBypassPlacement::Separate));
+
+    let plan = merge_action_plan(&pr, true, false);
+    assert!(plan.bypass_enabled);
+    assert_eq!(plan.control, MergeControl::Merge);
+    assert_eq!(
+        plan.tooltip,
+        "Merge immediately without waiting for requirements"
+    );
+    assert_eq!(plan.bypass_placement, Some(MergeBypassPlacement::MergeMenu));
+}
+
+#[test]
+fn merge_plan_ignores_bypass_request_without_admin_permission() {
+    let mut pr = pull_request();
+    pr.merge_capabilities.queue_state = MergeQueueState::Disabled;
+
+    let plan = merge_action_plan(&pr, true, false);
+
+    assert!(!plan.bypass_enabled);
+    assert_eq!(plan.bypass_placement, None);
 }
 
 #[test]

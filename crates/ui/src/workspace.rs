@@ -68,8 +68,11 @@ pub(crate) use changed_files::{
     ChangedFileTypeFilter, changed_file_type_filters,
 };
 use external_apps::ExternalAppAvailability;
-pub(crate) use pull_request_filters::{
+pub(crate) use harbor_domain::pull_request_filters::{
     PullRequestFilterFacet, PullRequestFilterOption, PullRequestFilterSections, PullRequestFilters,
+};
+pub(crate) use harbor_domain::repository_switcher::{
+    RepositorySwitcherChoice, normalized_search_query,
 };
 use pull_request_metadata_actions::PullRequestMetadataOptionsState;
 use reviews::ReviewReactionKey;
@@ -86,7 +89,6 @@ use state::{
     SelectedPullRequestTaskKind, SyncRuntimeState, WorkspaceTasks,
 };
 use status::ActionRuntimeState;
-pub(crate) use switchers::{RepositorySwitcherChoice, normalized_search_query};
 
 pub use auth_state::GitHubAuthSource;
 pub(crate) use auth_state::{GitHubAuthStatus, GitHubCliAvailability};

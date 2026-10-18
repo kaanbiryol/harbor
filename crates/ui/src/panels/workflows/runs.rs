@@ -4,7 +4,9 @@ use crate::gpui_component::{
 };
 use chrono::Duration;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
-use harbor_domain::{RepoId, Workflow, WorkflowConclusion, WorkflowRun, WorkflowStatus};
+use harbor_domain::{
+    RepoId, Workflow, WorkflowConclusion, WorkflowRun, WorkflowStatus, workflow_outcome_label,
+};
 
 use crate::date_time::{full_time_label, natural_time_label, short_duration_label};
 use crate::icons::Octicon;
@@ -325,52 +327,25 @@ fn run_duration_label(run: &WorkflowRun) -> String {
     short_duration_label(duration)
 }
 
-pub(crate) fn workflow_run_label(run: &WorkflowRun) -> String {
-    run.workflow_name
-        .as_deref()
-        .unwrap_or(run.name.as_str())
-        .to_string()
-}
-
-pub(crate) fn workflow_run_failed(run: &WorkflowRun) -> bool {
-    matches!(
-        (run.status, run.conclusion),
-        (
-            WorkflowStatus::Completed,
-            Some(
-                WorkflowConclusion::Failure
-                    | WorkflowConclusion::Cancelled
-                    | WorkflowConclusion::TimedOut
-                    | WorkflowConclusion::ActionRequired
-            )
-        )
-    )
-}
-
 pub(crate) fn workflow_conclusion_tone(
     conclusion: Option<WorkflowConclusion>,
     status: WorkflowStatus,
 ) -> (&'static str, Tone) {
-    match (status, conclusion) {
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => ("passed", Tone::Success),
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => {
-            ("skipped", Tone::Neutral)
-        }
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Cancelled)) => {
-            ("cancelled", Tone::Warning)
-        }
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::TimedOut)) => {
-            ("timed out", Tone::Danger)
-        }
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::ActionRequired)) => {
-            ("action required", Tone::Warning)
-        }
-        (WorkflowStatus::Completed, Some(WorkflowConclusion::Failure) | None) => {
-            ("failed", Tone::Danger)
-        }
-        (WorkflowStatus::InProgress, _) => ("running", Tone::Info),
-        (WorkflowStatus::Queued, _) => ("queued", Tone::Warning),
-    }
+    let tone = match (status, conclusion) {
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => Tone::Success,
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => Tone::Neutral,
+        (
+            WorkflowStatus::Completed,
+            Some(WorkflowConclusion::Cancelled | WorkflowConclusion::ActionRequired),
+        ) => Tone::Warning,
+        (
+            WorkflowStatus::Completed,
+            Some(WorkflowConclusion::TimedOut | WorkflowConclusion::Failure) | None,
+        ) => Tone::Danger,
+        (WorkflowStatus::InProgress, _) => Tone::Info,
+        (WorkflowStatus::Queued, _) => Tone::Warning,
+    };
+    (workflow_outcome_label(status, conclusion), tone)
 }
 
 #[cfg(test)]

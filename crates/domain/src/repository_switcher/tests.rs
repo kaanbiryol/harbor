@@ -1,15 +1,15 @@
-use harbor_domain::RepoId;
+use crate::RepoId;
 
 use super::*;
 
 #[test]
 fn parses_owner_and_repo() {
-    let repo = parse_repo_id("acme/app").unwrap();
+    let repo = RepoId::parse("acme/app").unwrap();
 
     assert_eq!(repo.owner, "acme");
     assert_eq!(repo.name, "app");
 
-    let repo = parse_repo_id("  Acme/Mobile-App  ").unwrap();
+    let repo = RepoId::parse("  Acme/Mobile-App  ").unwrap();
 
     assert_eq!(repo.owner, "Acme");
     assert_eq!(repo.name, "Mobile-App");
@@ -17,13 +17,13 @@ fn parses_owner_and_repo() {
 
 #[test]
 fn rejects_invalid_repo_values() {
-    assert!(parse_repo_id("").is_none());
-    assert!(parse_repo_id("acme").is_none());
-    assert!(parse_repo_id("/app").is_none());
-    assert!(parse_repo_id("acme/").is_none());
-    assert!(parse_repo_id("acme/app/extra").is_none());
-    assert!(parse_repo_id("acme /app").is_none());
-    assert!(parse_repo_id("acme/app name").is_none());
+    assert!(RepoId::parse("").is_none());
+    assert!(RepoId::parse("acme").is_none());
+    assert!(RepoId::parse("/app").is_none());
+    assert!(RepoId::parse("acme/").is_none());
+    assert!(RepoId::parse("acme/app/extra").is_none());
+    assert!(RepoId::parse("acme /app").is_none());
+    assert!(RepoId::parse("acme/app name").is_none());
 }
 
 #[test]

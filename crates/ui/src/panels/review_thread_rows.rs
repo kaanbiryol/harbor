@@ -1,7 +1,9 @@
 use crate::gpui_component::StyledExt;
 use crate::gpui_component::input::TextareaState;
 use gpui::{AnyElement, Entity, SharedString, div, prelude::*, px};
-use harbor_domain::{ReviewComment, ReviewThread, ReviewThreadState};
+use harbor_domain::{
+    ReviewComment, ReviewThread, ReviewThreadState, reviews::review_thread_location,
+};
 
 use crate::{
     visual::{Tone, color, opacity, tone_colors},
@@ -13,7 +15,7 @@ use super::{
         render_author_link, render_avatar, render_time_metadata, review_comment_time_label,
         review_comment_time_tooltip,
     },
-    review::{ReviewDiffPreview, render_review_diff_preview, review_thread_location},
+    review::{ReviewDiffPreview, render_review_diff_preview},
     review_markdown::{ReviewSuggestionContext, render_review_markdown_body_with_context},
     review_thread_chrome::{
         ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,

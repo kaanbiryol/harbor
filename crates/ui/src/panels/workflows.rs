@@ -18,8 +18,8 @@ use super::{
 mod runs;
 mod sidebar;
 
+pub(crate) use runs::workflow_conclusion_tone;
 use runs::{RepositoryWorkflowRunsRenderInput, render_repository_workflow_runs};
-pub(crate) use runs::{workflow_conclusion_tone, workflow_run_failed, workflow_run_label};
 use sidebar::render_workflow_sidebar;
 
 pub(crate) struct ActionsPanelRenderInput<'a> {
@@ -159,7 +159,7 @@ fn render_selected_pull_request_workflow_actions(
 ) -> impl IntoElement {
     let rerun_target = workflow_runs
         .iter()
-        .find(|run| workflow_run_failed(run))
+        .find(|run| run.failed())
         .or_else(|| workflow_runs.first());
     let dispatch_target = workflow_runs.iter().find(|run| run.workflow_id.is_some());
     let can_rerun = pr.is_some()
@@ -270,12 +270,8 @@ fn selected_pull_request_actions_subtitle(
     let Some(pr) = pr else {
         return "Select a pull request to dispatch or rerun its workflows".to_string();
     };
-    let dispatch_target = dispatch_target
-        .map(workflow_run_label)
-        .unwrap_or_else(|| "none".to_string());
-    let rerun_target = rerun_target
-        .map(workflow_run_label)
-        .unwrap_or_else(|| "none".to_string());
+    let dispatch_target = dispatch_target.map_or("none", WorkflowRun::label);
+    let rerun_target = rerun_target.map_or("none", WorkflowRun::label);
 
     format!(
         "dispatch {dispatch_target} on {}; rerun target {rerun_target}",

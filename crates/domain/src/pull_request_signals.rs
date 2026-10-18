@@ -38,6 +38,28 @@ impl PullRequestMergeQueueStatus {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MergeControl {
+    QueueStatus(PullRequestMergeQueueStatus),
+    MergeWhenReady,
+    Merge,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MergeBypassPlacement {
+    MergeMenu,
+    Separate,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MergeActionPlan {
+    pub bypass_enabled: bool,
+    pub control: MergeControl,
+    pub disabled: bool,
+    pub tooltip: String,
+    pub bypass_placement: Option<MergeBypassPlacement>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PullRequestReadiness {
     Conflicts,
     ChecksFailed,
@@ -314,6 +336,61 @@ pub fn merge_without_requirements_blocker(pr: &PullRequest) -> Option<String> {
             pr.number
         )),
         Some(MergeState::Clean | MergeState::Blocked | MergeState::Behind) => None,
+    }
+}
+
+pub fn merge_action_plan(
+    pr: &PullRequest,
+    bypass_requested: bool,
+    action_running: bool,
+) -> MergeActionPlan {
+    let bypass_available = pr.merge_capabilities.viewer_can_merge_as_admin;
+    let bypass_enabled = bypass_available && bypass_requested;
+    let queue_state = pr.merge_capabilities.queue_state;
+    let show_bypass = bypass_available
+        && (queue_state != MergeQueueState::Disabled || merge_blocker(pr).is_some());
+    let blocker = if bypass_enabled {
+        merge_without_requirements_blocker(pr)
+    } else {
+        match queue_state {
+            MergeQueueState::Unknown => {
+                Some("Loading merge queue settings from GitHub".to_string())
+            }
+            MergeQueueState::Enabled | MergeQueueState::Queued => merge_when_ready_blocker(pr),
+            MergeQueueState::Disabled => merge_blocker(pr),
+        }
+    };
+    let disabled = action_running || blocker.is_some();
+    let tooltip = blocker.unwrap_or_else(|| {
+        if bypass_enabled {
+            "Merge immediately without waiting for requirements".to_string()
+        } else if queue_state == MergeQueueState::Enabled {
+            "Add pull request to the merge queue when requirements are met".to_string()
+        } else {
+            "Merge pull request".to_string()
+        }
+    });
+    let control = match pull_request_merge_queue_status(pr).filter(|_| !bypass_enabled) {
+        Some(status) => MergeControl::QueueStatus(status),
+        None if !bypass_enabled && queue_state == MergeQueueState::Enabled => {
+            MergeControl::MergeWhenReady
+        }
+        None => MergeControl::Merge,
+    };
+    let bypass_placement = show_bypass.then_some(
+        if !disabled && !matches!(control, MergeControl::QueueStatus(_)) {
+            MergeBypassPlacement::MergeMenu
+        } else {
+            MergeBypassPlacement::Separate
+        },
+    );
+
+    MergeActionPlan {
+        bypass_enabled,
+        control,
+        disabled,
+        tooltip,
+        bypass_placement,
     }
 }
 

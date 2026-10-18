@@ -5,7 +5,12 @@ use crate::gpui_component::{
     popover::Popover,
 };
 use gpui::{Anchor, Context, IntoElement, div, prelude::*, px};
-use harbor_domain::{MergeMethod, MergeQueueState, PullRequest};
+use harbor_domain::{
+    MergeMethod, PullRequest,
+    pull_request_signals::{
+        MergeActionPlan, MergeBypassPlacement, MergeControl, merge_action_plan,
+    },
+};
 
 use crate::{
     actions::{
@@ -15,10 +20,7 @@ use crate::{
     },
     dropdown::{dropdown_menu_item, dropdown_menu_surface},
     icons::Octicon,
-    panels::{
-        ImmediateTooltip, PullRequestMergeQueueStatus, merge_blocker, merge_when_ready_blocker,
-        merge_without_requirements_blocker, pull_request_merge_queue_status, review_action_blocker,
-    },
+    panels::{ImmediateTooltip, PullRequestMergeQueueStatus, review_action_blocker},
     visual::{color, layout},
     workspace::{AppView, log_entity_update_error},
 };
@@ -38,33 +40,13 @@ impl AppView {
         let approve_tooltip = review_action_blocker
             .clone()
             .unwrap_or_else(|| "Approve pull request".to_string());
-        let bypass_available = pr.merge_capabilities.viewer_can_merge_as_admin;
-        let bypass_enabled = bypass_available && self.merge_bypass_enabled;
-        let merge_queue_status = pull_request_merge_queue_status(pr);
-        let show_bypass = bypass_available
-            && (pr.merge_capabilities.queue_state != MergeQueueState::Disabled
-                || merge_blocker(pr).is_some());
-        let merge_action_blocker = if bypass_enabled {
-            merge_without_requirements_blocker(pr)
-        } else {
-            match pr.merge_capabilities.queue_state {
-                MergeQueueState::Unknown => {
-                    Some("Loading merge queue settings from GitHub".to_string())
-                }
-                MergeQueueState::Enabled | MergeQueueState::Queued => merge_when_ready_blocker(pr),
-                MergeQueueState::Disabled => merge_blocker(pr),
-            }
-        };
-        let merge_action_disabled = pull_request_action_running || merge_action_blocker.is_some();
-        let merge_tooltip = merge_action_blocker.unwrap_or_else(|| {
-            if bypass_enabled {
-                "Merge immediately without waiting for requirements".to_string()
-            } else if pr.merge_capabilities.queue_state == MergeQueueState::Enabled {
-                "Add pull request to the merge queue when requirements are met".to_string()
-            } else {
-                "Merge pull request".to_string()
-            }
-        });
+        let MergeActionPlan {
+            bypass_enabled,
+            control: merge_control,
+            disabled: merge_action_disabled,
+            tooltip: merge_tooltip,
+            bypass_placement,
+        } = merge_action_plan(pr, self.merge_bypass_enabled, pull_request_action_running);
         let pull_request_url = pr.url.clone();
         let pull_request_link = pr.url.clone();
         let pull_request_number = pr.number;
@@ -72,9 +54,8 @@ impl AppView {
         let head_sha = pr.head_sha.clone();
         let short_head_sha = short_commit_sha(&head_sha);
         let view = cx.entity().clone();
-        let queue_status_visible = merge_queue_status.is_some() && !bypass_enabled;
-        let bypass_in_merge_menu = show_bypass && !merge_action_disabled && !queue_status_visible;
-        let show_merge_bypass_options = show_bypass && !bypass_in_merge_menu;
+        let bypass_in_merge_menu = bypass_placement == Some(MergeBypassPlacement::MergeMenu);
+        let show_merge_bypass_options = bypass_placement == Some(MergeBypassPlacement::Separate);
         let header_actions = div()
             .flex_none()
             .flex()
@@ -121,12 +102,11 @@ impl AppView {
                 }
             })
             .child({
-                let merge_control =
-                    if let Some(queue_status) = merge_queue_status.filter(|_| !bypass_enabled) {
+                let merge_control = match merge_control {
+                    MergeControl::QueueStatus(queue_status) => {
                         render_merge_queue_status(queue_status).into_any_element()
-                    } else if !bypass_enabled
-                        && pr.merge_capabilities.queue_state == MergeQueueState::Enabled
-                    {
+                    }
+                    MergeControl::MergeWhenReady => {
                         let button = Button::new("merge-pr-when-ready")
                             .label("merge when ready")
                             .small()
@@ -159,7 +139,8 @@ impl AppView {
                         } else {
                             button.success().into_any_element()
                         }
-                    } else {
+                    }
+                    MergeControl::Merge => {
                         let button = Button::new("merge-pr-primary")
                             .label(merge_method_button_label(MergeMethod::Squash))
                             .small()
@@ -218,7 +199,8 @@ impl AppView {
                         } else {
                             dropdown.success().into_any_element()
                         }
-                    };
+                    }
+                };
 
                 div()
                     .flex()

@@ -86,6 +86,43 @@ pub struct WorkflowRun {
     pub run_started_at: Option<DateTime<Utc>>,
 }
 
+impl WorkflowRun {
+    pub fn label(&self) -> &str {
+        self.workflow_name.as_deref().unwrap_or(&self.name)
+    }
+
+    pub fn failed(&self) -> bool {
+        matches!(
+            (self.status, self.conclusion),
+            (
+                WorkflowStatus::Completed,
+                Some(
+                    WorkflowConclusion::Failure
+                        | WorkflowConclusion::Cancelled
+                        | WorkflowConclusion::TimedOut
+                        | WorkflowConclusion::ActionRequired
+                )
+            )
+        )
+    }
+}
+
+pub fn workflow_outcome_label(
+    status: WorkflowStatus,
+    conclusion: Option<WorkflowConclusion>,
+) -> &'static str {
+    match (status, conclusion) {
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Success)) => "passed",
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Skipped)) => "skipped",
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Cancelled)) => "cancelled",
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::TimedOut)) => "timed out",
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::ActionRequired)) => "action required",
+        (WorkflowStatus::Completed, Some(WorkflowConclusion::Failure) | None) => "failed",
+        (WorkflowStatus::InProgress, _) => "running",
+        (WorkflowStatus::Queued, _) => "queued",
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowJob {
     pub id: u64,

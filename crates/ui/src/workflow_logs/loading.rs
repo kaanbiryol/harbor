@@ -7,7 +7,6 @@ use harbor_logs::{
 use std::sync::Arc;
 
 use super::WorkflowLogView;
-use crate::panels::workflow_run_label;
 
 impl WorkflowLogView {
     pub(crate) fn select_workflow_log_section(
@@ -105,7 +104,7 @@ impl WorkflowLogView {
         };
 
         if self.state.is_loading() {
-            self.status = format!("Already loading logs for {}", workflow_run_label(&run));
+            self.status = format!("Already loading logs for {}", run.label());
             cx.notify();
             return;
         }
@@ -126,13 +125,13 @@ impl WorkflowLogView {
             self.jobs = Arc::new(Vec::new());
         }
         self.state.start_loading();
-        self.status = format!("Loading logs for {}", workflow_run_label(&run));
+        self.status = format!("Loading logs for {}", run.label());
 
         cx.notify();
         let owner = repo.owner.clone();
         let name = repo.name.clone();
         let run_id = run.id;
-        let run_label = workflow_run_label(&run);
+        let run_label = run.label().to_string();
         let github_api = self.github_api.clone();
 
         self.state.set_task(cx.spawn(async move |this, cx| {

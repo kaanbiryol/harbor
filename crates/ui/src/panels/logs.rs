@@ -8,6 +8,7 @@ use gpui::{
     AnyElement, Context, IntoElement, ListHorizontalSizingBehavior, div, prelude::*, px,
     uniform_list,
 };
+use harbor_domain::WorkflowRun;
 use harbor_logs::{LogLine, LogSeverity};
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
     workflow_logs::WorkflowLogView,
 };
 
-use super::{render_error_panel_card, render_panel_header, workflows::workflow_run_label};
+use super::{render_error_panel_card, render_panel_header};
 
 pub(crate) fn render_logs_panel(
     view: &WorkflowLogView,
@@ -66,7 +67,7 @@ fn render_log_header(
                 run.id,
                 format!(
                     "{} · #{} · attempt {}",
-                    workflow_run_label(run),
+                    run.label(),
                     run.run_number.unwrap_or(run.id),
                     run.run_attempt.unwrap_or(1)
                 ),
@@ -130,10 +131,7 @@ fn render_log_header(
                 .items_center()
                 .child(
                     Button::new("previous-log-run")
-                        .label(
-                            run.map(workflow_run_label)
-                                .unwrap_or_else(|| "Select run".into()),
-                        )
+                        .label(run.map_or("Select run", WorkflowRun::label).to_string())
                         .icon(Octicon::ChevronDown)
                         .small()
                         .ghost()

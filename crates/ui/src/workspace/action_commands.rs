@@ -11,7 +11,7 @@ use crate::{
     },
     panels::{
         merge_blocker, merge_when_ready_blocker, merge_without_requirements_blocker,
-        review_action_blocker, workflow_run_failed, workflow_run_label,
+        review_action_blocker,
     },
     workspace::{AppView, ReviewActionCommentTarget, async_updates::AppViewAsyncUpdateExt},
 };
@@ -49,7 +49,7 @@ impl AppView {
                     repo: repo.name,
                     workflow_id,
                     git_ref: pr.head_ref.clone(),
-                    workflow_name: workflow_run_label(run),
+                    workflow_name: run.label().to_string(),
                 })
             }
             WorkflowAction::RerunFailedJobs => {
@@ -57,7 +57,7 @@ impl AppView {
                     .detail_state
                     .workflow_runs()
                     .iter()
-                    .find(|run| workflow_run_failed(run))
+                    .find(|run| run.failed())
                     .or_else(|| self.detail_state.workflow_runs().first())
                 else {
                     return Err(
@@ -69,7 +69,7 @@ impl AppView {
                     owner: repo.owner,
                     repo: repo.name,
                     run_id: run.id,
-                    workflow_name: workflow_run_label(run),
+                    workflow_name: run.label().to_string(),
                 })
             }
         }
