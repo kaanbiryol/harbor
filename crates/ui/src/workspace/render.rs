@@ -1,6 +1,7 @@
 use crate::gpui_component::resizable::{h_resizable, resizable_panel};
 use gpui::{
-    App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, Window, div, prelude::*, px,
+    App, Context, FocusHandle, Focusable, IntoElement, Pixels, Render, StyleRefinement, Window,
+    div, prelude::*, px,
 };
 
 use crate::actions::*;
@@ -23,6 +24,7 @@ mod panel;
 mod pending_review;
 mod pull_request_details_header;
 mod rate_limits;
+mod region;
 mod review_action_comment_dialog;
 mod settings;
 mod settings_account;
@@ -31,6 +33,8 @@ mod settings_auth_status;
 mod status_bar;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use region::WorkspaceRegions;
 
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -50,6 +54,14 @@ impl Render for AppView {
             }
             self.sync_runtime.mark_focused_once();
         }
+
+        let regions = self
+            .regions
+            .get_or_insert_with(|| WorkspaceRegions::new(cx));
+        let inbox_region = regions.inbox.clone();
+        let changed_files_region = regions.changed_files.clone();
+        let panel_region = regions.panel.clone();
+        let panel_style = StyleRefinement::default().flex_1().min_h_0().min_w_0();
 
         let selected_pr = self.selected_pull_request().cloned();
         let show_auth_gate = self.github_auth_gate_visible();
@@ -79,7 +91,10 @@ impl Render for AppView {
                                         px(layout::PULL_REQUEST_DETAILS_MIN_WIDTH)..Pixels::MAX,
                                     )
                                     .flex_none()
-                                    .child(self.render_changed_files_sidebar(cx)),
+                                    .child(
+                                        changed_files_region
+                                            .cached(StyleRefinement::default().size_full()),
+                                    ),
                             )
                             .child(
                                 resizable_panel()
@@ -87,13 +102,12 @@ impl Render for AppView {
                                         px(layout::PULL_REQUEST_DIFF_MIN_WIDTH)..Pixels::MAX,
                                     )
                                     .pl_3()
-                                    .child(self.render_panel(selected_pr.as_ref(), cx)),
+                                    .child(panel_region.cached(panel_style)),
                             ),
                     )
                     .into_any_element()
             } else {
-                self.render_panel(selected_pr.as_ref(), cx)
-                    .into_any_element()
+                panel_region.cached(panel_style).into_any_element()
             };
             pull_request_workspace = pull_request_workspace.child(panel_workspace);
 
@@ -104,7 +118,7 @@ impl Render for AppView {
                             .size(px(layout::PULL_REQUEST_INBOX_WIDTH))
                             .size_range(px(layout::PULL_REQUEST_INBOX_MIN_WIDTH)..Pixels::MAX)
                             .flex_none()
-                            .child(self.render_inbox(cx)),
+                            .child(inbox_region.cached(StyleRefinement::default().size_full())),
                     )
                     .child(
                         resizable_panel()

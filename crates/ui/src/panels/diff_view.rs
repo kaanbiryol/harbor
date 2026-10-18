@@ -10,6 +10,7 @@ pub(crate) use inline_reviews::{
     ReviewCommentActionsMenuState, render_review_comment_actions_menu,
     render_review_comment_edit_composer, render_review_reactions, review_comment_ui_state,
 };
+pub(crate) use row_state::DiffRowFrameState;
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -31,7 +32,7 @@ use file_section::render_diff_file_section_header;
 use layout::continuous_diff_section_for_item;
 pub(crate) use layout::{
     ContinuousDiffLayoutInput, DiffListItem, continuous_diff_items, diff_file_item_index,
-    diff_hunk_item_index, sync_diff_list_state,
+    diff_hunk_item_index, diff_line_height, hint_diff_row_heights, sync_diff_list_state,
 };
 use row_render::render_diff_list_item;
 pub(super) use row_render::render_line_number;
@@ -69,6 +70,7 @@ pub(crate) struct DiffPanelRenderInput<'a> {
     pub(crate) error: Option<&'a str>,
     pub(crate) list_state: ListState,
     pub(crate) list_items: Arc<[DiffListItem]>,
+    pub(crate) row_frame: DiffRowFrameState,
 }
 
 impl<'a> DiffPanelRenderInput<'a> {
@@ -166,6 +168,7 @@ pub(crate) fn render_diff_panel(
     let processor_view_entity = view_entity.clone();
     let list_items_for_render = input.list_items.clone();
     let review_thread_index = input.review_thread_index.clone();
+    let row_frame = input.row_frame.clone();
     let commit_scope = input.commit_sha.map(|sha| {
         let short_sha: String = sha.chars().take(7).collect();
         let pull_request = input.pull_request;
@@ -330,10 +333,10 @@ pub(crate) fn render_diff_panel(
                                     list(
                                         input.list_state.clone(),
                                         cx.processor(
-                                            move |view, item_index: usize, _window, cx| {
+                                            move |view, item_index: usize, _window, _cx| {
                                                 let row_state = DiffRowRenderState::from_view(
                                                     view,
-                                                    cx,
+                                                    &row_frame,
                                                     processor_view_entity.clone(),
                                                     review_thread_index.clone(),
                                                 );

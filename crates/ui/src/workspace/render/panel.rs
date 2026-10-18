@@ -6,8 +6,8 @@ use crate::{
     actions::{KEY_CONTEXT, PanelTab},
     panels::{
         ActionsPanelRenderInput, CheckPanelRenderInput, CommitsPanelRenderInput,
-        DiffPanelRenderInput, navigation_tab, render_actions_panel, render_checks_panel,
-        render_commits_panel, render_diff_panel, render_tab_count,
+        DiffPanelRenderInput, DiffRowFrameState, navigation_tab, render_actions_panel,
+        render_checks_panel, render_commits_panel, render_diff_panel, render_tab_count,
     },
     visual::{Tone, color},
     workspace::AppView,
@@ -155,6 +155,7 @@ impl AppView {
                                     error: self.detail_state.files_error(),
                                     list_state: self.diff_list_state.clone(),
                                     list_items: self.diff_list_items.clone(),
+                                    row_frame: DiffRowFrameState::new(self, cx),
                                 },
                                 cx,
                             )

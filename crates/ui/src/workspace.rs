@@ -174,6 +174,7 @@ pub struct AppView {
     active_commit_sha: Option<String>,
     pub(crate) overview_state: OverviewUiState,
     panel_list_state: PanelListState,
+    regions: Option<render::WorkspaceRegions>,
     pub(crate) selection_state: PullRequestSelectionState,
     pub(crate) active_tab: PanelTab,
     pub(crate) pull_request_inbox: PullRequestInboxState,

@@ -6,6 +6,7 @@ use harbor_sync::SyncPolicy;
 
 use crate::{
     actions::{CloseSettings, OpenSettings},
+    panels::hint_diff_row_heights,
     workspace::{AppView, GitHubAuthSource},
 };
 
@@ -177,6 +178,7 @@ impl AppView {
             let scroll = self.diff_list_state.logical_scroll_top();
             self.diff_list_state
                 .splice(0..self.diff_list_items.len(), self.diff_list_items.len());
+            hint_diff_row_heights(&self.diff_list_state, preferences.code_font_size);
             self.diff_list_state.scroll_to(scroll);
         }
         self.sync_runtime.set_policy(SyncPolicy {

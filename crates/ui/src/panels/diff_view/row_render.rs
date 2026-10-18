@@ -14,7 +14,7 @@ use crate::{
 };
 
 use super::{
-    DIFF_CODE_FONT_SIZE, PREFIX_WIDTH, REVIEW_MARKER_WIDTH,
+    DIFF_CODE_FONT_SIZE, PREFIX_WIDTH, REVIEW_MARKER_WIDTH, diff_line_height,
     file_section::{render_diff_file_section_header, render_diff_unavailable_row},
     inline_review_layout::{
         review_comment_range_matches_file, review_comment_range_matches_line,
@@ -324,7 +324,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
 
     div()
         .id(line_id)
-        .min_h(px((code_font_size * 1.6).ceil()))
+        .min_h(diff_line_height(code_font_size))
         .w_full()
         .min_w_0()
         .flex()
@@ -333,7 +333,7 @@ fn render_diff_line(input: DiffLineRenderInput<'_>) -> impl IntoElement {
         .text_color(style.text_color)
         .font_family(mono_font_family.clone())
         .text_size(px(code_font_size))
-        .line_height(px((code_font_size * 1.6).ceil()))
+        .line_height(diff_line_height(code_font_size))
         .child(render_line_number(line.old_line, line_number_width))
         .child(render_line_number(line.new_line, line_number_width))
         .child(render_review_marker(

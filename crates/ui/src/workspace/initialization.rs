@@ -291,6 +291,7 @@ impl AppView {
                 ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
                 ListState::new(0, ListAlignment::Top, px(PANEL_LIST_OVERDRAW)),
             ),
+            regions: None,
             selection_state: PullRequestSelectionState::default(),
             active_tab: PanelTab::Overview,
             pull_request_inbox: PullRequestInboxState::visible_by_default(),

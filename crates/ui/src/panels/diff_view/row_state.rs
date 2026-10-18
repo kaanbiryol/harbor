@@ -43,10 +43,33 @@ pub(super) struct DiffRowRenderState<'a> {
     pub(super) wrap_lines: bool,
 }
 
+/// Values that are identical for every diff row in a frame, computed once per render
+/// instead of once per row because reading the textarea values walks their buffers.
+#[derive(Clone)]
+pub(crate) struct DiffRowFrameState {
+    review_comment_body_empty: bool,
+    review_thread_reply_body_empty: bool,
+    review_comment_edit_body_empty: bool,
+    mono_font_family: SharedString,
+}
+
+impl DiffRowFrameState {
+    pub(crate) fn new(view: &AppView, cx: &App) -> Self {
+        let composer = &view.review_state.review_composer_state;
+        let is_empty = |input: &Entity<TextareaState>| input.read(cx).value().trim().is_empty();
+        Self {
+            review_comment_body_empty: is_empty(&composer.comment_input),
+            review_thread_reply_body_empty: is_empty(&composer.thread_reply_input),
+            review_comment_edit_body_empty: is_empty(&composer.comment_edit_input),
+            mono_font_family: cx.theme().mono_font_family.clone(),
+        }
+    }
+}
+
 impl<'a> DiffRowRenderState<'a> {
     pub(super) fn from_view(
         view: &'a AppView,
-        cx: &App,
+        frame: &DiffRowFrameState,
         view_entity: Entity<AppView>,
         review_thread_index: Arc<ReviewThreadIndex>,
     ) -> Self {
@@ -61,14 +84,7 @@ impl<'a> DiffRowRenderState<'a> {
                 .review_composer_state
                 .comment_input
                 .clone(),
-            review_comment_body_empty: view
-                .review_state
-                .review_composer_state
-                .comment_input
-                .read(cx)
-                .value()
-                .trim()
-                .is_empty(),
+            review_comment_body_empty: frame.review_comment_body_empty,
             is_submitting_review_comment: view.review_state.is_submitting_review_comment(),
             review_comment_error: view.review_state.review_comment_error(),
             active_review_thread_reply: view
@@ -80,14 +96,7 @@ impl<'a> DiffRowRenderState<'a> {
                 .review_composer_state
                 .thread_reply_input
                 .clone(),
-            review_thread_reply_body_empty: view
-                .review_state
-                .review_composer_state
-                .thread_reply_input
-                .read(cx)
-                .value()
-                .trim()
-                .is_empty(),
+            review_thread_reply_body_empty: frame.review_thread_reply_body_empty,
             is_submitting_review_thread_reply: view
                 .review_state
                 .is_submitting_review_thread_reply(),
@@ -103,14 +112,7 @@ impl<'a> DiffRowRenderState<'a> {
                 .review_composer_state
                 .comment_edit_input
                 .clone(),
-            review_comment_edit_body_empty: view
-                .review_state
-                .review_composer_state
-                .comment_edit_input
-                .read(cx)
-                .value()
-                .trim()
-                .is_empty(),
+            review_comment_edit_body_empty: frame.review_comment_edit_body_empty,
             is_submitting_review_comment_edit: view
                 .review_state
                 .is_submitting_review_comment_edit(),
@@ -121,7 +123,7 @@ impl<'a> DiffRowRenderState<'a> {
             review_reaction_error: view.review_state.review_reaction_error(),
             active_file: view.active_file_index(),
             view_entity,
-            mono_font_family: cx.theme().mono_font_family.clone(),
+            mono_font_family: frame.mono_font_family.clone(),
             code_font_size: view.preferences.value.code_font_size,
             wrap_lines: view.preferences.value.wrap_diff_lines,
         }

@@ -8,7 +8,7 @@ use crate::{
     diff::ParsedDiff,
     panels::{
         ContinuousDiffLayoutInput, continuous_diff_items, diff_file_item_index,
-        sync_diff_list_state,
+        hint_diff_row_heights, sync_diff_list_state,
     },
     workspace::async_updates::AppViewAsyncUpdateExt,
 };
@@ -119,7 +119,9 @@ impl AppView {
             review_threads: self.review_state.review_threads(),
             review_composer: self.review_state.review_composer_state.inline_composer(),
         });
-        sync_diff_list_state(&self.diff_list_state, &mut self.diff_list_items, next_items);
+        if sync_diff_list_state(&self.diff_list_state, &mut self.diff_list_items, next_items) {
+            hint_diff_row_heights(&self.diff_list_state, self.preferences.value.code_font_size);
+        }
     }
 
     pub(super) fn scroll_diff_list_to_item(&mut self, item_index: usize) {

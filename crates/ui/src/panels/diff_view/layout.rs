@@ -1,6 +1,6 @@
 use std::{collections::HashSet, ops::Range, sync::Arc};
 
-use gpui::ListState;
+use gpui::{ListState, Pixels, px};
 use harbor_domain::{DiffFile, ReviewThread, diff_reviews::ReviewThreadIndex};
 
 use crate::{diff::ParsedDiff, workspace::ReviewComposer};
@@ -113,26 +113,41 @@ pub(crate) fn continuous_diff_items(input: ContinuousDiffLayoutInput<'_>) -> Vec
     items
 }
 
+pub(crate) fn diff_line_height(code_font_size: f32) -> Pixels {
+    px((code_font_size * 1.6).ceil())
+}
+
+/// Gives unmeasured diff rows the line height as a size hint. Without it GPUI counts
+/// unmeasured rows as zero height, so the scrollbar thumb resizes and jumps while scrolling.
+pub(crate) fn hint_diff_row_heights(list_state: &ListState, code_font_size: f32) {
+    // `with_uniform_item_height` mutates the shared state behind the cloned handle.
+    list_state
+        .clone()
+        .with_uniform_item_height(diff_line_height(code_font_size));
+}
+
+/// Returns whether the list items changed.
 pub(crate) fn sync_diff_list_state(
     list_state: &ListState,
     previous_items: &mut Arc<[DiffListItem]>,
     next_items: Vec<DiffListItem>,
-) {
+) -> bool {
     if list_state.item_count() != previous_items.len() {
         let current_item_count = list_state.item_count();
         list_state.splice(0..current_item_count, next_items.len());
         *previous_items = next_items.into();
-        return;
+        return true;
     }
 
     if previous_items.as_ref() == next_items.as_slice() {
-        return;
+        return false;
     }
 
     if let Some((old_range, inserted_item_count)) = diff_list_splice(previous_items, &next_items) {
         list_state.splice(old_range, inserted_item_count);
     }
     *previous_items = next_items.into();
+    true
 }
 
 fn diff_list_splice(
