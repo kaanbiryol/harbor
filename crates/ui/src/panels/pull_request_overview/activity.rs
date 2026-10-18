@@ -13,7 +13,7 @@ use crate::{
         review_thread_diff_preview,
     },
     visual::color,
-    workspace::{AppView, ReviewRuntimeState, state::OverviewMarkdownState},
+    workspace::{AppView, OverviewMarkdownState, ReviewRuntimeState},
 };
 
 use super::{model::*, timeline::*};

@@ -106,7 +106,7 @@ impl AppView {
         diff_file_item_index(&self.diff_list_items, file_index)
     }
 
-    pub(super) fn sync_diff_list_items(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn sync_diff_list_items(&mut self, cx: &mut Context<Self>) {
         self.prepare_diff_display(cx);
         let visible_file_indices = self.visible_file_indices(cx);
         let next_items = continuous_diff_items(ContinuousDiffLayoutInput {
@@ -133,7 +133,7 @@ impl AppView {
         self.scroll_diff_list_to_item(0);
     }
 
-    pub(super) fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn ensure_active_file_visible(&mut self, cx: &mut Context<Self>) {
         let visible_files = self.visible_file_indices(cx);
         if visible_files.is_empty() || visible_files.contains(&self.active_file_index()) {
             return;
@@ -208,7 +208,7 @@ impl AppView {
         }
     }
 
-    pub(super) fn reset_changed_file_filters(&mut self) {
+    pub(crate) fn reset_changed_file_filters(&mut self) {
         self.changed_files_state.excluded_file_type_filters.clear();
         self.changed_files_state.show_files_owned_by_current_user = false;
     }

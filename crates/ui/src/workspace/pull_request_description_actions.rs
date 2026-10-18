@@ -3,7 +3,7 @@ use gpui::{Context, Window};
 use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
 
 impl AppView {
-    pub(super) fn start_pull_request_description_edit(
+    pub(crate) fn start_pull_request_description_edit(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -26,7 +26,7 @@ impl AppView {
         cx.notify();
     }
 
-    pub(super) fn cancel_pull_request_description_edit(
+    pub(crate) fn cancel_pull_request_description_edit(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -47,7 +47,7 @@ impl AppView {
         cx.notify();
     }
 
-    pub(super) fn save_pull_request_description(
+    pub(crate) fn save_pull_request_description(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,

@@ -72,24 +72,15 @@ mod tests {
     async fn long_diffs_scroll_horizontally_and_return_to_wrapping(cx: &mut gpui::TestAppContext) {
         use crate::{
             actions::PanelTab,
-            gpui_component::{Root, Theme, ThemeMode},
             test_fixtures::{diff_file, pull_request},
-            workspace::test_support::FakeGitHubApi,
+            workspace::test_support::{FakeGitHubApi, open_workspace_window},
         };
         use harbor_domain::FileStatus;
-        cx.update(|cx| {
-            crate::gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-        });
-        let mut entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| {
+        let (view, cx) = open_workspace_window(cx, |window, cx| {
+            cx.new(|cx| {
                 AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx)
-            });
-            entity = Some(view.clone());
-            Root::new(view, window, cx)
+            })
         });
-        let view = entity.expect("view");
         let patch = format!(
             "@@ -0,0 +1,10000 @@\n{}",
             format!("+{}\n", "long line ".repeat(40)).repeat(10_000)

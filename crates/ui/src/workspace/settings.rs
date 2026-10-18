@@ -318,23 +318,17 @@ impl AppView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{AppContext, TestAppContext};
+
+    use crate::workspace::test_support::open_workspace_window;
 
     #[gpui::test]
     async fn settings_sections_render_and_github_entry_opens_account_settings(
-        cx: &mut gpui::TestAppContext,
+        cx: &mut TestAppContext,
     ) {
-        use crate::gpui_component::{Root, Theme, ThemeMode};
-        cx.update(|cx| {
-            crate::gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
+        let (view, cx) = open_workspace_window(cx, |window, cx| {
+            cx.new(|cx| AppView::new_without_startup_tasks(window, cx))
         });
-        let mut entity = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
-            entity = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-        let view = entity.expect("view");
         cx.update(|window, cx| {
             view.update(cx, |view, cx| view.open_settings(&OpenSettings, window, cx))
         });
@@ -434,5 +428,28 @@ mod tests {
             .message()
             .contains("current GitHub session remains active")
         );
+    }
+
+    #[gpui::test]
+    async fn github_account_settings_open_and_close(cx: &mut TestAppContext) {
+        let (view_entity, cx) = open_workspace_window(cx, |window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            view.update(cx, |view, cx| {
+                view.github_auth_popover_open = true;
+                view.open_settings(&OpenSettings, window, cx);
+
+                assert!(view.settings_open());
+                assert_eq!(view.settings_section(), SettingsSection::General);
+                assert!(!view.github_auth_popover_open);
+
+                view.close_settings(&CloseSettings, window, cx);
+                assert!(!view.settings_open());
+            });
+            view
+        });
+
+        view_entity.read_with(cx, |view, _| {
+            assert!(!view.settings_open());
+        });
     }
 }

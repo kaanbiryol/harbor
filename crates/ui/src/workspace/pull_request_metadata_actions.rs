@@ -16,7 +16,7 @@ pub(crate) struct PullRequestMetadataOptionsState {
 }
 
 impl AppView {
-    pub(super) fn load_pull_request_metadata_options(
+    pub(crate) fn load_pull_request_metadata_options(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -96,7 +96,7 @@ impl AppView {
         }
     }
 
-    pub(super) fn add_pull_request_metadata(
+    pub(crate) fn add_pull_request_metadata(
         &mut self,
         field: PullRequestMetadataField,
         window: &mut Window,
@@ -243,7 +243,7 @@ impl AppView {
         }
     }
 
-    pub(super) fn pull_request_metadata_input(
+    pub(crate) fn pull_request_metadata_input(
         &self,
         field: PullRequestMetadataField,
     ) -> Entity<InputState> {

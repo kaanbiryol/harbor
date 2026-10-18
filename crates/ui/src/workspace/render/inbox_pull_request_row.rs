@@ -111,7 +111,7 @@ fn pull_request_state_pill(state: PullRequestState) -> Option<(&'static str, Ton
     }
 }
 
-pub(crate) fn render_pull_request_row(
+pub(super) fn render_pull_request_row(
     index: usize,
     pr: &PullRequest,
     selected: bool,
@@ -218,7 +218,8 @@ pub(crate) fn render_pull_request_row(
                                 .when_some(
                                     pull_request_state_pill(pr.state),
                                     |element, (label, tone)| {
-                                        element.child(super::render_status_pill(label, tone))
+                                        element
+                                            .child(crate::panels::render_status_pill(label, tone))
                                     },
                                 )
                                 .child(div().min_w_0().flex_1().truncate().child(metadata_label)),

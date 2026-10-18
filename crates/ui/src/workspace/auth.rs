@@ -375,6 +375,9 @@ pub(super) fn is_missing_credential_error(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{AppContext, TestAppContext};
+
+    use crate::workspace::{AuthSwitchStatus, test_support::open_workspace_window};
 
     #[test]
     fn saved_auth_source_parses_settings() {
@@ -392,5 +395,73 @@ mod tests {
             Some("client-id".to_string())
         );
         assert_eq!(normalize_github_oauth_client_id("   ".to_string()), None);
+    }
+
+    #[gpui::test]
+    async fn dismissing_github_auth_popover_keeps_pending_sign_in(cx: &mut TestAppContext) {
+        let (view_entity, cx) = open_workspace_window(cx, |window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            view.update(cx, |view, cx| {
+                view.auth_status = GitHubAuthStatus::SigningIn {
+                    user_code: "8F0B-1F01".to_string(),
+                    verification_uri: "https://github.com/login/device".to_string(),
+                };
+                view.github_auth_popover_open = true;
+                view.tasks
+                    .set_auth_task(cx.spawn(async move |_view, _cx| {}));
+
+                view.dismiss_github_auth_popover(cx);
+
+                assert_eq!(
+                    view.auth_status,
+                    GitHubAuthStatus::SigningIn {
+                        user_code: "8F0B-1F01".to_string(),
+                        verification_uri: "https://github.com/login/device".to_string(),
+                    }
+                );
+                assert!(!view.github_auth_popover_open());
+                assert!(view.tasks.has_auth_task());
+                assert_eq!(view.status, "Waiting for GitHub authorization");
+            });
+            view
+        });
+
+        view_entity.read_with(cx, |view, _| {
+            assert!(matches!(
+                view.auth_status,
+                GitHubAuthStatus::SigningIn { .. }
+            ));
+        });
+    }
+
+    #[gpui::test]
+    async fn pending_auth_switch_preserves_current_source(cx: &mut TestAppContext) {
+        let (view_entity, cx) = open_workspace_window(cx, |window, cx| {
+            let view = cx.new(|cx| AppView::new_without_startup_tasks(window, cx));
+            view.update(cx, |view, _| {
+                view.auth_status = GitHubAuthStatus::SignedIn {
+                    login: Some("octocat".to_string()),
+                    source: GitHubAuthSource::GhCli,
+                };
+                view.auth_switch_status = Some(AuthSwitchStatus::StartingOAuth);
+
+                assert_eq!(
+                    view.current_github_auth_source(),
+                    Some(GitHubAuthSource::GhCli)
+                );
+                assert_eq!(
+                    view.auth_switch_status(),
+                    Some(&AuthSwitchStatus::StartingOAuth)
+                );
+            });
+            view
+        });
+
+        view_entity.read_with(cx, |view, _| {
+            assert_eq!(
+                view.current_github_auth_source(),
+                Some(GitHubAuthSource::GhCli)
+            );
+        });
     }
 }

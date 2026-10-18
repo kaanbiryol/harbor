@@ -10,21 +10,18 @@ use crate::workspace::AppView;
 mod auth_gate;
 mod auth_gate_signed_out;
 mod auth_preview;
-mod changed_file_filters;
-mod changed_files;
-mod details;
 pub(crate) mod header;
 mod inbox;
 mod inbox_body;
 mod inbox_filters;
 mod inbox_header;
 mod inbox_page_footer;
+mod inbox_pull_request_row;
 mod inbox_search;
 mod inbox_search_rows;
 mod panel;
 mod pending_review;
 mod pull_request_details_header;
-mod pull_request_overview;
 mod rate_limits;
 mod review_action_comment_dialog;
 mod settings;
@@ -32,6 +29,8 @@ mod settings_account;
 mod settings_auth_methods;
 mod settings_auth_status;
 mod status_bar;
+#[cfg(test)]
+mod tests;
 
 impl Focusable for AppView {
     fn focus_handle(&self, _: &App) -> FocusHandle {

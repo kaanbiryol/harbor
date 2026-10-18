@@ -6,7 +6,7 @@ use super::*;
 use crate::icons::Octicon;
 use crate::panels::{overview_markdown_blocks, render_review_markdown_state};
 use crate::workspace::{
-    PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt, state::OverviewMarkdownState,
+    OverviewMarkdownState, PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt,
 };
 
 // TextViewState parses full replacements up to this size before observers can subscribe.

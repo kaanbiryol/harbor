@@ -78,6 +78,7 @@ pub(crate) use reviews::{
     ReviewRuntimeState, ReviewThreadUiError, review_comment_pending_sync,
     review_range_from_targets, review_reaction,
 };
+pub(crate) use state::OverviewMarkdownState;
 use state::{
     ChangedFilesUiState, ChecksUiState, NotificationState, OverviewUiState, PanelListState,
     PullRequestDetailUiState, PullRequestInboxState, PullRequestRowEnrichmentKey,
@@ -144,12 +145,12 @@ const OVERVIEW_LIST_OVERDRAW: f32 = 64.0;
 
 pub struct AppView {
     focus_handle: FocusHandle,
-    pull_requests: Vec<PullRequest>,
+    pub(crate) pull_requests: Vec<PullRequest>,
     github_api: Arc<dyn GitHubApi>,
     workflow_logs: Option<Entity<crate::workflow_logs::WorkflowLogView>>,
     workflow_log_input: Entity<InputState>,
     workflow_log_subscription: Option<Subscription>,
-    auth_generation: u64,
+    pub(crate) auth_generation: u64,
     cache_account: Option<String>,
     auth_status: GitHubAuthStatus,
     github_cli_availability: GitHubCliAvailability,
@@ -160,46 +161,46 @@ pub struct AppView {
     pub(crate) diff_display: diff_display::DiffDisplayState,
     auth_switch_status: Option<AuthSwitchStatus>,
     tasks: WorkspaceTasks,
-    repository_state: RepositoryUiState,
+    pub(crate) repository_state: RepositoryUiState,
     pub(crate) repository_actions_state: RepositoryActionsUiState,
     pub(crate) detail_state: PullRequestDetailUiState,
     pub(crate) review_state: ReviewRuntimeState,
     notification_state: NotificationState,
     sync_runtime: SyncRuntimeState,
     pr_list_scroll: UniformListScrollHandle,
-    file_list_scroll: UniformListScrollHandle,
+    pub(crate) file_list_scroll: UniformListScrollHandle,
     diff_list_state: ListState,
     diff_list_items: Arc<[DiffListItem]>,
     active_commit_sha: Option<String>,
-    overview_state: OverviewUiState,
+    pub(crate) overview_state: OverviewUiState,
     panel_list_state: PanelListState,
-    selection_state: PullRequestSelectionState,
-    active_tab: PanelTab,
-    pull_request_inbox: PullRequestInboxState,
+    pub(crate) selection_state: PullRequestSelectionState,
+    pub(crate) active_tab: PanelTab,
+    pub(crate) pull_request_inbox: PullRequestInboxState,
     prefetch_inbox_counts: bool,
-    pull_request_inbox_search_open: bool,
+    pub(crate) pull_request_inbox_search_open: bool,
     pull_request_search_state: PullRequestSearchState,
-    pull_request_filter_popover_open: bool,
+    pub(crate) pull_request_filter_popover_open: bool,
     pull_request_filters: PullRequestFilters,
-    file_filter_popover_open: bool,
+    pub(crate) file_filter_popover_open: bool,
     review_action_comment_target: Option<ReviewActionCommentTarget>,
     review_action_comment_input: Entity<TextareaState>,
-    overview_comment_input: Entity<TextareaState>,
-    pull_request_description_editing: bool,
-    pull_request_description_input: Entity<TextareaState>,
+    pub(crate) overview_comment_input: Entity<TextareaState>,
+    pub(crate) pull_request_description_editing: bool,
+    pub(crate) pull_request_description_input: Entity<TextareaState>,
     pull_request_reviewer_input: Entity<InputState>,
     pull_request_assignee_input: Entity<InputState>,
     pull_request_label_input: Entity<InputState>,
-    pull_request_metadata_options: PullRequestMetadataOptionsState,
+    pub(crate) pull_request_metadata_options: PullRequestMetadataOptionsState,
     pull_request_switcher_selection: usize,
     pull_request_search_input: Entity<InputState>,
     external_app_availability: ExternalAppAvailability,
-    changed_files_state: ChangedFilesUiState,
+    pub(crate) changed_files_state: ChangedFilesUiState,
     changed_file_cache: changed_file_cache::ChangedFileTreeCache,
     checks_state: ChecksUiState,
-    action_runtime: ActionRuntimeState,
+    pub(crate) action_runtime: ActionRuntimeState,
     merge_bypass_enabled: bool,
-    status: String,
+    pub(crate) status: String,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -219,7 +220,7 @@ impl AppView {
         cx.notify();
     }
 
-    fn selected_pull_request(&self) -> Option<&PullRequest> {
+    pub(crate) fn selected_pull_request(&self) -> Option<&PullRequest> {
         self.pull_requests
             .get(self.selection_state.pull_request_index())
     }

@@ -71,7 +71,7 @@ impl AppView {
         );
     }
 
-    pub(super) fn reload_pull_request_inbox(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn reload_pull_request_inbox(&mut self, cx: &mut Context<Self>) {
         if let Some(repo) = self.repository_state.configured_repo_cloned() {
             self.mark_active_inbox_stale();
             self.refresh_pull_requests(repo, cx);

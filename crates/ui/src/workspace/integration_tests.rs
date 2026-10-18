@@ -1,16 +1,9 @@
-use std::sync::Arc;
-
-use crate::gpui_component::{Root, Theme, ThemeMode};
-use gpui::{
-    AppContext, Context, Entity, IntoElement, Render, TestAppContext, VisualTestContext, Window,
-    div,
-};
 use harbor_domain::PullRequest;
 use harbor_github::GitHubError;
 
 use crate::{
     test_fixtures::patched_diff_file,
-    workspace::{AppView, test_support::FakeGitHubApi},
+    workspace::test_support::{FakeGitHubApi, init_workspace_service_test},
 };
 
 mod action_results;
@@ -23,28 +16,6 @@ mod loading;
 mod review;
 mod search;
 mod selected_pull_request;
-
-fn init_workspace_service_test(
-    cx: &mut TestAppContext,
-    api: Arc<FakeGitHubApi>,
-) -> (Entity<AppView>, &mut VisualTestContext) {
-    cx.update(|cx| {
-        crate::gpui_component::init(cx);
-        Theme::change(ThemeMode::Dark, None, cx);
-    });
-
-    let mut view_entity = None;
-    let (_, cx) = cx.add_window_view(|window, cx| {
-        let view = cx.new(|cx| AppView::new_with_github_api(api, window, cx));
-        view_entity = Some(view);
-        Root::new(cx.new(|_| EmptyHarness), window, cx)
-    });
-
-    (
-        view_entity.expect("workspace service test AppView should be created"),
-        cx,
-    )
-}
 
 fn enqueue_successful_detail_load(api: &FakeGitHubApi, pull_request: &PullRequest) {
     api.push_pull_request_detail(Ok(pull_request.clone()));
@@ -59,14 +30,6 @@ fn enqueue_successful_detail_load(api: &FakeGitHubApi, pull_request: &PullReques
 
 fn github_error(message: &str) -> GitHubError {
     GitHubError::Transport(message.to_string())
-}
-
-struct EmptyHarness;
-
-impl Render for EmptyHarness {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-    }
 }
 
 fn assert_calls_unordered(mut actual: Vec<String>, expected: Vec<&str>) {

@@ -6,6 +6,10 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
+use gpui::{
+    App, AppContext, Context, Entity, IntoElement, Render, TestAppContext, VisualTestContext,
+    Window, div,
+};
 use harbor_domain::{
     CheckRun, DiffFile, MergeMethod, PullRequest, PullRequestComment, PullRequestCommit,
     PullRequestReview, ReactionContent, RepoId, ReviewCommentRange, ReviewThread, Workflow,
@@ -21,7 +25,59 @@ use harbor_github::{
 
 use harbor_sync::{PullRequestCiSource, PullRequestContentSource, PullRequestInboxSource};
 
+use crate::gpui_component::{Root, Theme, ThemeMode};
+use crate::workspace::AppView;
 use queues::{FakeQueue, pop_result, push_pending_result, push_result};
+
+pub(crate) fn init_test_theme(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+    });
+}
+
+pub(crate) fn init_workspace_service_test(
+    cx: &mut TestAppContext,
+    api: Arc<FakeGitHubApi>,
+) -> (Entity<AppView>, &mut VisualTestContext) {
+    init_test_theme(cx);
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| AppView::new_with_github_api(api, window, cx));
+        view_entity = Some(view);
+        Root::new(cx.new(|_| EmptyHarness), window, cx)
+    });
+
+    (
+        view_entity.expect("workspace service test AppView should be created"),
+        cx,
+    )
+}
+
+pub(crate) fn open_workspace_window(
+    cx: &mut TestAppContext,
+    build_view: impl FnOnce(&mut Window, &mut App) -> Entity<AppView>,
+) -> (Entity<AppView>, &mut VisualTestContext) {
+    init_test_theme(cx);
+
+    let mut view_entity = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = build_view(window, cx);
+        view_entity = Some(view.clone());
+        Root::new(view, window, cx)
+    });
+
+    (view_entity.expect("test AppView should be created"), cx)
+}
+
+struct EmptyHarness;
+
+impl Render for EmptyHarness {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
 
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
 type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>;

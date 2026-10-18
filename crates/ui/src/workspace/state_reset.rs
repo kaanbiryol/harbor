@@ -68,7 +68,7 @@ impl AppView {
         self.detail_state.log_chunk = None;
     }
 
-    pub(super) fn clear_selected_pull_request_detail_state(&mut self) {
+    pub(crate) fn clear_selected_pull_request_detail_state(&mut self) {
         self.sync_runtime.clear_selected_pull_request();
         self.active_commit_sha = None;
         self.pull_request_description_editing = false;

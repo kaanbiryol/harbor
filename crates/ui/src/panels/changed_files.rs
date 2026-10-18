@@ -25,6 +25,21 @@ fn render_changed_files_loading() -> AnyElement {
 }
 
 impl AppView {
+    pub(crate) fn render_changed_files_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .debug_selector(|| "changed-files-sidebar".to_string())
+            .size_full()
+            .flex()
+            .flex_col()
+            .min_h_0()
+            .border_1()
+            .border_color(color::border())
+            .bg(color::panel_background())
+            .overflow_hidden()
+            .child(self.render_changed_files_header(cx))
+            .child(self.render_changed_files_body(cx))
+    }
+
     pub(super) fn render_changed_files_body(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.detail_state.files_loading() && self.detail_state.files().is_empty() {
             return render_changed_files_loading();
