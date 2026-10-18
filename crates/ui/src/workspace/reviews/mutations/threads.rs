@@ -278,6 +278,8 @@ impl AppView {
             .set_review_thread_state(&thread_id, desired_state);
         self.review_state
             .set_review_thread_state_override(thread_id.clone(), desired_state);
+        self.overview_state
+            .set_thread_expansion_override(thread_id.clone(), !resolved);
         self.sync_unresolved_thread_count();
         self.review_state
             .start_review_thread_action(thread_id.clone());
@@ -326,6 +328,8 @@ impl AppView {
                                     .set_review_thread_state(&thread_id, previous_state);
                                 view.sync_unresolved_thread_count();
                             }
+                            view.overview_state
+                                .set_thread_expansion_override(thread_id.clone(), resolved);
                             let message = if resolved {
                                 format!("Failed to resolve review thread: {error}")
                             } else {

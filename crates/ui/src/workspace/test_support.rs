@@ -337,6 +337,14 @@ impl FakeGitHubApi {
             .clone()
     }
 
+    pub(crate) fn push_resolve_review_thread(&self, result: Result<()>) {
+        push_result(&self.resolve_thread_results, result);
+    }
+
+    pub(crate) fn push_unresolve_review_thread(&self, result: Result<()>) {
+        push_result(&self.unresolve_thread_results, result);
+    }
+
     pub(crate) fn calls(&self) -> Vec<String> {
         self.calls
             .lock()

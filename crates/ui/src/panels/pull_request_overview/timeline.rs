@@ -23,6 +23,7 @@ use crate::{
             ReviewThreadReplyComposerState, render_review_thread_reply_composer,
             review_thread_state_presentation, review_thread_ui_state,
         },
+        review_thread_line_label,
     },
     visual::{Tone, color, tone_colors},
     workspace::{AppView, ReviewCommentUiError, ReviewReactionAction, ReviewThreadUiError},
@@ -79,7 +80,12 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
         .filter(|error| error.thread_id == thread.id)
         .map(|error| error.message.clone());
     let diff_preview = expanded.then_some(diff_preview).flatten();
-    let path = thread.path.clone();
+    let (directory, file_name) = match thread.path.rsplit_once('/') {
+        Some((directory, file_name)) => (Some(format!("{directory}/")), file_name.to_string()),
+        None => (None, thread.path.clone()),
+    };
+    let line_label = review_thread_line_label(thread);
+    let summary = (!expanded).then(|| overview_thread_summary(thread));
     let thread_id = thread.id.clone();
     let selector = format!("overview-thread-card-{}", thread.id);
     let node_selector = format!("overview-thread-node-{}", thread.id);
@@ -95,7 +101,17 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
     render_timeline_row_with_node_offset(
         div()
             .debug_selector(move || node_selector.clone())
+            .relative()
             .child(render_timeline_icon(icon, tone))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(11.5))
+                    .left(px(24.0))
+                    .w(px(6.0))
+                    .h(px(1.0))
+                    .bg(color::border()),
+            )
             .into_any_element(),
         div()
             .debug_selector(move || selector.clone())
@@ -123,19 +139,58 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
                                     .items_center()
                                     .gap_2()
                                     .child(
-                                        Icon::new(Octicon::File)
-                                            .xsmall()
-                                            .text_color(color::text_muted()),
+                                        Icon::new(if expanded {
+                                            Octicon::ChevronDown
+                                        } else {
+                                            Octicon::ChevronRight
+                                        })
+                                        .xsmall()
+                                        .text_color(color::text_muted()),
                                     )
                                     .child(
                                         div()
                                             .min_w_0()
                                             .flex_1()
-                                            .truncate()
+                                            .flex()
+                                            .items_center()
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
                                             .text_xs()
-                                            .font_medium()
-                                            .text_color(color::text_primary())
-                                            .child(path),
+                                            .when_some(directory, |element, directory| {
+                                                element.child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .truncate()
+                                                        .text_color(color::text_muted())
+                                                        .child(directory),
+                                                )
+                                            })
+                                            .child(
+                                                div()
+                                                    .flex_none()
+                                                    .font_medium()
+                                                    .text_color(color::text_primary())
+                                                    .child(file_name),
+                                            )
+                                            .when_some(line_label, |element, line_label| {
+                                                element.child(
+                                                    div()
+                                                        .flex_none()
+                                                        .pl_1()
+                                                        .text_color(color::text_muted())
+                                                        .child(line_label),
+                                                )
+                                            })
+                                            .when_some(summary, |element, summary| {
+                                                element.child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .pl_2()
+                                                        .truncate()
+                                                        .text_color(color::text_muted())
+                                                        .child(summary),
+                                                )
+                                            }),
                                     ),
                             )
                             .suffix(move |_, _| {
@@ -182,15 +237,6 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
                                     .when(!ui_state.can_toggle_resolution, |element| {
                                         element.child(render_status_pill(status, tone))
                                     })
-                                    .child(
-                                        Icon::new(if expanded {
-                                            Octicon::ChevronDown
-                                        } else {
-                                            Octicon::ChevronRight
-                                        })
-                                        .xsmall()
-                                        .text_color(color::text_muted()),
-                                    )
                             })
                             .on_click(move |_, _, cx| {
                                 toggle_view.update(cx, |view, cx| {
@@ -208,8 +254,6 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
                         .min_w_0()
                         .border_t_1()
                         .border_color(color::border_subtle())
-                        .px_3()
-                        .py_2()
                         .child(render_review_diff_preview(
                             preview,
                             mono_font_family.clone(),
@@ -463,6 +507,20 @@ pub(super) fn render_overview_thread_comment(
                 }),
         )
         .into_any_element()
+}
+
+fn overview_thread_summary(thread: &ReviewThread) -> String {
+    let comment_count = thread.comments.len();
+    let comments = if comment_count == 1 {
+        "1 comment".to_string()
+    } else {
+        format!("{comment_count} comments")
+    };
+    match thread.state {
+        ReviewThreadState::Resolved => format!("· {comments} · resolved"),
+        ReviewThreadState::Outdated => format!("· {comments} · outdated"),
+        ReviewThreadState::Unresolved => format!("· {comments}"),
+    }
 }
 
 pub(super) fn overview_thread_expanded(

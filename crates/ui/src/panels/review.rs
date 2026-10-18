@@ -8,7 +8,7 @@ mod diff_preview;
 use diff_preview::ReviewDiffPreviewLine;
 pub(crate) use diff_preview::{
     ReviewDiffPreview, render_review_diff_preview, review_thread_diff_preview,
-    review_thread_suggestion_context,
+    review_thread_line_label, review_thread_suggestion_context,
 };
 
 pub(crate) fn review_time_label(review: &PullRequestReview) -> String {

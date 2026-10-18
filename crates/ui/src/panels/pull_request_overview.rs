@@ -491,7 +491,7 @@ fn render_overview_activity_header(
                                     cx,
                                 );
                             }))
-                            .child(format!("unresolved {unresolved_thread_count}")),
+                            .child(format!("{unresolved_thread_count} unresolved")),
                     )
                 }),
         )

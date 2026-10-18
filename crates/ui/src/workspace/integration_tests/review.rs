@@ -115,3 +115,52 @@ async fn refresh_review_data_keeps_threads_when_reviews_fail(cx: &mut TestAppCon
         );
     });
 }
+
+#[gpui::test]
+async fn resolving_collapses_thread_and_failed_reopen_keeps_it_collapsed(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let thread = review_thread(ReviewThreadState::Unresolved);
+    let mut resolved_thread = thread.clone();
+    resolved_thread.state = ReviewThreadState::Resolved;
+    api.push_current_user(Ok("octocat".into()));
+    api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::new()));
+    api.push_review_threads(Ok(vec![thread.clone()]));
+    api.push_resolve_review_thread(Ok(()));
+    api.push_current_user(Ok("octocat".into()));
+    api.push_reviews(Ok(Vec::new()));
+    api.push_pull_request_comments(Ok(Vec::new()));
+    api.push_review_threads(Ok(vec![resolved_thread]));
+    api.push_unresolve_review_thread(Err(github_error("permission denied")));
+    let (view, cx) = init_workspace_service_test(cx, api);
+    view.update(cx, |view, cx| {
+        view.pull_requests = vec![pull_request()];
+        view.load_selected_review_data(cx);
+    });
+    cx.run_until_parked();
+
+    view.update(cx, |view, cx| {
+        view.set_review_thread_resolved(thread.id.clone(), true, cx);
+        assert_eq!(
+            view.overview_state.thread_expansion_override(&thread.id),
+            Some(false)
+        );
+    });
+    cx.run_until_parked();
+
+    view.update(cx, |view, cx| {
+        view.set_review_thread_resolved(thread.id.clone(), false, cx);
+        assert_eq!(
+            view.overview_state.thread_expansion_override(&thread.id),
+            Some(true)
+        );
+    });
+    cx.run_until_parked();
+
+    view.read_with(cx, |view, _| {
+        assert_eq!(
+            view.overview_state.thread_expansion_override(&thread.id),
+            Some(false)
+        );
+    });
+}

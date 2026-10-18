@@ -38,6 +38,7 @@ pub(super) fn render_overview_commit_event(
                 move || format!("overview-commit-{sha}")
             })
             .id(("overview-commit", index))
+            .group("overview-commit-row")
             .w_full()
             .min_w_0()
             .flex()
@@ -65,8 +66,14 @@ pub(super) fn render_overview_commit_event(
             )
             .child(
                 div()
+                    .flex_none()
+                    .px_1()
+                    .rounded_xs()
                     .font_family("monospace")
-                    .text_color(color::text_muted())
+                    .text_color(color::text_secondary())
+                    .group_hover("overview-commit-row", |style| {
+                        style.text_color(color::accent()).bg(color::row_hover())
+                    })
                     .child(short_sha),
             )
             .when_some(commit.authored_at, |element, authored_at| {

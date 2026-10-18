@@ -9,6 +9,8 @@ use crate::{
     visual::{Tone, color, tone_colors},
 };
 
+const LEADING_CONTEXT_LINES: usize = 2;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewDiffPreview {
     pub(super) lines: Vec<ReviewDiffPreviewLine>,
@@ -27,24 +29,19 @@ pub(super) struct ReviewDiffPreviewLine {
     pub(super) marker: &'static str,
     pub(super) text: String,
     pub(super) tone: Tone,
+    pub(super) is_leading_context: bool,
 }
 
 pub(crate) fn render_review_diff_preview(
     preview: ReviewDiffPreview,
     mono_font_family: SharedString,
 ) -> impl IntoElement {
-    div()
-        .min_w_0()
-        .overflow_hidden()
-        .rounded_xs()
-        .border_1()
-        .border_color(color::border_subtle())
-        .children(
-            preview
-                .lines
-                .into_iter()
-                .map(move |line| render_review_diff_preview_line(line, mono_font_family.clone())),
-        )
+    div().min_w_0().overflow_hidden().py_1().children(
+        preview
+            .lines
+            .into_iter()
+            .map(move |line| render_review_diff_preview_line(line, mono_font_family.clone())),
+    )
 }
 
 fn render_review_diff_preview_line(
@@ -64,10 +61,25 @@ fn render_review_diff_preview_line(
         .py_1()
         .text_xs()
         .bg(tone_colors(line.tone).background)
-        .text_color(color::text_primary())
+        .text_color(if line.is_leading_context {
+            color::text_muted()
+        } else {
+            color::text_primary()
+        })
         .font_family(mono_font_family)
-        .child(div().w_8().text_right().child(line_label))
-        .child(div().w_3().child(line.marker))
+        .child(
+            div()
+                .w_8()
+                .text_right()
+                .text_color(color::text_muted())
+                .child(line_label),
+        )
+        .child(
+            div()
+                .w_3()
+                .text_color(color::text_muted())
+                .child(line.marker),
+        )
         .child(div().min_w_0().flex_1().truncate().child(line.text))
 }
 
@@ -94,6 +106,7 @@ fn review_comment_diff_preview(
             marker: "",
             text: "diff context unavailable".to_string(),
             tone: Tone::Neutral,
+            is_leading_context: false,
         }],
         suggestion_context: None,
     };
@@ -108,17 +121,18 @@ fn review_comment_diff_preview(
     let diff_lines = diff
         .hunks
         .iter()
-        .flat_map(|hunk| hunk.lines.iter())
+        .enumerate()
+        .flat_map(|(hunk_index, hunk)| hunk.lines.iter().map(move |line| (hunk_index, line)))
         .collect::<Vec<_>>();
     let Some(start_index) = diff_lines
         .iter()
-        .position(|line| diff_line_matches_target(line, target.start_side, target.start_line))
+        .position(|(_, line)| diff_line_matches_target(line, target.start_side, target.start_line))
     else {
         return Some(fallback());
     };
     let Some(end_index) = diff_lines
         .iter()
-        .position(|line| diff_line_matches_target(line, target.end_side, target.end_line))
+        .position(|(_, line)| diff_line_matches_target(line, target.end_side, target.end_line))
     else {
         return Some(fallback());
     };
@@ -127,10 +141,28 @@ fn review_comment_diff_preview(
     } else {
         end_index..=start_index
     };
-    let selected_diff_lines = &diff_lines[range];
-    let lines = selected_diff_lines
+    let first_index = *range.start();
+    let first_hunk = diff_lines[first_index].0;
+    let leading_context = diff_lines
+        [first_index.saturating_sub(LEADING_CONTEXT_LINES)..first_index]
         .iter()
-        .map(|line| review_diff_preview_line(line))
+        .filter(|(hunk_index, line)| {
+            *hunk_index == first_hunk && line.kind != DiffLineKind::Metadata
+        })
+        .map(|(_, line)| ReviewDiffPreviewLine {
+            is_leading_context: true,
+            ..review_diff_preview_line(line)
+        });
+    let selected_diff_lines = diff_lines[range]
+        .iter()
+        .map(|(_, line)| *line)
+        .collect::<Vec<_>>();
+    let lines = leading_context
+        .chain(
+            selected_diff_lines
+                .iter()
+                .map(|line| review_diff_preview_line(line)),
+        )
         .collect::<Vec<_>>();
     if lines.is_empty() {
         return Some(fallback());
@@ -245,6 +277,19 @@ fn review_comment_diff_target(
     None
 }
 
+/// Short location label such as `L21` or `L10-12` for a thread header.
+pub(crate) fn review_thread_line_label(thread: &ReviewThread) -> Option<String> {
+    let comment = thread.comments.first()?;
+    let target = review_comment_diff_target(comment, thread)?;
+    let first_line = target.start_line.min(target.end_line);
+    let last_line = target.start_line.max(target.end_line);
+    Some(if first_line == last_line {
+        format!("L{last_line}")
+    } else {
+        format!("L{first_line}-{last_line}")
+    })
+}
+
 fn diff_line_matches_target(line: &DiffLine, side: ReviewSide, target_line: u32) -> bool {
     match side {
         ReviewSide::Left => line.old_line == Some(target_line),
@@ -265,5 +310,6 @@ fn review_diff_preview_line(line: &DiffLine) -> ReviewDiffPreviewLine {
         marker,
         text: line.text.clone(),
         tone,
+        is_leading_context: false,
     }
 }

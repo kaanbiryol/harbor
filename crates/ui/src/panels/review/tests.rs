@@ -31,12 +31,22 @@ fn builds_diff_preview_for_inline_review_comments() {
     assert_eq!(
         review_thread_diff_preview(&thread, &files, &diffs),
         Some(ReviewDiffPreview {
-            lines: vec![ReviewDiffPreviewLine {
-                line: Some(11),
-                marker: "+",
-                text: "Please tighten this branch.".to_string(),
-                tone: Tone::Success,
-            }],
+            lines: vec![
+                ReviewDiffPreviewLine {
+                    line: Some(10),
+                    marker: " ",
+                    text: "context".to_string(),
+                    tone: Tone::Neutral,
+                    is_leading_context: true,
+                },
+                ReviewDiffPreviewLine {
+                    line: Some(11),
+                    marker: "+",
+                    text: "Please tighten this branch.".to_string(),
+                    tone: Tone::Success,
+                    is_leading_context: false,
+                },
+            ],
             suggestion_context: Some(ReviewSuggestionContext {
                 original_lines: vec![ReviewSuggestionOriginalLine {
                     line_number: 11,
@@ -70,16 +80,25 @@ fn builds_diff_preview_for_selected_review_ranges() {
         Some(ReviewDiffPreview {
             lines: vec![
                 ReviewDiffPreviewLine {
+                    line: Some(10),
+                    marker: " ",
+                    text: "context".to_string(),
+                    tone: Tone::Neutral,
+                    is_leading_context: true,
+                },
+                ReviewDiffPreviewLine {
                     line: Some(11),
                     marker: "+",
                     text: "Please tighten this branch.".to_string(),
                     tone: Tone::Success,
+                    is_leading_context: false,
                 },
                 ReviewDiffPreviewLine {
                     line: Some(12),
                     marker: "+",
                     text: "Also cover this selected line.".to_string(),
                     tone: Tone::Success,
+                    is_leading_context: false,
                 },
             ],
             suggestion_context: Some(ReviewSuggestionContext {
