@@ -60,13 +60,15 @@ fn row_rail_color(tone: PullRequestRowRailTone) -> Option<gpui::Rgba> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PullRequestCheckIndicator {
+pub(super) enum PullRequestCheckIndicator {
     Failed,
     Pending,
     Passed,
 }
 
-fn pull_request_check_indicator(summary: ChecksSummary) -> Option<PullRequestCheckIndicator> {
+pub(super) fn pull_request_check_indicator(
+    summary: ChecksSummary,
+) -> Option<PullRequestCheckIndicator> {
     if summary.failed > 0 {
         Some(PullRequestCheckIndicator::Failed)
     } else if summary.pending > 0 {
@@ -78,7 +80,7 @@ fn pull_request_check_indicator(summary: ChecksSummary) -> Option<PullRequestChe
     }
 }
 
-fn render_check_indicator(indicator: PullRequestCheckIndicator) -> impl IntoElement {
+pub(super) fn render_check_indicator(indicator: PullRequestCheckIndicator) -> impl IntoElement {
     let (icon, tone, tooltip) = match indicator {
         PullRequestCheckIndicator::Failed => (Octicon::XCircle, Tone::Danger, "CI failed"),
         PullRequestCheckIndicator::Pending => (Octicon::Clock, Tone::Warning, "CI pending"),

@@ -13,6 +13,8 @@ use crate::{
     workspace::AppView,
 };
 
+use super::inbox_pull_request_row::{pull_request_check_indicator, render_check_indicator};
+
 impl AppView {
     pub(super) fn render_panel_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
@@ -20,6 +22,9 @@ impl AppView {
             .selected_pull_request()
             .map(|pull_request| pull_request.unresolved_threads)
             .unwrap_or_default();
+        let check_indicator = self
+            .selected_pull_request()
+            .and_then(|pull_request| pull_request_check_indicator(pull_request.checks_summary));
         let commit_count = self
             .detail_state
             .commits_loaded()
@@ -52,6 +57,12 @@ impl AppView {
                                 .child(render_tab_count(commit_count, Tone::Neutral)),
                         )
                     },
+                )
+                .when_some(
+                    (tab == PanelTab::Checks)
+                        .then_some(check_indicator)
+                        .flatten(),
+                    |tab, indicator| tab.suffix(render_check_indicator(indicator)),
                 )
         });
 
