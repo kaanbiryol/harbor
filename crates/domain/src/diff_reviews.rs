@@ -274,7 +274,8 @@ fn review_anchor_matches_line<T>(anchor: ReviewThreadAnchor, line: &DiffLine<T>)
     }
 }
 
-fn file_path_matches(file: &DiffFile, path: &str) -> bool {
+/// Matches a review path against a diff file, ignoring `a/` and `b/` prefixes and following renames.
+pub fn file_path_matches(file: &DiffFile, path: &str) -> bool {
     path_matches(&file.path, path)
         || file
             .previous_path

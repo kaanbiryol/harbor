@@ -14,7 +14,7 @@ use crate::{
     },
     github::{avatar_initial, avatar_url as github_avatar_url, profile_url},
     icons::Octicon,
-    visual::{Tone, color, leading_truncated_path, tone_text},
+    visual::{Tone, color, leading_truncated_path},
     workspace::AppView,
 };
 
@@ -611,20 +611,6 @@ fn pull_request_review_state_tone(state: PullRequestReviewState) -> (&'static st
         PullRequestReviewState::Approved => ("approved", Tone::Success),
         PullRequestReviewState::ChangesRequested => ("changes requested", Tone::Danger),
         PullRequestReviewState::Dismissed => ("dismissed", Tone::Neutral),
-    }
-}
-
-pub(crate) fn review_thread_state_label(state: ReviewThreadState) -> (&'static str, gpui::Hsla) {
-    let (label, tone) = review_thread_state_tone(state);
-
-    (label, tone_text(tone).into())
-}
-
-pub(super) fn review_thread_state_tone(state: ReviewThreadState) -> (&'static str, Tone) {
-    match state {
-        ReviewThreadState::Unresolved => ("unresolved", Tone::Warning),
-        ReviewThreadState::Resolved => ("resolved", Tone::Success),
-        ReviewThreadState::Outdated => ("outdated", Tone::Neutral),
     }
 }
 

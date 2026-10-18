@@ -12,14 +12,15 @@ use super::{
     review::{
         ReviewDiffPreview, render_review_author_link, render_review_avatar,
         render_review_diff_preview, review_comment_time_label, review_comment_time_tooltip,
-        review_thread_location, review_thread_state_tone,
+        review_thread_location,
     },
     review_markdown::{ReviewSuggestionContext, render_review_markdown_body_with_context},
     review_thread_chrome::{
         ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
         ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
         ReviewThreadReplyComposerState, render_review_thread_actions,
-        render_review_thread_reply_composer, review_thread_ui_state,
+        render_review_thread_reply_composer, review_thread_state_presentation,
+        review_thread_ui_state,
     },
 };
 
@@ -53,7 +54,7 @@ pub(crate) fn render_review_thread_row(state: ReviewThreadRowRenderState<'_>) ->
         mono_font_family,
         view_entity,
     } = state;
-    let (label, tone) = review_thread_state_tone(thread.state);
+    let (label, tone, _) = review_thread_state_presentation(thread.state);
     let location = review_thread_location(thread);
     let ui_state = review_thread_ui_state(
         thread,

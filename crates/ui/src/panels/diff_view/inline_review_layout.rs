@@ -1,4 +1,4 @@
-use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide};
+use harbor_domain::{DiffFile, ReviewCommentRange, ReviewSide, diff_reviews::file_path_matches};
 
 use crate::{
     diff::{DiffLine, DiffLineKind},
@@ -66,7 +66,7 @@ pub(super) fn review_comment_range_matches_file(
     file: &DiffFile,
     range: &ReviewCommentRange,
 ) -> bool {
-    path_matches_file(file, &range.path)
+    file_path_matches(file, &range.path)
 }
 
 pub(super) fn review_comment_range_label(range: &ReviewCommentRange) -> String {
@@ -80,10 +80,6 @@ pub(super) fn review_comment_range_label(range: &ReviewCommentRange) -> String {
     } else {
         format!("{side} line {} in {}", range.line, range.path)
     }
-}
-
-fn path_matches_file(file: &DiffFile, path: &str) -> bool {
-    path == file.path || file.previous_path.as_deref() == Some(path)
 }
 
 #[cfg(test)]
@@ -152,6 +148,20 @@ mod tests {
             review_comment_range_label(&range),
             "new lines 40-42 in src/lib.rs"
         );
+    }
+
+    #[test]
+    fn matches_review_range_with_diff_prefix_like_review_threads() {
+        let file = test_file("src/lib.rs");
+        let range = ReviewCommentRange {
+            path: "b/src/lib.rs".to_string(),
+            line: 1,
+            side: ReviewSide::Right,
+            start_line: None,
+            start_side: None,
+        };
+
+        assert!(review_comment_range_matches_file(&file, &range));
     }
 
     #[test]

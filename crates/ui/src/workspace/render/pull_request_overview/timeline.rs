@@ -18,7 +18,7 @@ use crate::{
         review_thread_chrome::{
             ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
             ReviewThreadReplyComposerState, render_review_thread_reply_composer,
-            review_thread_ui_state,
+            review_thread_state_presentation, review_thread_ui_state,
         },
     },
     visual::{Tone, color, tone_colors},
@@ -61,11 +61,7 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
         comments,
         view_entity,
     } = state;
-    let (status, tone, icon) = match thread.state {
-        ReviewThreadState::Unresolved => ("unresolved", Tone::Warning, Octicon::CommentDiscussion),
-        ReviewThreadState::Resolved => ("resolved", Tone::Success, Octicon::CheckCircle),
-        ReviewThreadState::Outdated => ("outdated", Tone::Neutral, Octicon::Clock),
-    };
+    let (status, tone, icon) = review_thread_state_presentation(thread.state);
     let ui_state = review_thread_ui_state(
         thread,
         active_review_thread_reply,

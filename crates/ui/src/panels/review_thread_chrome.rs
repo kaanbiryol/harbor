@@ -3,11 +3,12 @@ use crate::gpui_component::{
     button::{Button, ButtonVariants},
     input::{Textarea, TextareaState},
 };
-use gpui::{Entity, IntoElement, Pixels, div, prelude::*};
+use gpui::{AnyElement, Entity, IntoElement, Pixels, div, prelude::*};
 use harbor_domain::{ReviewThread, ReviewThreadState};
 
 use crate::{
     icons::Octicon,
+    panels::chrome::render_status_pill,
     visual::{Tone, color, tone_colors},
     workspace::AppView,
 };
@@ -245,24 +246,26 @@ pub(crate) fn render_review_thread_actions(state: ReviewThreadActionsState) -> i
         })
 }
 
-pub(crate) fn render_review_thread_status_pill(
-    label: &str,
-    text_color: gpui::Hsla,
-) -> impl IntoElement {
-    let tone = match label {
-        "unresolved" => Tone::Warning,
-        "resolved" => Tone::Neutral,
-        "outdated" => Tone::Neutral,
-        _ => Tone::Info,
-    };
-    let colors = tone_colors(tone);
-    let text_color = if label == "resolved" {
-        color::text_disabled().into()
-    } else {
-        text_color
-    };
+pub(crate) fn review_thread_state_presentation(
+    state: ReviewThreadState,
+) -> (&'static str, Tone, Octicon) {
+    match state {
+        ReviewThreadState::Unresolved => ("unresolved", Tone::Warning, Octicon::CommentDiscussion),
+        ReviewThreadState::Resolved => ("resolved", Tone::Success, Octicon::CheckCircle),
+        ReviewThreadState::Outdated => ("outdated", Tone::Neutral, Octicon::Clock),
+    }
+}
 
+// Inline diff threads mute resolved threads so open discussions stand out in the diff.
+pub(crate) fn render_review_thread_status_pill(state: ReviewThreadState) -> AnyElement {
+    let (label, tone, _) = review_thread_state_presentation(state);
+    if state != ReviewThreadState::Resolved {
+        return render_status_pill(label, tone).into_any_element();
+    }
+
+    let colors = tone_colors(Tone::Neutral);
     div()
+        .flex_none()
         .rounded_xs()
         .border_1()
         .border_color(colors.border)
@@ -271,8 +274,9 @@ pub(crate) fn render_review_thread_status_pill(
         .py_0p5()
         .text_xs()
         .font_medium()
-        .text_color(text_color)
-        .child(label.to_string())
+        .text_color(color::text_disabled())
+        .child(label)
+        .into_any_element()
 }
 
 pub(crate) fn render_review_thread_reply_composer(

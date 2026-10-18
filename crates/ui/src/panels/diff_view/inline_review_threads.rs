@@ -3,16 +3,13 @@ use gpui::{Entity, IntoElement, div, prelude::*, px};
 use harbor_domain::ReviewThreadState;
 
 use crate::{
-    panels::{
-        review::review_thread_state_label,
-        review_thread_chrome::{
-            ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
-            ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
-            ReviewThreadReplyComposerState as SharedReviewThreadReplyComposerState,
-            render_review_thread_actions,
-            render_review_thread_reply_composer as render_shared_review_thread_reply_composer,
-            render_review_thread_status_pill,
-        },
+    panels::review_thread_chrome::{
+        ReviewThreadActionIds, ReviewThreadActionsChrome, ReviewThreadActionsState,
+        ReviewThreadReplyComposerChrome, ReviewThreadReplyComposerIds,
+        ReviewThreadReplyComposerState as SharedReviewThreadReplyComposerState,
+        render_review_thread_actions,
+        render_review_thread_reply_composer as render_shared_review_thread_reply_composer,
+        render_review_thread_status_pill,
     },
     visual::color,
     workspace::AppView,
@@ -51,7 +48,6 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
         can_toggle_resolution,
         view_entity,
     } = state;
-    let (label, color) = review_thread_state_label(thread_state);
     let is_resolved = thread_state == ReviewThreadState::Resolved;
 
     div()
@@ -79,7 +75,7 @@ pub(super) fn render_review_thread_header(state: ReviewThreadHeaderState) -> imp
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(render_review_thread_status_pill(label, color)),
+                .child(render_review_thread_status_pill(thread_state)),
         )
         .child(render_review_thread_actions(ReviewThreadActionsState {
             ids: ReviewThreadActionIds::inline(&thread_id),
