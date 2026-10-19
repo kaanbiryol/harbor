@@ -673,6 +673,7 @@ fn pull_request(number: u64) -> PullRequest {
         review_decision: Some(ReviewDecision::ReviewRequired),
         merge_state: Some(MergeState::Clean),
         merge_capabilities: Default::default(),
+        stack: None,
         labels: Vec::new(),
         assignees: Vec::new(),
         requested_reviewers: Vec::new(),

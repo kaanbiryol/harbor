@@ -79,6 +79,9 @@ impl Render for EmptyHarness {
     }
 }
 
+type FakeStackMergeRequest = (RepoId, u64, String, harbor_domain::StackMergeAction);
+type FakeStackMergeRequests = Arc<Mutex<Vec<FakeStackMergeRequest>>>;
+
 type FakeLightPullRequestRequest = (Option<PullRequestPageCursor>, usize, bool);
 type FakeLightPullRequestRequests = Arc<Mutex<Vec<FakeLightPullRequestRequest>>>;
 type FakePullRequestSearchRequest = (
@@ -104,6 +107,9 @@ pub(crate) struct FakeGitHubApi {
     light_pull_request_pages: FakeQueue<ConditionalFetch<PullRequestPage>>,
     pull_request_enrichments: FakeQueue<Vec<PullRequestEnrichment>>,
     pull_request_details: FakeQueue<PullRequest>,
+    stacks: FakeQueue<harbor_domain::PullRequestStack>,
+    stack_merge_results: FakeQueue<harbor_domain::StackMergeOutcome>,
+    stack_merge_requests: FakeStackMergeRequests,
     files: FakeQueue<Vec<DiffFile>>,
     commits: FakeQueue<Vec<PullRequestCommit>>,
     mark_file_viewed_results: FakeQueue<()>,
@@ -153,6 +159,20 @@ impl FakeGitHubApi {
 
     pub(crate) fn pending_detail(&self) -> futures::channel::oneshot::Sender<Result<PullRequest>> {
         push_pending_result(&self.pull_request_details)
+    }
+
+    pub(crate) fn push_stack(&self, result: Result<harbor_domain::PullRequestStack>) {
+        push_result(&self.stacks, result);
+    }
+
+    pub(crate) fn push_stack_merge(&self, result: Result<harbor_domain::StackMergeOutcome>) {
+        push_result(&self.stack_merge_results, result);
+    }
+
+    pub(crate) fn pending_stack(
+        &self,
+    ) -> futures::channel::oneshot::Sender<Result<harbor_domain::PullRequestStack>> {
+        push_pending_result(&self.stacks)
     }
 
     pub(crate) fn pending_files(&self) -> futures::channel::oneshot::Sender<Result<Vec<DiffFile>>> {
@@ -308,6 +328,13 @@ impl FakeGitHubApi {
 
     pub(crate) fn push_create_pull_request_comment(&self, result: Result<()>) {
         push_result(&self.create_pull_request_comment_results, result);
+    }
+
+    pub(crate) fn stack_merge_requests(&self) -> Vec<FakeStackMergeRequest> {
+        self.stack_merge_requests
+            .lock()
+            .expect("stack merge requests mutex should not be poisoned")
+            .clone()
     }
 
     pub(crate) fn calls(&self) -> Vec<String> {
@@ -540,6 +567,14 @@ impl GitHubRepositoryApi for FakeGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestApi for FakeGitHubApi {
+    async fn get_pull_request_stack(
+        &self,
+        _repository: &RepoId,
+        _number: u64,
+    ) -> Result<harbor_domain::PullRequestStack> {
+        self.record_call("get_pull_request_stack");
+        pop_result(&self.stacks, "get_pull_request_stack").await
+    }
     async fn list_pull_request_commits(
         &self,
         _owner: &str,
@@ -713,6 +748,20 @@ impl GitHubWorkflowMutationApi for FakeGitHubApi {
 
 #[async_trait]
 impl GitHubPullRequestMutationApi for FakeGitHubApi {
+    async fn merge_pull_request_stack(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        action: harbor_domain::StackMergeAction,
+    ) -> Result<harbor_domain::StackMergeOutcome> {
+        self.record_call("merge_pull_request_stack");
+        self.stack_merge_requests
+            .lock()
+            .expect("stack merge requests mutex should not be poisoned")
+            .push((repository.clone(), number, head_sha.to_string(), action));
+        pop_result(&self.stack_merge_results, "merge_pull_request_stack").await
+    }
     async fn update_pull_request_body(
         &self,
         _pull_request_node_id: &str,

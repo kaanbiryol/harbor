@@ -14,6 +14,10 @@ actions!(
         SelectNextPullRequest,
         /// Selects the previous pull request in the current list.
         SelectPreviousPullRequest,
+        /// Selects the pull request below the current one in its stack.
+        SelectStackDown,
+        /// Selects the pull request above the current one in its stack.
+        SelectStackUp,
         /// Advances to the next workspace panel tab.
         CyclePanelTab,
         /// Selects the overview panel tab.
@@ -127,6 +131,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
         KeyBinding::new("down", SelectNextPullRequest, Some(KEY_BINDING_CONTEXT)),
         KeyBinding::new("up", SelectPreviousPullRequest, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("shift-j", SelectStackDown, Some(KEY_BINDING_CONTEXT)),
+        KeyBinding::new("shift-k", SelectStackUp, Some(KEY_BINDING_CONTEXT)),
     ]);
 }
 

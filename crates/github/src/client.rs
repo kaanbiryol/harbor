@@ -2,6 +2,7 @@ mod pull_requests;
 mod repositories;
 mod requests;
 mod reviews;
+mod stacks;
 mod workflows;
 
 use harbor_domain::{PullRequest, RepoId, SubmitPullRequestReviewEvent, WorkflowRun};

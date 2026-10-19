@@ -653,7 +653,7 @@ where
     }
 }
 
-fn merge_method_name(method: MergeMethod) -> &'static str {
+pub(super) fn merge_method_name(method: MergeMethod) -> &'static str {
     match method {
         MergeMethod::Merge => "merge",
         MergeMethod::Squash => "squash",

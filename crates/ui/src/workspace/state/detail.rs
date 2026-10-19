@@ -20,6 +20,9 @@ use crate::{
 };
 
 pub(crate) struct PullRequestDetailUiState {
+    pub(crate) stack: Option<Arc<harbor_domain::PullRequestStack>>,
+    pub(crate) stack_load: LoadStatus,
+    pub(crate) stack_expanded: bool,
     files: Arc<Vec<DiffFile>>,
     diffs: Arc<Vec<Option<ParsedDiff>>>,
     check_runs: Arc<Vec<CheckRun>>,
@@ -57,6 +60,9 @@ impl PullRequestDetailUiState {
 
     pub(crate) fn new(files: Vec<DiffFile>, diffs: Vec<Option<ParsedDiff>>) -> Self {
         Self {
+            stack: None,
+            stack_load: LoadStatus::Idle,
+            stack_expanded: false,
             files: Arc::new(files),
             diffs: Arc::new(diffs),
             check_runs: Arc::new(Vec::new()),
@@ -76,6 +82,9 @@ impl PullRequestDetailUiState {
     }
 
     pub(crate) fn reset_for_selection(&mut self) {
+        self.stack = None;
+        self.stack_load.reset();
+        self.stack_expanded = false;
         self.details_available = false;
         self.details_load.reset();
         self.files_load.reset();

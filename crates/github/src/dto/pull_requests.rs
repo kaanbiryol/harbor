@@ -10,6 +10,8 @@ use serde_json::Value;
 use crate::{GitHubError, PullRequestEnrichment, Result};
 
 mod file_viewed_states;
+mod stacks;
+pub(crate) use stacks::*;
 
 pub(crate) use file_viewed_states::*;
 
@@ -26,6 +28,8 @@ struct ApiPullRequest {
     #[serde(default)]
     draft: bool,
     user: Option<ApiUser>,
+    #[serde(default)]
+    stack: Option<ApiStackMembership>,
     head: ApiRef,
     base: ApiRef,
     #[serde(default)]
@@ -431,6 +435,7 @@ impl ApiPullRequest {
                 .map(map_merge_state)
                 .or(Some(MergeState::Unknown)),
             merge_capabilities: PullRequestMergeCapabilities::default(),
+            stack: self.stack.map(ApiStackMembership::into_domain),
             labels: self.labels.into_iter().map(ApiLabel::into_domain).collect(),
             assignees: self
                 .assignees
@@ -499,6 +504,7 @@ impl GraphQlPullRequestSearchNode {
                 viewer_can_queue,
                 self.viewer_can_merge_as_admin,
             ),
+            stack: None,
             labels: self
                 .labels
                 .nodes

@@ -383,3 +383,32 @@ fn maps_pull_request_file_viewed_states_from_graphql() {
         FileViewedState::ChangedSinceViewed
     );
 }
+
+#[test]
+fn maps_native_stack_membership_without_inventing_branch_relationships() {
+    let pull_request_json = json!({
+        "number": 8, "title": "Second layer", "state": "open",
+        "head": { "ref": "layer-two", "sha": "abc123" },
+        "base": { "ref": "layer-one" },
+        "stack": {
+            "id": 123456, "number": 9, "position": 2, "size": 7,
+            "base": { "ref": "main", "sha": "def456" }
+        }
+    });
+    let pull_request =
+        pull_request_from_value(RepoId::new("acme", "app"), pull_request_json.clone()).unwrap();
+    let stack = pull_request.stack.unwrap();
+    assert_eq!(stack.number, 9);
+    assert_eq!(stack.position, 2);
+    assert_eq!(stack.size, 7);
+    assert_eq!(stack.base_ref, "main");
+    assert_eq!(pull_request.base_ref, "layer-one");
+    let mut standalone_json = pull_request_json;
+    standalone_json["stack"] = serde_json::Value::Null;
+    assert!(
+        pull_request_from_value(RepoId::new("acme", "app"), standalone_json)
+            .unwrap()
+            .stack
+            .is_none()
+    );
+}

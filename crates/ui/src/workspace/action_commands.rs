@@ -200,6 +200,9 @@ impl AppView {
                 method,
                 bypass_requirements,
             } => {
+                if pr.stack.is_some() {
+                    return Err("Open the stack controls to merge stacked pull requests".into());
+                }
                 let blocker = if bypass_requirements {
                     merge_without_requirements_blocker(pr)
                 } else {
@@ -228,6 +231,9 @@ impl AppView {
                 })
             }
             PullRequestAction::MergeWhenReady => {
+                if pr.stack.is_some() {
+                    return Err("Open the stack controls to enqueue this stack".into());
+                }
                 if let Some(blocker) = merge_when_ready_blocker(pr) {
                     return Err(blocker);
                 }

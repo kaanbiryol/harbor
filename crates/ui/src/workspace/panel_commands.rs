@@ -79,6 +79,7 @@ impl AppView {
         self.pull_request_inbox_search_open = false;
         self.pull_request_filter_popover_open = false;
         self.file_filter_popover_open = false;
+        self.detail_state.stack_expanded = false;
         self.review_action_comment_target = None;
         self.status = if self.pull_request_inbox.is_visible() {
             "Pull request inbox shown".to_string()
@@ -177,6 +178,7 @@ impl AppView {
         self.pull_request_inbox_search_open = false;
         self.pull_request_filter_popover_open = false;
         self.file_filter_popover_open = false;
+        self.detail_state.stack_expanded = false;
         self.review_action_comment_target = None;
         self.status = "Closed transient UI".to_string();
         cx.notify();

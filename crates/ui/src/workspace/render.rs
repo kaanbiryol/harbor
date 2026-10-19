@@ -34,6 +34,7 @@ mod settings;
 mod settings_account;
 mod settings_auth_methods;
 mod settings_auth_status;
+mod stacks;
 mod status_bar;
 #[cfg(test)]
 mod tests;
@@ -168,6 +169,8 @@ impl Render for AppView {
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::select_next))
             .on_action(cx.listener(Self::select_previous))
+            .on_action(cx.listener(Self::select_stack_down))
+            .on_action(cx.listener(Self::select_stack_up))
             .on_action(cx.listener(Self::cycle_panel_tab))
             .on_action(cx.listener(Self::select_overview_panel))
             .on_action(cx.listener(Self::select_diff_panel))

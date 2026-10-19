@@ -11,12 +11,16 @@ pub mod pull_request_signals;
 mod repository;
 pub mod repository_switcher;
 pub mod reviews;
+pub mod stacks;
 #[cfg(test)]
 mod test_fixtures;
 mod workflows;
 
 pub use checks::checks_summary_from_runs;
 pub use repository::{RepoId, Repository};
+pub use stacks::{
+    PullRequestStack, PullRequestStackMembership, StackMergeAction, StackMergeOutcome,
+};
 pub use workflows::{
     Workflow, WorkflowConclusion, WorkflowJob, WorkflowRun, WorkflowState, WorkflowStatus,
     WorkflowStep, workflow_outcome_label,
@@ -158,6 +162,8 @@ pub struct PullRequest {
     pub merge_state: Option<MergeState>,
     #[serde(default)]
     pub merge_capabilities: PullRequestMergeCapabilities,
+    #[serde(default)]
+    pub stack: Option<PullRequestStackMembership>,
     pub labels: Vec<Label>,
     pub assignees: Vec<PullRequestPerson>,
     pub requested_reviewers: Vec<PullRequestPerson>,

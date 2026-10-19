@@ -118,6 +118,7 @@ impl AppView {
             self.reset_selected_pull_request_detail_state(load.number, cx);
         }
         self.detail_state.apply_details_success();
+        self.load_selected_pull_request_stack(cx);
         self.mark_sync_success(harbor_sync::SyncTarget::SelectedPullRequestMetadata);
 
         if head_changed {

@@ -264,3 +264,113 @@ async fn fullscreen_repository_title_keeps_left_inset(cx: &mut TestAppContext) {
         "fullscreen repository title should keep a visible left inset"
     );
 }
+
+#[gpui::test]
+async fn native_stack_popover_renders_with_virtualized_rows(cx: &mut TestAppContext) {
+    use harbor_domain::{MergeQueueState, PullRequestStack, PullRequestStackMembership};
+    let api = Arc::new(FakeGitHubApi::default());
+    let (_entity, cx) = open_workspace_window(cx, |window, cx| {
+        let view = cx.new(|cx| AppView::new_with_github_api(api, window, cx));
+        view.update(cx, |view, cx| {
+            let members = (1..=100)
+                .map(|number| {
+                    let mut member = pull_request();
+                    member.number = number;
+                    member.stack = Some(PullRequestStackMembership {
+                        number: 101,
+                        position: number as usize,
+                        size: 100,
+                        base_ref: "main".into(),
+                    });
+                    member.merge_capabilities.queue_state = MergeQueueState::Enabled;
+                    member.merge_capabilities.viewer_can_queue = true;
+                    member
+                })
+                .collect::<Vec<_>>();
+            view.pull_requests = vec![members.last().unwrap().clone()];
+            view.detail_state.stack = Some(Arc::new(PullRequestStack {
+                number: 101,
+                base_ref: "main".into(),
+                pull_requests: members,
+            }));
+            view.detail_state.stack_load.succeed();
+            view.detail_state.stack_expanded = true;
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        view
+    });
+    cx.refresh().expect("stack popover should render");
+    let content = cx
+        .debug_bounds("pull-request-stack-content")
+        .expect("native stack popover should be visible");
+    assert!(
+        content.size.height < px(800.),
+        "100 stack members should render in a bounded virtual list"
+    );
+    assert!(content.size.width <= px(600.));
+}
+
+#[gpui::test]
+async fn stack_rows_keep_titles_and_statuses_inside_the_popover(cx: &mut TestAppContext) {
+    use harbor_domain::{MergeQueueState, PullRequestStack, PullRequestStackMembership};
+    let (_entity, cx) = open_workspace_window(cx, |window, cx| {
+        let view = cx
+            .new(|cx| AppView::new_with_github_api(Arc::new(FakeGitHubApi::default()), window, cx));
+        view.update(cx, |view, cx| {
+            let members = (1..=2).map(|number| {
+                let mut member = pull_request();
+                member.number = number;
+                member.title = if number == 2 { "Replace ImmediateClock".into() } else { "Fix the Share map first-fix test flaking on loaded CI runners and retain determinism across all of the supported configurations".into() };
+                member.head_ref = "fix/long-branch-name-that-must-truncate-without-moving-the-readiness-label".into();
+                member.stack = Some(PullRequestStackMembership { number: 3, position: number as usize, size: 2, base_ref: "main".into() });
+                member.merge_capabilities.queue_state = MergeQueueState::Enabled;
+                member.checks_summary.failed = 1;
+                member
+            }).collect::<Vec<_>>();
+            view.pull_requests = vec![members[1].clone()];
+            view.detail_state.stack = Some(Arc::new(PullRequestStack { number: 3, base_ref: "main".into(), pull_requests: members }));
+            view.detail_state.stack_load.succeed();
+            view.detail_state.stack_expanded = true;
+            view.pull_request_inbox.set_visible(false);
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        view
+    });
+    for viewport_width in [900., 420.] {
+        cx.simulate_resize(size(px(viewport_width), px(700.)));
+        cx.refresh().expect("stack popover should render");
+        let content = cx.debug_bounds("pull-request-stack-content").unwrap();
+        let first = cx.debug_bounds("stack-pr-row-2").unwrap();
+        let second = cx.debug_bounds("stack-pr-row-1").unwrap();
+        let first_status = cx.debug_bounds("stack-pr-status-2").unwrap();
+        let second_status = cx.debug_bounds("stack-pr-status-1").unwrap();
+        let long_title = cx.debug_bounds("stack-pr-title-1").unwrap();
+        assert_eq!(
+            first.size.width, second.size.width,
+            "stack row widths must not depend on their titles"
+        );
+        assert!(
+            first.size.width >= content.size.width - px(20.),
+            "selection must span the popover width: {first:?}, {content:?}"
+        );
+        assert_eq!(
+            first_status.right(),
+            second_status.right(),
+            "readiness labels must align"
+        );
+        assert!(
+            second_status.right() <= content.right() - px(8.),
+            "readiness must stay inside the popover"
+        );
+        assert!(
+            long_title.right() < second_status.origin.x,
+            "long titles must truncate before readiness labels"
+        );
+        assert!(
+            content.origin.x >= px(0.) && content.right() <= px(viewport_width),
+            "stack popover must fit inside the window: {content:?}"
+        );
+    }
+}

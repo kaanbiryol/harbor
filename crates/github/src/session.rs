@@ -253,6 +253,15 @@ impl GitHubRepositoryApi for GitHubSession {
 
 #[async_trait]
 impl GitHubPullRequestApi for GitHubSession {
+    async fn get_pull_request_stack(
+        &self,
+        repository: &RepoId,
+        number: u64,
+    ) -> Result<harbor_domain::PullRequestStack> {
+        self.client()?
+            .get_pull_request_stack(repository, number)
+            .await
+    }
     async fn list_pull_request_commits(
         &self,
         owner: &str,
@@ -506,6 +515,17 @@ impl GitHubReviewMutationApi for GitHubSession {
 
 #[async_trait]
 impl GitHubPullRequestMutationApi for GitHubSession {
+    async fn merge_pull_request_stack(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        action: harbor_domain::StackMergeAction,
+    ) -> Result<harbor_domain::StackMergeOutcome> {
+        self.client()?
+            .merge_pull_request_stack(repository, number, head_sha, action)
+            .await
+    }
     async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()> {
         self.client()?
             .update_pull_request_body(pull_request_node_id, body)

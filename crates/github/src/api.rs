@@ -142,6 +142,11 @@ pub trait GitHubRepositoryApi: Send + Sync {
 
 #[async_trait]
 pub trait GitHubPullRequestApi: Send + Sync {
+    async fn get_pull_request_stack(
+        &self,
+        repository: &RepoId,
+        number: u64,
+    ) -> Result<harbor_domain::PullRequestStack>;
     async fn list_pull_request_commits(
         &self,
         owner: &str,
@@ -162,6 +167,13 @@ pub trait GitHubPullRequestApi: Send + Sync {
 
 #[async_trait]
 pub trait GitHubPullRequestMutationApi: Send + Sync {
+    async fn merge_pull_request_stack(
+        &self,
+        repository: &RepoId,
+        number: u64,
+        head_sha: &str,
+        action: harbor_domain::StackMergeAction,
+    ) -> Result<harbor_domain::StackMergeOutcome>;
     async fn update_pull_request_body(&self, pull_request_node_id: &str, body: &str) -> Result<()>;
     async fn request_pull_request_reviewer(
         &self,

@@ -16,6 +16,7 @@ mod loading;
 mod review;
 mod search;
 mod selected_pull_request;
+mod stacks;
 
 fn enqueue_successful_detail_load(api: &FakeGitHubApi, pull_request: &PullRequest) {
     api.push_pull_request_detail(Ok(pull_request.clone()));

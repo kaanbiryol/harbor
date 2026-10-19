@@ -33,6 +33,7 @@ mod repository_actions_loaders;
 mod repository_loaders;
 mod reviews;
 mod settings;
+mod stacks;
 mod state;
 mod state_reset;
 mod status;

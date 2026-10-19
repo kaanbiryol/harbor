@@ -6,6 +6,7 @@ use gpui::Task;
 pub(crate) enum SelectedPullRequestTaskKind {
     Cache,
     Metadata,
+    Stack,
     Files,
     Checks,
     Commits,

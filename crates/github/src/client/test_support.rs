@@ -20,6 +20,7 @@ pub(super) struct RecordingTransport {
     pub(super) get_responses: Arc<Mutex<Vec<Value>>>,
     pub(super) posts: Arc<Mutex<Vec<(String, Value)>>>,
     pub(super) puts: Arc<Mutex<Vec<(String, Value)>>>,
+    pub(super) put_response: Arc<Mutex<Option<Value>>>,
     pub(super) graphql_calls: Arc<Mutex<Vec<(String, Value)>>>,
     pub(super) graphql_responses: Arc<Mutex<Vec<Value>>>,
     pub(super) graphql_response: Arc<Mutex<Option<Value>>>,
@@ -105,7 +106,12 @@ impl GitHubTransport for RecordingTransport {
             .lock()
             .expect("puts mutex should not be poisoned")
             .push((path.to_string(), body));
-        Ok(Value::Null)
+        Ok(self
+            .put_response
+            .lock()
+            .expect("put response mutex should not be poisoned")
+            .clone()
+            .unwrap_or(Value::Null))
     }
 
     async fn workflow_run_log(
