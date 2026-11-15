@@ -7,6 +7,7 @@ use harbor_github::{
 };
 
 use crate::{
+    actions::OpenMarkdownLink,
     test_fixtures::pull_request,
     workspace::{
         PullRequestInboxCacheKey, PullRequestInboxMode,
@@ -171,6 +172,39 @@ async fn clicking_pull_request_notification_selects_that_pull_request(cx: &mut T
     let recorded = notifications.notifications.lock().unwrap().clone();
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].summary, "Pull request updated #8");
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(
+            view.selected_pull_request()
+                .map(|pull_request| pull_request.number),
+            Some(8)
+        );
+    });
+}
+
+#[gpui::test]
+async fn markdown_links_to_loaded_pull_requests_select_them(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let first_pull_request = pull_request();
+    let mut second_pull_request = pull_request();
+    second_pull_request.number = 8;
+    second_pull_request.node_id = "pr-node-8".to_string();
+    second_pull_request.url = "https://github.com/acme/app/pull/8".to_string();
+    enqueue_successful_detail_load(&api, &second_pull_request);
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update_in(cx, |view, window, cx| {
+        view.pull_requests = vec![first_pull_request.clone(), second_pull_request.clone()];
+        view.selection_state.reset_pull_request_index();
+        view.open_markdown_link(
+            &OpenMarkdownLink {
+                url: "https://github.com/Acme/App/pull/8/files#diff-1".into(),
+            },
+            window,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+
     view_entity.read_with(cx, |view, _| {
         assert_eq!(
             view.selected_pull_request()

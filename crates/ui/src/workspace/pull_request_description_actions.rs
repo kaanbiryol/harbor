@@ -1,6 +1,11 @@
+use std::ops::Range;
+
 use gpui::{Context, Window};
 
-use crate::workspace::{AppView, async_updates::AppViewAsyncUpdateExt};
+use crate::{
+    panels::set_task_checked,
+    workspace::{AppView, PullRequestDetailCacheKey, async_updates::AppViewAsyncUpdateExt},
+};
 
 impl AppView {
     pub(crate) fn start_pull_request_description_edit(
@@ -52,6 +57,87 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let body = self
+            .pull_request_description_input
+            .read(cx)
+            .value()
+            .trim_end()
+            .to_string();
+        self.submit_pull_request_description(body, None, window, cx);
+    }
+
+    /// Sets a description task list item to `checked`, showing the change
+    /// before GitHub confirms it.
+    pub(crate) fn toggle_pull_request_description_task(
+        &mut self,
+        block_index: usize,
+        marker_range: Range<usize>,
+        checked: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .action_runtime
+            .pull_request_description_action_running()
+        {
+            self.set_status("The pull request description is already being saved", cx);
+            return;
+        }
+        let Some(pull_request) = self.selected_pull_request() else {
+            return;
+        };
+        let node_id = pull_request.node_id.clone();
+        let previous_body = pull_request.body.clone();
+        let Some(body) = self
+            .overview_state
+            .description_task_index(block_index, marker_range)
+            .and_then(|task_index| {
+                set_task_checked(
+                    previous_body.as_deref().unwrap_or_default(),
+                    task_index,
+                    checked,
+                )
+            })
+        else {
+            self.report_error(
+                "The description changed since it was shown; reload it and try again",
+                cx,
+            );
+            return;
+        };
+
+        let detail_key = self.selected_pull_request_detail_key();
+        self.set_pull_request_body(&node_id, detail_key.as_ref(), Some(body.clone()));
+        self.submit_pull_request_description(body, Some(previous_body), window, cx);
+    }
+
+    fn set_pull_request_body(
+        &mut self,
+        node_id: &str,
+        detail_key: Option<&PullRequestDetailCacheKey>,
+        body: Option<String>,
+    ) {
+        if let Some(pull_request) = self
+            .pull_requests
+            .iter_mut()
+            .find(|pull_request| pull_request.node_id == node_id)
+        {
+            pull_request.body = body;
+        }
+        if let Some(detail_key) = detail_key {
+            self.overview_state.invalidate_description(detail_key);
+        }
+    }
+
+    /// Saves `body` as the selected pull request's description. A failed save
+    /// restores `restore_body` when it is set.
+    fn submit_pull_request_description(
+        &mut self,
+        body: String,
+        restore_body: Option<Option<String>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let auth_generation = self.auth_generation;
         if self
             .action_runtime
@@ -69,12 +155,6 @@ impl AppView {
         let pull_request_node_id = pull_request.node_id.clone();
         let pull_request_number = pull_request.number;
         let detail_key = self.selected_pull_request_detail_key();
-        let body = self
-            .pull_request_description_input
-            .read(cx)
-            .value()
-            .trim_end()
-            .to_string();
 
         self.action_runtime.start_pull_request_description_action();
         self.status = format!("Saving description for PR #{pull_request_number}");
@@ -94,20 +174,18 @@ impl AppView {
                     match result {
                         Ok(()) => {
                             view.action_runtime.finish_pull_request_description_action();
-                            if let Some(pull_request) = view
-                                .pull_requests
-                                .iter_mut()
-                                .find(|pull_request| pull_request.node_id == pull_request_node_id)
-                            {
-                                pull_request.body = (!body.is_empty()).then_some(body);
+                            // An optimistic save already shows `body`.
+                            if restore_body.is_none() {
+                                view.set_pull_request_body(
+                                    &pull_request_node_id,
+                                    detail_key.as_ref(),
+                                    (!body.is_empty()).then_some(body),
+                                );
+                                view.pull_request_description_editing = false;
+                                view.pull_request_description_input.update(cx, |input, cx| {
+                                    input.set_value("", window, cx);
+                                });
                             }
-                            if let Some(detail_key) = detail_key.as_ref() {
-                                view.overview_state.invalidate_description(detail_key);
-                            }
-                            view.pull_request_description_editing = false;
-                            view.pull_request_description_input.update(cx, |input, cx| {
-                                input.set_value("", window, cx);
-                            });
                             view.status =
                                 format!("Saved description for PR #{pull_request_number}");
                         }
@@ -117,7 +195,16 @@ impl AppView {
                             );
                             view.action_runtime
                                 .finish_pull_request_description_action_failure(message.clone());
-                            view.status = message;
+                            if let Some(restore_body) = restore_body {
+                                view.set_pull_request_body(
+                                    &pull_request_node_id,
+                                    detail_key.as_ref(),
+                                    restore_body,
+                                );
+                                view.report_error(message, cx);
+                            } else {
+                                view.status = message;
+                            }
                         }
                     }
 

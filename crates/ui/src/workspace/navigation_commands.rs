@@ -271,6 +271,24 @@ impl AppView {
 }
 
 impl AppView {
+    pub(super) fn open_markdown_link(
+        &mut self,
+        action: &OpenMarkdownLink,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let loaded_index = pull_request_link_base(&action.url).and_then(|link| {
+            self.pull_requests.iter().position(|pull_request| {
+                pull_request_link_base(&pull_request.url)
+                    .is_some_and(|url| url.eq_ignore_ascii_case(link))
+            })
+        });
+        match loaded_index {
+            Some(index) => self.select_pull_request(index, cx),
+            None => cx.open_url(&action.url),
+        }
+    }
+
     pub(crate) fn copy_file_path_at(&mut self, file_index: usize, cx: &mut Context<Self>) {
         if let Some(path) = self
             .detail_state
@@ -295,6 +313,19 @@ impl AppView {
         self.status = format!("Opened {} on GitHub", file.path);
         cx.notify();
     }
+}
+
+/// The `.../pull/<number>` prefix of a pull request URL, without the tab,
+/// query or fragment that may follow it.
+fn pull_request_link_base(url: &str) -> Option<&str> {
+    let number_start = url.find("/pull/")? + "/pull/".len();
+    let digits = url[number_start..]
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .count();
+    let end = number_start + digits;
+    let boundary = url[end..].chars().next();
+    (digits > 0 && matches!(boundary, None | Some('/' | '#' | '?'))).then(|| &url[..end])
 }
 
 pub(crate) fn github_file_url(pr: &PullRequest, file: &DiffFile) -> Option<String> {
@@ -354,5 +385,34 @@ mod tests {
         let file = diff_file("src/deleted.rs", FileStatus::Removed);
 
         assert_eq!(github_file_url(&pull_request(), &file), None);
+    }
+
+    #[test]
+    fn pull_request_link_base_drops_tabs_queries_and_fragments() {
+        let base = Some("https://github.com/acme/app/pull/12");
+        assert_eq!(
+            pull_request_link_base("https://github.com/acme/app/pull/12"),
+            base
+        );
+        assert_eq!(
+            pull_request_link_base("https://github.com/acme/app/pull/12/files"),
+            base
+        );
+        assert_eq!(
+            pull_request_link_base("https://github.com/acme/app/pull/12#issuecomment-1"),
+            base
+        );
+        assert_eq!(
+            pull_request_link_base("https://github.com/acme/app/pull/123"),
+            Some("https://github.com/acme/app/pull/123")
+        );
+        assert_eq!(
+            pull_request_link_base("https://github.com/acme/app/pull/12x"),
+            None
+        );
+        assert_eq!(
+            pull_request_link_base("https://github.com/acme/app/issues/12"),
+            None
+        );
     }
 }

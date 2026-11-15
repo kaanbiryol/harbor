@@ -1,9 +1,15 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    ops::Range,
+};
 
 use crate::gpui_component::text::TextViewState;
 use gpui::{Entity, ListState, Subscription};
 
-use crate::workspace::PullRequestDetailCacheKey;
+use crate::{
+    panels::{task_count, task_index_at},
+    workspace::PullRequestDetailCacheKey,
+};
 
 pub(crate) struct OverviewMarkdownState {
     pub(crate) source: String,
@@ -186,6 +192,23 @@ impl OverviewUiState {
             .description_blocks
             .get(index)
             .map(|block| block.state.clone())
+    }
+
+    /// The description-wide index of the task whose marker is at
+    /// `marker_range` in block `block_index`.
+    pub(crate) fn description_task_index(
+        &self,
+        block_index: usize,
+        marker_range: Range<usize>,
+    ) -> Option<usize> {
+        let blocks = &self.content.description_blocks;
+        let index_in_block = task_index_at(&blocks.get(block_index)?.source, marker_range)?;
+        let preceding_tasks = blocks
+            .iter()
+            .take(block_index)
+            .map(|block| task_count(&block.source))
+            .sum::<usize>();
+        Some(preceding_tasks + index_in_block)
     }
 
     pub(crate) fn mark_description_block_ready(

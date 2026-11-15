@@ -1,4 +1,4 @@
-use gpui::{Action, App, KeyBinding, actions};
+use gpui::{Action, App, KeyBinding, SharedString, actions};
 use harbor_domain::MergeMethod;
 
 use crate::icons::Octicon;
@@ -112,6 +112,14 @@ actions!(
         SwitchGitHubAuthToGhCli
     ]
 );
+
+/// Opens a link clicked in rendered Markdown, showing a pull request Harbor
+/// has loaded in place instead of in the browser.
+#[derive(Clone, PartialEq, Action)]
+#[action(namespace = harbor, no_json)]
+pub(crate) struct OpenMarkdownLink {
+    pub(crate) url: SharedString,
+}
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([

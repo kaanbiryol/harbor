@@ -463,6 +463,72 @@ fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
         .position(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
+/// The document-order index of the task list item whose `[ ]`/`[x]` marker
+/// overlaps `marker_range` in `source`.
+pub(crate) fn task_index_at(source: &str, marker_range: Range<usize>) -> Option<usize> {
+    task_marker_offsets(source)
+        .iter()
+        .position(|offset| marker_range.contains(offset))
+}
+
+pub(crate) fn task_count(source: &str) -> usize {
+    task_marker_offsets(source).len()
+}
+
+/// Returns `body` with its `task_index`-th task set to `checked`, or `None`
+/// when there is no such task or it is not in the opposite state, which means
+/// the rendered description no longer matches `body`.
+pub(crate) fn set_task_checked(body: &str, task_index: usize, checked: bool) -> Option<String> {
+    let state_offset = task_marker_offsets(body).get(task_index)? + 1;
+    let currently_checked = body.get(state_offset..state_offset + 1)? != " ";
+    if currently_checked == checked {
+        return None;
+    }
+
+    let mut toggled = String::with_capacity(body.len());
+    toggled.push_str(&body[..state_offset]);
+    toggled.push(if checked { 'x' } else { ' ' });
+    toggled.push_str(&body[state_offset + 1..]);
+    Some(toggled)
+}
+
+fn task_marker_offsets(source: &str) -> Vec<usize> {
+    let Ok(root) = markdown::to_mdast(source, &ParseOptions::gfm()) else {
+        return Vec::new();
+    };
+    let mut offsets = Vec::new();
+    collect_task_marker_offsets(&root, source, &mut offsets);
+    offsets
+}
+
+fn collect_task_marker_offsets(node: &Node, source: &str, offsets: &mut Vec<usize>) {
+    if let Node::ListItem(item) = node
+        && item.checked.is_some()
+        && let Some(offset) = item
+            .position
+            .as_ref()
+            .and_then(|position| task_marker_offset(source, position.start.offset))
+    {
+        offsets.push(offset);
+    }
+    for child in node.children().into_iter().flatten() {
+        collect_task_marker_offsets(child, source, offsets);
+    }
+}
+
+/// Finds the `[` of the task marker that follows the list marker starting at
+/// `item_start`.
+fn task_marker_offset(source: &str, item_start: usize) -> Option<usize> {
+    let line = source.get(item_start..)?.lines().next()?;
+    let bracket = line.find('[')?;
+    let is_list_marker = line[..bracket]
+        .chars()
+        .all(|character| character.is_ascii_digit() || " \t-*+.)".contains(character));
+    let marker = line.get(bracket..bracket + 3)?.as_bytes();
+    (is_list_marker && matches!(marker, [b'[', b' ' | b'x' | b'X', b']']))
+        .then_some(item_start + bracket)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,5 +696,31 @@ mod tests {
             review_markdown_body("<details><summary>note</summary></details>"),
             "<details><summary>note</summary></details>"
         );
+    }
+
+    #[test]
+    fn toggles_the_task_at_a_rendered_marker() {
+        let body = "Intro\n\n- [ ] first\n  - [x] nested\n- [X] third\n\n```\n- [ ] code\n```\n";
+        assert_eq!(task_count(body), 3);
+
+        let nested = body.find("[x]").unwrap_or_default();
+        assert_eq!(task_index_at(body, nested..nested + 3), Some(1));
+
+        assert_eq!(
+            set_task_checked(body, 0, true).as_deref(),
+            Some("Intro\n\n- [x] first\n  - [x] nested\n- [X] third\n\n```\n- [ ] code\n```\n")
+        );
+        assert_eq!(
+            set_task_checked(body, 2, false).as_deref(),
+            Some("Intro\n\n- [ ] first\n  - [x] nested\n- [ ] third\n\n```\n- [ ] code\n```\n")
+        );
+    }
+
+    #[test]
+    fn refuses_task_toggles_that_no_longer_match_the_body() {
+        let body = "1. [x] done";
+        assert_eq!(set_task_checked(body, 0, true), None);
+        assert_eq!(set_task_checked(body, 1, false), None);
+        assert_eq!(set_task_checked("- [link](url)", 0, true), None);
     }
 }

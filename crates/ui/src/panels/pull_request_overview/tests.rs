@@ -803,3 +803,64 @@ async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
         "scrolling over the overview sidebar should not move the timeline"
     );
 }
+
+#[gpui::test]
+async fn description_task_toggles_save_optimistically_and_revert_on_failure(
+    cx: &mut TestAppContext,
+) {
+    let body = "Intro\n\n- [ ] first\n- [ ] second";
+    let api = Arc::new(FakeGitHubApi::default());
+    api.push_update_pull_request_body(Ok(()));
+    api.push_update_pull_request_body(Err(harbor_github::GitHubError::Transport(
+        "offline".to_string(),
+    )));
+    let (view_entity, cx) = open_workspace_window(cx, |window, cx| {
+        let view = cx.new(|cx| AppView::new_with_github_api(api.clone(), window, cx));
+        view.update(cx, |view, cx| {
+            let mut pull_request = pull_request();
+            pull_request.body = Some(body.to_string());
+            view.pull_requests = vec![pull_request];
+            view.detail_state.apply_details_success();
+            view.detail_state.apply_commits_success();
+            view.review_state.apply_reviews_success();
+            view.active_tab = PanelTab::Overview;
+            cx.notify();
+        });
+        view
+    });
+    cx.refresh().expect("test window should refresh");
+    cx.run_until_parked();
+
+    let second_marker = "- [ ] first\n- ".len();
+    let toggle = |checked: bool, cx: &mut gpui::VisualTestContext| {
+        view_entity.update_in(cx, |view, window, cx| {
+            assert_eq!(view.overview_state.description_block_count(), 2);
+            view.toggle_pull_request_description_task(
+                1,
+                second_marker..second_marker + 3,
+                checked,
+                window,
+                cx,
+            );
+            view.pull_requests[0].body.clone()
+        })
+    };
+
+    let checked_body = "Intro\n\n- [ ] first\n- [x] second";
+    assert_eq!(toggle(true, cx).as_deref(), Some(checked_body));
+    cx.run_until_parked();
+    cx.refresh()
+        .expect("test window should refresh after saving");
+    cx.run_until_parked();
+
+    assert_eq!(toggle(false, cx).as_deref(), Some(body));
+    cx.run_until_parked();
+
+    view_entity.read_with(cx, |view, _| {
+        assert_eq!(view.pull_requests[0].body.as_deref(), Some(checked_body));
+    });
+    assert_eq!(
+        api.calls(),
+        vec!["update_pull_request_body", "update_pull_request_body"]
+    );
+}

@@ -3,7 +3,12 @@ use crate::gpui_component::{
     highlighter::LanguageRegistry,
     text::{TextView, TextViewState, TextViewStyle},
 };
-use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px, rems};
+use gpui::{
+    AnyElement, App, ClickEvent, Entity, IntoElement, SharedString, Window, div, prelude::*, px,
+    rems,
+};
+
+use crate::actions::OpenMarkdownLink;
 
 use crate::visual::{Tone, color, tone_colors};
 
@@ -67,6 +72,7 @@ pub(crate) fn render_review_markdown_body_with_context(
 fn render_review_markdown_text(id: String, body: String) -> impl IntoElement {
     TextView::markdown(id, body)
         .style(review_markdown_style())
+        .on_link_click(open_markdown_link)
         .selectable(true)
         .min_w_0()
         .flex_none()
@@ -206,12 +212,17 @@ fn review_suggestion_display_lines(
     lines
 }
 
-pub(crate) fn render_review_markdown_state(state: &Entity<TextViewState>) -> impl IntoElement {
+pub(crate) fn render_review_markdown_state(state: &Entity<TextViewState>) -> TextView {
     TextView::new(state)
         .style(review_markdown_style())
+        .on_link_click(open_markdown_link)
         .selectable(true)
         .min_w_0()
         .flex_none()
+}
+
+fn open_markdown_link(url: &SharedString, _: &ClickEvent, window: &mut Window, cx: &mut App) {
+    window.dispatch_action(Box::new(OpenMarkdownLink { url: url.clone() }), cx);
 }
 
 fn review_markdown_style() -> TextViewStyle {
@@ -235,8 +246,10 @@ fn markdown_language_registered(language: &str) -> bool {
 }
 
 mod preparation;
-pub(crate) use preparation::review_markdown_has_suggestion;
 use preparation::{ReviewMarkdownSection, review_markdown_sections};
+pub(crate) use preparation::{
+    review_markdown_has_suggestion, set_task_checked, task_count, task_index_at,
+};
 
 pub(crate) fn review_markdown_body(body: &str) -> String {
     preparation::review_markdown_body(body, markdown_language_registered)

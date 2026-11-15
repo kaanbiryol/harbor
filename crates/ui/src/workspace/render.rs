@@ -201,6 +201,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::select_previous_hunk))
             .on_action(cx.listener(Self::copy_active_file_path))
             .on_action(cx.listener(Self::open_active_file_on_github))
+            .on_action(cx.listener(Self::open_markdown_link))
             .on_action(cx.listener(Self::choose_local_checkout))
             .on_action(cx.listener(Self::open_with_vs_code))
             .on_action(cx.listener(Self::open_with_cursor))

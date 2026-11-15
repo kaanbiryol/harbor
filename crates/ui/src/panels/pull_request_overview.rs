@@ -175,7 +175,7 @@ impl AppView {
                         OverviewPanelItem::DescriptionBlock { index: block_index } => {
                             let is_last =
                                 *block_index + 1 == view.overview_state.description_block_count();
-                            view.render_description_block(*block_index, is_last)
+                            view.render_description_block(*block_index, is_last, cx)
                         }
                         OverviewPanelItem::DescriptionEmpty => view.render_empty_description(),
                         OverviewPanelItem::DescriptionEditor => view.render_description_editor(cx),

@@ -202,16 +202,34 @@ impl AppView {
             .into_any_element()
     }
 
-    pub(super) fn render_description_block(&self, index: usize, is_last: bool) -> AnyElement {
+    pub(super) fn render_description_block(
+        &self,
+        index: usize,
+        is_last: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let Some(state) = self.overview_state.description_block_state(index) else {
             return div().into_any_element();
         };
         let selector = format!("pull-request-overview-description-block-{index}");
+        let view = cx.entity().downgrade();
         let content = div()
             .min_w_0()
             .text_sm()
             .text_color(color::text_secondary())
-            .child(render_review_markdown_state(&state))
+            .child(
+                render_review_markdown_state(&state).on_task_toggle(move |event, window, cx| {
+                    view.update_or_log(cx, "failed to toggle description task", |view, cx| {
+                        view.toggle_pull_request_description_task(
+                            index,
+                            event.marker_range(),
+                            event.checked(),
+                            window,
+                            cx,
+                        );
+                    });
+                }),
+            )
             .into_any_element();
 
         render_description_body(selector, content, is_last)

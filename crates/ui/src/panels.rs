@@ -29,5 +29,6 @@ pub(crate) use review::*;
 pub(crate) use review_markdown::{
     ReviewSuggestionContext, overview_markdown_blocks, render_review_markdown_body_with_context,
     render_review_markdown_state, review_markdown_body, review_markdown_has_suggestion,
+    set_task_checked, task_count, task_index_at,
 };
 pub(crate) use workflows::*;

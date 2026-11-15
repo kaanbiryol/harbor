@@ -152,6 +152,7 @@ impl AppView {
                             .bordered(false)
                             .placeholder("Type a command…")
                             .max_h(px(400.))
+                            .highlight_matches(true)
                             .on_confirm(move |index, window, cx| {
                                 window.close_dialog(cx);
                                 window.focus(&workspace_focus, cx);
