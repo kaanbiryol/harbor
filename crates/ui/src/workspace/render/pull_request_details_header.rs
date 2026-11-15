@@ -65,7 +65,7 @@ impl AppView {
                 let dropdown = DropdownButton::new("review-pr")
                     .button(
                         Button::new("approve-pr-primary")
-                            .label("approve")
+                            .label("Approve")
                             .small()
                             .tooltip(approve_tooltip)
                             .loading(review_action_running)
@@ -93,11 +93,7 @@ impl AppView {
                         )
                     });
 
-                if review_action_disabled {
-                    dropdown.outline()
-                } else {
-                    dropdown.success().outline()
-                }
+                dropdown.outline()
             })
             .when(pr.stack.is_none(), |actions| {
                 actions.child({
@@ -107,7 +103,7 @@ impl AppView {
                         }
                         MergeControl::MergeWhenReady => {
                             let button = Button::new("merge-pr-when-ready")
-                                .label("merge when ready")
+                                .label("Merge when ready")
                                 .small()
                                 .tooltip(merge_tooltip.clone())
                                 .loading(merge_action_running)
@@ -408,9 +404,9 @@ fn render_merge_bypass_options(bypass_enabled: bool, action_running: bool) -> im
 
 fn merge_method_button_label(method: MergeMethod) -> &'static str {
     match method {
-        MergeMethod::Merge => "merge",
-        MergeMethod::Squash => "squash and merge",
-        MergeMethod::Rebase => "rebase and merge",
+        MergeMethod::Merge => "Merge",
+        MergeMethod::Squash => "Squash and merge",
+        MergeMethod::Rebase => "Rebase and merge",
     }
 }
 

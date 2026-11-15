@@ -30,8 +30,8 @@ fn main() {
         let theme = Theme::global_mut(cx);
         theme.font_family = "IBM Plex Sans".into();
         theme.mono_font_family = "Lilex".into();
-        theme.radius = px(0.);
-        theme.radius_lg = px(0.);
+        theme.radius = px(6.);
+        theme.radius_lg = px(8.);
         bind_keys(cx);
 
         let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);

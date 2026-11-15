@@ -56,10 +56,11 @@ fn render_status_indicator(
 
 fn row_rail_color(tone: PullRequestRowRailTone) -> Option<gpui::Rgba> {
     match tone {
-        PullRequestRowRailTone::Neutral => None,
         PullRequestRowRailTone::Danger => Some(color::danger()),
-        PullRequestRowRailTone::Warning => Some(color::warning()),
-        PullRequestRowRailTone::Success => Some(color::success()),
+        // Only failures get a rail so color stays a signal instead of decoration.
+        PullRequestRowRailTone::Neutral
+        | PullRequestRowRailTone::Warning
+        | PullRequestRowRailTone::Success => None,
     }
 }
 
@@ -88,7 +89,7 @@ pub(super) fn render_check_indicator(indicator: PullRequestCheckIndicator) -> im
     let (icon, tone, tooltip) = match indicator {
         PullRequestCheckIndicator::Failed => (Octicon::XCircle, Tone::Danger, "CI failed"),
         PullRequestCheckIndicator::Pending => (Octicon::Clock, Tone::Warning, "CI pending"),
-        PullRequestCheckIndicator::Passed => (Octicon::Check, Tone::Success, "CI passed"),
+        PullRequestCheckIndicator::Passed => (Octicon::Check, Tone::Neutral, "CI passed"),
     };
 
     render_status_indicator("pr-ci-status", icon, tone, tooltip)
@@ -137,8 +138,6 @@ pub(super) fn render_pull_request_row(
         .min_w_0()
         .flex()
         .overflow_hidden()
-        .border_b_1()
-        .border_color(color::border_subtle())
         .when(selected, |element| element.bg(color::row_selected_active()))
         .hover(move |style| {
             if selected {

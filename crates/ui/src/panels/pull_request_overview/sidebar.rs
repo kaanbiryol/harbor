@@ -95,22 +95,13 @@ impl AppView {
 }
 
 pub(super) fn render_overview_card(title: &'static str) -> Div {
-    div()
-        .rounded_sm()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::content_background())
-        .p_3()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .child(
-            div()
-                .text_base()
-                .font_semibold()
-                .text_color(color::text_primary())
-                .child(title),
-        )
+    div().flex().flex_col().gap_3().child(
+        div()
+            .text_base()
+            .font_semibold()
+            .text_color(color::text_primary())
+            .child(title),
+    )
 }
 
 fn render_empty_value(label: &'static str) -> AnyElement {
