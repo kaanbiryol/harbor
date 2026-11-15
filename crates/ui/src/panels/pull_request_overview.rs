@@ -449,8 +449,8 @@ fn render_overview_activity_header(
                 .gap_2()
                 .child(
                     div()
-                        .text_sm()
-                        .font_medium()
+                        .text_base()
+                        .font_semibold()
                         .text_color(color::text_primary())
                         .child("Activity"),
                 )

@@ -79,11 +79,11 @@ pub(crate) mod color {
     }
 
     pub(crate) fn text_secondary() -> Rgba {
-        rgb(0xa8b3c1)
+        rgb(0xb6c0cc)
     }
 
     pub(crate) fn text_muted() -> Rgba {
-        rgb(0x7f8997)
+        rgb(0x96a0ad)
     }
 
     pub(crate) fn text_disabled() -> Rgba {

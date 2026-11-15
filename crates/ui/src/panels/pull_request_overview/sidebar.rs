@@ -106,7 +106,7 @@ pub(super) fn render_overview_card(title: &'static str) -> Div {
         .gap_3()
         .child(
             div()
-                .text_sm()
+                .text_base()
                 .font_semibold()
                 .text_color(color::text_primary())
                 .child(title),

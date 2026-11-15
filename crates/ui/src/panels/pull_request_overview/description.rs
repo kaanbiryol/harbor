@@ -182,7 +182,7 @@ impl AppView {
             .gap_3()
             .child(
                 div()
-                    .text_lg()
+                    .text_base()
                     .font_semibold()
                     .text_color(color::text_primary())
                     .child("Description"),

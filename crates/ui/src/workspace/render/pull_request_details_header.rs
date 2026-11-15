@@ -245,8 +245,8 @@ impl AppView {
                                             .flex_initial()
                                             .truncate()
                                             .text_size(px(layout::PULL_REQUEST_TITLE_FONT_SIZE))
-                                            .font_medium()
-                                            .text_color(color::accent())
+                                            .font_semibold()
+                                            .text_color(color::text_primary())
                                             .cursor_pointer()
                                             .hover(|element| {
                                                 element.text_color(color::accent_hover())
