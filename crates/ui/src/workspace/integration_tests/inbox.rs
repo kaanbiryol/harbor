@@ -331,6 +331,36 @@ async fn switching_inbox_mode_without_snapshot_does_not_reuse_visible_rows(
 }
 
 #[gpui::test]
+async fn switching_inbox_mode_with_snapshot_does_not_refetch(cx: &mut TestAppContext) {
+    let api = Arc::new(FakeGitHubApi::default());
+    let open_pull_request = pull_request();
+    let mut closed_pull_request = pull_request();
+    closed_pull_request.number = 9;
+    closed_pull_request.node_id = "pr-node-9".to_string();
+    closed_pull_request.state = PullRequestState::Closed;
+    let (view_entity, cx) = init_workspace_service_test(cx, api.clone());
+
+    view_entity.update(cx, |view, cx| {
+        view.repository_state
+            .select_repository(open_pull_request.repo.clone());
+        view.pull_request_inbox
+            .set_mode(PullRequestInboxMode::Closed);
+        view.pull_requests = vec![closed_pull_request.clone()];
+        view.cache_current_pull_request_inbox_snapshot();
+        view.pull_request_inbox.set_mode(PullRequestInboxMode::Open);
+        view.pull_requests = vec![open_pull_request.clone()];
+
+        view.select_pull_request_inbox_mode(PullRequestInboxMode::Closed, cx);
+
+        assert_eq!(view.pull_requests, vec![closed_pull_request.clone()]);
+        assert!(!view.pull_request_inbox.is_loading());
+    });
+    cx.run_until_parked();
+
+    assert!(api.light_pull_request_requests().is_empty());
+}
+
+#[gpui::test]
 async fn prefetches_all_inbox_counts_on_repository_load_without_loading_items(
     cx: &mut TestAppContext,
 ) {

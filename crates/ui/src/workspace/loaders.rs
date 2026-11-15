@@ -142,7 +142,9 @@ impl AppView {
         if refresh_intent.uses_cache() && self.restore_pull_request_inbox_snapshot(key.clone(), cx)
         {
             self.record_selected_repository(repo.clone(), cx);
-            self.spawn_pull_request_inbox_refresh(repo, mode, key, false, cx);
+            if refresh_intent.refreshes_restored_snapshot() {
+                self.spawn_pull_request_inbox_refresh(repo, mode, key, false, cx);
+            }
             return;
         }
 

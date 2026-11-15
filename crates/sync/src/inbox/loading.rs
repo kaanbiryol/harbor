@@ -15,6 +15,11 @@ impl PullRequestInboxRefreshIntent {
         matches!(self, Self::PreferCache | Self::SwitchMode)
     }
 
+    /// Tab switches show the cached snapshot as-is; only an explicit reload refetches it.
+    pub fn refreshes_restored_snapshot(self) -> bool {
+        self != Self::SwitchMode
+    }
+
     pub fn resets_detail_state(self) -> bool {
         matches!(self, Self::PreferCache | Self::SwitchMode)
     }
