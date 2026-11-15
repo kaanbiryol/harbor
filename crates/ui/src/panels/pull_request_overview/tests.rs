@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::gpui_component::{Root, Theme, ThemeMode};
 use gpui::{
-    AppContext, ListAlignment, ListOffset, ListState, Modifiers, ScrollDelta, ScrollWheelEvent,
+    AppContext, ListAlignment, ListOffset, ListState, Modifiers, ScrollDelta, ScrollEvent,
     TestAppContext, point, px,
 };
 use harbor_domain::{
@@ -728,7 +728,7 @@ async fn overview_description_and_activity_scroll_together(cx: &mut TestAppConte
         .debug_bounds("pull-request-overview-description")
         .expect("overview description should render");
 
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
         position: timeline.center(),
         delta: ScrollDelta::Pixels(point(px(0.0), px(-400.0))),
         ..Default::default()
@@ -780,7 +780,7 @@ async fn overview_sidebar_scrolls_independently(cx: &mut TestAppContext) {
         .debug_bounds("pull-request-overview-description")
         .expect("overview description should render");
 
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
         position: sidebar.center(),
         delta: ScrollDelta::Pixels(point(px(0.0), px(-400.0))),
         ..Default::default()

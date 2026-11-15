@@ -114,7 +114,7 @@ mod tests {
         view.read_with(cx, |view, _| {
             assert!(view.diff_display.horizontal_scroll.max_offset().x > gpui::px(0.0))
         });
-        cx.simulate_event(gpui::ScrollWheelEvent {
+        cx.simulate_event(gpui::ScrollEvent {
             position: viewport.center(),
             delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(-200.0), gpui::px(0.0))),
             ..Default::default()

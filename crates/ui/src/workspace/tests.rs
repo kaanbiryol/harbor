@@ -7,7 +7,7 @@ use crate::{
     test_fixtures::{pull_request, review_thread},
     workspace::test_support::FakeGitHubApi,
 };
-use gpui::{AppContext, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px};
+use gpui::{AppContext, ScrollDelta, ScrollEvent, TestAppContext, point, px};
 use harbor_domain::ReviewThreadState;
 
 #[gpui::test]
@@ -368,13 +368,13 @@ async fn workflow_output_scrolls_both_axes_and_stays_visible_during_refresh(
             "output must have a bounded viewport"
         );
     });
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
         position: viewport.center(),
         delta: ScrollDelta::Pixels(point(px(-400.), px(0.))),
         ..Default::default()
     });
     cx.refresh().unwrap();
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
         position: viewport.center(),
         delta: ScrollDelta::Pixels(point(px(0.), px(-200.))),
         ..Default::default()

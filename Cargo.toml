@@ -15,16 +15,15 @@ resolver = "2"
 edition = "2024"
 license = "MIT"
 publish = false
-rust-version = "1.90"
+rust-version = "1.100"
 
 [workspace.dependencies]
-anyhow = "1"
 async-trait = "0.1"
 bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }
 futures-lite = "2"
 futures = "0.3"
-gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "3a1eaf1583958b38a9e3f5a98eb58d5ab6cc014e", features = [
+gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "05da4d38476cf4431a628625086639ff63f8b859", features = [
     "tree-sitter-bash",
     "tree-sitter-javascript",
     "tree-sitter-markdown",
@@ -35,7 +34,7 @@ gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "3a1eaf158395
     "tree-sitter-typescript",
     "tree-sitter-yaml",
 ] }
-gpui_reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.9" }
+gpui_reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.12" }
 http = "1"
 http-body-util = "0.1"
 markdown = "1"
