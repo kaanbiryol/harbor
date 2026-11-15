@@ -30,7 +30,7 @@ impl SettingsSection {
         match self {
             Self::General => "General",
             Self::Notifications => "Notifications",
-            Self::LocalDevelopment => "Local Development",
+            Self::LocalDevelopment => "Local development",
             Self::GitHub => "GitHub",
         }
     }

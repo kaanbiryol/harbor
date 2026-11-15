@@ -11,8 +11,8 @@ use crate::visual::color;
 use crate::workspace::AppView;
 
 use super::{
-    render_empty_state, render_error_panel_card, render_loading_skeleton_rows, render_panel_card,
-    render_panel_header, sync_virtual_list_item_count,
+    render_empty_state, render_error_panel_card, render_loading_skeleton_rows, render_panel_header,
+    sync_virtual_list_item_count,
 };
 
 mod runs;
@@ -173,9 +173,12 @@ fn render_selected_pull_request_workflow_actions(
         && dispatch_target.is_some()
         && running_action.is_none();
 
-    render_panel_card()
-        .px_3()
-        .py_2()
+    div()
+        .w_full()
+        .min_w_0()
+        .pb_3()
+        .border_b_1()
+        .border_color(color::border_subtle())
         .flex()
         .flex_col()
         .gap_2()
@@ -219,9 +222,9 @@ fn render_selected_pull_request_workflow_actions(
                         .child(
                             Button::new("trigger-build")
                                 .icon(Octicon::Sync)
-                                .label("trigger build")
+                                .label("Trigger build")
                                 .small()
-                                .primary()
+                                .outline()
                                 .loading(running_action == Some(WorkflowAction::DispatchBuild))
                                 .disabled(!can_dispatch)
                                 .on_click(cx.listener(|view, _, _, cx| {
@@ -231,9 +234,9 @@ fn render_selected_pull_request_workflow_actions(
                         .child(
                             Button::new("rerun-failed-jobs")
                                 .icon(Octicon::Sync)
-                                .label("rerun failed")
+                                .label("Rerun failed")
                                 .small()
-                                .outline()
+                                .ghost()
                                 .loading(running_action == Some(WorkflowAction::RerunFailedJobs))
                                 .disabled(!can_rerun)
                                 .on_click(cx.listener(|view, _, _, cx| {
@@ -258,8 +261,8 @@ fn render_selected_pull_request_workflow_actions(
 }
 
 fn selected_pull_request_actions_title(pr: Option<&PullRequest>) -> String {
-    pr.map(|pr| format!("Selected PR #{} workflow actions", pr.number))
-        .unwrap_or_else(|| "Selected PR workflow actions".to_string())
+    pr.map(|pr| format!("Pull request #{}", pr.number))
+        .unwrap_or_else(|| "No pull request selected".to_string())
 }
 
 fn selected_pull_request_actions_subtitle(
@@ -270,11 +273,9 @@ fn selected_pull_request_actions_subtitle(
     let Some(pr) = pr else {
         return "Select a pull request to dispatch or rerun its workflows".to_string();
     };
-    let dispatch_target = dispatch_target.map_or("none", WorkflowRun::label);
-    let rerun_target = rerun_target.map_or("none", WorkflowRun::label);
+    let Some(dispatch_target) = dispatch_target.or(rerun_target) else {
+        return format!("No workflow runs on {}", pr.head_ref);
+    };
 
-    format!(
-        "dispatch {dispatch_target} on {}; rerun target {rerun_target}",
-        pr.head_ref
-    )
+    format!("{} on {}", dispatch_target.label(), pr.head_ref)
 }

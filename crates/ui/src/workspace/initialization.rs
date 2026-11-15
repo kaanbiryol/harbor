@@ -117,7 +117,7 @@ impl AppView {
         let overview_comment_input = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .rows(4)
-                .placeholder("Add your comment here...")
+                .placeholder("Add your comment here…")
                 .clean_on_escape()
         });
         let pull_request_description_input = cx.new(|cx| {

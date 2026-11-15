@@ -282,9 +282,9 @@ pub(crate) fn render_error_panel_card(message: impl Into<String>) -> impl IntoEl
 pub(crate) fn render_file_review_button(id: impl Into<ElementId>, reviewed: bool) -> Button {
     Button::new(id)
         .icon(if reviewed {
-            Icon::new(Octicon::CheckCircle).text_color(color::success())
+            Icon::new(Octicon::Check).text_color(color::text_muted())
         } else {
-            Icon::new(Octicon::Eye).text_color(color::text_muted())
+            Icon::new(Octicon::Eye).text_color(color::text_secondary())
         })
         .small()
         .compact()
@@ -380,7 +380,7 @@ pub(crate) fn ci_status_icon(
     match (status.into(), conclusion.map(Into::into)) {
         (CheckStatus::Completed, Some(CheckConclusion::Success)) => Octicon::CheckCircle,
         (CheckStatus::Completed, Some(CheckConclusion::Skipped | CheckConclusion::Neutral)) => {
-            Octicon::Clock
+            Octicon::Skip
         }
         (
             CheckStatus::Completed,

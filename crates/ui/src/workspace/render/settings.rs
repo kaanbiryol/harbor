@@ -1,5 +1,5 @@
 use crate::gpui_component::{
-    Root, Sizable, StyledExt, WindowExt,
+    Root, Sizable, WindowExt,
     tab::{Tab, TabBar},
 };
 use gpui::{App, Context, Entity, IntoElement, Window, div, prelude::*, px};
@@ -93,12 +93,6 @@ fn render_settings_dialog_content(view: Entity<AppView>, cx: &mut App) -> impl I
                 .overflow_y_scroll()
                 .child(content),
         )
-        .child(
-            div()
-                .text_xs()
-                .text_color(color::text_muted())
-                .child("Changes save automatically."),
-        )
 }
 
 fn render_github_settings(view: Entity<AppView>, cx: &mut App) -> impl IntoElement {
@@ -109,25 +103,6 @@ fn render_github_settings(view: Entity<AppView>, cx: &mut App) -> impl IntoEleme
         .flex()
         .flex_col()
         .gap_3()
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .child(
-                    div()
-                        .text_sm()
-                        .font_medium()
-                        .text_color(color::text_primary())
-                        .child("GitHub authentication"),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(color::text_muted())
-                        .child("Choose how Harbor talks to GitHub."),
-                ),
-        )
         .child(view_state.render_github_settings_account_for_dialog(view.clone()));
 
     if let Some(status) = auth_switch_status {

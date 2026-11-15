@@ -113,8 +113,8 @@ fn pull_request_metadata_label(pr: &PullRequest) -> String {
 fn pull_request_state_pill(state: PullRequestState) -> Option<(&'static str, Tone)> {
     match state {
         PullRequestState::Open => None,
-        PullRequestState::Closed => Some(("closed", Tone::Neutral)),
-        PullRequestState::Merged => Some(("merged", Tone::Success)),
+        PullRequestState::Closed => Some(("Closed", Tone::Neutral)),
+        PullRequestState::Merged => Some(("Merged", Tone::Success)),
     }
 }
 
@@ -225,7 +225,13 @@ pub(super) fn render_pull_request_row(
                                     pull_request_state_pill(pr.state),
                                     |element, (label, tone)| {
                                         element
-                                            .child(crate::panels::render_status_pill(label, tone))
+                                            .child(
+                                                div()
+                                                    .flex_none()
+                                                    .text_color(tone_colors(tone).text)
+                                                    .child(label),
+                                            )
+                                            .child(div().flex_none().child("·"))
                                     },
                                 )
                                 .child(div().min_w_0().flex_1().truncate().child(metadata_label)),
@@ -318,7 +324,7 @@ mod tests {
     fn closed_pull_request_rows_show_closed_state_pill() {
         assert_eq!(
             pull_request_state_pill(PullRequestState::Closed),
-            Some(("closed", Tone::Neutral))
+            Some(("Closed", Tone::Neutral))
         );
     }
 
@@ -326,7 +332,7 @@ mod tests {
     fn merged_pull_request_rows_show_merged_state_pill() {
         assert_eq!(
             pull_request_state_pill(PullRequestState::Merged),
-            Some(("merged", Tone::Success))
+            Some(("Merged", Tone::Success))
         );
     }
 }

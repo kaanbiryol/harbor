@@ -1,12 +1,11 @@
-use crate::gpui_component::{Icon, Sizable, StyledExt};
+use crate::gpui_component::StyledExt;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{Workflow, WorkflowState};
 
-use crate::icons::Octicon;
 use crate::visual::color;
 use crate::workspace::AppView;
 
-use super::super::{render_error_panel_card, render_loading_skeleton_rows, render_panel_card};
+use super::super::{render_error_panel_card, render_loading_skeleton_rows};
 
 pub(super) fn render_workflow_sidebar(
     workflows: &[Workflow],
@@ -15,22 +14,17 @@ pub(super) fn render_workflow_sidebar(
     list_state: ListState,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
-    render_panel_card()
+    div()
         .flex_none()
         .w(px(280.0))
+        .pr_2()
+        .border_r_1()
+        .border_color(color::border_subtle())
         .flex()
         .flex_col()
         .min_h_0()
         .overflow_hidden()
-        .child(
-            div()
-                .px_3()
-                .py_2()
-                .border_b_1()
-                .border_color(color::border())
-                .font_medium()
-                .child("Workflows"),
-        )
+        .child(div().px_3().py_2().font_medium().child("Workflows"))
         .when(is_loading && workflows.is_empty(), |element| {
             element.child(render_loading_skeleton_rows(
                 "workflow-sidebar-loading-skeleton",
@@ -116,17 +110,13 @@ fn render_workflow_filter_row(
     let row = div()
         .id(("workflow-filter", workflow_id.unwrap_or(0)))
         .w_full()
-        .rounded_xs()
+        .rounded_md()
         .min_w_0()
         .overflow_hidden()
         .px_2()
         .py_2()
         .cursor_pointer()
-        .bg(if active {
-            color::row_selected()
-        } else {
-            color::content_background()
-        })
+        .when(active, |element| element.bg(color::row_selected()))
         .hover(move |style| {
             style.bg(if active {
                 color::row_selected_active()
@@ -137,31 +127,18 @@ fn render_workflow_filter_row(
         .on_click(cx.listener(move |view, _, _, cx| {
             view.select_repository_actions_workflow(workflow_id, cx);
         }))
-        .flex()
-        .items_start()
-        .gap_2()
-        .child(
-            div()
-                .flex_none()
-                .pt_1()
-                .child(Icon::new(Octicon::Gear).xsmall().text_color(if active {
-                    color::accent()
-                } else {
-                    color::text_muted()
-                })),
-        )
         .child(
             div()
                 .min_w_0()
                 .flex_1()
                 .flex()
                 .flex_col()
-                .gap_1()
+                .gap_0p5()
                 .child(
                     div()
                         .min_w_0()
                         .truncate()
-                        .font_medium()
+                        .text_sm()
                         .text_color(text_color)
                         .child(title),
                 )
@@ -175,24 +152,24 @@ fn render_workflow_filter_row(
                 ),
         );
 
-    div().w_full().min_w_0().px_2().py_1().child(row)
+    div().w_full().min_w_0().px_1().py_0p5().child(row)
 }
 
 fn workflow_sidebar_subtitle(workflow: &Workflow) -> String {
-    format!(
-        "{}  {}",
-        workflow_state_label(&workflow.state),
-        workflow.path
-    )
+    // Only call out the state when it is unusual; nearly every workflow is active.
+    match workflow.state {
+        WorkflowState::Active => workflow.path.clone(),
+        ref state => format!("{} · {}", workflow_state_label(state), workflow.path),
+    }
 }
 
 fn workflow_state_label(state: &WorkflowState) -> String {
     match state {
-        WorkflowState::Active => "active".to_string(),
-        WorkflowState::DisabledManually => "disabled".to_string(),
-        WorkflowState::DisabledInactivity => "inactive".to_string(),
-        WorkflowState::DisabledFork => "fork disabled".to_string(),
-        WorkflowState::Deleted => "deleted".to_string(),
+        WorkflowState::Active => "Active".to_string(),
+        WorkflowState::DisabledManually => "Disabled".to_string(),
+        WorkflowState::DisabledInactivity => "Inactive".to_string(),
+        WorkflowState::DisabledFork => "Fork disabled".to_string(),
+        WorkflowState::Deleted => "Deleted".to_string(),
         WorkflowState::Unknown(state) => state.clone(),
     }
 }

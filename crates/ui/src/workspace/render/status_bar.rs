@@ -45,9 +45,10 @@ impl AppView {
             .then(|| self.selected_pull_request())
             .flatten()
             .map(|pr| {
+                let file_count = self.detail_state.files().len();
                 format!(
-                    "{} files changed · {} reviewed · {} unresolved",
-                    self.detail_state.files().len(),
+                    "{file_count} {} changed · {} reviewed · {} unresolved",
+                    if file_count == 1 { "file" } else { "files" },
                     self.reviewed_file_count(),
                     pr.unresolved_threads
                 )

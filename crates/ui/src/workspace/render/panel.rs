@@ -29,6 +29,7 @@ impl AppView {
             .detail_state
             .commits_loaded()
             .then(|| self.detail_state.commits().len());
+        let file_count = self.detail_state.files().len();
         let active_index = PanelTab::ALL
             .iter()
             .position(|tab| *tab == self.active_tab)
@@ -45,7 +46,14 @@ impl AppView {
                     tab.suffix(
                         div()
                             .debug_selector(|| "overview-tab-unresolved-count".to_string())
-                            .child(render_tab_count(unresolved_threads, Tone::Warning)),
+                            .child(render_tab_count(unresolved_threads, Tone::Neutral)),
+                    )
+                })
+                .when(tab == PanelTab::Diff && file_count > 0, |tab| {
+                    tab.suffix(
+                        div()
+                            .debug_selector(|| "diff-tab-file-count".to_string())
+                            .child(render_tab_count(file_count, Tone::Neutral)),
                     )
                 })
                 .when_some(
@@ -232,6 +240,8 @@ impl AppView {
                         )
                         .into_any_element(),
                         PanelTab::Logs => div()
+                            .flex()
+                            .flex_col()
                             .flex_1()
                             .min_h_0()
                             .min_w_0()

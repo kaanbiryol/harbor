@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::gpui_component::input::Textarea;
+use crate::gpui_component::{ActiveTheme, input::Textarea};
 
 use super::*;
 use crate::icons::Octicon;
@@ -251,7 +251,11 @@ impl AppView {
         let content = div()
             .w_full()
             .min_w_0()
-            .child(Textarea::new(&description_input))
+            .child(
+                div()
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .child(Textarea::new(&description_input)),
+            )
             .when_some(error, |element, error| {
                 element.child(
                     div()
@@ -272,7 +276,7 @@ impl AppView {
                         Button::new("cancel-pull-request-description")
                             .label("Cancel")
                             .small()
-                            .outline()
+                            .ghost()
                             .disabled(saving)
                             .on_click(cx.listener(|view, _, window, cx| {
                                 view.cancel_pull_request_description_edit(window, cx);
@@ -282,6 +286,7 @@ impl AppView {
                         Button::new("save-pull-request-description")
                             .label("Save")
                             .small()
+                            .primary()
                             .loading(saving)
                             .disabled(saving)
                             .on_click(cx.listener(|view, _, window, cx| {

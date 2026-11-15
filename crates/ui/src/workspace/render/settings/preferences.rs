@@ -25,7 +25,7 @@ pub(super) fn render_preferences(
     let state = view.read(cx);
     let preferences = &state.preferences.value;
     let disabled = state.preferences.loading;
-    let content = div().flex().flex_col().gap_4().min_w_0();
+    let content = div().flex().flex_col().min_w_0();
     match section {
         SettingsSection::General => content
             .child(row(
@@ -178,6 +178,13 @@ pub(super) fn render_preferences(
             let terminal = preferred_terminal_app(preferences.terminal);
             let reset_view = view.clone();
             let choose_view = view.clone();
+            let worktree_location = preferences
+                .worktree_directory
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| {
+                    "Default: .harbor-worktrees next to each local repository".to_string()
+                });
             content
                 .child(row(
                     "Default editor",
@@ -233,7 +240,12 @@ pub(super) fn render_preferences(
                 )
                 .child(row(
                     "Worktree folder",
-                    "Used for future checkouts. Existing worktrees stay where they are.",
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child("Used for future checkouts. Existing worktrees stay where they are.")
+                        .child(worktree_location),
                     div()
                         .flex()
                         .gap_2()
@@ -262,18 +274,6 @@ pub(super) fn render_preferences(
                                 }),
                         ),
                 ))
-                .child(
-                    div().text_sm().text_color(color::text_muted()).child(
-                        preferences
-                            .worktree_directory
-                            .as_ref()
-                            .map(|path| path.display().to_string())
-                            .unwrap_or_else(|| {
-                                "Default: .harbor-worktrees next to each local repository"
-                                    .to_string()
-                            }),
-                    ),
-                )
                 .into_any_element()
         }
         SettingsSection::GitHub => content.into_any_element(),
@@ -281,17 +281,24 @@ pub(super) fn render_preferences(
 }
 
 fn unavailable(app: &'static str) -> impl IntoElement {
-    div().text_xs().text_color(color::warning()).child(format!(
-        "{app} is not installed. Install it or choose another application."
-    ))
+    div()
+        .pt_2()
+        .text_xs()
+        .text_color(color::warning())
+        .child(format!(
+            "{app} is not installed. Install it or choose another application."
+        ))
 }
 
 fn row(
     title: &'static str,
-    description: &'static str,
+    description: impl IntoElement,
     control: impl IntoElement,
 ) -> impl IntoElement {
     div()
+        .py_3()
+        .border_b_1()
+        .border_color(color::border_subtle())
         .flex()
         .items_center()
         .justify_between()

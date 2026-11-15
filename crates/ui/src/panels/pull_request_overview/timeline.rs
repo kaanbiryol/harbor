@@ -66,6 +66,12 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
         view_entity,
     } = state;
     let (status, tone, icon) = review_thread_state_presentation(thread.state);
+    // The PR status card already flags open threads, so the timeline stays neutral.
+    let tone = if tone == Tone::Warning {
+        Tone::Neutral
+    } else {
+        tone
+    };
     let ui_state = review_thread_ui_state(
         thread,
         active_review_thread_reply,
@@ -117,7 +123,7 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
             .debug_selector(move || selector.clone())
             .w_full()
             .min_w_0()
-            .rounded_sm()
+            .rounded_md()
             .border_1()
             .border_color(color::border())
             .bg(color::content_background())
@@ -203,21 +209,25 @@ pub(super) fn render_overview_thread(state: OverviewThreadRenderState<'_>) -> An
                                         let selector = format!(
                                             "overview-toggle-thread-{resolution_thread_id}"
                                         );
+                                        // Color only the small icon so the action reads at a glance without loud fills.
+                                        let icon = if ui_state.is_resolved {
+                                            Icon::new(Octicon::Undo).text_color(color::text_muted())
+                                        } else {
+                                            Icon::new(Octicon::Check)
+                                                .text_color(tone_colors(Tone::Success).text)
+                                        };
                                         let button = Button::new(selector.clone())
                                             .debug_selector(move || selector.clone())
+                                            .icon(icon)
                                             .label(if ui_state.is_resolved {
                                                 "Reopen"
                                             } else {
                                                 "Resolve"
                                             })
                                             .xsmall()
+                                            .ghost()
                                             .loading(ui_state.action_running)
                                             .disabled(ui_state.action_running);
-                                        let button = if ui_state.is_resolved {
-                                            button.success()
-                                        } else {
-                                            button.warning()
-                                        };
 
                                         element.child(button.on_click({
                                             let resolution_view = resolution_view.clone();

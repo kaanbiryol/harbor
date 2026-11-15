@@ -32,6 +32,11 @@ fn main() {
         theme.mono_font_family = "Lilex".into();
         theme.radius = px(6.);
         theme.radius_lg = px(8.);
+        // The default dark overlay is too faint to separate dialogs from the app behind them.
+        theme.overlay = gpui::hsla(0., 0., 0., 0.55);
+        // A 1px accent border on focus instead of the default double ring, which reads as heavy.
+        theme.focus_ring = false;
+        theme.ring = gpui::rgb(0x8ab4f8).into();
         bind_keys(cx);
 
         let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);

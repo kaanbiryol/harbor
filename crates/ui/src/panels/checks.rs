@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::gpui_component::{Icon, Sizable, StyledExt, tag::Tag};
+use crate::gpui_component::{Icon, Sizable, StyledExt};
 use chrono::Duration;
 use gpui::{Context, IntoElement, ListState, div, list, prelude::*, px};
 use harbor_domain::{CheckConclusion, CheckRun, CheckStatus, ChecksSummary};
@@ -60,13 +60,13 @@ pub(crate) fn render_checks_panel(
         .gap_2()
         .child(render_panel_header(
             "Checks",
-            Some(format!("{} runs", summary.total)),
+            Some(check_panel_header_detail(summary)),
         ))
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap_2()
+                .gap_1()
                 .flex_wrap()
                 .child(render_check_filter_pill(
                     CheckRunFilter::All,
@@ -104,9 +104,6 @@ pub(crate) fn render_checks_panel(
                     cx,
                 )),
         )
-        .when(summary.total > 0, |element| {
-            element.child(render_check_completion_summary(summary))
-        })
         .when(is_loading && check_runs.is_empty(), |element| {
             element.child(render_loading_panel_skeleton(
                 "checks-loading-skeleton",
@@ -192,64 +189,64 @@ fn render_check_filter_pill(
     active_filter: CheckRunFilter,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
-    let colors = tone_colors(tone);
     let is_active = filter == active_filter;
-    let border_color = if is_active && tone == Tone::Neutral {
-        color::accent()
-    } else if is_active {
-        colors.text
+    // Color only signals something when there is something to count.
+    let count_color = if value > 0 && tone != Tone::Neutral {
+        tone_colors(tone).text
     } else {
-        colors.border
-    };
-    let label = format!("{} {value}", filter.status_label());
-
-    let background = if is_active {
-        color::row_selected()
-    } else {
-        colors.background
+        color::text_muted()
     };
 
     div()
         .id(("check-filter", filter.id()))
         .flex_none()
+        .flex()
+        .items_center()
+        .gap_1p5()
+        .px_2()
+        .py_0p5()
+        .rounded_md()
         .cursor_pointer()
+        .text_sm()
+        .when(is_active, |element| {
+            element
+                .bg(color::row_selected())
+                .text_color(color::text_primary())
+        })
+        .when(!is_active, |element| {
+            element
+                .text_color(color::text_secondary())
+                .hover(|style| style.bg(color::row_hover()))
+        })
         .on_click(cx.listener(move |view, _, _, cx| {
             view.set_checks_filter(filter, cx);
         }))
+        .child(check_filter_label(filter))
         .child(
-            Tag::custom(background.into(), colors.text.into(), border_color.into())
-                .rounded_xs()
-                .px_1()
-                .py_0p5()
+            div()
                 .text_xs()
-                .font_medium()
-                .child(label),
+                .text_color(count_color)
+                .child(value.to_string()),
         )
 }
 
-fn render_check_completion_summary(summary: ChecksSummary) -> impl IntoElement {
-    let [passed, skipped, complete] = check_completion_summary_labels(summary);
-
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .text_xs()
-        .child(render_check_outcome_label(passed, Tone::Success))
-        .child(div().text_color(color::text_disabled()).child("·"))
-        .child(render_check_outcome_label(skipped, Tone::Neutral))
-        .child(div().text_color(color::text_disabled()).child("·"))
-        .child(render_check_outcome_label(complete, Tone::Neutral))
+fn check_filter_label(filter: CheckRunFilter) -> &'static str {
+    match filter {
+        CheckRunFilter::All => "All",
+        CheckRunFilter::Passed => "Passed",
+        CheckRunFilter::Failed => "Failed",
+        CheckRunFilter::Pending => "Pending",
+        CheckRunFilter::Skipped => "Skipped",
+    }
 }
 
-fn check_completion_summary_labels(summary: ChecksSummary) -> [String; 3] {
-    let completed = summary.total.saturating_sub(summary.pending);
-
-    [
-        format!("{} passed", summary.passed),
-        format!("{} skipped", summary.skipped),
-        format!("{completed} of {} complete", summary.total),
-    ]
+fn check_panel_header_detail(summary: ChecksSummary) -> String {
+    if summary.pending > 0 {
+        let completed = summary.total.saturating_sub(summary.pending);
+        format!("{completed} of {} complete", summary.total)
+    } else {
+        check_count_label(summary.total)
+    }
 }
 
 fn render_check_group_header(group: CheckRunGroup, cx: &mut Context<AppView>) -> impl IntoElement {
@@ -433,12 +430,7 @@ pub(crate) fn render_check_run(check_index: usize, check_run: &CheckRun) -> impl
 }
 
 fn check_run_metadata_label(check_run: &CheckRun) -> String {
-    let status = check_status_label(check_run.status);
-
-    match check_run_duration_label(check_run) {
-        Some(duration) => format!("{status} in {duration}"),
-        None => status.to_string(),
-    }
+    check_run_duration_label(check_run).unwrap_or_default()
 }
 
 fn check_run_duration_label(check_run: &CheckRun) -> Option<String> {
@@ -462,10 +454,18 @@ fn check_count_label(count: usize) -> String {
 
 fn check_result_count_label(count: usize, label: &str, total: usize) -> String {
     if total == 1 {
-        label.to_string()
+        sentence_case(label)
     } else {
         format!("{count} {label}")
     }
+}
+
+fn sentence_case(label: &str) -> String {
+    let mut characters = label.chars();
+    characters
+        .next()
+        .map(|first| first.to_uppercase().chain(characters).collect())
+        .unwrap_or_default()
 }
 
 fn render_check_status_icon(icon: Octicon, tone: Tone) -> impl IntoElement {
@@ -488,7 +488,7 @@ fn check_group_status_icon(summary: ChecksSummary) -> Octicon {
     } else if summary.passed > 0 {
         Octicon::CheckCircle
     } else {
-        Octicon::Clock
+        Octicon::Skip
     }
 }
 
@@ -517,25 +517,17 @@ fn check_conclusion_label(
     status: CheckStatus,
 ) -> (&'static str, Tone) {
     match (status, conclusion) {
-        (CheckStatus::Completed, Some(CheckConclusion::Success)) => ("passed", Tone::Success),
-        (CheckStatus::Completed, Some(CheckConclusion::Skipped)) => ("skipped", Tone::Neutral),
-        (CheckStatus::Completed, Some(CheckConclusion::Neutral)) => ("neutral", Tone::Neutral),
-        (CheckStatus::Completed, Some(CheckConclusion::Cancelled)) => ("cancelled", Tone::Warning),
-        (CheckStatus::Completed, Some(CheckConclusion::TimedOut)) => ("timed out", Tone::Danger),
+        (CheckStatus::Completed, Some(CheckConclusion::Success)) => ("Passed", Tone::Success),
+        (CheckStatus::Completed, Some(CheckConclusion::Skipped)) => ("Skipped", Tone::Neutral),
+        (CheckStatus::Completed, Some(CheckConclusion::Neutral)) => ("Neutral", Tone::Neutral),
+        (CheckStatus::Completed, Some(CheckConclusion::Cancelled)) => ("Cancelled", Tone::Warning),
+        (CheckStatus::Completed, Some(CheckConclusion::TimedOut)) => ("Timed out", Tone::Danger),
         (CheckStatus::Completed, Some(CheckConclusion::ActionRequired)) => {
-            ("action required", Tone::Warning)
+            ("Action required", Tone::Warning)
         }
-        (CheckStatus::Completed, Some(CheckConclusion::Failure) | None) => ("failed", Tone::Danger),
-        (CheckStatus::InProgress, _) => ("running", Tone::Info),
-        (CheckStatus::Queued, _) => ("queued", Tone::Warning),
-    }
-}
-
-fn check_status_label(status: CheckStatus) -> &'static str {
-    match status {
-        CheckStatus::Queued => "queued",
-        CheckStatus::InProgress => "running",
-        CheckStatus::Completed => "completed",
+        (CheckStatus::Completed, Some(CheckConclusion::Failure) | None) => ("Failed", Tone::Danger),
+        (CheckStatus::InProgress, _) => ("Running", Tone::Info),
+        (CheckStatus::Queued, _) => ("Queued", Tone::Warning),
     }
 }
 
@@ -563,7 +555,7 @@ mod tests {
 
         assert_eq!(
             check_group_summary_label(summary),
-            ("skipped".to_string(), Tone::Neutral)
+            ("Skipped".to_string(), Tone::Neutral)
         );
     }
 
@@ -590,35 +582,6 @@ mod tests {
         assert_eq!(
             check_group_summary_label(summary),
             ("3 passed".to_string(), Tone::Success)
-        );
-    }
-
-    #[test]
-    fn formats_compact_completion_summary() {
-        let summary = ChecksSummary {
-            total: 12,
-            passed: 2,
-            pending: 0,
-            skipped: 10,
-            failed: 0,
-        };
-
-        assert_eq!(
-            check_completion_summary_labels(summary),
-            ["2 passed", "10 skipped", "12 of 12 complete"]
-        );
-
-        let summary = ChecksSummary {
-            total: 12,
-            passed: 2,
-            pending: 3,
-            skipped: 7,
-            failed: 0,
-        };
-
-        assert_eq!(
-            check_completion_summary_labels(summary),
-            ["2 passed", "7 skipped", "9 of 12 complete"]
         );
     }
 
@@ -661,7 +624,7 @@ mod tests {
         check.started_at = Some(started_at);
         check.completed_at = Some(completed_at);
 
-        assert_eq!(check_run_metadata_label(&check), "completed in 1m 15s");
+        assert_eq!(check_run_metadata_label(&check), "1m 15s");
     }
 
     fn named_check(

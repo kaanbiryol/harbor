@@ -105,7 +105,7 @@ pub(super) fn render_overview_comment_event(
             .id(("overview-comment", index))
             .w_full()
             .min_w_0()
-            .rounded_sm()
+            .rounded_md()
             .border_1()
             .border_color(color::border())
             .bg(color::content_background())
@@ -199,7 +199,7 @@ pub(super) fn render_overview_review_event(
             .when_some(markdown, |element, markdown| {
                 element.child(
                     div()
-                        .rounded_sm()
+                        .rounded_md()
                         .border_1()
                         .border_color(color::border())
                         .bg(colors.background)

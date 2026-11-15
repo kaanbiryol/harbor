@@ -435,7 +435,7 @@ fn render_overview_activity_header(
     unresolved_threads_only: bool,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
-    let colors = tone_colors(Tone::Warning);
+    let colors = tone_colors(Tone::Neutral);
 
     div()
         .debug_selector(|| "pull-request-overview-activity-header".to_string())
@@ -463,23 +463,18 @@ fn render_overview_activity_header(
                             .id("overview-unresolved-filter")
                             .debug_selector(|| "overview-unresolved-filter".to_string())
                             .flex_none()
-                            .rounded_xs()
-                            .border_1()
-                            .border_color(if unresolved_threads_only {
-                                colors.text
-                            } else {
-                                colors.border
+                            .rounded_md()
+                            .when(unresolved_threads_only, |element| {
+                                element.bg(color::row_selected())
                             })
-                            .bg(if unresolved_threads_only {
-                                color::row_selected()
-                            } else {
-                                colors.background
-                            })
-                            .px_1()
+                            .px_1p5()
                             .py_0p5()
                             .text_xs()
-                            .font_medium()
-                            .text_color(colors.text)
+                            .text_color(if unresolved_threads_only {
+                                color::text_primary()
+                            } else {
+                                colors.text
+                            })
                             .cursor_pointer()
                             .hover(move |style| {
                                 style.bg(if unresolved_threads_only {

@@ -281,7 +281,7 @@ fn render_chip() -> Div {
         .flex()
         .items_center()
         .gap_1()
-        .rounded_xs()
+        .rounded_md()
         .border_1()
         .border_color(color::border())
         .bg(color::panel_background())

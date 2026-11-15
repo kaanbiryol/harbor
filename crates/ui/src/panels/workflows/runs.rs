@@ -15,7 +15,6 @@ use crate::workspace::AppView;
 
 use super::super::{
     ci_status_icon, render_empty_state, render_error_panel_card, render_loading_panel_skeleton,
-    render_panel_card, render_status_pill,
 };
 
 pub(super) struct RepositoryWorkflowRunsRenderInput<'a> {
@@ -56,12 +55,8 @@ pub(super) fn render_repository_workflow_runs(
         .unwrap_or_else(|| "All workflow runs".to_string());
     let subtitle = selected_workflow
         .map(|workflow| format!("{} in {}", workflow.path, repository.full_name()))
-        .unwrap_or_else(|| {
-            format!(
-                "Showing runs from all workflows in {}",
-                repository.full_name()
-            )
-        });
+        .unwrap_or_else(|| repository.full_name());
+    let shows_footer = has_next_page || is_loading_more || load_more_error.is_some();
     let can_load_more = has_next_page && !is_loading && !is_loading_more && error.is_none();
 
     div()
@@ -93,10 +88,15 @@ pub(super) fn render_repository_workflow_runs(
                                 .child(subtitle),
                         ),
                 )
-                .child(render_status_pill(
-                    workflow_run_count_label(workflow_runs.len(), total_count),
-                    Tone::Neutral,
-                )),
+                .when(!shows_footer, |element| {
+                    element.child(
+                        div()
+                            .flex_none()
+                            .text_xs()
+                            .text_color(color::text_muted())
+                            .child(workflow_run_count_label(workflow_runs.len(), total_count)),
+                    )
+                }),
         )
         .when(is_loading && workflow_runs.is_empty(), |element| {
             element.child(render_loading_panel_skeleton(
@@ -123,7 +123,9 @@ pub(super) fn render_repository_workflow_runs(
         )
         .when(!workflow_runs.is_empty(), |element| {
             element.child(
-                render_panel_card()
+                div()
+                    .w_full()
+                    .min_w_0()
                     .flex()
                     .flex_col()
                     .flex_1()
@@ -147,63 +149,59 @@ pub(super) fn render_repository_workflow_runs(
                         .w_full()
                         .min_w_0(),
                     )
-                    .when(
-                        has_next_page || is_loading_more || load_more_error.is_some(),
-                        |element| {
-                            element.child(
-                                div()
-                                    .flex_none()
-                                    .border_t_1()
-                                    .border_color(color::border())
-                                    .px_3()
-                                    .py_2()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .justify_between()
-                                            .gap_2()
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(color::text_muted())
-                                                    .child(workflow_run_count_label(
-                                                        workflow_runs.len(),
-                                                        total_count,
-                                                    )),
-                                            )
-                                            .child(
-                                                Button::new("load-more-workflow-runs")
-                                                    .ghost()
-                                                    .small()
-                                                    .compact()
-                                                    .icon(Octicon::ChevronDown)
-                                                    .label("Load more")
-                                                    .tooltip("Load more workflow runs")
-                                                    .loading(is_loading_more)
-                                                    .disabled(!can_load_more)
-                                                    .on_click(cx.listener(|view, _, _, cx| {
-                                                        view.load_more_repository_workflow_runs(cx);
-                                                    })),
+                    .when(shows_footer, |element| {
+                        element.child(
+                            div()
+                                .flex_none()
+                                .border_t_1()
+                                .border_color(color::border_subtle())
+                                .px_3()
+                                .py_2()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .gap_2()
+                                        .child(
+                                            div().text_xs().text_color(color::text_muted()).child(
+                                                workflow_run_count_label(
+                                                    workflow_runs.len(),
+                                                    total_count,
+                                                ),
                                             ),
-                                    )
-                                    .when_some(
-                                        load_more_error.map(str::to_string),
-                                        |element, error| {
-                                            element.child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(color::danger())
-                                                    .child(format!("Load more failed: {error}")),
-                                            )
-                                        },
-                                    ),
-                            )
-                        },
-                    ),
+                                        )
+                                        .child(
+                                            Button::new("load-more-workflow-runs")
+                                                .ghost()
+                                                .small()
+                                                .compact()
+                                                .icon(Octicon::ChevronDown)
+                                                .label("Load more")
+                                                .tooltip("Load more workflow runs")
+                                                .loading(is_loading_more)
+                                                .disabled(!can_load_more)
+                                                .on_click(cx.listener(|view, _, _, cx| {
+                                                    view.load_more_repository_workflow_runs(cx);
+                                                })),
+                                        ),
+                                )
+                                .when_some(
+                                    load_more_error.map(str::to_string),
+                                    |element, error| {
+                                        element.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(color::danger())
+                                                .child(format!("Load more failed: {error}")),
+                                        )
+                                    },
+                                ),
+                        )
+                    }),
             )
         })
 }
@@ -225,9 +223,9 @@ fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {
         .w_full()
         .min_w_0()
         .border_b_1()
-        .border_color(color::border())
+        .border_color(color::border_subtle())
         .px_3()
-        .py_3()
+        .py_2()
         .flex()
         .items_center()
         .gap_3()
@@ -247,7 +245,7 @@ fn render_repository_workflow_run(run: &WorkflowRun) -> impl IntoElement {
                     div()
                         .min_w_0()
                         .truncate()
-                        .font_medium()
+                        .text_sm()
                         .text_color(color::text_primary())
                         .child(run.name.clone()),
                 )
@@ -280,15 +278,8 @@ fn render_branch_label(run: &WorkflowRun) -> impl IntoElement {
         .flex_none()
         .max_w(px(220.0))
         .truncate()
-        .rounded_xs()
-        .border_1()
-        .border_color(color::border())
-        .bg(color::input_background())
-        .px_1()
-        .py_0p5()
         .text_xs()
-        .font_medium()
-        .text_color(color::accent())
+        .text_color(color::text_muted())
         .child(if run.head_branch.is_empty() {
             "unknown branch".to_string()
         } else {

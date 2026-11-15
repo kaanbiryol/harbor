@@ -15,8 +15,8 @@ use harbor_domain::{
 use crate::{
     actions::{
         MergePullRequest, MergePullRequestWithMergeCommit, OpenApproveCommentDialog,
-        OpenRequestChangesCommentDialog, PullRequestAction, PullRequestActionKind,
-        RebasePullRequest, ToggleMergeRequirementsBypass,
+        OpenPullRequestInBrowser, OpenRequestChangesCommentDialog, PullRequestAction,
+        PullRequestActionKind, RebasePullRequest, ToggleMergeRequirementsBypass,
     },
     icons::Octicon,
     panels::{PullRequestMergeQueueStatus, review_action_blocker},
@@ -46,6 +46,11 @@ impl AppView {
             tooltip: merge_tooltip,
             bypass_placement,
         } = merge_action_plan(pr, self.merge_bypass_enabled, pull_request_action_running);
+        let draft_action_label = if pr.is_draft {
+            "Mark ready for review"
+        } else {
+            "Convert to draft"
+        };
         let pull_request_url = pr.url.clone();
         let pull_request_link = pr.url.clone();
         let pull_request_number = pr.number;
@@ -212,9 +217,21 @@ impl AppView {
                             ))
                         })
                 })
-            });
+            })
+            .child(
+                Button::new("pull-request-more-actions")
+                    .icon(Octicon::KebabHorizontal)
+                    .small()
+                    .ghost()
+                    .tooltip("More actions")
+                    .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                        menu.menu(draft_action_label, Box::new(OpenPullRequestInBrowser))
+                            .menu("Close pull request", Box::new(OpenPullRequestInBrowser))
+                    }),
+            );
 
         let header_content = div()
+            .group(HEADER_HOVER_GROUP)
             .px_3()
             .pt_2()
             .child(
@@ -301,13 +318,6 @@ impl AppView {
                                             .text_color(color::accent())
                                             .child(pr.base_ref.clone()),
                                     )
-                                    .child(render_copy_button(
-                                        format!("copy-pr-base-branch-{}", pr.number),
-                                        "Copy base branch name",
-                                        pr.base_ref.clone(),
-                                        format!("Copied branch {}", pr.base_ref),
-                                        cx,
-                                    ))
                                     .child(div().flex_none().child("·"))
                                     .child(
                                         div()
@@ -410,6 +420,8 @@ fn merge_method_button_label(method: MergeMethod) -> &'static str {
     }
 }
 
+const HEADER_HOVER_GROUP: &str = "pull-request-details-header";
+
 fn render_copy_button(
     id: String,
     tooltip: &'static str,
@@ -419,17 +431,22 @@ fn render_copy_button(
 ) -> impl IntoElement {
     let view = cx.weak_entity();
 
-    Clipboard::new(id)
-        .tooltip(tooltip)
-        .value(clipboard_value)
-        .on_copied(move |_, _, cx| {
-            if let Err(error) = view.update(cx, |view, cx| {
-                view.status = status.clone();
-                cx.notify();
-            }) {
-                log_entity_update_error("failed to update clipboard copy status", error);
-            }
-        })
+    div()
+        .opacity(0.)
+        .group_hover(HEADER_HOVER_GROUP, |style| style.opacity(1.))
+        .child(
+            Clipboard::new(id)
+                .tooltip(tooltip)
+                .value(clipboard_value)
+                .on_copied(move |_, _, cx| {
+                    if let Err(error) = view.update(cx, |view, cx| {
+                        view.status = status.clone();
+                        cx.notify();
+                    }) {
+                        log_entity_update_error("failed to update clipboard copy status", error);
+                    }
+                }),
+        )
 }
 
 fn short_commit_sha(sha: &str) -> String {

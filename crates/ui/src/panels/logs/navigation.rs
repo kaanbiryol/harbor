@@ -69,7 +69,7 @@ pub(super) fn render_navigation_row(
                                     div()
                                         .text_sm()
                                         .line_height(px(20.))
-                                        .when(row.job.is_none(), |element| element.font_semibold())
+                                        .when(row.job.is_none(), |element| element.font_medium())
                                         .truncate()
                                         .text_color(color::text_primary())
                                         .child(row.label.clone()),
@@ -144,7 +144,7 @@ pub(super) fn render_log_navigation(
                 .pb_1()
                 .text_xs()
                 .text_color(color::text_muted())
-                .child("WORKFLOWS / CHECKS"),
+                .child("Workflows and checks"),
         )
         .child(
             div()

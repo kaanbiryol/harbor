@@ -52,6 +52,17 @@ fn render_review_diff_preview_line(
         .line
         .map(|line| line.to_string())
         .unwrap_or_else(|| "-".to_string());
+    let colors = tone_colors(line.tone);
+    // A short excerpt reads better with a marker bar than a fully saturated row fill.
+    let background = gpui::Rgba {
+        a: 0.45,
+        ..colors.background
+    };
+    let marker_color = if line.tone == Tone::Neutral {
+        background
+    } else {
+        colors.text
+    };
 
     div()
         .flex()
@@ -60,7 +71,9 @@ fn render_review_diff_preview_line(
         .px_2()
         .py_1()
         .text_xs()
-        .bg(tone_colors(line.tone).background)
+        .bg(background)
+        .border_l_2()
+        .border_color(marker_color)
         .text_color(if line.is_leading_context {
             color::text_muted()
         } else {

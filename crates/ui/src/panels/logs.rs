@@ -477,7 +477,7 @@ fn render_log_output(
                         .text_center()
                         .child(
                             Icon::new(if all_skipped {
-                                Octicon::Clock
+                                Octicon::Skip
                             } else {
                                 Octicon::Terminal
                             })

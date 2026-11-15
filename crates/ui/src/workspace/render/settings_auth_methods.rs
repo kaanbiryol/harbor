@@ -1,4 +1,4 @@
-use crate::gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button, tag::Tag};
+use crate::gpui_component::{Disableable, Icon, Sizable, StyledExt, button::Button};
 use gpui::{AnyElement, Entity, IntoElement, div, prelude::*, px};
 
 use crate::{
@@ -35,7 +35,14 @@ fn render_auth_method_rows(view_state: &AppView, view: Entity<AppView>) -> impl 
             .map(str::to_string)
     };
 
-    let mut rows = div().flex().flex_col().gap_2();
+    let mut rows = div().flex().flex_col().child(
+        div()
+            .pb_1()
+            .text_xs()
+            .font_medium()
+            .text_color(color::text_muted())
+            .child("Sign-in method"),
+    );
 
     rows = rows.child(render_auth_method_row(
         Octicon::MarkGithub,
@@ -90,6 +97,7 @@ fn render_auth_method_action(
     } else {
         Button::new(id)
             .small()
+            .outline()
             .child("Switch")
             .disabled(disabled)
             .on_click(on_click)
@@ -98,19 +106,18 @@ fn render_auth_method_action(
 }
 
 fn render_current_auth_badge() -> impl IntoElement {
-    Tag::custom(
-        color::row_selected().into(),
-        color::text_primary().into(),
-        color::row_selected().into(),
-    )
-    .h_6()
-    .px_2()
-    .gap_1()
-    .rounded_xs()
-    .text_xs()
-    .font_medium()
-    .child(Icon::new(Octicon::Check).xsmall())
-    .child("Current")
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .text_xs()
+        .text_color(color::text_secondary())
+        .child(
+            Icon::new(Octicon::Check)
+                .xsmall()
+                .text_color(color::accent()),
+        )
+        .child("Current")
 }
 
 fn render_auth_method_row(
@@ -122,20 +129,9 @@ fn render_auth_method_row(
     action: impl IntoElement,
 ) -> impl IntoElement {
     div()
-        .border_1()
-        .border_color(if selected {
-            color::border_strong()
-        } else {
-            color::border()
-        })
-        .bg(if selected {
-            color::row_selected_subtle()
-        } else {
-            color::content_background()
-        })
-        .rounded_xs()
-        .px_3()
-        .py_2()
+        .border_t_1()
+        .border_color(color::border_subtle())
+        .py_3()
         .flex()
         .items_center()
         .justify_between()
@@ -176,7 +172,7 @@ fn render_auth_method_row(
                         )
                         .child(
                             div()
-                                .text_sm()
+                                .text_xs()
                                 .text_color(color::text_muted())
                                 .child(description),
                         )

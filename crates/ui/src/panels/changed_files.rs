@@ -5,9 +5,9 @@ use crate::{
     icons::Octicon,
     panels::{
         render_changed_file_row, render_changed_folder_row, render_empty_state,
-        render_error_panel_card, render_loading_skeleton_rows, render_status_pill,
+        render_error_panel_card, render_loading_skeleton_rows,
     },
-    visual::{Tone, color, layout},
+    visual::{Tone, color, layout, tone_colors},
     workspace::{AppView, ChangedFileTreeRow},
 };
 
@@ -129,12 +129,10 @@ impl AppView {
     pub(super) fn render_changed_files_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let reviewed_count = self.reviewed_file_count();
         let total_count = self.detail_state.files().len();
-        let reviewed_tone = if total_count > 0 && reviewed_count == total_count {
-            Tone::Success
-        } else if reviewed_count > 0 {
-            Tone::Info
+        let reviewed_color = if total_count > 0 && reviewed_count == total_count {
+            tone_colors(Tone::Success).text
         } else {
-            Tone::Neutral
+            color::text_muted()
         };
         let visible_count = self.visible_file_indices(cx).len();
         let has_active_filter = self.has_active_changed_file_filters();
@@ -200,10 +198,12 @@ impl AppView {
                             .flex()
                             .items_center()
                             .gap_1()
-                            .child(render_status_pill(
-                                format!("{reviewed_count}/{total_count} reviewed"),
-                                reviewed_tone,
-                            ))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(reviewed_color)
+                                    .child(format!("{reviewed_count}/{total_count} reviewed")),
+                            )
                             .child(self.render_changed_files_filter_control(cx)),
                     ),
             )

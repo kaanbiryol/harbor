@@ -1,8 +1,4 @@
-use crate::gpui_component::{
-    Icon, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
-    list::ListItem,
-};
+use crate::gpui_component::{Icon, Sizable, StyledExt, list::ListItem};
 use gpui::{AnyElement, Context, Div, SharedString, div, prelude::*, px};
 use harbor_domain::{MergeState, PullRequest, ReviewDecision};
 
@@ -62,8 +58,6 @@ impl AppView {
         } else {
             ("No conflicts", Tone::Success)
         };
-        let pull_request_url = pr.url.clone();
-        let close_pull_request_url = pr.url.clone();
 
         render_overview_card("PR status")
             .debug_selector(|| "pull-request-merge-readiness".to_string())
@@ -97,12 +91,16 @@ impl AppView {
                         render_readiness_row(
                             "pull-request-unresolved-conversations-row",
                             "Conversations",
-                            format!(
-                                "Resolve {} open thread{}",
-                                pr.unresolved_threads,
-                                if pr.unresolved_threads == 1 { "" } else { "s" }
-                            ),
-                            Octicon::CommentDiscussion,
+                            match pr.unresolved_threads {
+                                0 => "No open threads".to_string(),
+                                1 => "Resolve 1 open thread".to_string(),
+                                count => format!("Resolve {count} open threads"),
+                            },
+                            if pr.unresolved_threads == 0 {
+                                Octicon::Check
+                            } else {
+                                Octicon::CommentDiscussion
+                            },
                             unresolved_tone,
                             true,
                         )
@@ -148,31 +146,6 @@ impl AppView {
                 Octicon::CheckCircle,
                 conflicts_tone,
             ))
-            .child(
-                div()
-                    .pt_2()
-                    .flex()
-                    .flex_wrap()
-                    .gap_1()
-                    .child(
-                        Button::new("pull-request-draft-action")
-                            .label(if pr.is_draft {
-                                "Mark ready for review"
-                            } else {
-                                "Convert to draft"
-                            })
-                            .xsmall()
-                            .link()
-                            .on_click(move |_, _, cx| cx.open_url(&pull_request_url)),
-                    )
-                    .child(
-                        Button::new("close-pull-request-action")
-                            .label("Close pull request")
-                            .xsmall()
-                            .link()
-                            .on_click(move |_, _, cx| cx.open_url(&close_pull_request_url)),
-                    ),
-            )
             .into_any_element()
     }
 }
@@ -185,7 +158,12 @@ pub(super) fn render_readiness_row(
     tone: Tone,
     navigable: bool,
 ) -> ListItem {
-    let colors = tone_colors(tone);
+    // The status headline carries the warning, so pending rows stay neutral.
+    let colors = tone_colors(if tone == Tone::Warning {
+        Tone::Neutral
+    } else {
+        tone
+    });
     let description = description.into();
 
     ListItem::new(id)
@@ -236,44 +214,30 @@ pub(super) fn render_readiness_status(
     let colors = tone_colors(tone);
 
     div()
-        .py_3()
+        .py_2()
         .flex()
-        .items_center()
-        .gap_3()
+        .flex_col()
+        .gap_0p5()
         .child(
             div()
-                .size(px(44.0))
-                .flex_none()
-                .rounded_full()
                 .flex()
                 .items_center()
-                .justify_center()
-                .bg(colors.background)
+                .gap_2()
+                .child(div().size(px(8.0)).rounded_full().bg(colors.text))
                 .child(
-                    Icon::new(Octicon::CodeSquare)
-                        .size(px(16.0))
-                        .text_color(colors.text),
+                    div()
+                        .text_sm()
+                        .font_medium()
+                        .text_color(colors.text)
+                        .child(label),
                 ),
         )
         .child(
             div()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .gap_0p5()
-                .child(
-                    div()
-                        .text_size(px(16.0))
-                        .font_medium()
-                        .text_color(colors.text)
-                        .child(label),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(color::text_muted())
-                        .child(description),
-                ),
+                .pl_4()
+                .text_xs()
+                .text_color(color::text_muted())
+                .child(description),
         )
 }
 

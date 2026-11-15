@@ -262,9 +262,9 @@ pub(crate) fn render_review_thread_reply_composer(
         .child(
             div()
                 .w_full()
+                .rounded_md()
                 .border_1()
-                .border_color(color::border_strong())
-                .bg(color::input_background())
+                .border_color(color::border())
                 .px_2()
                 .py_1()
                 .child(
@@ -286,7 +286,7 @@ pub(crate) fn render_review_thread_reply_composer(
         })
         .child(
             div()
-                .pt_1()
+                .pt_2()
                 .flex()
                 .items_center()
                 .justify_end()

@@ -341,7 +341,7 @@ impl AppView {
                 .debug_selector(|| "pull-request-overview-comment-composer".to_string())
                 .w_full()
                 .min_w_0()
-                .rounded_sm()
+                .rounded_md()
                 .border_1()
                 .border_color(color::border())
                 .bg(color::content_background())
